@@ -1,0 +1,37 @@
+# Cloudflare Pages redirect rules. This file is copied verbatim to the site root
+# by VitePress (everything under platform/public/ lands in .vitepress/dist/).
+#
+# It has no effect under `pnpm dev` — the VitePress dev server does not read it.
+# Test it with `pnpm pages:dev`, which serves the built output through the same
+# Pages runtime that production uses.
+#
+# Syntax: <from> <to> <status>. `:name` captures one path segment and is
+# substituted on the right. First matching rule wins, so put specific rules
+# above general ones. Cloudflare caps this file at 2100 rules.
+#
+# GENERATED FILE — DO NOT EDIT BY HAND.
+# Produced by `pnpm redirects:generate` from the challenge tree, and rewritten
+# as part of `pnpm build`. A hand edit is reverted by the next build and fails
+# tests/unit/site/redirects-generated.test.ts in the meantime.
+
+# Numbered short links, one pair per challenge. A number is assigned once and
+# never reused, so a link printed on a handout keeps pointing at the same
+# challenge even after the challenge is renamed.
+#
+# These come first on purpose: Cloudflare takes the first match and `/c/:slug`
+# matches any single segment, a number included. A numeric rule placed after it
+# would never run, and nothing about that would be visible at deploy time.
+/c/001       /challenge/door-is-open/             302
+/zh/c/001    /zh-TW/challenge/door-is-open/       302
+/c/002       /challenge/staff-only/               302
+/zh/c/002    /zh-TW/challenge/staff-only/         302
+/c/008       /challenge/just-a-preview/           302
+/zh/c/008    /zh-TW/challenge/just-a-preview/     302
+/c/010       /challenge/selected-excerpts/        302
+/zh/c/010    /zh-TW/challenge/selected-excerpts/  302
+
+# Slug short links for classroom use — students can be given /c/<slug> to type
+# or paste rather than the full /challenge/<slug>/ path. Parameterised, so they
+# follow a rename; the numbered rules above are what survives one.
+/c/:slug     /challenge/:slug/                    302
+/zh/c/:slug  /zh-TW/challenge/:slug/              302

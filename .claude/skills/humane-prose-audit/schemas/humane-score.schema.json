@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://humane-prose-audit/schemas/humane-score.schema.json",
+  "title": "humane-score",
+  "description": "humane_score breakdown produced by Phase 4 of the audit pipeline. Captures the 0-100 scalar plus each component contribution so the verdict annotation is reproducible and explainable.",
+  "type": "object",
+  "required": ["score", "band", "components", "threshold"],
+  "additionalProperties": false,
+  "properties": {
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "band": {
+      "type": "string",
+      "enum": ["low", "mid", "high"]
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Effective threshold used to compute the verdict annotation (resolved from project config; default 60)."
+    },
+    "components": {
+      "type": "object",
+      "required": ["burstiness", "ai_tells", "imperative_fog", "lexical_diversity", "boilerplate_stamp"],
+      "additionalProperties": false,
+      "properties": {
+        "burstiness": { "$ref": "#/definitions/component" },
+        "ai_tells": { "$ref": "#/definitions/component" },
+        "imperative_fog": { "$ref": "#/definitions/component" },
+        "lexical_diversity": { "$ref": "#/definitions/component" },
+        "boilerplate_stamp": { "$ref": "#/definitions/component" }
+      }
+    },
+    "annotation": {
+      "type": "string",
+      "description": "Human-readable verdict annotation (e.g. 'WARN: humane_score 42 < threshold 60'). Empty when score >= threshold."
+    }
+  },
+  "definitions": {
+    "component": {
+      "type": "object",
+      "required": ["weight", "raw", "contribution"],
+      "additionalProperties": false,
+      "properties": {
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "raw": {
+          "type": "number",
+          "description": "Raw component value (normalized 0-1 before weighting)."
+        },
+        "contribution": {
+          "type": "number",
+          "description": "weight * normalized term contributed to the final score."
+        },
+        "source_check": {
+          "type": "string",
+          "description": "Name of the preflight check that supplied the raw value."
+        }
+      }
+    }
+  }
+}

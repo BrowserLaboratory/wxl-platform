@@ -1,0 +1,8 @@
+# Phase-1 deterministic prose-audit — runtime dependencies.
+# Exactly the third-party packages imported by the 14 vendored checkers + the
+# vendored _common modules. tiktoken / py-readability-metrics are intentionally
+# absent: no vendored module imports them. All three ship manylinux wheels, so
+# the CI install needs no source build.
+PyYAML==6.0.3        # checks read config.yaml; _common/config_resolver loads YAML
+textstat==0.7.13     # readability_metrics: Flesch reading ease
+jsonschema==4.26.0   # _common/config_resolver: Draft7Validator (citation_format path)

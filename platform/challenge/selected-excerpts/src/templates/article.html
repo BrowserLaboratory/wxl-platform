@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="eyebrow">{{ article.contributor }}{% if article.selected %} · editorial selection{% endif %}</p>
+<h1>{{ article.title }}</h1>
+<p><a href="/articles/{{ article.slug }}/preview">Preview this article</a></p>
+{% if saved %}<p class="snackbar" role="status">Revision saved.</p>{% endif %}
+{% if error %}<p class="notice" role="alert">{{ error }}</p>{% endif %}
+{% for chapter in article.chapters.values() %}
+<section class="chapter">
+  <h2>{{ chapter.title }}</h2>
+  {% if can_edit %}
+  <form action="/articles/{{ article.slug }}/chapters/{{ chapter.slug }}" method="post">
+    <label for="body-{{ chapter.slug }}">Markdown source</label>
+    <textarea id="body-{{ chapter.slug }}" name="body" rows="9">{{ chapter.body }}</textarea>
+    <button type="submit">Save chapter</button>
+  </form>
+  {% else %}
+  <pre>{{ chapter.body }}</pre>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

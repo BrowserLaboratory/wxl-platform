@@ -1,0 +1,27 @@
+# humane-prose-audit profile: marketing
+# Tuned for landing pages, ad copy, and product narrative.
+#
+# Most strict on AI-tells (the most expensive failure mode), strict on
+# burstiness (rhythm sells), tolerant of lower lexical diversity (copy
+# repetition is by design).
+profile: marketing
+locale: en
+tone: editorial
+humane_signal:
+  threshold: 65
+  weights:
+    burstiness: 0.30
+    ai_tells: 0.35
+    imperative_fog: 0.15
+    lexical_diversity: 0.10
+    boilerplate_stamp: 0.10
+severity_overrides:
+  lexical_diversity: low
+  citation_format: disabled
+checks_disabled:
+  - citation_format
+agents_disabled: []
+references:
+  format: none
+token_budget: 40000
+agents_n: 4

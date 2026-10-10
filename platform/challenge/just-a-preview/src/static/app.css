@@ -1,0 +1,91 @@
+:root {
+  --bg: #f6f5f8; --surface: #ffffff; --line: #e4e1ea; --ink: #1d1a24;
+  --muted: #6d6779; --brand: #4b3d8f; --brand-dark: #372c6d; --brand-ink: #ffffff;
+  --tint: #ece8f7; --code-bg: #1d1a24; --code-ink: #e9e5f5;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  /* Named faces first, and no `-apple-system` / `system-ui`: those two match
+     everywhere but resolve to the default serif where no system UI font is
+     installed, which stops the rest of the list from being tried. */
+  font-family: "Helvetica Neue", Helvetica, "Segoe UI", Arial,
+               "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+header.bar {
+  background: var(--brand); color: var(--brand-ink);
+  box-shadow: 0 1px 3px rgba(20, 12, 45, .22);
+}
+.bar-inner {
+  max-width: 820px; margin: 0 auto; padding: 0 20px;
+  display: flex; align-items: center; gap: 20px; min-height: 56px; flex-wrap: wrap;
+}
+.brand { font-weight: 650; letter-spacing: .2px; margin-right: auto; }
+.brand span { opacity: .70; font-weight: 400; font-size: 13px; margin-left: 8px; }
+.bar a { color: #d8d1f0; text-decoration: none; font-size: 14px; }
+.bar a:hover { color: #fff; }
+main { flex: 1 0 auto; max-width: 820px; width: 100%; margin: 0 auto; padding: 28px 20px 56px; }
+footer.foot { border-top: 1px solid var(--line); background: var(--surface); }
+.foot-inner {
+  max-width: 820px; margin: 0 auto; padding: 16px 20px;
+  color: var(--muted); font-size: 13px;
+}
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.2px; }
+h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted);
+     text-transform: uppercase; letter-spacing: .6px; }
+.lede { color: var(--muted); margin: 0 0 22px; font-size: 14px; max-width: 62ch; }
+.crumb { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.crumb a { color: var(--brand); text-decoration: none; }
+.crumb a:hover { text-decoration: underline; }
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(20, 12, 45, .04); overflow: hidden;
+}
+.card + .card { margin-top: 18px; }
+.card.pad { padding: 20px 22px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 12px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  background: #f0edf7; color: var(--muted); font-size: 12px;
+  text-transform: uppercase; letter-spacing: .6px; font-weight: 650;
+}
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: #faf9fd; }
+.name { font-weight: 600; }
+.sub { color: var(--muted); font-size: 13px; }
+.muted { color: var(--muted); font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.act { text-align: right; }
+a.btn, button {
+  display: inline-block; padding: 7px 16px; font: inherit; font-size: 14px; font-weight: 600;
+  background: var(--brand); color: #fff; text-decoration: none;
+  border: 0; border-radius: 7px; cursor: pointer;
+}
+a.btn:hover, button:hover { background: var(--brand-dark); }
+label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+textarea {
+  width: 100%; padding: 11px 13px; color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.55;
+  border: 1px solid #ccc6dc; border-radius: 8px; background: #fff; resize: vertical;
+}
+textarea:focus { outline: 2px solid #b9aee2; border-color: var(--brand); }
+.row { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+.assurance { margin: 0; color: var(--muted); font-size: 13px; max-width: 46ch; }
+pre.out {
+  margin: 0; padding: 16px 18px; border-radius: 8px;
+  background: var(--code-bg); color: var(--code-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word; overflow-x: auto;
+}
+.sample { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); }
+.sample dl { margin: 0; display: grid; grid-template-columns: minmax(0, 10rem) 1fr; gap: 8px 18px; }
+.sample dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; color: var(--brand-dark);
+}
+.sample dd { margin: 0; font-size: 14px; color: var(--ink); }

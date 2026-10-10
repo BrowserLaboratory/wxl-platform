@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="eyebrow">Autumn foundations</p>
+<h1>Editorial selections</h1>
+<p class="lede">This preview reflects the excerpts that the curriculum editor has selected for the next course pack.</p>
+{% for item in excerpts %}
+<article class="rendered-chapter">
+  <p class="source-label">From {{ item.article.title }} · {{ item.chapter.title }}</p>
+  {{ item.html }}
+</article>
+{% endfor %}
+{% endblock %}

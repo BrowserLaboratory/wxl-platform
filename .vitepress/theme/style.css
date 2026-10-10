@@ -1,0 +1,284 @@
+/* --ch-* design tokens: single source of truth for the platform color palette.
+ * VitePress brand variables are overridden to point to the same tokens.
+ */
+
+:root {
+  /* Platform palette — Enterprise Indigo (light) */
+  --ch-bg:          #eef2ff;
+  --ch-bg-soft:     #e0e7ff;
+  --ch-bg-card:     #f5f7ff;
+  --ch-bg-panel:    #f0f4ff;
+  --ch-border:      #c7d2fe;
+  --ch-border-hover:#4338ca;
+  --ch-accent:      #4338ca;
+  --ch-accent-soft: rgba(67, 56, 202, 0.08);
+  --ch-text-1:      #1e1b4b;
+  --ch-text-2:      #4b5563;
+  --ch-text-3:      #9ca3af;
+  --ch-icon:        var(--ch-accent);
+
+  /* Difficulty badge tokens */
+  --ch-easy-bg:   #d1fae5;
+  --ch-easy-fg:   #065f46;
+  --ch-med-bg:    #fef3c7;
+  --ch-med-fg:    #92400e;
+  --ch-hard-bg:   #fee2e2;
+  --ch-hard-fg:   #991b1b;
+  --ch-myst-bg:   #ede9fe;
+  --ch-myst-fg:   #5b21b6;
+
+  /* Category badge tokens */
+  --ch-web-bg:    #dbeafe;
+  --ch-web-fg:    #1e40af;
+
+  /* Completion badge tokens.
+   *
+   * Its own pair rather than a reuse of --ch-easy-*: "this challenge is rated easy"
+   * and "you have solved this challenge" are different facts, and rendering them in
+   * one colour makes the badge say the wrong one to anyone reading colour first.
+   * Teal against the indigo palette, and never the only carrier — the badge always
+   * ships its label. */
+  --ch-done-bg:   #ccfbf1;
+  --ch-done-fg:   #115e59;
+
+  /* VitePress brand override → ch-accent tokens */
+  --vp-c-brand-1:    var(--ch-accent);
+  --vp-c-brand-2:    #4f46e5;
+  --vp-c-brand-3:    var(--ch-accent);
+  --vp-c-brand-soft: var(--ch-accent-soft);
+}
+
+.dark {
+  /* Platform palette — Midnight Indigo (dark) */
+  --ch-bg:          #0f0f23;
+  --ch-bg-soft:     #161630;
+  --ch-bg-card:     #15152f;
+  --ch-bg-panel:    #14142e;
+  --ch-border:      #2d2d55;
+  --ch-border-hover:#6366f1;
+  --ch-accent:      #6366f1;
+  --ch-accent-soft: rgba(99, 102, 241, 0.12);
+  --ch-text-1:      #e2e8f0;
+  --ch-text-2:      #94a3b8;
+  --ch-text-3:      #475569;
+  --ch-icon:        #a5b4fc;
+
+  /* Difficulty badge tokens */
+  --ch-easy-bg:   rgba(52, 211, 153, 0.12);
+  --ch-easy-fg:   #34d399;
+  --ch-med-bg:    rgba(251, 191, 36, 0.12);
+  --ch-med-fg:    #fbbf24;
+  --ch-hard-bg:   rgba(248, 113, 113, 0.12);
+  --ch-hard-fg:   #f87171;
+  --ch-myst-bg:   rgba(167, 139, 250, 0.12);
+  --ch-myst-fg:   #a78bfa;
+
+  /* Category badge tokens */
+  --ch-web-bg:    rgba(96, 165, 250, 0.12);
+  --ch-web-fg:    #60a5fa;
+
+  /* Completion badge tokens — see the light block for why these are their own pair. */
+  --ch-done-bg:   rgba(45, 212, 191, 0.14);
+  --ch-done-fg:   #5eead4;
+
+  /* VitePress brand override → ch-accent tokens */
+  --vp-c-brand-1:    var(--ch-accent);
+  --vp-c-brand-2:    #818cf8;
+  --vp-c-brand-3:    var(--ch-accent);
+  --vp-c-brand-soft: var(--ch-accent-soft);
+}
+
+/**
+ * VitePress default overrides
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --vp-c-default-1: var(--vp-c-gray-1);
+  --vp-c-default-2: var(--vp-c-gray-2);
+  --vp-c-default-3: var(--vp-c-gray-3);
+  --vp-c-default-soft: var(--vp-c-gray-soft);
+
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-2: var(--vp-c-brand-2);
+  --vp-c-tip-3: var(--vp-c-brand-3);
+  --vp-c-tip-soft: var(--vp-c-brand-soft);
+
+  --vp-c-warning-1: var(--vp-c-yellow-1);
+  --vp-c-warning-2: var(--vp-c-yellow-2);
+  --vp-c-warning-3: var(--vp-c-yellow-3);
+  --vp-c-warning-soft: var(--vp-c-yellow-soft);
+
+  --vp-c-danger-1: var(--vp-c-red-1);
+  --vp-c-danger-2: var(--vp-c-red-2);
+  --vp-c-danger-3: var(--vp-c-red-3);
+  --vp-c-danger-soft: var(--vp-c-red-soft);
+}
+
+/**
+ * VitePress layout variables → ch-* bridge
+ * Ensures docs / guide pages follow the platform color scheme.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --vp-c-bg-soft: var(--ch-bg-soft);
+  --vp-c-text-1:  var(--ch-text-1);
+  --vp-c-text-2:  var(--ch-text-2);
+  --vp-c-text-3:  var(--ch-text-3);
+  --vp-c-divider: var(--ch-border);
+}
+
+/**
+ * Component: Button
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: var(--vp-c-white);
+  --vp-button-brand-bg: var(--vp-c-brand-3);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-hover-text: var(--vp-c-white);
+  --vp-button-brand-hover-bg: var(--vp-c-brand-2);
+  --vp-button-brand-active-border: transparent;
+  --vp-button-brand-active-text: var(--vp-c-white);
+  --vp-button-brand-active-bg: var(--vp-c-brand-1);
+}
+
+/**
+ * Component: Home
+ * -------------------------------------------------------------------------- */
+
+/* Homepage hero gradient — indigo brand palette */
+:root {
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%);
+  --vp-home-hero-image-background-image: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.15) 0%, rgba(67, 56, 202, 0.05) 70%);
+  --vp-home-hero-image-filter: blur(44px);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --vp-home-hero-image-filter: blur(56px);
+  }
+}
+
+@media (min-width: 960px) {
+  :root {
+    --vp-home-hero-image-filter: blur(68px);
+  }
+}
+
+/* Dark-mode neon glow on the hero logo.
+ *
+ * The blurred radial defined above sits *behind* the image and reads as a soft
+ * wash on a light ground. On the dark ground it disappears — that low-alpha
+ * indigo has almost no contrast against #1b1b1f — so the mark floats with
+ * nothing tying it to the page. Layered drop-shadows on the image itself trace
+ * the logo's own alpha channel rather than a rectangle behind it, which is what
+ * makes it read as emission from the mark instead of a glow card behind it.
+ *
+ * The colour is sampled from the artwork, not from the brand palette: the dark
+ * logo's own neon outline is #0078f0, and it accounts for an order of magnitude
+ * more lit pixels than the coloured brush strokes. A glow in the site's indigo
+ * (#6366f1) sits beside that blue rather than extending it, and reads as a
+ * second light source.
+ *
+ * Three radii, not one: the tight one defines the edge, the middle one carries
+ * the colour, and the wide one is what the eye reads as light in the air. A
+ * single large shadow at the same total opacity reads as blur, not glow.
+ */
+.dark .VPHero .VPImage {
+  filter:
+    drop-shadow(0 0 6px rgba(96, 170, 255, 0.6))
+    drop-shadow(0 0 22px rgba(0, 120, 240, 0.5))
+    drop-shadow(0 0 60px rgba(0, 96, 220, 0.32));
+}
+
+/* Motion is decorative here: the mark is fully legible without it, so it is
+ * opt-out by default for anyone who asked the OS to reduce motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .dark .VPHero .VPImage {
+    animation: wxl-hero-pulse 4s ease-in-out infinite;
+  }
+}
+
+@keyframes wxl-hero-pulse {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 6px rgba(96, 170, 255, 0.6))
+      drop-shadow(0 0 22px rgba(0, 120, 240, 0.5))
+      drop-shadow(0 0 60px rgba(0, 96, 220, 0.32));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 9px rgba(96, 170, 255, 0.75))
+      drop-shadow(0 0 32px rgba(0, 120, 240, 0.65))
+      drop-shadow(0 0 84px rgba(0, 96, 220, 0.42));
+  }
+}
+
+/**
+ * Component: Feature card icons — rounded-square container
+ * -------------------------------------------------------------------------- */
+
+/* Override VitePress scoped .icon styles via --vp-c-default-soft token */
+:root {
+  --vp-c-default-soft: rgba(67, 56, 202, 0.08);
+}
+
+.dark {
+  --vp-c-default-soft: rgba(99, 102, 241, 0.15);
+}
+
+/* Add border and increase border-radius for the icon container */
+.VPFeature .box > .icon {
+  border-radius: 12px;
+  border: 1px solid rgba(67, 56, 202, 0.12);
+}
+
+.dark .VPFeature .box > .icon {
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* Brighten SVG icons inside feature cards via CSS filter */
+.dark .VPFeature .icon .VPImage {
+  filter: brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(210deg) brightness(1.2);
+}
+
+/**
+ * Component: Custom Block
+ * -------------------------------------------------------------------------- */
+
+:root {
+  --vp-custom-block-tip-border: transparent;
+  --vp-custom-block-tip-text: var(--vp-c-text-1);
+  --vp-custom-block-tip-bg: var(--vp-c-brand-soft);
+  --vp-custom-block-tip-code-bg: var(--vp-c-brand-soft);
+}
+
+/* Challenge pages: hide all VitePress chrome — merged nav replaces VPNav */
+body.challenge-page .VPNav,
+body.challenge-page .VPLocalNav,
+body.challenge-page .VPSidebar,
+body.challenge-page .VPContent,
+body.challenge-page .VPFooter {
+  display: none !important;
+}
+
+/* Zero out nav height so ChallengeLayout fills the full viewport */
+body.challenge-page {
+  --vp-nav-height: 0px;
+}
+
+/* Hide VitePress's built-in translation dropdown ONLY when the project is
+ * configured to use the custom `LocaleSwitcher` (i.e., when theme/index.ts
+ * sets `USE_CUSTOM_LOCALE_SWITCHER = true`, which adds the body class
+ * below). In the default mode (flag = false), the built-in dropdown is
+ * the sole switcher and the route watcher in Layout's setup keeps
+ * vue-i18n synchronised with the URL prefix.
+ *
+ * Flipping the flag is a one-line change in theme/index.ts and requires
+ * no edits here — the body class toggle drives this rule. */
+body.use-custom-locale-switcher .VPNavBarTranslations,
+body.use-custom-locale-switcher .VPNavScreenTranslations {
+  display: none !important;
+}

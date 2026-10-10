@@ -1,0 +1,39 @@
+manifest_version: 1.0.0
+init_skill_version: 1.0.0
+initialized_at: '2026-05-12T08:09:22Z'
+active_profile: research
+profile_version: 1.0.0
+schema_version: 1.0.0
+target_dir: /Users/phoenix/.agents/custom_skills/humane-prose-audit/wiki
+wiki_path: wiki
+raw_path: raw
+scaffolded_files:
+- path: .gitignore
+  sha256: fd9e6c3df6eb242abc3475e9451a5349eb605a315489985ef1da3bb1cf79b9e9
+  role: gitignore
+- path: AGENTS.md
+  sha256: bcc89e0d9454ddcb813824818f6c2004a4cfd59f69bb246fd11ad194df4d48bb
+  role: agent_instruction
+- path: CLAUDE.md
+  sha256: 42fbbc9d55ee0d149c90e4bf93abe8b7278a5482b232be6f5bfc59cc0465e694
+  role: thin_pointer
+- path: GEMINI.md
+  sha256: 42fbbc9d55ee0d149c90e4bf93abe8b7278a5482b232be6f5bfc59cc0465e694
+  role: thin_pointer
+- path: raw/.gitkeep
+  sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  role: raw_placeholder
+- path: regen-manifest.yaml
+  sha256: 44507e9501d3dc732d82cefe40383e76dddbf0df079143057d65ce97a24c358a
+  role: other
+- path: wiki/index.md
+  sha256: 7f79c4eb943f5a797d8ed62c2d8fb4552c669cec5dcdf6ac562b71bdbe37ac82
+  role: core
+- path: wiki/log.md
+  sha256: aff41d5d0224c9f9f545aad4fe568b2a5f5db4a0c8e7f1bce4131776280f6fa3
+  role: core
+- path: wiki/synthesis.md
+  sha256: 4422cf37403cf746b27228f5fdd036cfcc331044eafae087423f9e291ea77b71
+  role: profile
+extensions: []
+suppressions: {}

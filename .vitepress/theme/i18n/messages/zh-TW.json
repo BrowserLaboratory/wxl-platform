@@ -1,0 +1,190 @@
+{
+  "locale_switcher": {
+    "english_label": "English",
+    "tw_label": "繁體中文",
+    "button_aria": "切換語系"
+  },
+  "flag_submission": {
+    "checking": "正在檢查這台裝置上的紀錄。",
+    "awaiting_decision": "請先完成沿用或清除的選擇；若選項已關閉，請重新載入頁面後再試。",
+    "submit": "送出旗標",
+    "pending": "正在驗證並儲存紀錄…",
+    "correct": "旗標正確，已解出題目。",
+    "incorrect": "旗標不正確，請再試一次。",
+    "saved": "這次提交的紀錄已儲存。",
+    "incomplete": "這次提交的紀錄未完整儲存，答案判定不受影響。部分紀錄可能已儲存；重新送出會算另一次提交。",
+    "verification_error": "目前無法驗證旗標，請稍後再試。"
+  },
+  "flag_submit": {
+    "export_attack_log": "下載攻擊紀錄",
+    "export_pentest_notes": "下載滲透筆記"
+  },
+  "home_content": {
+    "about_heading": "關於 WXL",
+    "about_paragraph": "WXL（網站滲透實驗室）是完全基於前端 WebAssembly 技術的 Web 資安挑戰平台。所有挑戰後端（Flask、FastAPI、PHP）均在瀏覽器中執行，無需任何伺服器即可進行真實的滲透測試練習。內建 HTTP Repeater、Python Code Editor 與 Network Traffic Log，提供完整的攻擊工具鏈。",
+    "stats_heading": "平台統計",
+    "stats_total_label": "題目總數",
+    "latest_heading": "最新題目",
+    "quick_start_heading": "三步驟快速開始",
+    "step1_title": "選擇挑戰",
+    "step1_desc": "前往題目總覽，依難度或類別選擇適合的挑戰題目。",
+    "step2_title": "使用工具",
+    "step2_desc": "使用該挑戰提供的工具——Browser、Code Editor、Network Traffic Log 與 Repeater——分析並利用漏洞。",
+    "step3_title": "提交 Flag",
+    "step3_desc": "找到 Flag 後，輸入到題目頁面的提交框並確認答案是否正確。"
+  },
+  "challenge_list": {
+    "search_placeholder": "搜尋題目、描述、標籤…",
+    "all_difficulties": "所有難度",
+    "all_categories": "所有類別",
+    "sort_by_id": "排序：ID",
+    "sort_by_difficulty": "排序：難度",
+    "sort_by_category": "排序：類別",
+    "sort_by_date": "排序：日期",
+    "sort_dir_asc": "升冪",
+    "sort_dir_desc": "降冪",
+    "view_mode_grid": "格線模式",
+    "view_mode_list": "列表模式",
+    "count_suffix": "道挑戰",
+    "empty_state": "找不到符合條件的題目，請調整搜尋或篩選條件。"
+  },
+  "challenge_progress": {
+    "read_error": "目前無法讀取這台裝置的解題進度。",
+    "retry": "重新讀取",
+    "completed_badge": "已完成",
+    "progress_summary": "已完成 {completed} ／ 全部 {total}",
+    "blocked_undecided": "開啟任一題目並回答沿用確認後，這裡會顯示你的完成進度。"
+  },
+  "short_link": {
+    "copy_label": "複製連結",
+    "copied": "已複製",
+    "copy_failed": "複製失敗——請反白畫面上這段網址自行複製"
+  },
+  "merged_nav": {
+    "description_toggle_label": "題目",
+    "darkmode_to_light": "切換至淺色模式",
+    "darkmode_to_dark": "切換至深色模式",
+    "challenges_label": "題目列表",
+    "home_label": "首頁",
+    "docs_label": "文件",
+    "notes_label": "筆記",
+    "runtime_ready": "執行環境就緒",
+    "runtime_loading": "執行環境載入中…",
+    "menu_label": "選單"
+  },
+  "notes_button": {
+    "label": "滲透筆記"
+  },
+  "notes_modal": {
+    "open_aria": "開啟滲透筆記",
+    "header_label": "滲透筆記",
+    "search_placeholder": "搜尋筆記...",
+    "sort_title_newest_first": "目前：新→舊（點擊切換為舊→新）",
+    "sort_title_oldest_first": "目前：舊→新（點擊切換為新→舊）",
+    "action_new": "新增筆記",
+    "action_maximize": "最大化",
+    "action_restore": "還原",
+    "action_minimize": "最小化",
+    "action_close": "關閉",
+    "empty_state_no_notes": "還沒有筆記，按 + 新增",
+    "empty_state_no_search_match": "沒有符合搜尋的筆記",
+    "editor_placeholder_hint": "選取一篇筆記進行編輯，或按 + 新增"
+  },
+  "note_card": {
+    "edit_title": "編輯筆記",
+    "delete_title": "刪除筆記",
+    "empty_preview": "（空筆記）",
+    "edited_marker": "(已編輯)"
+  },
+  "note_editor": {
+    "textarea_placeholder": "寫下你的滲透筆記...",
+    "preview_placeholder": "（預覽將在此顯示）",
+    "cancel_button": "取消",
+    "save_button": "儲存"
+  },
+  "persistence_warning": {
+    "title": "本機儲存發生問題",
+    "body": "部分紀錄可能未儲存。請先下載可取得的攻擊紀錄並另存未儲存的文字，再關閉本站的其他分頁並重新載入。"
+  },
+  "editor_settings": {
+    "title": "編輯器設定",
+    "gear_aria": "編輯器設定",
+    "autocomplete_label": "自動完成",
+    "autocomplete_hint": "輸入時提示模組與符號名稱",
+    "close_brackets_label": "括號自動閉合",
+    "close_brackets_hint": "輸入 ( [ {'{'} 時自動補上右括號；引號永遠不會自動補上。",
+    "font_size_label": "字型大小",
+    "font_size_hint": "程式編輯器的文字大小",
+    "font_size_decrease_aria": "縮小字型",
+    "font_size_increase_aria": "放大字型",
+    "reset": "重設為預設值"
+  },
+  "session_gate": {
+    "title": "這些紀錄是你的嗎？",
+    "body": "這台瀏覽器裡已經存有這些題目的解題紀錄——請求、筆記與 flag 嘗試。如果這是共用的電腦，那可能是前一位使用者留下的。除非你選擇刪除，否則不會刪掉任何東西。",
+    "body_cleared": "已存的解題紀錄已經刪掉，而且救不回來了。剩下的是這台瀏覽器不肯放掉的那一部分。",
+    "keep": "沿用這些紀錄",
+    "clear": "刪除並重新開始",
+    "dismiss": "關掉這則說明，繼續使用",
+    "sweep_failed": "已存的解題紀錄刪掉了，但這個網站存的部分數值刪不掉。",
+    "sweep_failed_hint": "從這裡無從得知還剩下多少，關掉其他分頁也不會把它們刪掉。再按一次刪除，會重試沒做完的那一半。",
+    "body_unconfirmed": "已存紀錄的刪除已經開始，但結果無法確認。它可能還在進行中，所以從這裡無從得知還剩下什麼。",
+    "clear_unconfirmed": "結果無法確認。",
+    "clear_unconfirmed_hint": "這個網站還有其他分頁開著同一份資料，刪除正在等它。關掉其他分頁刪除就會完成。重新載入以查看還剩下什麼。",
+    "reload": "重新載入並重來",
+    "clear_not_started": "刪除沒有開始。",
+    "clear_not_started_hint": "這個瀏覽器不讓本站記下「刪除已經開始」這件事，而在沒有這筆記錄的情況下開始刪除，之後可能會告訴你紀錄安然無恙、實際上卻不是。目前沒有刪掉任何東西。請清出這個網站在本瀏覽器的儲存空間，或改用一般視窗，再試一次。"
+  },
+  "attack_log_import": {
+    "title": "匯入攻擊紀錄",
+    "choose": "選擇匯出檔",
+    "hint": "選擇這一題的匯出檔（JSON）。匯入一律新增一筆紀錄，不會覆蓋或合併既有紀錄，也不會改變解題進度或編輯器草稿。",
+    "submit": "匯入",
+    "pending": "處理中…",
+    "cancel": "取消",
+    "close": "完成",
+    "added": "已新增一筆紀錄。完整性檢查顯示檔案內容與檔內雜湊一致；這不代表這份檔案由誰產生。",
+    "carry_on": "匯入的紀錄可以檢視與再次匯出，新的作答不會接續在它上面。",
+    "error_unparseable": "這個檔案不是可讀的匯出檔，請確認選到的是本站匯出的 JSON。",
+    "error_invalid": "完整性檢查沒有通過：{reason}。紀錄未寫入。",
+    "error_wrong_challenge": "這個檔案屬於「{file}」，目前開著的是「{open}」。請到該題的頁面匯入。紀錄未寫入。",
+    "error_write": "寫入失敗，紀錄未寫入，既有紀錄不受影響。請重試。"
+  },
+  "attack_session_list": {
+    "heading": "這一題的攻擊紀錄",
+    "empty": "這一題目前沒有任何紀錄。",
+    "failed": "讀不到這台裝置上的紀錄，請重新載入頁面後再試。",
+    "solved": "已解出",
+    "unsolved": "未解出",
+    "events": "事件數",
+    "source": "來源",
+    "source_local": "本機",
+    "source_imported": "匯入",
+    "started": "開始",
+    "select": "選為匯出對象",
+    "deselect": "取消選取",
+    "selected_note": "匯出時會下載選取的那一筆。未選取時下載目前作答中的那一筆。"
+  },
+  "attack_log_deletion": {
+    "clear": "清除這一題的紀錄",
+    "nothing_to_remove": "這一題除了目前作答中的那一筆以外沒有其他紀錄。",
+    "title": "清除這一題的攻擊紀錄",
+    "confirm_body": "將移除這一題的 {count} 筆紀錄。目前作答中的那一筆會保留。",
+    "no_undo": "移除之後無法復原，也無法從這個網站取回。要保留的內容請先匯出。",
+    "progress_note": "解題進度不受影響：已解出的題目仍然算解出。",
+    "cancel": "取消",
+    "confirm": "移除",
+    "pending": "移除中…",
+    "close": "完成",
+    "done": "已移除 {count} 筆紀錄，並留下一筆活動痕跡。",
+    "partial": "只移除了 {count} 筆就停住了，其餘仍在。活動痕跡記的是實際移除的那些。請重新整理清單後再試。",
+    "no_trace": "{count} 筆紀錄已移除，但這次移除沒有留下痕跡。",
+    "trace_heading": "活動痕跡",
+    "trace_bound": "痕跡只記下這裡發生過什麼；清除本機全部紀錄時，痕跡會一併消失，舊版格式的匯出檔也沒有這個欄位。",
+    "trace_line_removed": "{when} 在這裡移除了 {count} 筆紀錄。",
+    "trace_line_exported": "{when} 匯出了一筆紀錄（{mode}）。",
+    "trace_line_imported": "{when} 從檔案匯入了一筆紀錄。",
+    "trace_mode_full": "完整",
+    "trace_mode_thinned": "精簡"
+  }
+}

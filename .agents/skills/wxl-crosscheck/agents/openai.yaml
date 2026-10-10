@@ -1,0 +1,3 @@
+interface:
+  display_name: "WXL Crosscheck"
+  short_description: "Run the L4 blind-solve cross-check"

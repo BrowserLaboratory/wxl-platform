@@ -1,0 +1,136 @@
+# spectra-prose-audit runtime configuration
+# All keys consumed by checks/ and mutators/ scripts.
+
+# Number of parallel sub-agents in standalone mode. Default 4 since Phase D
+# of the humane-prose-audit-refactor added the humanity_auditor persona
+# (HUM prefix) alongside SLP / ILL / SHL. Set to 3 to drop the humanity
+# persona; higher values are reserved for future meta-agent opt-ins.
+agents_n: 4
+
+# Severity escalation rule: a finding raised by N agents gets severity bumped by N-1 levels (capped at Critical).
+consensus_severity_bump: true
+
+# Fuzz analysis parameters
+fuzz:
+  k: 5                          # variants per mutator
+  mutators:                     # informational mirror of mutators/run_fuzz.py MUTATORS tuple
+    - typo_inject
+    - sentence_reorder
+    - citation_strip
+    - section_swap              # Phase D task 4.6
+  robust_threshold_pct: 5       # metric change < 5% counts as robust
+  fragile_threshold_pct: 30     # metric change > 30% counts as fragile
+
+# Severity thresholds (consumed by checks for self-classification)
+severity:
+  critical:
+    - factual_error
+    - number_inversion
+    - dangling_citation
+    - thesis_self_contradiction
+  high:
+    - cross_file_inconsistency
+    - logical_break
+    - missing_critical_nuance
+  medium:
+    - awkward_wording
+    - mainland_vocab
+    - surface_description
+  low:
+    - punctuation
+    - micro_style
+    - optional_polish
+
+# PASS verdict requires zero Critical AND zero High findings
+verdict_pass_threshold:
+  critical: 0
+  high: 0
+
+# Mainland Chinese vocabulary blacklist (PRC usage → must convert to Taiwan usage)
+# Format: PRC_term:TW_term  — checked as substring (with word-boundary heuristic for short terms)
+mainland_vocab:
+  軟件: 軟體
+  硬件: 硬體
+  網絡: 網路
+  數據: 資料
+  程序: 程式
+  視頻: 影片
+  質量: 品質
+  信息: 資訊
+  用戶: 使用者
+  默認: 預設
+  登錄: 登入
+  菜單: 選單
+  打印: 列印
+  屏幕: 螢幕
+  鼠標: 滑鼠
+  硬盤: 硬碟
+  內存: 記憶體
+  文件夾: 資料夾
+  通過: 透過
+  克隆: 複製
+  函數: 函式
+  代碼: 程式碼
+  運行: 執行
+  支持: 支援
+  優化: 最佳化
+
+# Placeholder pattern blacklist (case-insensitive)
+placeholder_patterns:
+  - TBD
+  - TODO
+  - FIXME
+  - XXX
+  - TKTK
+  - "待補"
+  - "未完成"
+  - "暫定"
+  - "Lorem ipsum"
+
+# Duplicate sentence detection
+duplicate_sentences:
+  min_sentence_chars: 12        # ignore very short sentences (table cells, code lines)
+  similarity_threshold: 0.92    # finding when normalized similarity >= threshold
+
+# Readability metric bounds (Flesch reading ease)
+# Lower = harder; PhD-tier prose expected in 0–40 band
+readability:
+  flesch_min: 0
+  flesch_max: 40
+
+# Lazy-writer template phrase blacklist (auto-detect filler phrases)
+# Scope: phrases that signal lazy writing but are NOT in ai_tells.VOCAB_TELLS_*.
+# The removed entries ("It is important to note that", "Needless to say",
+# "Last but not least") now live in ai_tells.VOCAB_TELLS_EN — see Phase C
+# task 3.10 (ai_tells overlap dedup) and `test_lazy_writer_no_overlap`.
+lazy_writer:
+  template_phrases:
+    - "綜上所述"
+    - "總而言之"
+    - "由此可見"
+    - "眾所周知"
+    - "毫無疑問"
+  max_density_per_kchar: 2       # findings if > 2 such phrases per 1000 chars
+
+# Citation format: pattern for cite key extraction from typst documents
+citation:
+  cite_regex: 'cite\(<?([A-Za-z0-9_-]+)>?\)'
+  refs_format: yaml             # references.yml key-based
+
+# Locale (informational; affects checks' tokenization fallback)
+locale: tw-zh
+
+# Humane-signal scoring (Phase 4 of the five-phase audit workflow).
+# `humane_score = sum(weight_i * normalized_component_i)` over the 5 components
+# listed below. `threshold` is the band cut-off — scores below threshold get a
+# WARN/FAIL verdict annotation (does not affect Critical/High PASS gating).
+# Project config can override these via `.humane-prose-audit.yaml` —
+# see schemas/project-config.schema.json:humane_signal.
+humane_signal:
+  threshold: 60
+  weights:
+    burstiness: 0.3
+    ai_tells: 0.2
+    imperative_fog: 0.2
+    lexical_diversity: 0.15
+    boilerplate_stamp: 0.15

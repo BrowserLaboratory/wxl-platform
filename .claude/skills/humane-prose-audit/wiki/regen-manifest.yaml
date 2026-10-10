@@ -1,0 +1,19 @@
+# Profile-specific regen manifest for the `research` profile.
+#
+# Lists the ops-managed marker blocks that wiki-ops regen rewrites for
+# a research-profile wiki. Each block is identified by:
+#   id        — the unique marker id (must match the start marker in the
+#               target file: `<!-- ops:<section>:start id=<id> -->`)
+#   section   — the marker section name (used for the start/end pairing)
+#   target    — wiki-target-relative path of the file containing the markers
+#   source    — symbolic source directive evaluated by regen.py at runtime
+#               (currently supports `enumerate_pages(under="<rel>")`)
+#   formatter — output formatter slug; `markdown_link_list` emits one
+#               `- [Title](path/from/wiki/<file>)` line per source page
+
+blocks:
+  - id: research-sources-v1
+    section: source-list
+    target: wiki/index.md
+    source: enumerate_pages(under="wiki/pages/")
+    formatter: markdown_link_list

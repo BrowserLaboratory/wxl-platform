@@ -1,0 +1,3 @@
+interface:
+  display_name: "Archify"
+  short_description: "Create validated, interactive HTML diagrams"

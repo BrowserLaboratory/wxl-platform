@@ -1,0 +1,3 @@
+interface:
+  display_name: "WXL Fork Init"
+  short_description: "Reset project identity after forking"

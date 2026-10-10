@@ -1,0 +1,56 @@
+---
+name: agent-browser
+description: Automate browser interaction, screenshots, extraction and web QA; also Electron apps, Slack UI workflows, and browsers in Vercel Sandbox or Bedrock AgentCore. Use when the task needs browser control.
+allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*)
+hidden: true
+---
+
+# agent-browser
+
+Modified by CXPhoenix for harness-agile: compact discovery, evidence-equivalent
+native browser tools, and explicit authorization boundaries (2026-09-12).
+Upstream source and Apache-2.0 license: see LICENSE and docs/agents/skill-sources.json
+in the project root. License restoration: 2026-09-13.
+
+Fast browser automation CLI for AI agents. Chrome/Chromium via CDP with
+accessibility-tree snapshots and compact `@eN` element refs.
+
+Use available native browser tools instead when they satisfy the requested surface
+and evidence requirements, unless the user specifically requires agent-browser.
+This skill provides tool usage guidance, not authorization to send messages or
+change external state. Existing user authorization and host permissions govern actions.
+
+Install: `npm i -g agent-browser && agent-browser install`
+
+## Start here
+
+This file is a discovery stub, not the usage guide. Before running any
+`agent-browser` command, load the actual workflow content from the CLI:
+
+```bash
+agent-browser skills get core             # start here — workflows, common patterns, troubleshooting
+agent-browser skills get core --full      # include full command reference and templates
+```
+
+The CLI serves skill content that always matches the installed version,
+so instructions never go stale. The content in this stub cannot change
+between releases, which is why it just points at `skills get core`.
+
+## Specialized skills
+
+Load a specialized skill when the task falls outside browser web pages:
+
+```bash
+agent-browser skills get electron          # Electron desktop apps (VS Code, Slack, Discord, Figma, ...)
+agent-browser skills get slack             # Slack workspace automation
+agent-browser skills get dogfood           # Exploratory testing / QA / bug hunts
+agent-browser skills get vercel-sandbox    # agent-browser inside Vercel Sandbox microVMs
+agent-browser skills get agentcore         # AWS Bedrock AgentCore cloud browsers
+```
+
+Run `agent-browser skills list` to see everything available on the
+installed version.
+
+## Observability Dashboard
+
+The dashboard runs independently of browser sessions on port 4848 and can also be opened through a proxied or forwarded URL such as `https://dashboard.agent-browser.localhost`. Agents should stay on the dashboard origin: session tabs, status, and stream traffic are proxied internally, so session ports do not need to be exposed.

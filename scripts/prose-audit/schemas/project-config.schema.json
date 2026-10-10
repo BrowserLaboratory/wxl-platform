@@ -1,0 +1,90 @@
+{
+  "$comment": "Vendored from ~/.claude/skills/humane-prose-audit/schemas/project-config.schema.json @ 2026-05-28; do not edit in place. Upstream-sync via dedicated change.",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://humane-prose-audit/schemas/project-config.schema.json",
+  "title": "project-config",
+  "description": "Strict schema for project-level .humane-prose-audit.yaml configuration. config_resolver.py validates discovered files against this schema and exits non-zero on the first violation.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "type": "string",
+      "enum": ["academic", "blog", "technical-doc", "marketing", "general"]
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["tw", "en", "mixed"]
+    },
+    "tone": {
+      "type": "string",
+      "description": "Free-form tone descriptor used by sub-agents (e.g. 'editorial', 'plain-technical')."
+    },
+    "glossary": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Domain glossary mapping term -> preferred rendering, injected into sub-agent prompts."
+    },
+    "severity_overrides": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["critical", "high", "medium", "low", "disabled"]
+      },
+      "description": "Maps check rule id or agent finding id pattern to an overridden severity (or 'disabled' to drop)."
+    },
+    "humane_signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "burstiness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "ai_tells": { "type": "number", "minimum": 0, "maximum": 1 },
+            "imperative_fog": { "type": "number", "minimum": 0, "maximum": 1 },
+            "lexical_diversity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "boilerplate_stamp": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "checks_disabled": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "agents_disabled": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["sloppy", "illogical", "shallow", "humanity"]
+      },
+      "uniqueItems": true
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["typst", "bibtex", "none"]
+        }
+      }
+    },
+    "token_budget": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "agents_n": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4
+    }
+  }
+}

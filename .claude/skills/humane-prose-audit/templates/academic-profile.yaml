@@ -1,0 +1,25 @@
+# humane-prose-audit profile: academic
+# Tuned for PhD-tier theses, conference papers, and journal manuscripts.
+#
+# Tolerances reflect the academic register: hedging is expected, dense
+# discourse markers are normal, and citations are mandatory in `typst` form.
+profile: academic
+locale: en
+tone: editorial
+humane_signal:
+  threshold: 55
+  weights:
+    burstiness: 0.25
+    ai_tells: 0.25
+    imperative_fog: 0.20
+    lexical_diversity: 0.20
+    boilerplate_stamp: 0.10
+severity_overrides:
+  hedge_density: low
+  discourse_marker_density: low
+checks_disabled: []
+agents_disabled: []
+references:
+  format: typst
+token_budget: 80000
+agents_n: 4

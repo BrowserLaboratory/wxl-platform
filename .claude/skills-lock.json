@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "skills": {
+    "humane-prose-audit": {
+      "source": "~/.agents/custom_skills/humane-prose-audit",
+      "sourceType": "local",
+      "computedHash": "sha256:0e8d158d2c1afd260da91a48479dfb0f65cf4ddf8c10cd1bd3567f8a2ef2fb6d"
+    },
+    "phoenix-writing": {
+      "source": "~/.agents/custom_skills/phoenix-writing",
+      "sourceType": "local",
+      "computedHash": "sha256:c4fa928e97601ec67489ae6b445d3d41ac81c3cc357189023ee5f85cb457214c",
+      "forked": true
+    }
+  }
+}

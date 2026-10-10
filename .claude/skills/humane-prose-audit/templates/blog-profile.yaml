@@ -1,0 +1,26 @@
+# humane-prose-audit profile: blog
+# Tuned for long-form personal essays and technical blog posts.
+#
+# Strict on AI-tells (the audience can tell), tolerant of lower lexical
+# diversity, citations optional.
+profile: blog
+locale: tw
+tone: conversational
+humane_signal:
+  threshold: 60
+  weights:
+    burstiness: 0.35
+    ai_tells: 0.25
+    imperative_fog: 0.15
+    lexical_diversity: 0.15
+    boilerplate_stamp: 0.10
+severity_overrides:
+  citation_format: disabled
+  hedge_density: medium
+checks_disabled:
+  - citation_format
+agents_disabled: []
+references:
+  format: none
+token_budget: 50000
+agents_n: 4

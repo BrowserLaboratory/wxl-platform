@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://humane-prose-audit/schemas/audit-report.schema.json",
+  "title": "audit-report",
+  "description": "Consolidated audit-report.json emitted by output_aggregator after the five-phase pipeline finishes.",
+  "type": "object",
+  "required": ["verdict", "humane_score", "humane_band", "summary", "findings", "phases"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "WARN", "FAIL"]
+    },
+    "humane_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "humane_band": {
+      "type": "string",
+      "enum": ["low", "mid", "high"]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["critical", "high", "medium", "low"],
+      "additionalProperties": false,
+      "properties": {
+        "critical": { "type": "integer", "minimum": 0 },
+        "high": { "type": "integer", "minimum": 0 },
+        "medium": { "type": "integer", "minimum": 0 },
+        "low": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/consolidated_finding" }
+    },
+    "phases": {
+      "type": "object",
+      "required": ["preflight", "agents", "fuzz", "humane_scoring"],
+      "additionalProperties": false,
+      "properties": {
+        "preflight": { "type": "object" },
+        "agents": { "type": "object" },
+        "fuzz": { "type": "object" },
+        "humane_scoring": { "type": "object" }
+      }
+    },
+    "errored_outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "metadata": { "type": "object" }
+  },
+  "definitions": {
+    "consolidated_finding": {
+      "type": "object",
+      "required": ["severity", "section", "issue", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "section": { "type": "string" },
+        "issue": { "type": "string", "minLength": 1 },
+        "source": {
+          "type": "string",
+          "description": "Origin of the finding: check name (e.g. 'check:ai_tells') or agent id (e.g. 'agent:sloppy:SLP3')."
+        },
+        "evidence": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "wiki_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "consensus_bumped_from": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+interface:
+  display_name: "ELI5"
+  short_description: "Explain a topic at a chosen audience level"

@@ -1,0 +1,22 @@
+schema_version: 0
+phases:
+  A:
+    status: completed
+  B:
+    status: completed
+  C:
+    status: completed
+  D:
+    status: completed
+  E:
+    status: completed
+  F:
+    status: completed
+  G:
+    status: completed
+  H:
+    status: completed
+  I:
+    status: completed
+  J:
+    status: completed

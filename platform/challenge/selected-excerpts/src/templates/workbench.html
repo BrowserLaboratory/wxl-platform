@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="eyebrow">Contributor workspace</p>
+<h1>Selected Excerpts</h1>
+<p class="lede">Signed in as <strong>{{ contributor }}</strong>. Draft material stays with its contributor until an editor selects it for a course pack.</p>
+<section>
+  <h2>My drafts</h2>
+  <ul class="card-list">
+    {% for article in own_articles %}
+    <li><a href="/articles/{{ article.slug }}">{{ article.title }}</a><span>{{ article.chapters|length }} chapter{% if article.chapters|length != 1 %}s{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+<section>
+  <h2>Editorial selections</h2>
+  <p>The current course pack draws only from the articles below.</p>
+  <ul class="card-list">
+    {% for article in selected_articles %}
+    <li><a href="/articles/{{ article.slug }}">{{ article.title }}</a><span>selected for the course pack</span></li>
+    {% endfor %}
+  </ul>
+  <p><a class="button" href="/course-pack">Open the course pack</a></p>
+</section>
+{% endblock %}

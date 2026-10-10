@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block body %}
+<p class="crumb"><a href="/">All templates</a> / {{ template.name }}</p>
+<h1>{{ template.name }}</h1>
+<p class="lede">{{ template.note }}
+  Owned by <strong>{{ template.owner }}</strong>, last updated {{ template.updated }}.</p>
+
+<div class="card pad">
+  {% with source = template.source %}
+    {% include "_editor.html" %}
+  {% endwith %}
+</div>
+{% endblock %}

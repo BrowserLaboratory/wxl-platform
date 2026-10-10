@@ -1,0 +1,9 @@
+{
+  "_comment": "Project-local MCP servers used by `pnpm challenge:verify --blind` (L4 blind solve). scripts/wxl-solver/spawn-runtime.ts auto-detects this file and passes it to the spawned non-interactive agent CLI so chrome-devtools-mcp is available for browser-driving exploits.",
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest"]
+    }
+  }
+}

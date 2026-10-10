@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://humane-prose-audit/schemas/agent-output.schema.json",
+  "title": "agent-output",
+  "description": "JSON sidecar emitted by every humane-prose-audit sub-agent persona. The persona Markdown table is the human-readable view; this sidecar is the cross-model machine contract.",
+  "type": "object",
+  "required": ["agent", "target", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": ["sloppy", "illogical", "shallow", "humanity"]
+    },
+    "target": { "type": "string", "minLength": 1 },
+    "model": {
+      "type": "string",
+      "description": "Optional model identifier filled by the harness, not the agent itself."
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "description": "Seed honored by the agent; null if the runtime cannot accept a seed."
+    },
+    "nondeterministic": { "type": "boolean" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/agent_finding" }
+    },
+    "metadata": { "type": "object" }
+  },
+  "definitions": {
+    "agent_finding": {
+      "type": "object",
+      "required": ["id", "severity", "section", "issue", "recommendation", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(SLP|ILL|SHL|HUM)[0-9]+$",
+          "description": "Persona-prefixed identifier (SLP=sloppy, ILL=illogical, SHL=shallow, HUM=humanity)."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "section": { "type": "string" },
+        "issue": { "type": "string", "minLength": 1 },
+        "recommendation": { "type": "string", "minLength": 1 },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": { "type": "string" }
+      }
+    }
+  }
+}

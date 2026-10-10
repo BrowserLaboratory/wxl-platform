@@ -1,0 +1,40 @@
+# wiki-init defaults
+#
+# IMPORTANT: do NOT add `.wiki-init.manifest.yaml` below. wiki-init relies on
+# the manifest to detect prior init state; without it, a re-run with --force
+# would clobber hand-written files. The manifest MUST be committed.
+
+# Local-only profile overrides (never commit user-specific tweaks)
+wiki/.profile.yaml.local
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Python noise (validators, hooks, ops scripts often grow alongside)
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# Proposal sidecars from idempotent re-runs
+*.proposed
+
+# Common secret patterns — guards against accidental commits
+.env
+.env.*
+*.pem
+*.key
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.p12
+*.pfx
+secrets.*
+credentials.*
+*.sqlite
+*.sqlite3
+*.db

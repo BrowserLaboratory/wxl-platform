@@ -1,0 +1,2 @@
+# Keep template text and recorded upstream checksums stable across checkouts.
+* text=auto eol=lf

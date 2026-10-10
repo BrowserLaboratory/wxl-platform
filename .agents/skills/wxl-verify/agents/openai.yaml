@@ -1,0 +1,3 @@
+interface:
+  display_name: "WXL Verify"
+  short_description: "Run the L1–L3 challenge gate and fix failures"

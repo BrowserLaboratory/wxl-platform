@@ -1,0 +1,13 @@
+schema_version: 1.0.0
+active_profile: research
+profile_version: 1.0.0
+wiki_path: wiki
+raw_path: raw
+init_skill_version: 1.0.0
+init_timestamp: '2026-05-12T08:09:22Z'
+index_backend: wiki-index-grep
+completed_sub_skills:
+- wiki-init
+- wiki-validator
+last_validated: '2026-05-12T08:12:47Z'
+last_verdict: pass

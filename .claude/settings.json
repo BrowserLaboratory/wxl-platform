@@ -1,0 +1,6 @@
+{
+  "includeGitInstructions": false,
+  "enabledPlugins": {
+    "codex@openai-codex": true
+  }
+}

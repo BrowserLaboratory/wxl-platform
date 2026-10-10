@@ -1,0 +1,3 @@
+interface:
+  display_name: "WXL Create"
+  short_description: "Author a new wxl challenge"

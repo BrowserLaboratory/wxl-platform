@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="eyebrow">Article preview</p>
+<h1>{{ article.title }}</h1>
+{% for item in rendered_chapters %}
+<section class="rendered-chapter">
+  <p class="source-label">{{ item.chapter.title }}</p>
+  {{ item.html }}
+</section>
+{% endfor %}
+{% endblock %}

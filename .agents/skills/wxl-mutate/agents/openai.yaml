@@ -1,0 +1,3 @@
+interface:
+  display_name: "WXL Mutate"
+  short_description: "Retype an existing challenge and re-verify"

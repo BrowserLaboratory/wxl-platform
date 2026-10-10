@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+{% block body %}
+<h1>Prompt templates</h1>
+<p class="lede">Shared with everyone on the support automation rota. Edit a
+template to change what the model is asked on every ticket it runs against.</p>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Template</th><th>Owner</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr>
+        <td>
+          <div class="name">{{ t.name }}</div>
+          <div class="sub">{{ t.note }}</div>
+        </td>
+        <td class="muted">{{ t.owner }}</td>
+        <td class="muted num">{{ t.updated }}</td>
+        <td class="act"><a class="btn" href="/t/{{ t.id }}">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

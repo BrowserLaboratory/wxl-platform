@@ -1,0 +1,20 @@
+<form class="editor" method="POST" action="/preview">
+  <input type="hidden" name="id" value="{{ template.id if template else '' }}" />
+  <label for="source">Template source</label>
+  <textarea id="source" name="source" rows="10" spellcheck="false">{{ source }}</textarea>
+  <div class="row">
+    <button type="submit">Render preview</button>
+    <p class="assurance">Previews render in a restricted environment. Nothing
+    is sent to the model until the template is saved.</p>
+  </div>
+</form>
+
+<section class="sample">
+  <h2>Values a preview is rendered against</h2>
+  <dl>
+    <dt>audience</dt><dd>{{ sample.audience }}</dd>
+    <dt>tone</dt><dd>{{ sample.tone }}</dd>
+    <dt>ticket.subject</dt><dd>{{ sample.ticket.subject }}</dd>
+    <dt>ticket.body</dt><dd>{{ sample.ticket.body }}</dd>
+  </dl>
+</section>

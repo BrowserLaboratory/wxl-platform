@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block body %}
+<p class="crumb">
+  <a href="/">All templates</a> /
+  {% if template %}<a href="/t/{{ template.id }}">{{ template.name }}</a> / {% endif %}
+  Preview
+</p>
+<h1>Rendered prompt</h1>
+<p class="lede">This is the exact string the model would receive for the sample
+ticket below.</p>
+
+<div class="card pad">
+  <pre class="out">{{ rendered }}</pre>
+</div>
+
+<div class="card pad">
+  {% include "_editor.html" %}
+</div>
+{% endblock %}

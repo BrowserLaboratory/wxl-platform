@@ -1,0 +1,63 @@
+name: Install binaryen (wasm-opt)
+description: >-
+  Installs a pinned binaryen release from the project's own GitHub releases,
+  verified against the SHA-256 published beside it, and puts wasm-opt on PATH.
+
+# Why not `apt-get install -y binaryen`, which this replaces:
+#
+# apt-get reaches whichever Ubuntu mirrors the runner image is configured for,
+# and when a mirror stalls it neither fails nor times out — the job waits until
+# a human cancels it. Measured three times in one day: once for five hours,
+# twice blocking a pull request's required checks. In one run the same step
+# completed in one job and hung in two, so the cause is the mirror rather than
+# the workflow or the change under test.
+#
+# It also left binaryen as the one build-toolchain component whose version was
+# whatever the package index happened to serve, while every other component
+# carries a concrete version string.
+#
+# Linux x86_64 only. Every caller runs on ubuntu-latest; another platform needs
+# a different asset name here.
+
+inputs:
+  version:
+    description: >-
+      binaryen release version, without the `version_` prefix. THIS DEFAULT IS
+      THE ONLY PLACE THE VERSION IS DECLARED — callers must not pass it. Four
+      literal version strings across two workflow files would drift, and drift
+      is exactly what the apt step did: it resolved a different version per job
+      and per run.
+    required: false
+    default: "132"
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install binaryen
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        version="version_${{ inputs.version }}"
+        asset="binaryen-${version}-x86_64-linux.tar.gz"
+        base="https://github.com/WebAssembly/binaryen/releases/download/${version}"
+        workdir="$(mktemp -d)"
+        cd "$workdir"
+
+        curl --fail --silent --show-error --location --retry 3 --retry-delay 5 \
+          --remote-name "${base}/${asset}"
+        curl --fail --silent --show-error --location --retry 3 --retry-delay 5 \
+          --remote-name "${base}/${asset}.sha256"
+
+        # Not optional: swapping a distribution package for a downloaded archive
+        # removes the package manager's signature check, so this change must not
+        # be a net reduction in what CI trusts. The published .sha256 is already
+        # in `sha256sum -c` format.
+        sha256sum -c "${asset}.sha256"
+
+        tar -xzf "$asset"
+        echo "${workdir}/binaryen-${version}/bin" >> "$GITHUB_PATH"
+
+    - name: Verify wasm-opt is on PATH
+      shell: bash
+      run: wasm-opt --version

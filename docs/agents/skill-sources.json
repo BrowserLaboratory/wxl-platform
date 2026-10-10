@@ -1,0 +1,243 @@
+{
+  "version": 1,
+  "copied_on": "2026-09-08",
+  "runtime_trees": {
+    "split_on": "2026-09-26",
+    "claude": ".claude/skills",
+    "codex": ".agents/skills",
+    "basis": "Claude copies were forked from the Codex tree's tracked files; each tree may then be tuned to its vendor's prompting guidance. Provenance and licensing below apply to both trees; record runtime-specific adaptations with the runtime named.",
+    "metadata_split": "Claude copies drop agents/*; Codex copies drop disable-model-invocation. Shared names keep one invocation policy.",
+    "claude_tuned_for": {
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "on": "2026-09-26",
+      "report": ".tmpl.docs/research/2026-09-26-claude-skill-prompt-audit.md",
+      "retune_with": "tune-skills (Claude tree only)"
+    },
+    "codex_tuned_for": {
+      "model": "unrecorded (Codex prompt/skill optimization before GPT-6)",
+      "on": "2026-09-12",
+      "report": ".tmpl.docs/history/2026-09-12-codex-prompt-skill-optimization.md",
+      "retune_with": "tune-skills (Codex tree, references/gpt-6.md for the GPT-6 family)"
+    },
+    "claude_prompt_audit": "2026-09-26: Claude-tree edits from the prompt audit (.tmpl.docs/research/2026-09-26-claude-skill-prompt-audit.md, IDs A1-D12, D5 excluded) and its follow-up review apply to agent-browser, archify, code-review, codebase-design, diagnosing-bugs, evidence-report, grilling, i-have-adhd, improve-codebase-architecture, init-template, prototype, research, security-review, teach, to-spec, to-tickets, tw-emoji-commit, tw-emoji-pr-note, tw-emoji-release-note, wayfinder and writing-for-agents; reapply them after upstream updates. local_adaptations and adaptations entries that name no runtime describe the Codex tree."
+  },
+  "skills": {
+    "agent-browser": {
+      "source": ".claude/skills/agent-browser in template commit 501c8a2",
+      "adaptations": [
+        "Relocated to shared project skill root."
+      ],
+      "prior_mirror_record": {
+        "source": "~/.agents/skills/agent-browser",
+        "sourceType": "local",
+        "computedHash": "sha256:0e41354be885c25206e3a3dca6dc0d378aceacb6631226eaff8a6ac855f01b2e"
+      },
+      "licensing": {
+        "repository": "https://github.com/vercel-labs/agent-browser",
+        "license_verification_revision": "8c15ff9f71ae60c7e99e66afe1e2d4b9bf414fe2",
+        "license_sha256": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
+        "verified_on": "2026-09-13",
+        "revision_scope": "License verification reference, not a claim that the installed skill is byte-identical to that revision.",
+        "license": "Apache-2.0",
+        "license_location": ".agents/skills/agent-browser/LICENSE",
+        "source_evidence": "Compared upstream SKILL.md against the project copy; common body confirms provenance, with local/version differences retained."
+      }
+    },
+    "evidence-report": {
+      "source": ".claude/skills/evidence-report in template commit 501c8a2",
+      "adaptations": [
+        "Relocated to shared project skill root."
+      ],
+      "licensing": {
+        "status": "closed-with-source-attribution",
+        "evidence": "Maintainer-authorized session inspection verified exact generated content and the phoenix-design design-source decision. Preserve the officially MIT-licensed huashu-design source notice. Maintainer requested closure; no unrelated same-name repository is treated as the direct source. This records provenance and notice restoration, not an independent legal opinion on every generated phrase.",
+        "maintainer_statement": {
+          "recorded_on": "2026-09-13",
+          "basis": "Maintainer recollection, not a verified import record",
+          "likely_source_skill": "artifact-design",
+          "statement": "Maintainer recalls adapting evidence-report from artifact-design using other skills. Exact source distribution, revision and applicable terms are not yet identified."
+        },
+        "license": "MIT",
+        "license_location": ".agents/skills/evidence-report/LICENSE",
+        "repository": "https://github.com/alchaincyf/huashu-design",
+        "license_verification_revision": "a790f704d85f277cc93d2081b0840d00036969bb",
+        "license_sha256": "6d6a2a9caf2e6d2b76974050427053b2892d8aa4c33fd168ce63a537fcee9d96",
+        "verified_on": "2026-09-13",
+        "revision_scope": "License verification reference, not the original local installation revision."
+      }
+    },
+    "i-have-adhd": {
+      "source": ".claude/skills/i-have-adhd in template commit 501c8a2",
+      "adaptations": [
+        "Relocated to shared project skill root.",
+        "Align Codex implicit invocation with existing Claude manual-only policy."
+      ],
+      "prior_mirror_record": {
+        "source": "~/.agents/skills/i-have-adhd",
+        "sourceType": "local",
+        "computedHash": "sha256:e8be29055bd38cfcb8906be7aa208109cb2578a8551c34f20e003a19549771e7"
+      },
+      "licensing": {
+        "repository": "https://github.com/ayghri/i-have-adhd",
+        "license_verification_revision": "6f1f982d0a47c65899af3c5a7450b7098bc65325",
+        "license_sha256": "8acbb618089b738404f76ac60fca1aaa995d9a87995eddf95f0b777acd7f7d2c",
+        "verified_on": "2026-09-13",
+        "revision_scope": "License verification reference, not a claim that the installed skill is byte-identical to that revision.",
+        "license": "MIT",
+        "license_location": ".agents/skills/i-have-adhd/LICENSE",
+        "source_evidence": "Compared upstream SKILL.md against the project copy; common body confirms provenance, with local/version differences retained."
+      }
+    },
+    "tune-skills": {
+      "source": "Written for this template on 2026-09-28. Each tree has its own version: Claude uses /claude-api prompt-audit; Codex audits against references/gpt-6.md, paraphrased from OpenAI's GPT-6 Astra article (read 2026-09-28).",
+      "adaptations": [],
+      "licensing": {
+        "status": "maintainer-confirmed-project-origin",
+        "license": "MIT",
+        "license_location": "LICENSE",
+        "confirmed_on": "2026-09-28",
+        "evidence": "Authored with Claude Code in this project at the maintainer's request. Covered by the maintainer-selected root MIT license."
+      }
+    },
+    "init-template": {
+      "source": ".claude/skills/init-template in template commit 501c8a2",
+      "adaptations": [
+        "Relocated to shared project skill root.",
+        "Skip template-history tokens; remove .tmpl.docs and its marked README entry unless keeping template files.",
+        "Use supplied values without repeated questions; support synchronized copies and product README generation."
+      ],
+      "licensing": {
+        "status": "maintainer-confirmed-project-origin",
+        "license": "MIT",
+        "license_location": "LICENSE",
+        "confirmed_on": "2026-09-13",
+        "evidence": "Maintainer explicitly confirmed authoring this skill with Claude Code in this project conversation. Covered by the maintainer-selected root MIT license."
+      }
+    },
+    "tw-emoji-commit": {
+      "source": "~/.agents/custom_skills/tw-emoji-commit",
+      "source_sha256": {
+        "SKILL.md": "63ec14386ff7fbabc807a3e5c072a65622610b4b0ba482665ae2d53ec8034132",
+        "scripts/sanitize_commit.py": "4e8503cc9e53ccc28f358e6f4a328168dda3d93e308d138f2c95a776a707e7f0"
+      },
+      "adaptations": [
+        "Resolve the sanitizer from the loaded project skill.",
+        "Use Taiwan vocabulary.",
+        "Resolve Git bases and first-release context when relevant.",
+        "Codex tree: execute an already-authorized commit using the sanitized UTF-8 message file. Claude tree: message only; committing follows AGENTS.md hard rule 5."
+      ],
+      "licensing": {
+        "status": "maintainer-confirmed-project-origin",
+        "license": "MIT",
+        "license_location": "LICENSE",
+        "confirmed_on": "2026-09-13",
+        "evidence": "Maintainer explicitly confirmed authoring this skill with Claude Code in this project conversation. Covered by the maintainer-selected root MIT license."
+      }
+    },
+    "tw-emoji-pr-note": {
+      "source": "~/.agents/custom_skills/tw-emoji-pr-note",
+      "source_sha256": {
+        "SKILL.md": "593800e89135320e82556e42f627bf567f5c0abfcf4bfac1f66b07a2e8194871",
+        "scripts/sanitize_pr_note.py": "4e8503cc9e53ccc28f358e6f4a328168dda3d93e308d138f2c95a776a707e7f0"
+      },
+      "adaptations": [
+        "Resolve the sanitizer from the loaded project skill.",
+        "Use Taiwan vocabulary.",
+        "Resolve Git bases and first-release context when relevant."
+      ],
+      "licensing": {
+        "status": "maintainer-confirmed-project-origin",
+        "license": "MIT",
+        "license_location": "LICENSE",
+        "confirmed_on": "2026-09-13",
+        "evidence": "Maintainer explicitly confirmed authoring this skill with Claude Code in this project conversation. Covered by the maintainer-selected root MIT license."
+      }
+    },
+    "tw-emoji-release-note": {
+      "source": "~/.agents/custom_skills/tw-emoji-release-note",
+      "source_sha256": {
+        "SKILL.md": "b17a3361befb77fb4cfd5c0525b0c27bf88abd5a30d62624760998135d4028d8",
+        "scripts/sanitize_release_note.py": "4e8503cc9e53ccc28f358e6f4a328168dda3d93e308d138f2c95a776a707e7f0"
+      },
+      "adaptations": [
+        "Resolve the sanitizer from the loaded project skill.",
+        "Use Taiwan vocabulary.",
+        "Resolve Git bases and first-release context when relevant."
+      ],
+      "licensing": {
+        "status": "maintainer-confirmed-project-origin",
+        "license": "MIT",
+        "license_location": "LICENSE",
+        "confirmed_on": "2026-09-13",
+        "evidence": "Maintainer explicitly confirmed authoring this skill with Claude Code in this project conversation. Covered by the maintainer-selected root MIT license."
+      }
+    },
+    "security-review": {
+      "source": "https://github.com/anthropics/claude-code-security-review",
+      "revision": "0c6a49f1fa56a1d472575da86a94dbc1edb78eda",
+      "license": "MIT",
+      "upstream_sha256": "dd1d451f909dbb8798f4a4de010c35e7dd9152f02bb2f7988442cdd138f29e39",
+      "adaptations": [
+        "Portable host tool invocation.",
+        "Explicit base and pending/untracked scope.",
+        "Project threat model overrides unsafe blanket exclusions.",
+        "Taiwan report and local evidence output."
+      ]
+    }
+  },
+  "local_adaptations": {
+    "setup-matt-pocock-skills": "Prefer shared AGENTS.md and preserve configured tracker conventions.",
+    "archify": "Add agents/openai.yaml for Codex discovery metadata; preserve upstream implicit invocation policy. Disable Windows artifact and preview automatic opening before process launch (2026-09-13); add regression coverage and restriction documentation. Native Windows reproduction is deferred. Update fast-uri override and lockfile to 3.1.6; add test:portable and test:preview scripts for the bundled subset. Keep upstream test command and invocation policy unchanged. Canonicalize the native directory before fs.watch to address Windows short-path libuv assertion failures; assert the watcher boundary in existing preview coverage.",
+    "code-review": "Capture committed and pending layers with a shared snapshot; disclose smell reference on demand.",
+    "grilling": "Bound question batches and factual delegation; carry forward approvals while retaining final confirmation.",
+    "to-spec": "Use configured tracker and traceability; replace length and seam-count preferences with coverage.",
+    "implement": "Preserve TDD gates, scope checks to configured tools and review pending work before skill-owned commits.",
+    "tdd": "Reuse approved test plans and seams; load examples on demand.",
+    "init-template": "Trigger on requested adoption, not placeholder presence alone.",
+    "agent-browser": "Compact branch-specific discovery and permit evidence-equivalent native tools. Restore Apache-2.0 text and add a prominent modification notice without changing execution guidance.",
+    "writing-for-agents": "Codex tree: describe manual invocation as host policy rather than zero-cost metadata invisibility. Claude tree: disable-model-invocation keeps the description out of context (Claude Code skills docs, 2026-09-26)."
+  },
+  "licensing": {
+    "verified_on": "2026-09-13",
+    "project_license": "MIT",
+    "project_copyright": "Copyright (c) 2026 CXPhoenix",
+    "notices": "THIRD_PARTY_NOTICES.md",
+    "groups": {
+      "mattpocock-skills": {
+        "repository": "https://github.com/mattpocock/skills",
+        "license_verification_revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+        "license_sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
+        "verified_on": "2026-09-13",
+        "revision_scope": "License verification reference, not a claim that the installed skill is byte-identical to that revision.",
+        "license": "MIT",
+        "skills": [
+          "code-review",
+          "codebase-design",
+          "diagnosing-bugs",
+          "domain-modeling",
+          "grill-me",
+          "grill-with-docs",
+          "grilling",
+          "handoff",
+          "implement",
+          "improve-codebase-architecture",
+          "prototype",
+          "research",
+          "resolving-merge-conflicts",
+          "setup-matt-pocock-skills",
+          "tdd",
+          "teach",
+          "to-questionnaire",
+          "to-spec",
+          "to-tickets",
+          "wait-what",
+          "wayfinder",
+          "wizard",
+          "writing-for-agents"
+        ],
+        "license_location": ".agents/skills/<skill>/LICENSE"
+      }
+    }
+  }
+}

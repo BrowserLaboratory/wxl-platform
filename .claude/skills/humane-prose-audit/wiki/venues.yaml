@@ -1,0 +1,136 @@
+# Venue whitelist for cite-probe ingest verification.
+#
+# Used by `cite-probe lit-fetcher verify --venues-file` to classify every paper
+# under `wiki/raw/papers/<id>/` into one of the declared tiers. Papers whose
+# source venue is not listed are reported as violations.
+#
+# Tier semantics:
+#   - top-conference / peer-reviewed: a single citation from these tiers can
+#     serve as the sole rationale for a Critical-severity check rule.
+#   - preprint: arXiv and similar venues. A preprint may be cited as supporting
+#     evidence, but NOT as the sole rationale for a Critical-severity rule.
+#     `scripts/wiki_integrity.py` enforces this.
+#
+# Tier 'top-conference' is the strictest set: acceptance there carries enough
+# peer-review weight that a single citation suffices for any rule severity.
+# Tier 'peer-reviewed' covers journals and workshops where acceptance still
+# implies independent review but the bar is more domain-specific.
+#
+# When adding a venue, prefer the canonical short name (ACL, EMNLP) over the
+# expanded form so cite-probe's heuristics match BibTeX `booktitle` / `journal`
+# fields without false negatives.
+
+schema_version: "1.0"
+
+# `conferences` and `q1_journals` are the cite-probe-required flat schema.
+# `tiers` is the humane-prose-audit-required tier schema used by
+# `scripts/wiki_integrity.py` (arXiv preprint usage limits). Both forms live
+# in the same file to satisfy task 6.9 (cite-probe verify) AND task 7.8
+# (preprint-tier enforcement) without forking the whitelist.
+#
+# ⚠ When adding a new venue you MUST update BOTH the `conferences:` /
+# `q1_journals:` list AND the matching `tiers.<tier>.venues:` entry below.
+# A future cross-validator in `scripts/wiki_integrity.py` (Phase G) will fail
+# closed when the two halves drift. Until then the assumption is human review.
+
+conferences:
+  - abbr: ACL
+    full: Annual Meeting of the Association for Computational Linguistics
+  - abbr: EMNLP
+    full: Conference on Empirical Methods in Natural Language Processing
+  - abbr: NAACL
+    full: North American Chapter of the Association for Computational Linguistics
+  - abbr: EACL
+    full: Conference of the European Chapter of the Association for Computational Linguistics
+  - abbr: COLING
+    full: International Conference on Computational Linguistics
+  - abbr: CHI
+    full: ACM CHI Conference on Human Factors in Computing Systems
+  - abbr: CSCW
+    full: ACM Conference on Computer-Supported Cooperative Work
+  - abbr: NeurIPS
+    full: Neural Information Processing Systems
+  - abbr: ICLR
+    full: International Conference on Learning Representations
+  - abbr: ICML
+    full: International Conference on Machine Learning
+  - abbr: AAAI
+    full: AAAI Conference on Artificial Intelligence
+  - abbr: IJCAI
+    full: International Joint Conference on Artificial Intelligence
+  - abbr: LREC
+    full: International Conference on Language Resources and Evaluation
+  - abbr: SIGDIAL
+    full: Annual Meeting of the Special Interest Group on Discourse and Dialogue
+
+q1_journals:
+  - Computational Linguistics
+  - Transactions of the Association for Computational Linguistics
+  - Journal of the Association for Information Science and Technology
+  - Discourse Processes
+  - Behavior Research Methods
+  - Behavoir research methods, instruments & computers
+  - Reading and Writing
+  - Written Communication
+  - Journal of Memory and Language
+  - Cognition
+  - Journal of Pragmatics
+  - Applied Linguistics
+  - Language Resources and Evaluation
+
+tiers:
+  top-conference:
+    description: >
+      Top-tier peer-reviewed conferences and journals in NLP, HCI, ML, and
+      computational linguistics. A single citation from this tier can serve as
+      the sole rationale for a Critical-severity check rule.
+    venues:
+      - ACL              # Annual Meeting of the Association for Computational Linguistics
+      - EMNLP            # Conference on Empirical Methods in Natural Language Processing
+      - NAACL            # North American Chapter of the ACL
+      - EACL             # European Chapter of the ACL
+      - COLING           # International Conference on Computational Linguistics
+      - TACL             # Transactions of the ACL (journal)
+      - CL Journal       # Computational Linguistics (MIT Press journal)
+      - CHI              # ACM Conference on Human Factors in Computing Systems
+      - CSCW             # ACM Conference on Computer-Supported Cooperative Work
+      - NeurIPS          # Conference on Neural Information Processing Systems
+      - ICLR             # International Conference on Learning Representations
+      - ICML             # International Conference on Machine Learning
+      - AAAI             # AAAI Conference on Artificial Intelligence
+      - IJCAI            # International Joint Conference on Artificial Intelligence
+
+  peer-reviewed:
+    description: >
+      Peer-reviewed journals and workshops with established editorial review.
+      A single citation from this tier is sufficient rationale for any rule
+      severity, including Critical.
+    venues:
+      - JASIST                       # Journal of the Association for Information Science and Technology
+      - Discourse Processes          # Taylor & Francis journal on discourse and text
+      - Behavior Research Methods    # Psychonomic Society journal
+      - Reading and Writing          # Springer journal on literacy
+      - Written Communication        # Sage journal on writing studies
+      - Journal of Memory and Language
+      - Cognition
+      - Journal of Pragmatics
+      - Applied Linguistics
+      - Language Resources and Evaluation
+      - LREC                         # International Conference on Language Resources and Evaluation
+      - SIGDIAL                      # Annual Meeting of the Special Interest Group on Discourse and Dialogue
+      - ACL Workshop                 # ACL-affiliated workshops (BEA, BlackboxNLP, etc.)
+      - EMNLP Workshop
+      - NAACL Workshop
+
+  preprint:
+    description: >
+      Preprint servers and unrefereed venues. A preprint MAY support a check
+      rationale only when at least one peer-reviewed or top-conference citation
+      is co-listed; it MUST NOT be the sole rationale for a Critical-severity
+      rule. Enforced by `scripts/wiki_integrity.py`.
+    venues:
+      - arXiv
+      - bioRxiv
+      - SSRN
+      - OpenReview                   # OpenReview-hosted submissions without venue acceptance metadata
+      - Working Paper                # generic working-paper publication state

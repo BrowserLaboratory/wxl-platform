@@ -1,0 +1,26 @@
+# humane-prose-audit profile: technical-doc
+# Tuned for API references, runbooks, and developer-facing handbooks.
+#
+# Imperatives are expected ("call X", "set Y"), so imperative_fog is
+# down-weighted. Discourse markers stay strict — runbooks fail fast on
+# over-signposting.
+profile: technical-doc
+locale: en
+tone: plain-technical
+humane_signal:
+  threshold: 60
+  weights:
+    burstiness: 0.20
+    ai_tells: 0.30
+    imperative_fog: 0.10
+    lexical_diversity: 0.20
+    boilerplate_stamp: 0.20
+severity_overrides:
+  imperative_fog: low
+  hedge_density: high
+checks_disabled: []
+agents_disabled: []
+references:
+  format: none
+token_budget: 60000
+agents_n: 4

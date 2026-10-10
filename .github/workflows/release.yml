@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# softprops/action-gh-release creates the GitHub Release and uploads the
+# wxl-${tag}.zip asset, which requires `contents: write` on GITHUB_TOKEN.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          # taiki-e/install-action installs pinned prebuilt binaries into
+          # $CARGO_HOME/bin; a restored binary cache would shadow them.
+          cache-bin: "false"
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@213ccc1a076163c093f914550b94feb90fab916d # v2.79.2
+        with:
+          tool: wasm-pack@0.14.0,wasm-tools@1.249.0  # Pinned per spec ci-quality-gates: CI workflows install build toolchain at fixed versions
+
+      - name: Install binaryen (wasm-opt)
+        uses: ./.github/actions/install-binaryen
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build WASM modules
+        run: pnpm wasm:build
+
+      - name: Generate challenge keys
+        run: pnpm challenge:keygen
+
+      - name: Run Rust/WASM tests
+        run: pnpm wasm:test
+
+      - name: Run tests
+        run: pnpm test --run
+
+      - name: Validate challenge frontmatter
+        run: pnpm challenge:validate
+
+      - name: Build VitePress site
+        run: pnpm docs:build
+
+      - name: Package dist as zip
+        run: |
+          cd .vitepress/dist
+          zip -r "../../wxl-${GITHUB_REF_NAME}.zip" .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          name: "Release ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: "wxl-${{ github.ref_name }}.zip"
