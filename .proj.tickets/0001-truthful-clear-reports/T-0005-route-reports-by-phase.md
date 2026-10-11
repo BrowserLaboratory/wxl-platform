@@ -2,7 +2,7 @@
 id: T-0005
 title: Body and report follow the failure phase (K4 wording)
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0003, T-0004]
 ---
 
@@ -156,3 +156,9 @@ desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same
 - P11a (reloaded by hand after closing the second tab): `body_unconfirmed` and the delete button only.
 - P15 (delete pressed with no fault): the page went to the site root, no gate, the draft removed, the marker written.
 - The challenge's Browser panel loads FileHub's sign-in page after Go.
+
+### 2026-10-11 — landed
+
+Squash-merged into `main` as `5cb77af` by the user, through pull request #6 of this repository, after the full interim (P10, P10b, P10c
+reports; P7 and P8 hint against the dismiss exit) had been put to them; every check on the pull request passed (test,
+build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set to `done`.
