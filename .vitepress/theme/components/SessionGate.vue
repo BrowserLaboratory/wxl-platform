@@ -33,7 +33,7 @@ import { withBase } from 'vitepress'
  */
 const props = defineProps<{ isChallengePage: boolean }>()
 
-const { shouldAsk, clearError, storedWorkGone, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
+const { shouldAsk, clearError, databaseDeleted, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
 
 /**
  * Whether to put anything on screen here.
@@ -129,13 +129,13 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         deleted" is equally false there, because nobody knows yet. So the middle state
         gets its own sentence rather than borrowing either neighbour's.
 
-        `storedWorkGone` is tested first and outranks `clearStarted`: a retry that
+        `databaseDeleted` is tested first and outranks `clearStarted`: a retry that
         completed after an earlier attempt did not is a moment where both are true, and
         the deletion having completed is the fact that settles the question the other one
         leaves open.
       -->
       <p class="m-0 mb-4 text-[0.9em] color-[var(--ch-text-2)] leading-relaxed">
-        <template v-if="storedWorkGone">{{ $t('session_gate.body_cleared') }}</template>
+        <template v-if="databaseDeleted">{{ $t('session_gate.body_cleared') }}</template>
         <template v-else-if="clearStarted">{{ $t('session_gate.body_unconfirmed') }}</template>
         <template v-else>{{ $t('session_gate.body') }}</template>
       </p>
@@ -163,7 +163,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         role="alert"
         class="mb-4 px-3 py-2 rounded-lg border border-[var(--ch-border)] bg-[var(--ch-bg-soft)]"
       >
-        <template v-if="storedWorkGone">
+        <template v-if="databaseDeleted">
           <p class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
           <p class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
         </template>
@@ -190,7 +190,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
       -->
       <div class="flex flex-wrap gap-3">
         <button
-          v-if="!storedWorkGone && !clearStarted"
+          v-if="!databaseDeleted && !clearStarted"
           data-session-gate-keep
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"
@@ -222,14 +222,14 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
           the choice comes back still withholding continue.
         -->
         <button
-          v-if="clearError && !storedWorkGone && clearStarted"
+          v-if="clearError && !databaseDeleted && clearStarted"
           data-session-gate-reload
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"
           @click="onReload()"
         >{{ $t('session_gate.reload') }}</button>
         <button
-          v-if="clearError && storedWorkGone"
+          v-if="clearError && databaseDeleted"
           data-session-gate-dismiss
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"

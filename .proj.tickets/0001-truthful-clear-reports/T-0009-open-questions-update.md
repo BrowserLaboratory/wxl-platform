@@ -31,3 +31,14 @@ evidence inline.
 寫回」和「gate 固定句子預設有已存紀錄」。
 
 ## Comments
+
+### 2026-10-11 — handed over from T-0001 review
+
+- `OPEN-QUESTIONS.md` OQ-001 still cites the old flag identifier, which T-0001 removed; update it with T42 (round-2 K-13).
+- Record a new open question: the project has no test coverage provider, so every coverage report table in this epic reads "not measured". The user chose not to add one during this epic (T-0001 stage 6, S2 option A); revisit after the 10/17 workshop.
+
+
+### 2026-10-11 — handed over from T-0001 security review (user: decide later, record now)
+
+- Record an open question: should `scripts/verify-project.py` (or CI) reject absolute local paths such as `/Users/`, `/home/` or `~/` in tracked files? Found when review records carried them (T-0001 S-1); existing skill files under `.claude/skills/` also contain such paths.
+- Record an open question: should `vue-tsc --noEmit` run in CI? Today nothing typechecks, so a renamed export silently becomes `undefined` in a consumer (T-0001 S-2); 100 existing errors must be cleared first.
