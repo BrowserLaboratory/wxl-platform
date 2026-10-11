@@ -134,3 +134,11 @@ and reported afterwards; none changes behaviour or scope.
 
 After the fixes, same surfaces as above: vitest 124 files, 2,112 tests passed; `pnpm build` ok; site smoke
 16/16; challenges 4/4; `verify-project.py` PASS; `vue-tsc` 100 errors, unchanged, none in the touched files.
+
+### 2026-10-11 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0003.md`. One candidate pass and an
+independent false-positive pass (`harness-reviewer` each); the commit messages were scanned for local paths,
+email addresses and secrets. No confirmed security defect. Five candidates were judged not introduced by
+this change and not crossing a trust boundary. Their owners: C1 → T-0007, C2 → T-0008, C3 → T-0005 and
+T-0006 review, C4 → T-0006; C5 is unreachable.
