@@ -11,7 +11,7 @@ const clearError = ref<string | null>(null)
 // True from the instant `deleteDatabase()` resolves. The clear has two halves and only
 // the first is irreversible, so this is the fact that decides which sentences about the
 // machine are still true — and whether continuing is still something to offer.
-const storedWorkGone = ref(false)
+const databaseDeleted = ref(false)
 // True from the instant the delete request is issued — before it settles, and for the
 // rest of the browser session unless a clear confirms success. The offer to continue is
 // keyed on this rather than on the outcome, because between the request and its outcome
@@ -40,12 +40,12 @@ vi.mock('../../../.vitepress/theme/composables/useSessionGate', () => ({
   shouldPresentGateHere: (isChallengePage: boolean) => {
     presentedOn.push(isChallengePage)
     if (!shouldAsk.value) return false
-    return isChallengePage || clearStarted.value || storedWorkGone.value
+    return isChallengePage || clearStarted.value || databaseDeleted.value
   },
   useSessionGate: () => ({
     shouldAsk: readonly(shouldAsk),
     clearError: readonly(clearError),
-    storedWorkGone: readonly(storedWorkGone),
+    databaseDeleted: readonly(databaseDeleted),
     clearStarted: readonly(clearStarted),
     evaluate: mockEvaluate,
     keepExistingData: mockKeep,
@@ -72,7 +72,7 @@ function mountGate(locale: 'en' | 'zh-TW' = 'en', isChallengePage = true) {
 beforeEach(() => {
   shouldAsk.value = false
   clearError.value = null
-  storedWorkGone.value = false
+  databaseDeleted.value = false
   clearStarted.value = false
   mockKeep.mockClear()
   mockClear.mockClear()
@@ -118,7 +118,7 @@ describe('SessionGate', () => {
   it('offers a way past the report only once the delete has destroyed the work', () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(true)
@@ -132,7 +132,7 @@ describe('SessionGate', () => {
     // learner's work fully intact — the inheritance this dialog exists to prevent.
     shouldAsk.value = true
     clearError.value = 'blocked by another tab'
-    storedWorkGone.value = false
+    databaseDeleted.value = false
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
@@ -142,7 +142,7 @@ describe('SessionGate', () => {
   it('offers no way past an unanswered choice with nothing yet attempted', () => {
     shouldAsk.value = true
     clearError.value = null
-    storedWorkGone.value = false
+    databaseDeleted.value = false
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
@@ -151,12 +151,12 @@ describe('SessionGate', () => {
   it('offers no way past a clear that is still running', () => {
     // The window between the two halves: the delete has resolved, so the work is gone,
     // but the sweep has not thrown and there is nothing yet to acknowledge. The dialog
-    // is still up. A condition reading `storedWorkGone` alone puts a control here that
+    // is still up. A condition reading `databaseDeleted` alone puts a control here that
     // the handler refuses to honour — an offer written on screen and not kept, which is
     // the same defect the withdrawn continue button exists to avoid.
     shouldAsk.value = true
     clearError.value = null
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
@@ -165,7 +165,7 @@ describe('SessionGate', () => {
   it('the way past calls the composable and answers nothing itself', async () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     const w = mountGate()
 
     await w.find('[data-session-gate-dismiss]').trigger('click')
@@ -286,7 +286,7 @@ describe('SessionGate', () => {
   it('a completed deletion outranks a started clear when both are true', () => {
     shouldAsk.value = true
     clearStarted.value = true
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     clearError.value = 'sweep failed'
     const w = mountGate()
     // A retry that completed after an earlier attempt did not: the deletion having
@@ -305,7 +305,7 @@ describe('SessionGate', () => {
   // which was the only remedy the screen offered.
   it('reports a failed sweep as its own failure, never as the blocked delete', () => {
     shouldAsk.value = true
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     clearError.value = 'SecurityError: access denied'
     const w = mountGate()
     const failure = w.find('[data-session-gate-error]')
@@ -326,7 +326,7 @@ describe('SessionGate', () => {
   // it. Clear stays: retrying the half that failed is a real action.
   it('withdraws the continue offer once the stored work has been deleted', () => {
     shouldAsk.value = true
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     clearError.value = 'SecurityError: access denied'
     const w = mountGate()
     expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
@@ -455,7 +455,7 @@ describe('SessionGate on pages that do not ask', () => {
 
   it('renders the report away from the challenge pages after the delete succeeded', () => {
     shouldAsk.value = true
-    storedWorkGone.value = true
+    databaseDeleted.value = true
     clearError.value = 'SecurityError: access denied'
     const w = mountGate('en', false)
     expect(w.find('[data-session-gate]').exists()).toBe(true)

@@ -93,19 +93,20 @@ const decisionState = ref<GateDecision>('undecided')
 const evaluatedState = ref(false)
 
 /**
- * Whether `deleteDatabase()` has resolved during this browser session.
+ * Whether `deleteDatabase()` has resolved in this document.
  *
- * Set at the instant that call returns, and not derived from which failure happened to be
- * recorded afterwards. The fact being tracked is "the learner's stored work is gone", and
- * that becomes true there. Inferring it from a failure being present would be reading a
- * different fact that merely coincides with it today, and it would withdraw a truthful
- * offer on the other path: a delete that never completed leaves every record in place.
+ * Set at the instant that call resolves, and not derived from which failure happened to be
+ * recorded afterwards. The fact being tracked is exactly that: the database delete
+ * resolved. It is not "the learner's work is gone" — a delete can resolve on a database
+ * whose object stores held no learner rows, and the learner's work may live in
+ * `localStorage`, which the sweep after it may fail to clear. Inferring the fact from a failure being present would
+ * read a different fact that merely coincides with it today.
  *
- * Never reset. Nothing puts the previous learner's object stores back, so a flag that
- * could go false again would be describing an operation that does not exist; a retry that
- * succeeds replaces the page anyway.
+ * Never reset within the document. A resolved delete cannot be undone, so a flag that
+ * could go false again would describe an operation that does not exist; a new document
+ * starts with it false, and a retry that succeeds replaces the page anyway.
  */
-const storedWorkGoneState = ref(false)
+const databaseDeletedState = ref(false)
 
 /**
  * Whether a clear has been started in this browser session and has not confirmed success.
@@ -140,7 +141,7 @@ const clearStartedState = ref(false)
  * The recovery from an unconfirmed clear overrides the page, and it has to: a clear
  * replaces the page with a load of the site root, which is not a challenge page. Confining
  * the recovery to challenge pages would put it out of reach from exactly where the learner
- * lands. `storedWorkGone` is the same state one step later — the delete returned and the
+ * lands. `databaseDeleted` is the same state one step later — the delete returned and the
  * sweep threw — and it outlives `clearStarted`, which a successful clear forgets.
  *
  * Callers read this inside a `computed`, which is what makes it reactive: every ref it
@@ -148,13 +149,13 @@ const clearStartedState = ref(false)
  */
 export function shouldPresentGateHere(isChallengePage: boolean): boolean {
   if (!shouldAskState.value) return false
-  return isChallengePage || clearStartedState.value || storedWorkGoneState.value
+  return isChallengePage || clearStartedState.value || databaseDeletedState.value
 }
 
 /** Progress belongs to this visit only after accepting the stored work. */
 export function isProgressAccessAllowed(): boolean {
   const decision = decisionState.value
-  if (clearStartedState.value || storedWorkGoneState.value || readClearStarted()) return false
+  if (clearStartedState.value || databaseDeletedState.value || readClearStarted()) return false
   return readMarker() !== null || decision === 'kept' || decision === 'not-needed'
 }
 
@@ -280,7 +281,7 @@ function writeMarker(): void {
  * same tick it always did.
  */
 export function hasGateDecision(): boolean {
-  return readMarker() !== null && !readClearStarted() && !clearStartedState.value && !storedWorkGoneState.value
+  return readMarker() !== null && !readClearStarted() && !clearStartedState.value && !databaseDeletedState.value
 }
 
 export function useSessionGate() {
@@ -292,19 +293,20 @@ export function useSessionGate() {
   /** Why the last clear failed, or `null`. Rendered beside the choice, which stays up. */
   const clearError: Readonly<Ref<string | null>> = readonly(clearErrorState)
   /**
-   * Whether the learner's stored work has already been deleted.
+   * Whether the database delete has resolved in this document.
    *
-   * The choice can outlive that deletion: the localStorage sweep runs afterwards, it can
-   * fail, and the failure keeps the choice on screen. From that moment "continue with
-   * this work" is an offer about work that no longer exists, so the surface rendering the
-   * choice must stop making it.
+   * The choice can outlive that delete: the localStorage sweep runs afterwards, it can
+   * fail, and the failure keeps the choice on screen. The clear cannot be taken back from
+   * the moment the delete resolved, so "continue with this work" is no longer an offer the
+   * platform can honour, and the surface rendering the choice must stop making it. What the flag does
+   * not say is whether the database held anything, or whose it was.
    */
-  const storedWorkGone: Readonly<Ref<boolean>> = readonly(storedWorkGoneState)
+  const databaseDeleted: Readonly<Ref<boolean>> = readonly(databaseDeletedState)
   /**
    * Whether a clear has been started this browser session and has not confirmed success.
    *
    * The surface rendering the choice reads this to withdraw the continue action and to
-   * pick the text describing what this browser holds. `storedWorkGone` still decides
+   * pick the text describing what this browser holds. `databaseDeleted` still decides
    * between the two reports and outranks this one when both are true: a deletion that
    * completed is the fact that settles the question this one leaves open.
    */
@@ -381,7 +383,7 @@ export function useSessionGate() {
       // re-run of this check would find nothing, write the marker, and take the failure
       // report off the screen — recording an answer to a question nobody answered, over
       // residue that is still there.
-      if (storedWorkGoneState.value) return
+      if (databaseDeletedState.value) return
       // Nobody to ask about. Record the decision so the check does not repeat on every
       // page of this visit.
       writeMarker()
@@ -402,7 +404,7 @@ export function useSessionGate() {
     // localStorage would still be on the machine. The surface rendering the choice
     // withdraws the offer; this refuses it, because a guard that lives only in the markup
     // is a guard the next caller does not have.
-    if (storedWorkGoneState.value) return
+    if (databaseDeletedState.value) return
     // The second refusal, and the one that covers the longer window. A clear that has
     // been started put the stored work beyond knowing the moment its delete request was
     // issued: the request neither fails nor completes while another tab holds the
@@ -418,7 +420,7 @@ export function useSessionGate() {
   /**
    * Acknowledge the report of a clear that stopped after the delete, and let the page go.
    *
-   * The one state with no other way out. A sweep that threw leaves `storedWorkGone` set,
+   * The one state with no other way out. A sweep that threw leaves `databaseDeleted` set,
    * and from there `keepExistingData` refuses, the markup withdraws that button, a retry
    * throws at the same line for the same reason, and `evaluate` returns early on the same
    * flag. Nothing moves `decision` off `undecided`, so the deferred locale redirect —
@@ -427,7 +429,7 @@ export function useSessionGate() {
    *
    * Two guards, because the trapped state is the conjunction of two facts and each guard
    * reads exactly one of them. `clearError` is the report being acknowledged, and there is
-   * nothing to acknowledge without one. `storedWorkGone` is what removed the other exits:
+   * nothing to acknowledge without one. `databaseDeleted` is what removed the other exits:
    * on the delete-failed path nothing was destroyed, continue is still on screen and still
    * honoured, so the question is live and answerable and this must not stand in for an
    * answer. Neither fact implies the other, so neither guard covers for the other.
@@ -441,7 +443,7 @@ export function useSessionGate() {
    */
   function dismissClearFailure(): void {
     if (clearErrorState.value === null) return
-    if (!storedWorkGoneState.value) return
+    if (!databaseDeletedState.value) return
     shouldAskState.value = false
     decisionState.value = 'dismissed'
   }
@@ -499,7 +501,7 @@ export function useSessionGate() {
     // being something this platform can offer. Recorded on the fact that the delete
     // returned, not on which failure follows: the failed-delete path above leaves
     // everything intact, and continuing there is still exactly true.
-    storedWorkGoneState.value = true
+    databaseDeletedState.value = true
 
     try {
       // The one declaration `evaluate` also reads, and not a scan written here. A list of
@@ -541,5 +543,5 @@ export function useSessionGate() {
 
   const evaluated: Readonly<Ref<boolean>> = readonly(evaluatedState)
 
-  return { shouldAsk, clearError, storedWorkGone, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
+  return { shouldAsk, clearError, databaseDeleted, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
 }
