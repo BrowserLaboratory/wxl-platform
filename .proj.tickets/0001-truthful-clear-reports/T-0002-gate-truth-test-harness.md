@@ -23,11 +23,11 @@ pinning P0 and P1 as they are today.
 
 ## Acceptance criteria
 
-- [ ] Harness mounts the gate against the real composable and fake-indexeddb; faults are removed in `finally` right after the press they target (traceability: Faults).
-- [ ] Sentences are compared by trimmed exact equality against literals written in the test; nothing is imported from the message files.
-- [ ] A CI-1 checker exists that fails when a given literal contains a banned term in either locale.
-- [ ] P0 (T17) and P1 (T18) are pinned with literal en and zh-TW strings, showing what `72327e2` shows (AC-8).
-- [ ] Editing the P0 body in a message file into a different sentence turns a harness test red (demonstrated once, then reverted).
+- [x] Harness mounts the gate against the real composable and fake-indexeddb; faults are removed in `finally` right after the press they target (traceability: Faults).
+- [x] Sentences are compared by trimmed exact equality against literals written in the test; nothing is imported from the message files.
+- [x] A CI-1 checker exists that fails when a given literal contains a banned term in either locale.
+- [x] P0 (T17) and P1 (T18) are pinned with literal en and zh-TW strings, showing what `72327e2` shows (AC-8).
+- [x] Editing the P0 body in a message file into a different sentence turns a harness test red (demonstrated once, then reverted).
 
 ## 給使用者（zh-TW）
 
@@ -127,3 +127,20 @@ locators in the production DOM) and O-2 (raw error marked) were judged not secur
 reviewer (confidence 0.95). O-3 (the storage helper leaves an own property on the instance) is a test-quality
 note: deleting the property fails on happy-dom's storage proxy, so the helper keeps restoring by redefinition and
 now says why in its comment.
+
+### 2026-10-11 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview of commit `2ebf7ea` (`https://90485711.wxl-platform.pages.dev`; branch alias
+`https://tickets-t-0002-gate-truth-te.wxl-platform.pages.dev`), driven in an external browser on the zh-TW challenge
+page `door-is-open`, with the challenge's Browser panel opened.
+
+| Check | Result |
+|---|---|
+| The deployed bundle is this change | all five new locator names present (`report-heading` and `report-hint` three times each, one per report branch); `databaseDeleted` present; the old identifier, `fake-indexeddb` and the harness name absent (test code does not ship) |
+| P0 | title, body, continue and delete as on `72327e2`; reload, dismiss and report parts absent; each locator resolves to one element |
+| P4 (`localStorage.removeItem` made to throw) | same screen as production, read through the new locators: old body, report heading, hint and raw error; dismiss shown; continue and reload absent; the draft still in `localStorage` (K2 still present by design; T-0004) |
+| Dismiss on P4 | gate closes; no marker written; start record kept |
+| P11a (reload after P4) | `body_unconfirmed` with delete only |
+| P15 (delete with storage working) | lands on the zh-TW site root; database gone; draft removed; marker written; gate closed |
+| Challenge Browser panel | FileHub sign-in page shown in a sandboxed iframe (`allow-scripts allow-forms`); this time the panel had loaded the page by itself, and the result was confirmed by screenshot |
+
