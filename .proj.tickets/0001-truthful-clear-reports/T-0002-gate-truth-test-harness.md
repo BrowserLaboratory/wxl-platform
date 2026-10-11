@@ -2,7 +2,7 @@
 id: T-0002
 title: Truth-test harness for the session gate
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0001]
 ---
 
@@ -144,3 +144,8 @@ page `door-is-open`, with the challenge's Browser panel opened.
 | P15 (delete with storage working) | lands on the zh-TW site root; database gone; draft removed; marker written; gate closed |
 | Challenge Browser panel | FileHub sign-in page shown in a sandboxed iframe (`allow-scripts allow-forms`); this time the panel had loaded the page by itself, and the result was confirmed by screenshot |
 
+
+### 2026-10-11 — landed
+
+Squash-merged into `main` as `6987b24` by the user, through pull request #2 of this repository; its Quality Gates
+run passed. Status set to `done`.
