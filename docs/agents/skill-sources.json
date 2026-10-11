@@ -187,16 +187,21 @@
     }
   },
   "local_adaptations": {
-    "setup-matt-pocock-skills": "Prefer shared AGENTS.md and preserve configured tracker conventions.",
+    "setup-matt-pocock-skills": "Prefer shared AGENTS.md and preserve configured tracker conventions. Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
     "archify": "Add agents/openai.yaml for Codex discovery metadata; preserve upstream implicit invocation policy. Disable Windows artifact and preview automatic opening before process launch (2026-09-13); add regression coverage and restriction documentation. Native Windows reproduction is deferred. Update fast-uri override and lockfile to 3.1.6; add test:portable and test:preview scripts for the bundled subset. Keep upstream test command and invocation policy unchanged. Canonicalize the native directory before fs.watch to address Windows short-path libuv assertion failures; assert the watcher boundary in existing preview coverage.",
     "code-review": "Capture committed and pending layers with a shared snapshot; disclose smell reference on demand.",
     "grilling": "Bound question batches and factual delegation; carry forward approvals while retaining final confirmation.",
     "to-spec": "Use configured tracker and traceability; replace length and seam-count preferences with coverage.",
     "implement": "Preserve TDD gates, scope checks to configured tools and review pending work before skill-owned commits.",
-    "tdd": "Reuse approved test plans and seams; load examples on demand.",
+    "tdd": "Reuse approved test plans and seams; load examples on demand. Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
     "init-template": "Trigger on requested adoption, not placeholder presence alone.",
     "agent-browser": "Compact branch-specific discovery and permit evidence-equivalent native tools. Restore Apache-2.0 text and add a prominent modification notice without changing execution guidance.",
-    "writing-for-agents": "Codex tree: describe manual invocation as host policy rather than zero-cost metadata invisibility. Claude tree: disable-model-invocation keeps the description out of context (Claude Code skills docs, 2026-09-26)."
+    "writing-for-agents": "Codex tree: describe manual invocation as host policy rather than zero-cost metadata invisibility. Claude tree: disable-model-invocation keeps the description out of context (Claude Code skills docs, 2026-09-26).",
+    "domain-modeling": "Keep the CONTEXT.md, CONTEXT-MAP.md and CONTEXT-FORMAT.md names; otherwise identical to mattpocock/skills d80fa0f (2026-09-17), which renamed them to GLOSSARY.*. The rename is deferred project-wide (OQ-006).",
+    "codebase-design": "Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
+    "diagnosing-bugs": "Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
+    "improve-codebase-architecture": "Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
+    "wait-what": "Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006)."
   },
   "licensing": {
     "verified_on": "2026-09-13",
