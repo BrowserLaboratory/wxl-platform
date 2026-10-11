@@ -118,7 +118,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
       data-session-gate-card
       class="pointer-events-auto max-w-[32rem] w-full rounded-xl border border-[var(--ch-border)] bg-[var(--ch-bg-card)] p-6 color-[var(--ch-text-1)]"
     >
-      <h2 class="m-0 mb-2 text-[1.15em] font-semibold">{{ $t('session_gate.title') }}</h2>
+      <h2 data-session-gate-title class="m-0 mb-2 text-[1.15em] font-semibold">{{ $t('session_gate.title') }}</h2>
       <!--
         Three bodies, because the standing one stops being true the moment a clear is
         started, and stops being true in a different way once the delete has resolved.
@@ -134,7 +134,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         the deletion having completed is the fact that settles the question the other one
         leaves open.
       -->
-      <p class="m-0 mb-4 text-[0.9em] color-[var(--ch-text-2)] leading-relaxed">
+      <p data-session-gate-body class="m-0 mb-4 text-[0.9em] color-[var(--ch-text-2)] leading-relaxed">
         <template v-if="databaseDeleted">{{ $t('session_gate.body_cleared') }}</template>
         <template v-else-if="clearStarted">{{ $t('session_gate.body_unconfirmed') }}</template>
         <template v-else>{{ $t('session_gate.body') }}</template>
@@ -164,18 +164,18 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         class="mb-4 px-3 py-2 rounded-lg border border-[var(--ch-border)] bg-[var(--ch-bg-soft)]"
       >
         <template v-if="databaseDeleted">
-          <p class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
-          <p class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
+          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
+          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
         </template>
         <template v-else-if="clearNotStarted">
-          <p class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_not_started') }}</p>
-          <p class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_not_started_hint') }}</p>
+          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_not_started') }}</p>
+          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_not_started_hint') }}</p>
         </template>
         <template v-else>
-          <p class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_unconfirmed') }}</p>
-          <p class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_unconfirmed_hint') }}</p>
+          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_unconfirmed') }}</p>
+          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_unconfirmed_hint') }}</p>
         </template>
-        <p v-if="!clearNotStarted" class="m-0 mt-1 text-[0.75em] opacity-70 font-mono">{{ clearError }}</p>
+        <p v-if="!clearNotStarted" data-session-gate-raw-error class="m-0 mt-1 text-[0.75em] opacity-70 font-mono">{{ clearError }}</p>
       </div>
 
       <!--

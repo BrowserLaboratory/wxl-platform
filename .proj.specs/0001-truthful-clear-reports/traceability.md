@@ -20,7 +20,7 @@ in this file refer to commit `72327e2`.
 | `clearFailurePhase` | New gate state, module-level beside the error: `'delete' \| 'sweep' \| null`. The half in which the latest *started* run failed. Set to `null` when a run starts; `'delete'` on any database delete rejection; `'sweep'` when the sweep throws. A refused run leaves it unchanged. |
 | `clearStarted` | Existing gate state: a start record exists for this browser session. Set when a run starts; restored from `sessionStorage` on load; forgotten on success. A refused run leaves it unchanged (changed from `72327e2`, which set it to false: `useSessionGate.ts:479`). |
 | learner rows | Rows in the database's object stores that the gate's detection counts as learner evidence (not initialization-only sessions). |
-| native blocking connection | A connection opened with the browser's own `indexedDB.open` and no `versionchange` handler. The site's own connections close on `versionchange` (`useChallengePersistence.ts:375-383`) and do not block a delete. |
+| native blocking connection | A connection opened with the browser's own `indexedDB.open` that does not close on `versionchange` (it may record the event). The site's own connections close on `versionchange` (`useChallengePersistence.ts:375-383`) and do not block a delete. |
 
 ## Copy under change
 
@@ -34,7 +34,7 @@ in this file refer to commit `72327e2`.
 
 **Copy invariant (CI-1).** None of the five strings above contains, in either locale, a term from this
 banned list: en `work`, `learner`, `your`, `saved`; zh-TW `作品`, `解題紀錄`, `紀錄`, `你的`, `已存`.
-Checked by test against the literal strings.
+Checked by test against the literal strings. In English a term matches any word that begins with it, in any case (so "learners" and "yours" match, "framework" does not); in Traditional Chinese any occurrence matches. Clarified in T-0002 stage 6 with the user.
 
 **Stated trade-off (CI-2).** Unchanged strings that presuppose saved work (`title`, `body`,
 `body_unconfirmed`, `clear_not_started_hint`) are outside CI-1. The gate usually asks because
@@ -63,7 +63,7 @@ Evaluated in order; the first matching line wins.
 | ID | State | How it is reached (fault, see Faults) |
 |---|---|---|
 | P0 | Untouched gate | Learner evidence present; no run |
-| P1 | First run in flight | Clear pressed; delete pending |
+| P1 | First run in flight | Clear pressed; delete pending (held pending by F2 in S2 tests) |
 | P2 | First run: delete blocked | F2 |
 | P3 | First run: delete timed out | F3 |
 | P3x | First run: delete rejected otherwise | F5 |

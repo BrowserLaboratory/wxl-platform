@@ -2,7 +2,7 @@
 id: T-0001
 title: Rename the gate flag to databaseDeleted
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -134,3 +134,10 @@ zh-TW challenge page `door-is-open`, with the challenge's Browser panel opened.
 | P15: delete pressed with storage working | lands on the zh-TW site root; database gone; draft removed; marker written; gate closed (AC-8) |
 | Challenge Browser panel | runtime ready; Go loads the FileHub sign-in page in a sandboxed iframe (`allow-scripts allow-forms`) |
 
+### 2026-10-11 — landed
+
+Squash-merged into `main` as `52bc03f` by the user, through pull request #1 of this repository. Its Quality
+Gates run passed (the repository's first GitHub Actions run, after the user enabled Actions), and so did the
+push run on `main` after the merge. The pull request description states the rename's breaking change, including
+that a fork component still reading the old name silently gets `undefined` (the R-12 and S-2 obligations above);
+the release note obligation stays open until a release. Status set to `done`.
