@@ -455,7 +455,7 @@ describe('useSessionGate', () => {
 
   // Clearing has two halves and only the first cannot be undone. The sweep runs after the
   // database is already gone, and a sweep that fails keeps the choice on screen — at
-  // which point there is no stored work left for "continue with this work" to mean.
+  // which point there is no database left for "continue with this work" to mean.
   async function reachDeletedDatabase() {
     storeContents['attack-sessions'] = [{ sessionId: 's1' }]
     localStore['wxl-locale'] = 'zh-TW'
@@ -469,7 +469,7 @@ describe('useSessionGate', () => {
     return { ...mod, gate }
   }
 
-  it('records that the stored work is gone once the delete has resolved', async () => {
+  it('records that the database is gone once the delete has resolved', async () => {
     const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
 
     // The delete resolved, so the object stores are gone; the sweep did not, so residue
@@ -584,7 +584,7 @@ describe('useSessionGate', () => {
     expect(next.databaseDeleted.value).toBe(false)
   })
 
-  it('continuing after the stored work is gone changes nothing', async () => {
+  it('continuing after the database is gone changes nothing', async () => {
     const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
 
     gate.keepExistingData()
@@ -629,7 +629,7 @@ describe('useSessionGate', () => {
     expect(localStore['wxl-locale']).toBe('zh-TW')
   })
 
-  it('a later check does not dismiss the choice by itself once the stored work is gone', async () => {
+  it('a later check does not dismiss the choice by itself once the database is gone', async () => {
     const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
 
     // What a re-run of the detection would see: the stores are gone, so they answer

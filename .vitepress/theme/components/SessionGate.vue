@@ -12,10 +12,11 @@
  * cost the same and nothing advances until the learner picks one.
  *
  * The single exception is not an exception to that rule but a consequence of it: a clear
- * that stopped after the database delete has destroyed the work the question was about,
- * and it withdraws continue while leaving retry failing at the same line. Both answers
- * are gone, so the question is no longer answerable — and a question that cannot be
- * answered and cannot be closed is a locked door. That one report can be acknowledged,
+ * that stopped after the database delete has deleted the database the question was
+ * about, and it withdraws continue while a retry, which runs the whole clear again, stops
+ * at the sweep again for as long as its cause persists. Both answers are gone, so the
+ * question is no longer answerable — and a question that cannot be answered and cannot be
+ * closed is a locked door. That one report can be acknowledged,
  * which writes no marker and answers nothing.
  */
 import { computed } from 'vue'
@@ -125,9 +126,9 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
 
         "Nothing is deleted unless you choose to delete it" is false from the instant the
         delete request exists — it neither fails nor completes while another tab holds the
-        database, and the bound on it does not cancel it. "The saved work has already been
-        deleted" is equally false there, because nobody knows yet. So the middle state
-        gets its own sentence rather than borrowing either neighbour's.
+        database, and the bound on it does not cancel it. "This site's database in this
+        browser has been deleted" is equally false there, because nobody knows yet. So the
+        middle state gets its own sentence rather than borrowing either neighbour's.
 
         `databaseDeleted` is tested first and outranks `clearStarted`: a retry that
         completed after an earlier attempt did not is a moment where both are true, and
@@ -148,7 +149,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         Which failure, not merely that one happened. The clear has two halves and they
         leave the machine in opposite states: a delete that did not complete deleted
         nothing and really is another tab's doing, while a sweep that failed ran after
-        the delete resolved — the stored work is already gone, no tab is holding
+        the delete resolved — the database is already gone, no tab is holding
         anything, and closing tabs cannot make a `localStorage` write succeed. One
         message for both was false in every clause on the second path, and it named the
         only remedy on screen knowing it could not work.
@@ -184,9 +185,9 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
 
         Continue is withdrawn once the database delete has resolved, not greyed out: a
         disabled control leaves the offer written on screen and refuses to honour it,
-        and the offer is the untrue part once there is no stored work left to continue
-        with. Clear stays, because it is the same action already begun and retrying the
-        half that failed is truthful.
+        and the offer is the untrue part once the database it would continue with is
+        gone. Clear stays, because it is the same action already begun and retrying the
+        whole site-wide clear, starting with the database, is truthful.
       -->
       <div class="flex flex-wrap gap-3">
         <button
@@ -205,7 +206,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         <!--
           Rendered on exactly the state that has no other exit, and on no other. The
           condition is the conjunction the handler guards on, not a paraphrase of it: a
-          report is on screen AND the delete already destroyed the work. On the
+          report is on screen AND the delete already deleted the database. On the
           delete-failed path continue is present and honoured, so this must not appear —
           it would let the question be walked away from while both answers still work,
           which is the one thing the gate exists to prevent.

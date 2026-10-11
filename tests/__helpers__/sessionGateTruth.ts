@@ -135,6 +135,15 @@ export function withSweepFailing<T>(fn: () => Promise<T>): Promise<T> {
   }, fn)
 }
 
+/** Open the platform's database with the browser's own `indexedDB.open`, at whatever version it has. */
+function openNative(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DATABASE_NAME)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
 /**
  * Fault F2: a native connection to the platform's database that does not yield.
  *
@@ -149,11 +158,7 @@ export function withSweepFailing<T>(fn: () => Promise<T>): Promise<T> {
  */
 export async function holdDatabase(): Promise<{ close(): void, deleteRequested(): boolean }> {
   let deleteRequested = false
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME)
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
+  const db = await openNative()
   db.addEventListener('versionchange', (event) => {
     if ((event as IDBVersionChangeEvent).newVersion === null) deleteRequested = true
   })
@@ -161,6 +166,71 @@ export async function holdDatabase(): Promise<{ close(): void, deleteRequested()
   return {
     close: () => { if (!closed) { closed = true; db.close() } },
     deleteRequested: () => deleteRequested,
+  }
+}
+
+/**
+ * Put rows into the platform's database before the gate is mounted.
+ *
+ * The platform's own open runs first, so the schema is exactly the one the site creates
+ * and this helper never has to restate it; the rows then go in over a native connection,
+ * closed before this returns. A connection left open would make the clear under test wait
+ * on the test instead of on the fault the test installed.
+ */
+export async function seedDatabase(rows: ReadonlyArray<{ store: string, value: unknown }>): Promise<void> {
+  const { useChallengePersistence } = await import('../../.vitepress/theme/composables/useChallengePersistence')
+  // Called for its open, not its answer: it is the platform's way in, so it creates the
+  // schema at the platform's version, upgrades included.
+  await useChallengePersistence().hasAnyStoredData()
+  const db = await openNative()
+  try {
+    if (rows.length === 0) return
+    const tx = db.transaction([...new Set(rows.map(row => row.store))], 'readwrite')
+    for (const row of rows) tx.objectStore(row.store).put(row.value)
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    })
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * The object stores the platform's database has when it is reopened, closed at once.
+ *
+ * One of the reads `traceability.md` allows for preconditions, and only while no F2 handle
+ * is held. Reopening a database that is gone creates an empty one with no stores, which is
+ * what a deleted database reads as: call it last, after `indexedDB.databases()` has been
+ * checked.
+ */
+export async function storeNamesOnReopen(): Promise<string[]> {
+  const db = await openNative()
+  try {
+    return [...db.objectStoreNames]
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Every row of one object store, read over a native connection that is closed at once.
+ *
+ * Same allowance and same caveat as `storeNamesOnReopen`; a store the database does not have
+ * reads as no rows.
+ */
+export async function rowsOnReopen(store: string): Promise<unknown[]> {
+  const db = await openNative()
+  try {
+    if (!db.objectStoreNames.contains(store)) return []
+    const request = db.transaction(store, 'readonly').objectStore(store).getAll()
+    return await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+  } finally {
+    db.close()
   }
 }
 
