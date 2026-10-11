@@ -142,3 +142,15 @@ independent false-positive pass (`harness-reviewer` each); the commit messages w
 email addresses and secrets. No confirmed security defect. Five candidates were judged not introduced by
 this change and not crossing a trust boundary. Their owners: C1 → T-0007, C2 → T-0008, C3 → T-0005 and
 T-0006 review, C4 → T-0006; C5 is unreachable.
+
+### 2026-10-11 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview for `27c2c19` (`a0129632.wxl-platform.pages.dev`), driven in the
+Claude desktop app's Browser panel, zh-TW `door-is-open`. This ticket changes nothing on screen, so the
+check is that the deployed bundle carries the new state and every gate screen is as on `main`.
+- Bundle: the theme chunk contains `clearFailurePhase`.
+- P0 (note draft planted, new browser session): title, body, continue and delete read exactly as the P0 truth test's literals; no report, reload or dismiss.
+- P4 (F1 installed in the page by patching `Storage.prototype.removeItem` for `localStorage`, delete pressed): the database is gone (`indexedDB.databases()` empty), the draft is still in `localStorage`, the start record exists; on screen the current `body_cleared`, `sweep_failed`, `sweep_failed_hint` (old copy, T-0004's to change), the raw error `injected: removeItem refused`, dismiss shown, continue and reload absent. Same as `main`.
+- P11a (reloaded by hand): `body_unconfirmed` and the delete button only.
+- P15 (delete pressed with no fault): the page went to `/zh-TW/`, no gate, the draft removed, the start record forgotten, the decision marker written.
+- The challenge's Browser panel loads FileHub's sign-in page after Go.
