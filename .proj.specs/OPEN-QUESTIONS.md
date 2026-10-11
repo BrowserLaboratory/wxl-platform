@@ -151,3 +151,42 @@ it adds a third identity to keep consistent with `--repo` and `--base`.
 **Not blocked.** Every other part of `fork:init`.
 
 **Revisit when.** The fork workflow is next changed, or a fork ships short links that point here.
+
+---
+
+## OQ-006 — Should the project follow upstream in renaming `CONTEXT.md` to `GLOSSARY.md`?
+
+**Deferred on:** 2026-10-11
+**Status:** open
+
+**Reason.** Upstream `mattpocock/skills` commit `d80fa0f` (2026-09-17) renamed the domain-glossary
+convention from `CONTEXT.md` / `CONTEXT-MAP.md` to `GLOSSARY.md` / `GLOSSARY-MAP.md` in every skill at
+once. The project's glossary, its shared instructions and its glossary test all use the old name, and
+an epic is in flight whose tickets name `CONTEXT.md`. A rename is only safe when done everywhere in one
+change, which is too wide to take mid-epic.
+
+**Evidence.** Verified on 2026-10-11:
+- Upstream's commit message and file list: it touches ten skills; the seven this project carries are
+  `domain-modeling` (`CONTEXT-FORMAT.md` renamed to `GLOSSARY-FORMAT.md`), `tdd`, `diagnosing-bugs`,
+  `improve-codebase-architecture`, `setup-matt-pocock-skills` (`SKILL.md` and `domain.md`),
+  `wait-what` and `codebase-design` (`DESIGN-IT-TWICE.md`).
+- A file-by-file diff of the project's `domain-modeling` against upstream `main`: the only differences
+  are that rename; `ADR-FORMAT.md` and `agents/openai.yaml` are identical.
+- Local references to the old name: both skill trees for the seven skills above, `AGENTS.md`,
+  `docs/agents/domain.md`, `docs/agents/review.md`, `docs/agents/challenge-pipeline.md`,
+  `tests/unit/site/context-glossary.test.ts`, and epic 0001's spec and tickets.
+
+**Blocks.** Nothing today: every skill and document still names the same file. Options:
+- Keep `CONTEXT.md` permanently and leave the recorded adaptation in place. Ruled in.
+- Rename everywhere in one change: the glossary file, the shared instructions, the three
+  `docs/agents/` documents, the seven skills in both trees, the glossary test, and references in
+  specs and tickets still open. Ruled in.
+- Update only some skills. Ruled out: a skill told to create `GLOSSARY.md` when none exists, beside
+  others that read `CONTEXT.md`, produces two glossaries.
+
+**Not blocked.** Skill updates that do not touch the glossary name. The adaptation is recorded per
+skill in `docs/agents/skill-sources.json`, so the next upstream comparison does not mistake the old
+name for drift.
+
+**Revisit when.** Epic 0001 has landed, and before any scaffolder or template ships the glossary
+convention to new forks, whichever comes first.
