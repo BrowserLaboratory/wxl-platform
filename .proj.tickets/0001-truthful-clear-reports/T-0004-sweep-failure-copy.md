@@ -122,3 +122,11 @@ afterwards; none changes behaviour.
 
 After the fixes, run one at a time on the same surfaces: vitest 124 files, 2,120 tests passed; `pnpm build` ok; site
 smoke 17/17; challenges 4/4; `verify-project.py` PASS; `vue-tsc` 100 errors, unchanged, none in the touched files.
+
+### 2026-10-11 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0004.md`. One candidate pass and an
+independent false-positive pass; `git diff -U0` confirmed the two source files changed only inside comments;
+commit messages scanned. No confirmed security defect. Four candidates were judged not introduced by this change.
+Owners: F1 → T-0005 and T-0006, F2 → T41 in T-0009, F3 and F4 → the spec's fixed copy. Note for T-0009: T41 as worded
+omits a write-back from another tab after a successful clear and reload.
