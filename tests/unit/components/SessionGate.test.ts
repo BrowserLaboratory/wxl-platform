@@ -115,7 +115,7 @@ describe('SessionGate', () => {
   // condition is the conjunction of the two facts, and the three tests below pin each
   // corner of it: a single-fact condition renders this on a state that still has exits.
 
-  it('offers a way past the report only once the delete has destroyed the work', () => {
+  it('offers a way past the report only once the database delete has resolved', () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
     databaseDeleted.value = true
@@ -149,7 +149,7 @@ describe('SessionGate', () => {
   })
 
   it('offers no way past a clear that is still running', () => {
-    // The window between the two halves: the delete has resolved, so the work is gone,
+    // The window between the two halves: the delete has resolved, so the database is gone,
     // but the sweep has not thrown and there is nothing yet to acknowledge. The dialog
     // is still up. A condition reading `databaseDeleted` alone puts a control here that
     // the handler refuses to honour — an offer written on screen and not kept, which is
@@ -299,7 +299,7 @@ describe('SessionGate', () => {
   })
 
   // The path the one shared message was false on. The sweep runs only after the delete
-  // has resolved, so here the stored work is already gone, no tab is holding anything,
+  // has resolved, so here the database is already gone, no tab is holding anything,
   // and closing tabs cannot make a `localStorage` write succeed — yet this state
   // rendered "Nothing was deleted" and told the learner to close their other tabs,
   // which was the only remedy the screen offered.
@@ -320,11 +320,11 @@ describe('SessionGate', () => {
     expect(w.text()).not.toContain(en.session_gate.clear_unconfirmed_hint)
   })
 
-  // "Continue with this work" is an offer about work that still exists. Past the
+  // "Continue with this work" is an offer about a database that still exists. Past the
   // resolve of the database delete there is none, so the offer goes rather than being
   // greyed out — a disabled button leaves the sentence on screen and refuses to honour
-  // it. Clear stays: retrying the half that failed is a real action.
-  it('withdraws the continue offer once the stored work has been deleted', () => {
+  // it. Clear stays: retrying the whole site-wide clear is a real action.
+  it('withdraws the continue offer once the database has been deleted', () => {
     shouldAsk.value = true
     databaseDeleted.value = true
     clearError.value = 'SecurityError: access denied'

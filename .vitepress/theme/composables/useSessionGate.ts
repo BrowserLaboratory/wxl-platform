@@ -424,8 +424,8 @@ export function useSessionGate() {
   }
 
   function keepExistingData(): void {
-    // There is nothing left to continue with. Once the delete has resolved the stored
-    // work is gone and cannot be brought back, so answering "continue" would write the
+    // There is nothing left to continue with. Once the delete has resolved the database
+    // is gone and cannot be brought back, so answering "continue" would write the
     // session marker over a clear that never finished: the choice would disappear, the
     // learner would be told nothing more, and an unknown amount of the previous learner's
     // localStorage would still be on the machine. The surface rendering the choice
@@ -449,10 +449,11 @@ export function useSessionGate() {
    *
    * The one state with no other way out. A sweep that threw leaves `databaseDeleted` set,
    * and from there `keepExistingData` refuses, the markup withdraws that button, a retry
-   * throws at the same line for the same reason, and `evaluate` returns early on the same
-   * flag. Nothing moves `decision` off `undecided`, so the deferred locale redirect —
-   * which waits on it — never runs: the learner sits behind a report they cannot close,
-   * on the wrong locale tree, until they reload the whole page by hand.
+   * runs the whole clear again and, while the cause persists, stops at the sweep again,
+   * and `evaluate` returns early on the same flag. Nothing moves `decision` off
+   * `undecided`, so the deferred locale redirect — which waits on it — never runs: the
+   * learner sits behind a report they cannot close, on the wrong locale tree, until they
+   * reload the whole page by hand.
    *
    * Two guards, because the trapped state is the conjunction of two facts and each guard
    * reads exactly one of them. `clearError` is the report being acknowledged, and there is
@@ -530,7 +531,7 @@ export function useSessionGate() {
     clearInFlight = false
 
     // Between the two halves, because only the first is irreversible. From here the
-    // learner's stored work is gone whatever the sweep does, so continuing with it stops
+    // database is gone whatever the sweep does, so continuing with what it held stops
     // being something this platform can offer. Recorded on the fact that the delete
     // returned, not on which failure follows: the failed-delete path above leaves
     // everything intact, and continuing there is still exactly true.
