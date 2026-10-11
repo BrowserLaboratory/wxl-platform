@@ -22,10 +22,10 @@ name, and the flag's own doc comment states the fact it records. No behaviour ch
 
 ## Acceptance criteria
 
-- [ ] `git grep storedWorkGone -- .vitepress tests` finds nothing (T4, AC-1).
-- [ ] `databaseDeleted` behaves as T1–T3: true from the moment a delete resolves in this document, never reset within it, false in a new document.
-- [ ] The flag's declaration comment and the exported doc comment (T39 locations for the flag) state "the database delete resolved", not that the learner's work is gone.
-- [ ] The full unit suite, site smoke and challenge suites pass unchanged (no behaviour change; AC-8 holds).
+- [x] `git grep storedWorkGone -- .vitepress tests` finds nothing (T4, AC-1).
+- [x] `databaseDeleted` behaves as T1–T3: true from the moment a delete resolves in this document, never reset within it, false in a new document.
+- [x] The flag's declaration comment and the exported doc comment (T39 locations for the flag) state "the database delete resolved", not that the learner's work is gone.
+- [x] The full unit suite, site smoke and challenge suites pass unchanged (no behaviour change; AC-8 holds).
 
 ## 給使用者（zh-TW）
 
@@ -116,3 +116,21 @@ candidates, each judged by an independent reviewer:
   does **not** fail at build or typecheck; it silently reads `undefined`. The stage 9 PR description and the
   release note must say this. The commit message of this ticket was corrected accordingly.
 - S-3, retired claims left in other comments: not a security defect; owned by T-0008.
+
+### 2026-10-11 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview of commit `fe365f6` (`https://32aab8e3.wxl-platform.pages.dev`; branch
+alias `https://tickets-t-0001-rename-databa.wxl-platform.pages.dev`), driven in an external browser on the
+zh-TW challenge page `door-is-open`, with the challenge's Browser panel opened.
+
+| Check | Result |
+|---|---|
+| The deployed theme bundle is this change | `databaseDeleted` found 2× in the theme chunk; the old identifier 0× |
+| Fresh origin, no evidence | gate not shown (unchanged) |
+| P0: note draft planted, new browsing session | gate shown with continue and delete (AC-8) |
+| P4: `localStorage.removeItem` made to throw, delete pressed | same screen as production `72327e2`: old sweep-failure copy, dismiss shown, continue and reload absent; the draft is still in `localStorage` (K2 still present by design; fixed in T-0004) |
+| Dismiss on P4 | gate closes; no marker written; start record kept (unchanged) |
+| P11a: reload after P4 | `body_unconfirmed` with delete only (AC-8) |
+| P15: delete pressed with storage working | lands on the zh-TW site root; database gone; draft removed; marker written; gate closed (AC-8) |
+| Challenge Browser panel | runtime ready; Go loads the FileHub sign-in page in a sandboxed iframe (`allow-scripts allow-forms`) |
+
