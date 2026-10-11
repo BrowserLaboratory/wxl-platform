@@ -2,7 +2,7 @@
 id: T-0003
 title: Record which half of a clear run failed
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0001]
 ---
 
@@ -154,3 +154,8 @@ check is that the deployed bundle carries the new state and every gate screen is
 - P11a (reloaded by hand): `body_unconfirmed` and the delete button only.
 - P15 (delete pressed with no fault): the page went to `/zh-TW/`, no gate, the draft removed, the start record forgotten, the decision marker written.
 - The challenge's Browser panel loads FileHub's sign-in page after Go.
+
+### 2026-10-11 — landed
+
+Squash-merged into `main` as `2197d5b` by the user, through pull request #4 of this repository; every check on
+the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set to `done`.
