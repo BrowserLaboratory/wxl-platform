@@ -115,6 +115,9 @@ export async function withStorageMethodReplaced<T>(
   replacement: (...args: never[]) => unknown,
   fn: () => Promise<T>,
 ): Promise<T> {
+  // Restored by redefining, not by deleting: happy-dom's storage is a proxy whose
+  // `deleteProperty` trap refuses method names, so the instance keeps an own property that
+  // holds the original method. Calls behave exactly as before the replacement.
   const original = Object.getOwnPropertyDescriptor(storage, method)
     ?? { value: storage[method], configurable: true, writable: true }
   Object.defineProperty(storage, method, { value: replacement, configurable: true, writable: true })

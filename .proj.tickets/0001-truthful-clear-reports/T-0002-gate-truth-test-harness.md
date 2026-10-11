@@ -119,3 +119,11 @@ the three recommendations (D1–D3). Numbering note for this ticket: "ticket AC 
 Verification after the fixes (local checkout with vitest on happy-dom and fake-indexeddb; local production build
 with Playwright): vitest 124 files, 2,099 tests passed; `pnpm build` ok; site smoke 16/16; challenges 4/4;
 `verify-project.py` PASS; `vue-tsc --noEmit` 100 errors, unchanged, none in new or touched files.
+
+### 2026-10-11 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0002.md`. No confirmed security defect. O-1 (new
+locators in the production DOM) and O-2 (raw error marked) were judged not security defects by an independent
+reviewer (confidence 0.95). O-3 (the storage helper leaves an own property on the instance) is a test-quality
+note: deleting the property fails on happy-dom's storage proxy, so the helper keeps restoring by redefinition and
+now says why in its comment.
