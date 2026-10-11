@@ -511,6 +511,7 @@ describe('useSessionGate', () => {
     expect(gate.clearError.value).not.toBe(null)
     expect(localStore['pentest-draft-door-is-open']).toBe('notes')
     expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe('sweep')
   })
 
   it("sets the flag when a later run's delete resolves after an earlier one was rejected", async () => {
@@ -528,6 +529,7 @@ describe('useSessionGate', () => {
     await gate.clearEverything(vi.fn())
     expect(gate.clearError.value).not.toBe(null)
     expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe('sweep')
   })
 
   it("leaves the flag unset when a later run's delete is rejected again", async () => {
@@ -544,6 +546,7 @@ describe('useSessionGate', () => {
 
     expect(mockDeleteDatabase).toHaveBeenCalledTimes(2)
     expect(gate.databaseDeleted.value).toBe(false)
+    expect(gate.clearFailurePhase.value).toBe('delete')
   })
 
   it('starts a new document with the flag unset after a sweep failure', async () => {
@@ -753,6 +756,176 @@ describe('useSessionGate', () => {
     expect(reload).not.toHaveBeenCalled()
     expect(gate.clearError.value).not.toBe(null)
     expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+  })
+
+  // ─── Which half of a clear run failed ───────────────────────────────────────
+
+  // The flag says whether the delete resolved at some point in this document; it cannot
+  // say which half the latest run failed in. A run whose delete is rejected after an
+  // earlier run's sweep failed has the flag set and a delete failure to report.
+
+  async function loadEvaluatedGate() {
+    storeContents['attack-sessions'] = [{ sessionId: 's1' }]
+    const mod = await loadGate()
+    const gate = mod.useSessionGate()
+    await gate.evaluate()
+    return { ...mod, gate }
+  }
+
+  /** Hold the next delete pending until `release` is called. */
+  function holdNextDelete(): { release: () => void } {
+    let release: () => void = () => {}
+    mockDeleteDatabase.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+    return { release: () => release() }
+  }
+
+  /** Every field a press could change, read in one go. */
+  function snapshot(gate: Awaited<ReturnType<typeof loadEvaluatedGate>>['gate']) {
+    return {
+      phase: gate.clearFailurePhase.value,
+      error: gate.clearError.value,
+      clearStarted: gate.clearStarted.value,
+      databaseDeleted: gate.databaseDeleted.value,
+      shouldAsk: gate.shouldAsk.value,
+      decision: gate.decision.value,
+    }
+  }
+
+  // The persistence layer is a double here, so the three kinds of rejection reach the gate
+  // as three messages on one path. The real blocked, timed-out and failed deletes are
+  // driven against fake-indexeddb in the gate's truth tests.
+  it.each([
+    ['blocked by another tab', new Error('challenge-tools could not be deleted: another tab still has it open')],
+    ['timed out', new Error('challenge-tools was not deleted within the time limit')],
+    ['rejected for any other reason', new DOMException('injected: delete failed', 'UnknownError')],
+  ])('records a delete failure when a first run is %s', async (_kind, rejection) => {
+    mockDeleteDatabase.mockRejectedValueOnce(rejection)
+    const { gate } = await loadEvaluatedGate()
+
+    await gate.clearEverything(vi.fn())
+
+    expect(gate.clearFailurePhase.value).toBe('delete')
+    expect(gate.databaseDeleted.value).toBe(false)
+  })
+
+  it('records a sweep failure when the delete resolved and a local key would not go', async () => {
+    const { gate } = await reachDeletedDatabase()
+
+    expect(gate.databaseDeleted.value).toBe(true)
+    expect(localStore['pentest-draft-door-is-open']).toBe('notes')
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+  })
+
+  it('records a sweep failure when the local keys cannot even be listed', async () => {
+    const { gate } = await loadEvaluatedGate()
+    localReadThrows = true
+
+    await gate.clearEverything(vi.fn())
+
+    expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+  })
+
+  it('keeps one answer for every caller of the composable', async () => {
+    const { gate, useSessionGate } = await reachDeletedDatabase()
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+
+    // The component that renders the report and the code that ran the clear are separate
+    // callers; a per-call copy would leave the renderer reading `null`.
+    expect(useSessionGate().clearFailurePhase.value).toBe('sweep')
+  })
+
+  it('has no failure to report while a first run is in flight', async () => {
+    const { gate } = await loadEvaluatedGate()
+    const held = holdNextDelete()
+
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(1))
+
+    expect(gate.clearStarted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe(null)
+    held.release()
+    await run
+  })
+
+  it('forgets a sweep failure the moment a later run starts', async () => {
+    const { gate } = await reachDeletedDatabase()
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+    const held = holdNextDelete()
+
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(2))
+
+    expect(gate.clearFailurePhase.value).toBe(null)
+    held.release()
+    await run
+  })
+
+  it('forgets a delete failure the moment a later run starts', async () => {
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    const { gate } = await loadEvaluatedGate()
+    await gate.clearEverything(vi.fn())
+    expect(gate.clearFailurePhase.value).toBe('delete')
+    const held = holdNextDelete()
+
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(2))
+
+    expect(gate.clearFailurePhase.value).toBe(null)
+    held.release()
+    await run
+  })
+
+  it("replaces a sweep failure with a delete failure when a later run's delete is rejected", async () => {
+    const { gate } = await reachDeletedDatabase()
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    await gate.clearEverything(vi.fn())
+
+    // The flag still says the first delete resolved; only the phase says this run's did not.
+    expect(mockDeleteDatabase).toHaveBeenCalledTimes(2)
+    expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe('delete')
+  })
+
+  it.each([
+    ['a first run', loadEvaluatedGate],
+    ['a later run after a sweep failure', reachDeletedDatabase],
+  ])('ignores a press while %s is in flight, leaving every field as it was', async (_run, reach) => {
+    const { gate } = await reach()
+    const calls = mockDeleteDatabase.mock.calls.length
+    const held = holdNextDelete()
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(calls + 1))
+    const before = snapshot(gate)
+
+    // A start record that cannot be written would make a press that got past the guard
+    // visible in every field: refused, it reports the not-started sentinel.
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+
+    expect(mockDeleteDatabase).toHaveBeenCalledTimes(calls + 1)
+    expect(snapshot(gate)).toEqual(before)
+    held.release()
+    await run
+  })
+
+  it('starts a new document with no failure recorded after a sweep failure', async () => {
+    const { gate, CLEAR_STARTED_STORAGE_KEY } = await reachDeletedDatabase()
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+    expect(sessionStore[CLEAR_STARTED_STORAGE_KEY]).toBeDefined()
+
+    vi.resetModules()
+    const { useSessionGate } = await loadGate()
+    const next = useSessionGate()
+    await next.evaluate()
+
+    // The start record comes back; which half failed does not, because no run of this
+    // document has failed.
+    expect(next.clearStarted.value).toBe(true)
+    expect(next.clearFailurePhase.value).toBe(null)
   })
 })
 
