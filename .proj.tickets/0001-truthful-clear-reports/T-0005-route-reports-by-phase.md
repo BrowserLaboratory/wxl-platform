@@ -26,7 +26,7 @@ P8, P13) and where the sweep failed (P4, P5, P9, P14). The new `clear_unconfirme
 - [x] Truth rows T32 (blocked, native connection, `versionchange` and raw-error preconditions), T33, T33x (fault replacements are real `IDBRequest` instances) and T35p pass.
 - [x] Exits are not changed in this ticket beyond what existing rules already show; T-0006 owns them.
 - [x] Comment and test locations stating that the flag decides or outranks the report are updated (T38/T39 subset).
-- [ ] Verified on the ticket's preview with a native blocking connection in a second tab.
+- [x] Verified on the ticket's preview with a native blocking connection in a second tab.
 
 ## 給使用者（zh-TW）
 
@@ -139,3 +139,20 @@ No confirmed security defect. The change removes the one dangerous direction (cl
 while a delete is unconfirmed: P6, P7, P8). The interim states that remain until T-0006 and T-0007 land (P10, P10b, P10c
 reports; P7 and P8 hint against the dismiss exit) are listed in the report; P10 was accepted by the user in stage 6,
 the rest is put to the user before merging.
+
+### 2026-10-11 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview for `0cff7fc` (`4cd1f011.wxl-platform.pages.dev`), driven in the Claude
+desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same panel.
+- Bundle: the theme chunk carries the new zh-TW `clear_unconfirmed_hint`.
+- P4: F1 installed in the page, delete pressed. The new sweep-failure body and report are shown, with the raw error
+  `injected: removeItem refused`; the draft stayed.
+- P7: a second tab went to the site root and opened the database with the browser's own `indexedDB.open` and no
+  `versionchange` handling (the site had recreated it at version 7). Delete pressed again in the first tab, waited past the bound. On
+  screen: `body_unconfirmed`, `clear_unconfirmed`, the new hint, the raw error
+  `challenge-tools could not be deleted: another tab still has it open`; no sweep-failure sentence. The second tab's
+  connection recorded one `versionchange`. Dismiss shown and reload absent: the recorded interim, T-0006's to change.
+  A screenshot showed the dialog laid out as before.
+- P11a (reloaded by hand after closing the second tab): `body_unconfirmed` and the delete button only.
+- P15 (delete pressed with no fault): the page went to the site root, no gate, the draft removed, the marker written.
+- The challenge's Browser panel loads FileHub's sign-in page after Go.
