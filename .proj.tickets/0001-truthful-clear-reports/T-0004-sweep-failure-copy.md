@@ -26,7 +26,7 @@ After a sweep failure the gate shows the three new sentences from the copy table
 - [x] T36 passes in the built site (English, `door-is-open`): literal strings, dismiss shown, continue and reload absent (AC-9).
 - [x] `CONTEXT.md`: the 新造詞 declaration of 全站清除 is removed in this change and the glossary test passes (T43, AC-14; round-2 K-1).
 - [x] Comment and test locations that describe these sentences or call the result destroyed work are updated (T38/T39 subset).
-- [ ] Verified on the ticket's Cloudflare Pages preview with the sweep failure injected.
+- [x] Verified on the ticket's Cloudflare Pages preview with the sweep failure injected.
 
 ## 給使用者（zh-TW）
 
@@ -130,3 +130,18 @@ independent false-positive pass; `git diff -U0` confirmed the two source files c
 commit messages scanned. No confirmed security defect. Four candidates were judged not introduced by this change.
 Owners: F1 → T-0005 and T-0006, F2 → T41 in T-0009, F3 and F4 → the spec's fixed copy. Note for T-0009: T41 as worded
 omits a write-back from another tab after a successful clear and reload.
+
+### 2026-10-11 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview for `bda6ea1` (`e280fe39.wxl-platform.pages.dev`), driven in the Claude
+desktop app's Browser panel, on `door-is-open` in both locales.
+- Bundle: the theme chunk carries the new zh-TW and en `sweep_failed` strings.
+- P0, zh-TW and en: the untouched question as on `main`.
+- P4 with F1 injected in the page (`Storage.prototype.removeItem` throws for `localStorage`), zh-TW and en: the database is gone,
+  the draft is still in `localStorage`; on screen the new `body_cleared`, `sweep_failed` and `sweep_failed_hint`, exactly as in
+  the copy table, the raw error `injected: removeItem refused`, the delete and dismiss buttons with their labels, no continue or
+  reload. A screenshot of the zh-TW dialog showed the three sentences laid out in the report box as before.
+- P11a (reloaded by hand), en: `body_unconfirmed` and the delete button only.
+- P15 (delete pressed with no fault): the page went to the site root in the stored locale (`/zh-TW/`, the exempt locale key
+  survives by design), no gate, the draft removed, the decision marker written.
+- The challenge's Browser panel loads FileHub's sign-in page after Go.
