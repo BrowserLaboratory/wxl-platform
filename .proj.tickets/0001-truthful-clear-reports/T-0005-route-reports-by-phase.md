@@ -130,3 +130,12 @@ After the fixes, run one at a time on the same surfaces: vitest 124 files, 2,143
 challenges 4/4; `verify-project.py` PASS; `vue-tsc` 100 errors, unchanged. Site smoke: the first run after the
 build exited non-zero and its output was not kept, so which case failed is not known; the next three runs
 were 17/17 each. Recorded as an unidentified failure, not as a pass.
+
+### 2026-10-11 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0005.md`. One candidate pass and an
+independent false-positive pass; the base's raw error condition checked with `git show`; commit messages scanned.
+No confirmed security defect. The change removes the one dangerous direction (claiming the database is deleted
+while a delete is unconfirmed: P6, P7, P8). The interim states that remain until T-0006 and T-0007 land (P10, P10b, P10c
+reports; P7 and P8 hint against the dismiss exit) are listed in the report; P10 was accepted by the user in stage 6,
+the rest is put to the user before merging.
