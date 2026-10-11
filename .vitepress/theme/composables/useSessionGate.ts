@@ -70,6 +70,9 @@ export type GateDecision = 'undecided' | 'not-needed' | 'kept' | 'dismissed' | '
  */
 export type ProgressBlockReason = 'checking' | 'undecided' | null
 
+/** The half of a clear run that failed: the database delete, or the local-value sweep. */
+export type ClearFailurePhase = 'delete' | 'sweep'
+
 /**
  * Module-level, not per-call.
  *
@@ -81,6 +84,20 @@ export type ProgressBlockReason = 'checking' | 'undecided' | null
  */
 const shouldAskState = ref(false)
 const clearErrorState = ref<string | null>(null)
+/**
+ * The half in which the latest started clear run failed, or `null`.
+ *
+ * Beside `clearError` and not derived from it or from `databaseDeleted`: the flag says the
+ * delete resolved at some point in this document, which stays true when a later run's
+ * delete is rejected, so it cannot say which half the latest run failed in.
+ *
+ * `null` in a new document and from the moment a run starts; `'delete'` when that run's
+ * database delete is rejected, `'sweep'` when its sweep throws; left `null` by a run that
+ * succeeds, which replaces the page anyway. A run is started once its start record is
+ * durable, so a press refused for want of one leaves the earlier run's value in place: that
+ * run's failure is still the latest one.
+ */
+const clearFailurePhaseState = ref<ClearFailurePhase | null>(null)
 const decisionState = ref<GateDecision>('undecided')
 
 /**
@@ -188,8 +205,9 @@ export function useProgressBlockReason() {
  * Set while a delete request issued from here is outstanding.
  *
  * Not a published fact and not reactive: nothing renders it. It exists so a second press
- * of clear cannot start a second run, because the two would share `clearError` and the
- * first failure would put an exit on screen while the other run was still going.
+ * of clear cannot start a second run, because the two would share `clearError` and
+ * `clearFailurePhase`, and the first failure would put an exit on screen while the other
+ * run was still going.
  */
 let clearInFlight = false
 
@@ -311,6 +329,15 @@ export function useSessionGate() {
    * completed is the fact that settles the question this one leaves open.
    */
   const clearStarted: Readonly<Ref<boolean>> = readonly(clearStartedState)
+  /**
+   * The half in which the latest started clear run failed, or `null`.
+   *
+   * Read beside `clearError`, never in place of it: the error says that the latest run
+   * failed and why, this says which half, and only together do they say what a report can
+   * truthfully claim about the database and the local values. `databaseDeleted` cannot
+   * stand in for it, because it stays true after a later run's delete is rejected.
+   */
+  const clearFailurePhase: Readonly<Ref<ClearFailurePhase | null>> = readonly(clearFailurePhaseState)
 
   /**
    * Wraps the evaluation so that every exit records that it happened.
@@ -462,9 +489,10 @@ export function useSessionGate() {
    * deleted and the next save would write it straight back.
    */
   async function clearEverything(reload: () => void): Promise<void> {
-    // One clear at a time. Two overlapping runs share `clearError`, so the first to fail
-    // reports over a second that is still in flight, and the exit offered on the strength
-    // of that report would navigate away from a delete still running in this document.
+    // One clear at a time. Two overlapping runs share `clearError` and `clearFailurePhase`,
+    // so the first to fail reports over a second that is still in flight, and the exit
+    // offered on the strength of that report would navigate away from a delete still
+    // running in this document.
     if (clearInFlight) return
     clearErrorState.value = null
 
@@ -483,6 +511,10 @@ export function useSessionGate() {
       return
     }
 
+    // Here and not beside the reset of the error above: only from this line is it a run.
+    // A press refused for want of a durable record started nothing, so the half an
+    // earlier run failed in is still the latest failure and stays as it was.
+    clearFailurePhaseState.value = null
     clearInFlight = true
     try {
       await deleteDatabase()
@@ -491,6 +523,7 @@ export function useSessionGate() {
       // leave half a clear — the locale gone, the previous learner's sessions still
       // there — and reloading would show a page that still holds their work.
       clearErrorState.value = err instanceof Error ? err.message : String(err)
+      clearFailurePhaseState.value = 'delete'
       clearInFlight = false
       return
     }
@@ -529,6 +562,7 @@ export function useSessionGate() {
       // behind is not none. The choice stays up carrying the reason, no marker is
       // written, and nothing reloads. Half a clear is not a clear.
       clearErrorState.value = err instanceof Error ? err.message : String(err)
+      clearFailurePhaseState.value = 'sweep'
       return
     }
 
@@ -543,5 +577,5 @@ export function useSessionGate() {
 
   const evaluated: Readonly<Ref<boolean>> = readonly(evaluatedState)
 
-  return { shouldAsk, clearError, databaseDeleted, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
+  return { shouldAsk, clearError, clearFailurePhase, databaseDeleted, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
 }
