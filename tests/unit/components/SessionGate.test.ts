@@ -8,9 +8,12 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 // ─── Mock useSessionGate ──────────────────────────────────────────────────────
 const shouldAsk = ref(false)
 const clearError = ref<string | null>(null)
-// True from the instant `deleteDatabase()` resolves. The clear has two halves and only
-// the first is irreversible, so this is the fact that decides which sentences about the
-// machine are still true — and whether continuing is still something to offer.
+// The half the latest started run failed in. The report and the body follow it first: it
+// is the only fact about that run, where the flag below is about the whole document.
+const clearFailurePhase = ref<'delete' | 'sweep' | null>(null)
+// True from the instant `deleteDatabase()` resolves, for the rest of the document. The
+// clear has two halves and only the first is irreversible, so this decides whether
+// continuing is still something to offer; it no longer decides the report.
 const databaseDeleted = ref(false)
 // True from the instant the delete request is issued — before it settles, and for the
 // rest of the browser session unless a clear confirms success. The offer to continue is
@@ -45,6 +48,7 @@ vi.mock('../../../.vitepress/theme/composables/useSessionGate', () => ({
   useSessionGate: () => ({
     shouldAsk: readonly(shouldAsk),
     clearError: readonly(clearError),
+    clearFailurePhase: readonly(clearFailurePhase),
     databaseDeleted: readonly(databaseDeleted),
     clearStarted: readonly(clearStarted),
     evaluate: mockEvaluate,
@@ -72,6 +76,7 @@ function mountGate(locale: 'en' | 'zh-TW' = 'en', isChallengePage = true) {
 beforeEach(() => {
   shouldAsk.value = false
   clearError.value = null
+  clearFailurePhase.value = null
   databaseDeleted.value = false
   clearStarted.value = false
   mockKeep.mockClear()
@@ -119,6 +124,8 @@ describe('SessionGate', () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
     databaseDeleted.value = true
+    clearStarted.value = true
+    clearFailurePhase.value = 'sweep'
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(true)
@@ -166,6 +173,8 @@ describe('SessionGate', () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
     databaseDeleted.value = true
+    clearStarted.value = true
+    clearFailurePhase.value = 'sweep'
     const w = mountGate()
 
     await w.find('[data-session-gate-dismiss]').trigger('click')
@@ -221,6 +230,7 @@ describe('SessionGate', () => {
   it('reports a delete that could not be confirmed as unknown, in both directions', () => {
     shouldAsk.value = true
     clearStarted.value = true
+    clearFailurePhase.value = 'delete'
     clearError.value = 'challenge-tools could not be deleted: another tab still has it open'
     const w = mountGate()
     expect(w.find('[data-session-gate]').exists()).toBe(true)
@@ -283,17 +293,34 @@ describe('SessionGate', () => {
     expect(w.find('[data-session-gate-reload]').exists()).toBe(false)
   })
 
-  it('a completed deletion outranks a started clear when both are true', () => {
+  // K4. A delete resolved earlier in this document, so the flag is set; the latest run's
+  // delete is what failed. Reporting by the flag told the learner the database was gone
+  // while another tab held it open.
+  it('reports a later delete that did not finish as unconfirmed, whatever the flag says', () => {
     shouldAsk.value = true
     clearStarted.value = true
     databaseDeleted.value = true
-    clearError.value = 'sweep failed'
+    clearFailurePhase.value = 'delete'
+    clearError.value = 'challenge-tools could not be deleted: another tab still has it open'
     const w = mountGate()
-    // A retry that completed after an earlier attempt did not: the deletion having
-    // completed is the fact that settles the question the other one leaves open.
-    expect(w.text()).toContain(en.session_gate.sweep_failed)
-    expect(w.text()).not.toContain(en.session_gate.clear_unconfirmed)
+    expect(w.text()).toContain(en.session_gate.body_unconfirmed)
+    expect(w.text()).toContain(en.session_gate.clear_unconfirmed)
+    expect(w.text()).toContain(en.session_gate.clear_unconfirmed_hint)
+    expect(w.text()).not.toContain(en.session_gate.body_cleared)
+    expect(w.text()).not.toContain(en.session_gate.sweep_failed)
+  })
+
+  it('reports a sweep failure by its phase, with both flags set', () => {
+    shouldAsk.value = true
+    clearStarted.value = true
+    databaseDeleted.value = true
+    clearFailurePhase.value = 'sweep'
+    clearError.value = 'SecurityError: access denied'
+    const w = mountGate()
     expect(w.text()).toContain(en.session_gate.body_cleared)
+    expect(w.text()).toContain(en.session_gate.sweep_failed)
+    expect(w.text()).not.toContain(en.session_gate.body_unconfirmed)
+    expect(w.text()).not.toContain(en.session_gate.clear_unconfirmed)
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(true)
     expect(w.find('[data-session-gate-reload]').exists()).toBe(false)
   })
@@ -305,7 +332,9 @@ describe('SessionGate', () => {
   // which was the only remedy the screen offered.
   it('reports a failed sweep as its own failure, never as the blocked delete', () => {
     shouldAsk.value = true
+    clearStarted.value = true
     databaseDeleted.value = true
+    clearFailurePhase.value = 'sweep'
     clearError.value = 'SecurityError: access denied'
     const w = mountGate()
     const failure = w.find('[data-session-gate-error]')
@@ -327,12 +356,14 @@ describe('SessionGate', () => {
   it('withdraws the continue offer once the database has been deleted', () => {
     shouldAsk.value = true
     databaseDeleted.value = true
+    clearStarted.value = true
+    clearFailurePhase.value = 'sweep'
     clearError.value = 'SecurityError: access denied'
     const w = mountGate()
     expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
     expect(w.find('[data-session-gate-clear]').exists()).toBe(true)
     // And the body stops saying nothing is deleted unless you choose to, which the
-    // report directly beneath it would otherwise contradict in the same breath.
+    // sweep report directly beneath it would otherwise contradict in the same breath.
     expect(w.text()).toContain(en.session_gate.body_cleared)
     expect(w.text()).not.toContain(en.session_gate.body)
   })
@@ -456,6 +487,8 @@ describe('SessionGate on pages that do not ask', () => {
   it('renders the report away from the challenge pages after the delete succeeded', () => {
     shouldAsk.value = true
     databaseDeleted.value = true
+    clearStarted.value = true
+    clearFailurePhase.value = 'sweep'
     clearError.value = 'SecurityError: access denied'
     const w = mountGate('en', false)
     expect(w.find('[data-session-gate]').exists()).toBe(true)

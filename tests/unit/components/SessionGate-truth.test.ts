@@ -3,6 +3,7 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import {
   resetTruthEnvironment, mountRealGate, sentence, pressClearAndSettle, holdDatabase,
   withSweepFailing, bannedTermsIn, navigations, DATABASE_NAME, seedDatabase, storeNamesOnReopen, rowsOnReopen,
+  withDeleteNeverSettling, withDeleteFailing, pressClearPastDeleteBound,
 } from '../../__helpers__/sessionGateTruth'
 
 // The component resolves the site root through VitePress; the harness cannot mock it for us.
@@ -34,6 +35,25 @@ const SWEEP_FAILED = {
     body: '本站在這個瀏覽器裡的資料庫已經刪除；裡面若有東西，也都救不回來了。',
     heading: '本站在這個瀏覽器存的其他項目，沒能全部刪掉。',
     hint: '從這裡無從得知還剩下多少。再按一次刪除，會從資料庫開始，把全站清除整個重試一次。',
+  },
+} as const
+
+/**
+ * The three sentences shown while a delete has not been confirmed (`body_unconfirmed`,
+ * `clear_unconfirmed`, and the new `clear_unconfirmed_hint` from the copy table).
+ */
+const UNCONFIRMED = {
+  'en': {
+    body: 'A deletion of the saved work was started and could not be confirmed. '
+      + 'It may still be in progress, so there is no way to tell from here whether anything is left.',
+    heading: 'The outcome could not be confirmed.',
+    hint: 'The site-wide clear cannot finish while another tab of this site has the data open. '
+      + 'Close any other tabs, then reload.',
+  },
+  'zh-TW': {
+    body: '已存紀錄的刪除已經開始，但結果無法確認。它可能還在進行中，所以從這裡無從得知還剩下什麼。',
+    heading: '結果無法確認。',
+    hint: '本站還有其他分頁開著同一份資料時，全站清除無法完成。請先關掉其他分頁，再重新載入。',
   },
 } as const
 
@@ -201,9 +221,190 @@ describe('session gate truth: P5, the sweep failed after learner rows were delet
   })
 })
 
+describe('session gate truth: P7, a later run blocked after a sweep failure', () => {
+  it.each([['en'], ['zh-TW']] as const)('P7: reports the delete that did not finish, not the sweep (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+    expect(gate.databaseDeleted.value).toBe(true)
+
+    const held = await holdDatabase()
+    try {
+      await pressClearPastDeleteBound(wrapper, gate)
+
+      // The later run's delete really was held: the handle was asked to make way and the
+      // run gave up on the platform's bound with the blocked reason.
+      expect(held.deleteRequested()).toBe(true)
+      expect(sentence(wrapper, 'raw-error')).toContain('another tab still has it open')
+    } finally {
+      held.close()
+    }
+    // Released, the queued delete goes through.
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+})
+
+describe('session gate truth: deletes that did not finish', () => {
+  it.each([['en'], ['zh-TW']] as const)('P3: a first run whose delete timed out (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+
+    await withDeleteNeverSettling(() => pressClearPastDeleteBound(wrapper, gate))
+
+    // No handle of the test's own held anything: the run gave up on time alone.
+    expect(sentence(wrapper, 'raw-error')).toContain('within the time limit')
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P8: a later run whose delete timed out after a sweep failure (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+    expect(sentence(wrapper, 'report-heading')).toBe(SWEEP_FAILED[locale].heading)
+
+    await withDeleteNeverSettling(() => pressClearPastDeleteBound(wrapper, gate))
+
+    expect(sentence(wrapper, 'raw-error')).toContain('within the time limit')
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P3x: a first run whose delete failed for another reason (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+
+    await withDeleteFailing(() => pressClearAndSettle(wrapper, gate))
+
+    expect(sentence(wrapper, 'raw-error')).toBe('injected: delete failed')
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P2: a first run whose delete another tab held (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    const held = await holdDatabase()
+    try {
+      await pressClearPastDeleteBound(wrapper, gate)
+
+      expect(held.deleteRequested()).toBe(true)
+      expect(sentence(wrapper, 'raw-error')).toContain('another tab still has it open')
+      expect(sentence(wrapper, 'body')).toBe(body)
+      expect(sentence(wrapper, 'report-heading')).toBe(heading)
+      expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    } finally {
+      held.close()
+    }
+    // Released, every queued delete goes through before the next test starts.
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P13: a later run held again after a held one (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    const held = await holdDatabase()
+    try {
+      await pressClearPastDeleteBound(wrapper, gate)
+      expect(sentence(wrapper, 'raw-error')).toContain('another tab still has it open')
+
+      await pressClearPastDeleteBound(wrapper, gate)
+
+      // The second delete queues behind the first, still held; only the request at the head
+      // of the queue is told it is blocked, so this one gives up on time alone.
+      expect(sentence(wrapper, 'raw-error')).toContain('within the time limit')
+      expect(sentence(wrapper, 'body')).toBe(body)
+      expect(sentence(wrapper, 'report-heading')).toBe(heading)
+      expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    } finally {
+      held.close()
+    }
+    // Released, every queued delete goes through before the next test starts.
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+  })
+})
+
+describe('session gate truth: runs that end on the sweep, and a run in flight', () => {
+  it.each([['en'], ['zh-TW']] as const)('P6: a later run in flight says only that nothing is confirmed (%s)', async (locale) => {
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+    const held = await holdDatabase()
+    try {
+      await wrapper.get('[data-session-gate-clear]').trigger('click')
+      await vi.waitFor(() => expect(held.deleteRequested()).toBe(true))
+
+      expect(sentence(wrapper, 'body')).toBe(UNCONFIRMED[locale].body)
+      expect(sentence(wrapper, 'report-heading')).toBeNull()
+      expect(sentence(wrapper, 'raw-error')).toBeNull()
+    } finally {
+      held.close()
+    }
+    // Released, the run completes on its own sweep, which the draft no longer blocks.
+    await vi.waitFor(() => expect(navigations).toEqual(['/']))
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P9: a later run whose sweep failed again (%s)', async (locale) => {
+    const { body, heading, hint } = SWEEP_FAILED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(async () => {
+      await pressClearAndSettle(wrapper, gate)
+      await pressClearAndSettle(wrapper, gate)
+    })
+
+    expect(await indexedDB.databases()).toEqual([])
+    expect(localStorage.getItem(NOTE_DRAFT)).toBe('a draft the previous learner typed')
+    expect(sentence(wrapper, 'raw-error')).toBe('injected: removeItem refused')
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P14: a held first run, then a later run whose sweep failed (%s)', async (locale) => {
+    const { body, heading, hint } = SWEEP_FAILED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    const held = await holdDatabase()
+    try {
+      await pressClearPastDeleteBound(wrapper, gate)
+      expect(sentence(wrapper, 'raw-error')).toContain('another tab still has it open')
+    } finally {
+      held.close()
+    }
+    // The first run's request was queued, not cancelled; released, it goes through.
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+
+    expect(localStorage.getItem(NOTE_DRAFT)).toBe('a draft the previous learner typed')
+    expect(sentence(wrapper, 'raw-error')).toBe('injected: removeItem refused')
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+  })
+})
+
 describe('session gate truth: copy invariant CI-1 on the changed sentences', () => {
   it.each([['en'], ['zh-TW']] as const)('the sweep-failure sentences contain no banned term (%s)', (locale) => {
     for (const text of Object.values(SWEEP_FAILED[locale])) expect(bannedTermsIn(text, locale)).toEqual([])
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('the new unconfirmed hint contains no banned term (%s)', (locale) => {
+    expect(bannedTermsIn(UNCONFIRMED[locale].hint, locale)).toEqual([])
   })
 })
 
@@ -264,6 +465,40 @@ describe('session gate truth: the harness itself', () => {
 
     // Closed: a delete issued now is not held up by the read.
     const { useChallengePersistence } = await import('../../../.vitepress/theme/composables/useChallengePersistence')
+    await useChallengePersistence().deleteDatabase()
+    expect(await indexedDB.databases()).toEqual([])
+  })
+
+  it('F3 hands the delete a real request that never settles, and only while installed', async () => {
+    await withDeleteNeverSettling(async () => {
+      const request = indexedDB.deleteDatabase(DATABASE_NAME)
+      expect(request).toBeInstanceOf(IDBRequest)
+      let fired = false
+      request.addEventListener('success', () => { fired = true })
+      request.addEventListener('error', () => { fired = true })
+      await new Promise(resolve => setTimeout(resolve, 50))
+      expect(fired).toBe(false)
+      expect(request.readyState).toBe('pending')
+    })
+
+    // Restored: a real delete runs again.
+    await seedDatabase([])
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(DATABASE_NAME)
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+    expect(await indexedDB.databases()).toEqual([])
+  })
+
+  it('F5 hands the delete a real request that fails with the injected error', async () => {
+    const { useChallengePersistence } = await import('../../../.vitepress/theme/composables/useChallengePersistence')
+
+    await withDeleteFailing(async () => {
+      await expect(useChallengePersistence().deleteDatabase()).rejects.toThrow('injected: delete failed')
+    })
+
+    await seedDatabase([])
     await useChallengePersistence().deleteDatabase()
     expect(await indexedDB.databases()).toEqual([])
   })

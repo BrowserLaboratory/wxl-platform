@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBVersionChangeEvent } from 'fake-indexeddb'
 import { vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -103,6 +103,34 @@ export async function pressClearAndSettle(
 }
 
 /**
+ * Press delete on a run whose delete will not settle, and carry it past the platform's time
+ * bound on the delete, until that run has settled with an error.
+ *
+ * The bound is five real seconds. Only `setTimeout` and `clearTimeout` are faked, and only
+ * here: fake-indexeddb schedules its work with `setImmediate`, which keeps running for real, so
+ * the delete gets issued and blocked exactly as it would be, while the bound is crossed at once.
+ */
+export async function pressClearPastDeleteBound(
+  wrapper: VueWrapper,
+  gate: Awaited<ReturnType<typeof mountRealGate>>['gate'],
+): Promise<void> {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    await wrapper.get('[data-session-gate-clear]').trigger('click')
+    // A few real macrotasks between each fake second, so fake-indexeddb has delivered
+    // `versionchange` and `blocked` well before the bound is crossed.
+    for (let step = 0; step < 20 && gate.clearError.value === null; step++) {
+      for (let task = 0; task < 5; task++) await new Promise(resolve => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    if (gate.clearError.value === null) throw new Error('the run did not settle within twenty bounded seconds')
+  } finally {
+    vi.useRealTimers()
+  }
+  await wrapper.vm.$nextTick()
+}
+
+/**
  * Replace one method of a storage object while `fn` runs, restored in `finally`.
  *
  * Installed on the instance. Not `vi.spyOn` with a later restore: that restore does not take
@@ -132,6 +160,53 @@ export async function withStorageMethodReplaced<T>(
 export function withSweepFailing<T>(fn: () => Promise<T>): Promise<T> {
   return withStorageMethodReplaced(localStorage, 'removeItem', () => {
     throw new DOMException('injected: removeItem refused', 'SecurityError')
+  }, fn)
+}
+
+/**
+ * Replace `indexedDB.deleteDatabase` on the current factory while `fn` runs, restored in `finally`.
+ *
+ * The replacement returns a real `IDBRequest` (fake-indexeddb's, installed as the global), so
+ * the platform's delete wraps it exactly as it wraps a browser's request; only what the request
+ * then fires differs.
+ */
+async function withDeleteReplaced<T>(make: () => IDBRequest, fn: () => Promise<T>): Promise<T> {
+  const factory = indexedDB
+  const original = Object.getOwnPropertyDescriptor(factory, 'deleteDatabase')
+  Object.defineProperty(factory, 'deleteDatabase', { value: make, configurable: true, writable: true })
+  try {
+    return await fn()
+  } finally {
+    // fake-indexeddb defines the method on the prototype, so the replacement is the
+    // instance's only own property of that name and deleting it restores the original.
+    if (original) Object.defineProperty(factory, 'deleteDatabase', original)
+    else delete (factory as unknown as Record<string, unknown>).deleteDatabase
+  }
+}
+
+/**
+ * Fault F3: a delete that never settles and fires no `blocked`.
+ *
+ * What a delete queued behind another one looks like from here: nothing happens until the
+ * platform's own time bound rejects it.
+ */
+export function withDeleteNeverSettling<T>(fn: () => Promise<T>): Promise<T> {
+  return withDeleteReplaced(() => new IDBRequest(), fn)
+}
+
+/** Fault F5: a delete rejected for a reason that is neither blocking nor time. */
+export function withDeleteFailing<T>(fn: () => Promise<T>): Promise<T> {
+  return withDeleteReplaced(() => {
+    const request = new IDBRequest() as IDBRequest & { readyState: IDBRequestReadyState, error: DOMException | null }
+    setTimeout(() => {
+      request.readyState = 'done'
+      request.error = new DOMException('injected: delete failed', 'UnknownError')
+      // fake-indexeddb's event target dispatches only its own events, and the one it exports
+      // is the version-change event; its type is what listeners match on, and the reason
+      // travels on `request.error`, where the platform reads it.
+      request.dispatchEvent(new IDBVersionChangeEvent('error'))
+    }, 0)
+    return request
   }, fn)
 }
 

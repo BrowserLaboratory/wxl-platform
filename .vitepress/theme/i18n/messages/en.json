@@ -130,7 +130,7 @@
     "sweep_failed_hint": "There is no way to tell from here how many are left. Pressing delete again retries the whole site-wide clear, starting with the database.",
     "body_unconfirmed": "A deletion of the saved work was started and could not be confirmed. It may still be in progress, so there is no way to tell from here whether anything is left.",
     "clear_unconfirmed": "The outcome could not be confirmed.",
-    "clear_unconfirmed_hint": "Another tab of this site still has the data open, which is what the deletion is waiting on. Closing the other tabs lets it finish. Reload to see what is left.",
+    "clear_unconfirmed_hint": "The site-wide clear cannot finish while another tab of this site has the data open. Close any other tabs, then reload.",
     "reload": "Reload and start over",
     "clear_not_started": "The deletion was not started.",
     "clear_not_started_hint": "This browser would not let the site record that a deletion had begun, and starting one without that record could later tell you your work was safe when it was not. Nothing was deleted. Free up this browser's storage for this site, or use a normal window, then try again."

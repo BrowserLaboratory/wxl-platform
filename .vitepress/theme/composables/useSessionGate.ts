@@ -324,9 +324,11 @@ export function useSessionGate() {
    * Whether a clear has been started this browser session and has not confirmed success.
    *
    * The surface rendering the choice reads this to withdraw the continue action and to
-   * pick the text describing what this browser holds. `databaseDeleted` still decides
-   * between the two reports and outranks this one when both are true: a deletion that
-   * completed is the fact that settles the question this one leaves open.
+   * pick the body describing what this browser holds. For the body it is read after
+   * `clearFailurePhase` and before `databaseDeleted`: the half the latest run failed in
+   * is the only fact about that run, and while a started run has neither failed nor
+   * succeeded, nobody can vouch for a deletion, even when an earlier run's delete
+   * resolved and set the flag.
    */
   const clearStarted: Readonly<Ref<boolean>> = readonly(clearStartedState)
   /**
