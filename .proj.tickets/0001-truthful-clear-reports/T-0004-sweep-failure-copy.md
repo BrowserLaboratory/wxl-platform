@@ -2,7 +2,7 @@
 id: T-0004
 title: Truthful copy after a sweep failure (K2)
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0002]
 ---
 
@@ -145,3 +145,8 @@ desktop app's Browser panel, on `door-is-open` in both locales.
 - P15 (delete pressed with no fault): the page went to the site root in the stored locale (`/zh-TW/`, the exempt locale key
   survives by design), no gate, the draft removed, the decision marker written.
 - The challenge's Browser panel loads FileHub's sign-in page after Go.
+
+### 2026-10-11 — landed
+
+Squash-merged into `main` as `2239a1d` by the user, through pull request #5 of this repository; every check on
+the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set to `done`.

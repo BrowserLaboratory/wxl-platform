@@ -34,7 +34,7 @@ import { withBase } from 'vitepress'
  */
 const props = defineProps<{ isChallengePage: boolean }>()
 
-const { shouldAsk, clearError, databaseDeleted, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
+const { shouldAsk, clearError, clearFailurePhase, databaseDeleted, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
 
 /**
  * Whether to put anything on screen here.
@@ -122,7 +122,8 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
       <h2 data-session-gate-title class="m-0 mb-2 text-[1.15em] font-semibold">{{ $t('session_gate.title') }}</h2>
       <!--
         Three bodies, because the standing one stops being true the moment a clear is
-        started, and stops being true in a different way once the delete has resolved.
+        started, and stops being true in a different way once a run's delete has resolved
+        and only its sweep failed.
 
         "Nothing is deleted unless you choose to delete it" is false from the instant the
         delete request exists — it neither fails nor completes while another tab holds the
@@ -130,14 +131,18 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         browser has been deleted" is equally false there, because nobody knows yet. So the
         middle state gets its own sentence rather than borrowing either neighbour's.
 
-        `databaseDeleted` is tested first and outranks `clearStarted`: a retry that
-        completed after an earlier attempt did not is a moment where both are true, and
-        the deletion having completed is the fact that settles the question the other one
-        leaves open.
+        The half the latest started run failed in is read first, because it is the only
+        fact about that run: `databaseDeleted` stays true for the whole document once any
+        delete has resolved, so after a sweep failure a later run whose delete is held
+        still has it set, and reading it first claimed a deletion nobody can vouch for.
+        Then `clearStarted` (a run began and was not confirmed), then the flag (a delete
+        resolved in this document), then the standing question — the order of the
+        selection rules in the spec's traceability file.
       -->
       <p data-session-gate-body class="m-0 mb-4 text-[0.9em] color-[var(--ch-text-2)] leading-relaxed">
-        <template v-if="databaseDeleted">{{ $t('session_gate.body_cleared') }}</template>
-        <template v-else-if="clearStarted">{{ $t('session_gate.body_unconfirmed') }}</template>
+        <template v-if="clearFailurePhase === 'sweep'">{{ $t('session_gate.body_cleared') }}</template>
+        <template v-else-if="clearFailurePhase === 'delete' || clearStarted">{{ $t('session_gate.body_unconfirmed') }}</template>
+        <template v-else-if="databaseDeleted">{{ $t('session_gate.body_cleared') }}</template>
         <template v-else>{{ $t('session_gate.body') }}</template>
       </p>
 
@@ -147,16 +152,20 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         previous learner's work while telling them it had been cleared.
 
         Which failure, not merely that one happened. The clear has two halves and they
-        leave the machine in opposite states: a delete that did not complete deleted
-        nothing and really is another tab's doing, while a sweep that failed ran after
-        the delete resolved — the database is already gone, no tab is holding
-        anything, and closing tabs cannot make a `localStorage` write succeed. One
-        message for both was false in every clause on the second path, and it named the
-        only remedy on screen knowing it could not work.
+        leave the machine in different states: a delete that did not finish — held by
+        another tab, out of time, or refused for some other reason — may still go through
+        later, since giving up on it does not cancel it, so nobody can say what is left;
+        while a sweep that failed ran after the delete resolved — the database is already
+        gone, no tab is holding anything, and closing tabs cannot make a `localStorage`
+        write succeed. One message for both was false in every clause on the second path,
+        and it named the only remedy on screen knowing it could not work.
 
-        The branch is on whether the database is gone rather than on which stage threw,
-        because that is the fact each sentence's truth depends on: "Nothing was deleted"
-        is true exactly while the database is still there.
+        In order: a start that never happened has its own report, read before anything
+        about the earlier run; then the half the latest started run failed in, not whether
+        some delete ever resolved in this document — a later run whose delete is held after
+        an earlier sweep failure is a delete that did not finish, whatever the flag says;
+        every other error falls through to the unconfirmed report, the one that claims
+        least.
       -->
       <div
         v-if="clearError"
@@ -164,13 +173,13 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         role="alert"
         class="mb-4 px-3 py-2 rounded-lg border border-[var(--ch-border)] bg-[var(--ch-bg-soft)]"
       >
-        <template v-if="databaseDeleted">
-          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
-          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
-        </template>
-        <template v-else-if="clearNotStarted">
+        <template v-if="clearNotStarted">
           <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_not_started') }}</p>
           <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_not_started_hint') }}</p>
+        </template>
+        <template v-else-if="clearFailurePhase === 'sweep'">
+          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
+          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
         </template>
         <template v-else>
           <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_unconfirmed') }}</p>
