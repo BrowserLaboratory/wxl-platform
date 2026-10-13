@@ -116,3 +116,12 @@ In-scope fixes were applied under the user's standing approval and reported afte
 
 After the fixes and T15, run one at a time: vitest 124 files, 2,150 tests passed; `pnpm build` ok; site smoke 18/18;
 T36 and T37 repeated six times each, 12/12; challenges 4/4; `verify-project.py` PASS; `vue-tsc` 100 errors, unchanged.
+
+### 2026-10-13 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0006.md`. One candidate pass and an
+independent false-positive pass; commit messages scanned. No confirmed security defect: the new dismiss
+condition is a strict subset of the old one, and reload is newly offered only on P7 and P8. Two comments I wrote
+were narrowed after review (no delete issued *before* the latest one is pending; what acknowledging would actually
+invite). The non-modal gate with unguarded saves, and the untested ordering of deletes in Firefox and WebKit, go to
+the epic's chain analysis; a stale comment in `.vitepress/theme/index.ts` goes to T-0008.

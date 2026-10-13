@@ -215,11 +215,12 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         <!--
           Rendered on exactly the state that has no other exit, and on no other. The
           condition is the one the handler guards on, not a paraphrase of it: a report is
-          on screen AND the latest run failed in the sweep, so its delete resolved and
-          no delete is still pending. Wherever the latest delete did not finish it
-          may still go through, and a page left to carry on would write the attack session
-          in memory straight back; there the way out is reload, never this. The flag alone
-          is not the test: it stays set through a later run whose delete is held.
+          on screen AND the latest run failed in the sweep, so its delete resolved and no
+          delete issued before it is still pending. Wherever the latest delete did not
+          finish it may still go through, and closing the report would let the learner
+          carry on as if it had, with the attack session in memory saved back once it
+          lands; there the way out is reload, which drops that session, never this. The
+          flag alone is not the test: it stays set through a later run whose delete is held.
 
           Placed after the two answers and not among them, and worded as acknowledging the
           report rather than as a third answer, because it is not one: it writes no marker
