@@ -11,6 +11,8 @@ const clearError = ref<string | null>(null)
 // The half the latest started run failed in. The report and the body follow it first: it
 // is the only fact about that run, where the flag below is about the whole document.
 const clearFailurePhase = ref<'delete' | 'sweep' | null>(null)
+// True when the latest press was refused after an earlier run; adds the retry notice.
+const clearRefused = ref(false)
 // True from the instant `deleteDatabase()` resolves, for the rest of the document. The
 // clear has two halves and only the first is irreversible, so this decides whether
 // continuing is still something to offer; it no longer decides the report.
@@ -49,6 +51,7 @@ vi.mock('../../../.vitepress/theme/composables/useSessionGate', () => ({
     shouldAsk: readonly(shouldAsk),
     clearError: readonly(clearError),
     clearFailurePhase: readonly(clearFailurePhase),
+    clearRefused: readonly(clearRefused),
     databaseDeleted: readonly(databaseDeleted),
     clearStarted: readonly(clearStarted),
     evaluate: mockEvaluate,
@@ -77,6 +80,7 @@ beforeEach(() => {
   shouldAsk.value = false
   clearError.value = null
   clearFailurePhase.value = null
+  clearRefused.value = false
   databaseDeleted.value = false
   clearStarted.value = false
   mockKeep.mockClear()
@@ -293,10 +297,29 @@ describe('SessionGate', () => {
     expect(assign).toHaveBeenCalledTimes(1)
   })
 
-  it('reports a clear that never began as not started, and keeps continue', () => {
-    // The record of a started clear could not be persisted, so no delete request was
+  it('adds the retry notice beneath the earlier report when a later press is refused', () => {
+    // P10b. The earlier run's delete did not finish and may be queued; the refused press
+    // keeps its report, its reload and its withdrawal of continue, and only adds the notice.
+    shouldAsk.value = true
+    clearStarted.value = true
+    clearFailurePhase.value = 'delete'
+    clearError.value = 'challenge-tools was not deleted within the time limit'
+    clearRefused.value = true
+    const w = mountGate()
+
+    expect(w.text()).toContain(en.session_gate.clear_unconfirmed)
+    expect(w.text()).toContain(en.session_gate.clear_retry_not_started_hint)
+    expect(w.text()).not.toContain(en.session_gate.clear_not_started)
+    expect(w.find('[data-session-gate-reload]').exists()).toBe(true)
+    expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
+    expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
+  })
+
+  it('reports a first clear that never began as not started, and keeps continue', () => {
+    // P12. The record of a started clear could not be persisted, so no delete request was
     // issued. Nothing is queued, the stored work really is untouched, and continuing
-    // with it is still exactly true — so this is the one failure that keeps the offer.
+    // with it is still exactly true — so a refused first run keeps the offer. A refusal
+    // after an earlier run does not: that run's withdrawal stands.
     shouldAsk.value = true
     clearStarted.value = false
     clearError.value = 'clear-not-started'

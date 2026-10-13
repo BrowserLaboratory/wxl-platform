@@ -2,7 +2,7 @@
 id: T-0006
 title: Exits follow the failure phase (K4 exits)
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0005]
 ---
 
@@ -141,3 +141,9 @@ desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same
 - P15 from there (no fault): no gate, the draft removed, the marker written, and the redirect then took the page to
   `/zh-TW/`.
 - The challenge's Browser panel shows FileHub's sign-in page.
+
+### 2026-10-13 — landed
+
+Squash-merged into `main` as `f5889ce` by the user, through pull request #7 of this repository; every check
+on the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set
+to `done`.

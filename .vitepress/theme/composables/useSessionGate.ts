@@ -98,6 +98,17 @@ const clearErrorState = ref<string | null>(null)
  * run's failure is still the latest one.
  */
 const clearFailurePhaseState = ref<ClearFailurePhase | null>(null)
+/**
+ * Whether the latest press of clear was refused after an earlier run left state behind.
+ *
+ * A refused press issues no delete, so it changes nothing an earlier run left: that run's
+ * report, its phase, and the record that a deletion was started all stay the truth about
+ * this browser. Replacing them would erase the one record saying a deletion might still
+ * be queued. This notice is the only thing the refusal adds. A
+ * refused first run has nothing to keep and reports itself as not started instead, as
+ * before. False when a run starts, and false in a new document.
+ */
+const clearRefusedState = ref(false)
 const decisionState = ref<GateDecision>('undecided')
 
 /**
@@ -212,7 +223,10 @@ export function useProgressBlockReason() {
 let clearInFlight = false
 
 /**
- * The reported reason when a clear could not be started at all.
+ * The reported reason when a first clear could not be started at all.
+ *
+ * Only a first run: a refusal after an earlier run keeps that run's error and sets the
+ * refusal notice instead.
  *
  * A sentinel rather than a message, because the surface that renders it needs to pick a
  * sentence in the reader's language, and because it names a state rather than describing
@@ -308,7 +322,11 @@ export function useSessionGate() {
   const shouldAsk: Readonly<Ref<boolean>> = readonly(shouldAskState)
   /** What the learner answered, or that there was nothing to answer. */
   const decision: Readonly<Ref<GateDecision>> = readonly(decisionState)
-  /** Why the last clear failed, or `null`. Rendered beside the choice, which stays up. */
+  /**
+   * Why the latest clear run failed, or that a first run never started, or `null`. A press
+   * refused after an earlier run leaves it as that run left it. Rendered beside the choice,
+   * which stays up.
+   */
   const clearError: Readonly<Ref<string | null>> = readonly(clearErrorState)
   /**
    * Whether the database delete has resolved in this document.
@@ -340,6 +358,11 @@ export function useSessionGate() {
    * stand in for it, because it stays true after a later run's delete is rejected.
    */
   const clearFailurePhase: Readonly<Ref<ClearFailurePhase | null>> = readonly(clearFailurePhaseState)
+  /**
+   * Whether the latest press was refused after an earlier run, so the surface adds the
+   * refusal notice beneath whatever that run left on screen.
+   */
+  const clearRefused: Readonly<Ref<boolean>> = readonly(clearRefusedState)
 
   /**
    * Wraps the evaluation so that every exit records that it happened.
@@ -502,7 +525,10 @@ export function useSessionGate() {
     // offered on the strength of that report would navigate away from a delete still
     // running in this document.
     if (clearInFlight) return
-    clearErrorState.value = null
+
+    // Read before the start record is attempted, which sets `clearStarted` on its way.
+    const startedBefore = clearStartedState.value
+    const earlierState = startedBefore || databaseDeletedState.value || clearFailurePhaseState.value !== null
 
     // Before the request, not after it settles. Everything from here on is a state in
     // which nobody can say whether the stored work is still there, and that includes the
@@ -511,17 +537,30 @@ export function useSessionGate() {
     // And only if the record is durable. A delete issued without one leaves the learner
     // one page load away from being offered work that is on its way out — the request
     // outlives the document, the withdrawal does not. Not issuing it keeps the two facts
-    // in step: nothing was requested, so nothing is pending, so continuing really is
-    // still true and the offer stays.
+    // in step. On a first run nothing was requested, so nothing is pending, continuing
+    // really is still true and the offer stays.
+    //
+    // A refusal after an earlier run keeps everything that run left — its report, its
+    // phase, the record that a deletion was started — and adds a notice beneath it. That
+    // run's delete may still be queued, so "nothing was deleted" would be false here.
     if (!markClearStarted()) {
+      if (earlierState) {
+        clearStartedState.value = startedBefore
+        clearRefusedState.value = true
+        return
+      }
       clearStartedState.value = false
       clearErrorState.value = CLEAR_NOT_STARTED
+      clearRefusedState.value = false
       return
     }
 
-    // Here and not beside the reset of the error above: only from this line is it a run.
-    // A press refused for want of a durable record started nothing, so the half an
-    // earlier run failed in is still the latest failure and stays as it was.
+    // From this line it is a run, and nothing an earlier one reported is about this run.
+    // A press refused for want of a durable record started nothing and returned above:
+    // after an earlier run with that run's report and phase kept and the notice set, as a
+    // first run with the not-started report.
+    clearErrorState.value = null
+    clearRefusedState.value = false
     clearFailurePhaseState.value = null
     clearInFlight = true
     try {
@@ -585,5 +624,5 @@ export function useSessionGate() {
 
   const evaluated: Readonly<Ref<boolean>> = readonly(evaluatedState)
 
-  return { shouldAsk, clearError, clearFailurePhase, databaseDeleted, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
+  return { shouldAsk, clearError, clearFailurePhase, clearRefused, databaseDeleted, clearStarted, decision, evaluated, evaluate, keepExistingData, clearEverything, dismissClearFailure }
 }

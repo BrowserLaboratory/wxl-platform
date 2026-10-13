@@ -27,6 +27,9 @@ vi.mock('../../../.vitepress/theme/composables/useChallengePersistence', () => (
 // ─── Storage doubles ──────────────────────────────────────────────────────────
 let sessionStore: Record<string, string> = {}
 let sessionStorageThrows = false
+// Writes only: a start record an earlier document left stays readable, as it does when a
+// browser setting or a full quota refuses new writes.
+let sessionWriteThrows = false
 let localStore: Record<string, string> = {}
 // Two independent switches, because the two halves of the sweep fail in different
 // places: listing the keys, and removing one key out of several. A stub that can only
@@ -41,7 +44,7 @@ function installStorageDoubles() {
       return sessionStore[k] ?? null
     },
     setItem: (k: string, v: string) => {
-      if (sessionStorageThrows) throw new Error('SecurityError: access denied')
+      if (sessionStorageThrows || sessionWriteThrows) throw new Error('SecurityError: access denied')
       sessionStore[k] = v
     },
   })
@@ -72,6 +75,7 @@ beforeEach(() => {
   openRejects = false
   sessionStore = {}
   sessionStorageThrows = false
+  sessionWriteThrows = false
   localStore = {}
   localReadThrows = false
   localRemoveThrowsOn = null
@@ -869,6 +873,7 @@ describe('useSessionGate', () => {
       databaseDeleted: gate.databaseDeleted.value,
       shouldAsk: gate.shouldAsk.value,
       decision: gate.decision.value,
+      clearRefused: gate.clearRefused.value,
     }
   }
 
@@ -982,7 +987,8 @@ describe('useSessionGate', () => {
     const before = snapshot(gate)
 
     // A start record that cannot be written would make a press that got past the guard
-    // visible in every field: refused, it reports the not-started sentinel.
+    // visible: with the run in flight there is earlier state, so the refusal would set
+    // the notice.
     sessionStorageThrows = true
     await gate.clearEverything(vi.fn())
     sessionStorageThrows = false
@@ -991,6 +997,140 @@ describe('useSessionGate', () => {
     expect(snapshot(gate)).toEqual(before)
     held.release()
     await run
+  })
+
+  // ─── A refused run ─────────────────────────────────────────────────────────
+
+  // A run whose start record cannot be made durable issues no delete. With an earlier run
+  // on record, everything that run left is still the truth about this browser: its report,
+  // its phase, and that a deletion was started and may be queued. The refusal only adds
+  // that this press did nothing.
+
+  it('keeps everything an earlier sweep failure left when a later press is refused', async () => {
+    const { gate } = await reachDeletedDatabase()
+    const error = gate.clearError.value
+
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+
+    expect(mockDeleteDatabase).toHaveBeenCalledTimes(1)
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+    expect(gate.clearStarted.value).toBe(true)
+    expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearError.value).toBe(error)
+    expect(gate.clearRefused.value).toBe(true)
+
+    // P10 keeps the way out it had: the report is still the sweep's (T12).
+    gate.dismissClearFailure()
+    expect(gate.decision.value).toBe('dismissed')
+  })
+
+  it('keeps a delete failure and its report when a later press is refused', async () => {
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    const { gate, GATE_STORAGE_KEY } = await loadEvaluatedGate()
+    await gate.clearEverything(vi.fn())
+
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+
+    expect(mockDeleteDatabase).toHaveBeenCalledTimes(1)
+    expect(gate.clearFailurePhase.value).toBe('delete')
+    expect(gate.clearStarted.value).toBe(true)
+    expect(gate.clearError.value).toBe('challenge-tools could not be deleted: another tab still has it open')
+    expect(gate.clearRefused.value).toBe(true)
+
+    // P10b: neither answer nor acknowledgement is accepted while that delete may be queued
+    // (T11a, T13).
+    gate.keepExistingData()
+    gate.dismissClearFailure()
+    expect(gate.decision.value).toBe('undecided')
+    expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+  })
+
+  it('keeps a restored start record when the first press of a new document is refused', async () => {
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    const first = await loadEvaluatedGate()
+    await first.gate.clearEverything(vi.fn())
+    vi.resetModules()
+    const { useSessionGate } = await loadGate()
+    const gate = useSessionGate()
+    await gate.evaluate()
+    expect(gate.clearStarted.value).toBe(true)
+
+    // Only the write fails: the record the first document left is still readable.
+    sessionWriteThrows = true
+    try {
+      await gate.clearEverything(vi.fn())
+    } finally {
+      sessionWriteThrows = false
+    }
+
+    expect(mockDeleteDatabase).toHaveBeenCalledTimes(1)
+    expect(gate.clearStarted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe(null)
+    expect(gate.clearError.value).toBe(null)
+    expect(gate.clearRefused.value).toBe(true)
+
+    // P11r: the earlier document's delete may still be queued (T11a, T13).
+    gate.keepExistingData()
+    gate.dismissClearFailure()
+    expect(gate.decision.value).toBe('undecided')
+  })
+
+  it('reports a refused first run as not started, as before, with no notice', async () => {
+    const { gate, CLEAR_NOT_STARTED } = await loadEvaluatedGate()
+
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+
+    expect(mockDeleteDatabase).not.toHaveBeenCalled()
+    expect(gate.clearStarted.value).toBe(false)
+    expect(gate.clearFailurePhase.value).toBe(null)
+    expect(gate.clearError.value).toBe(CLEAR_NOT_STARTED)
+    expect(gate.clearRefused.value).toBe(false)
+
+    // P12: nothing was requested, so acknowledging is refused and continuing is accepted
+    // (T13, T11).
+    gate.dismissClearFailure()
+    expect(gate.decision.value).toBe('undecided')
+    gate.keepExistingData()
+    expect(gate.decision.value).toBe('kept')
+  })
+
+  it('drops the notice the moment a later run starts', async () => {
+    const { gate } = await reachDeletedDatabase()
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+    expect(gate.clearRefused.value).toBe(true)
+    let release: () => void = () => {}
+    mockDeleteDatabase.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(2))
+
+    expect(gate.clearRefused.value).toBe(false)
+    expect(gate.clearError.value).toBe(null)
+    release()
+    await run
+  })
+
+  it('starts a new document with no notice after a refused press', async () => {
+    const { gate } = await reachDeletedDatabase()
+    sessionStorageThrows = true
+    await gate.clearEverything(vi.fn())
+    sessionStorageThrows = false
+    expect(gate.clearRefused.value).toBe(true)
+
+    vi.resetModules()
+    const { useSessionGate } = await loadGate()
+    const next = useSessionGate()
+    await next.evaluate()
+
+    expect(next.clearRefused.value).toBe(false)
   })
 
   it('starts a new document with no failure recorded after a sweep failure', async () => {

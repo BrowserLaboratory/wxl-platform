@@ -167,7 +167,7 @@ describe('the confirmed path is unchanged', () => {
   })
 })
 
-describe('a clear that cannot be recorded is not started at all', () => {
+describe('a first clear that cannot be recorded is not started at all', () => {
   it('issues no delete request and keeps continue offered', async () => {
     const { mod, gate } = await loadGate()
     await gate.evaluate()
@@ -180,8 +180,9 @@ describe('a clear that cannot be recorded is not started at all', () => {
     expect(gate.clearError.value).toBe(mod.CLEAR_NOT_STARTED)
     expect(gate.clearStarted.value).toBe(false)
 
-    // And because nothing is pending, continuing is still exactly true. This is the one
-    // clear failure that does not withdraw the offer.
+    // And because nothing is pending, continuing is still exactly true. A refused first
+    // run is the one clear failure that does not withdraw the offer; refused after an
+    // earlier run, the press leaves that run's withdrawal in place.
     gate.keepExistingData()
     expect(gate.decision.value).toBe('kept')
   })
