@@ -651,10 +651,10 @@ describe('useSessionGate', () => {
     const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
 
     // Everything that could have moved the decision is gone by here: continue refuses on
-    // `databaseDeleted`, the markup withdraws it, a retry throws at the same line for the
-    // same reason, and a later `evaluate` returns early on the same flag. Without this
-    // the decision stays `undecided` for the life of the page, and the deferred locale
-    // redirect — which waits on it — never runs.
+    // `databaseDeleted`, the markup withdraws it, a retry runs the whole clear again and,
+    // while the cause persists, stops at the sweep again, and a later `evaluate` returns
+    // early on the same flag. Without this the decision stays `undecided` for the life of
+    // the page, and the deferred locale redirect — which waits on it — never runs.
     expect(gate.decision.value).toBe('undecided')
 
     gate.dismissClearFailure()
@@ -669,12 +669,93 @@ describe('useSessionGate', () => {
     expect(localStore['pentest-draft-door-is-open']).toBe('notes')
   })
 
-  it('acknowledging does nothing on a deletion that never happened', async () => {
-    // The other side of the boundary, and the reason there are two guards rather than
-    // one. A blocked delete destroyed nothing: continue is on screen and honoured, so
-    // the question is still live and still answerable, and a way to walk away from it
-    // here would be exactly the inheritance the gate exists to prevent.
-    mockDeleteDatabase.mockRejectedValueOnce(new Error('blocked by another tab'))
+  // K4. The flag is set by the earlier run's delete; this run's delete was held, and a
+  // held delete is not cancelled by giving up on it. Letting the page carry on here lets
+  // the attack session in memory be saved straight back while the delete may still land.
+  it('acknowledging does nothing after a later run whose delete did not finish', async () => {
+    const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    await gate.clearEverything(vi.fn())
+    expect(gate.databaseDeleted.value).toBe(true)
+    expect(gate.clearFailurePhase.value).toBe('delete')
+
+    gate.dismissClearFailure()
+
+    expect(gate.decision.value).toBe('undecided')
+    expect(gate.shouldAsk.value).toBe(true)
+    expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+  })
+
+  it('acknowledging is accepted after a later run whose sweep failed again', async () => {
+    // P9. That run's delete resolved, so nothing it issued is pending; the sweep is the
+    // part that stopped, and there is no other way out of this report.
+    const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
+    await gate.clearEverything(vi.fn())
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+
+    gate.dismissClearFailure()
+
+    expect(gate.decision.value).toBe('dismissed')
+    expect(gate.shouldAsk.value).toBe(false)
+    expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+  })
+
+  it('acknowledging is accepted when a later run deleted and then failed to sweep after a held delete', async () => {
+    storeContents['attack-sessions'] = [{ sessionId: 's1' }]
+    localStore['pentest-draft-door-is-open'] = 'notes'
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
+    const { useSessionGate, GATE_STORAGE_KEY } = await loadGate()
+    const gate = useSessionGate()
+    await gate.evaluate()
+    // P14. The first run's delete was held; the later run's delete resolved, and deletes
+    // of one database are processed in order, so the held one had finished before it.
+    await gate.clearEverything(vi.fn())
+    expect(gate.clearFailurePhase.value).toBe('delete')
+    expect(gate.databaseDeleted.value).toBe(false)
+    localRemoveThrowsOn = 'pentest-draft-door-is-open'
+    await gate.clearEverything(vi.fn())
+    expect(gate.clearFailurePhase.value).toBe('sweep')
+
+    gate.dismissClearFailure()
+
+    expect(gate.decision.value).toBe('dismissed')
+    expect(gate.shouldAsk.value).toBe(false)
+    expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+  })
+
+  it('acknowledging does nothing while a later run is in flight after a sweep failure', async () => {
+    // P6. The earlier run's report was cleared when this run started; there is nothing
+    // on screen to acknowledge, and the run's delete is still pending.
+    const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
+    let release: () => void = () => {}
+    mockDeleteDatabase.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+    const run = gate.clearEverything(vi.fn())
+    await vi.waitFor(() => expect(mockDeleteDatabase).toHaveBeenCalledTimes(2))
+
+    gate.dismissClearFailure()
+
+    expect(gate.decision.value).toBe('undecided')
+    expect(gate.shouldAsk.value).toBe(true)
+    expect(sessionStore[GATE_STORAGE_KEY]).toBeUndefined()
+    release()
+    await run
+  })
+
+  it('denies progress access after the report was acknowledged', async () => {
+    // T16a. Acknowledging releases the page, not the question: the clear stopped half
+    // way, so progress stays out of reach until a clear succeeds or a new session asks.
+    const { gate, isProgressAccessAllowed } = await reachDeletedDatabase()
+    gate.dismissClearFailure()
+    expect(gate.decision.value).toBe('dismissed')
+
+    expect(isProgressAccessAllowed()).toBe(false)
+  })
+
+  it('acknowledging does nothing after a first run whose delete did not finish', async () => {
+    // P2. The delete may still go through after the platform gave up on it, and a page
+    // left to carry on would save the attack session it holds in memory straight back;
+    // the way out here is a reload, never this.
+    mockDeleteDatabase.mockRejectedValueOnce(new Error('challenge-tools could not be deleted: another tab still has it open'))
     storeContents['attack-sessions'] = [{ sessionId: 's1' }]
     localStore['wxl-locale'] = 'zh-TW'
 
@@ -685,6 +766,7 @@ describe('useSessionGate', () => {
 
     expect(gate.clearError.value).not.toBe(null)
     expect(gate.databaseDeleted.value).toBe(false)
+    expect(gate.clearFailurePhase.value).toBe('delete')
 
     gate.dismissClearFailure()
 
@@ -713,12 +795,11 @@ describe('useSessionGate', () => {
   })
 
   it('acknowledging does not overwrite the outcome of a clear that finished', async () => {
-    // The corner where the two guards come apart, and the only test that isolates the
-    // report guard: the work really is gone, so `databaseDeleted` alone would let this
-    // through, and there is no report because nothing failed. `cleared` is the one
-    // decision the deferred locale redirect reads as "stay put, a full page load is
-    // already coming" — overwriting it with `dismissed` releases a router navigation
-    // into the reload it was meant to stand aside for.
+    // The clear finished: the flag is set and there is no report, because nothing failed
+    // and no phase was recorded; a rule keyed on the flag would let this through.
+    // `cleared` is the one decision the deferred locale redirect reads as "stay put, a
+    // full page load is already coming" — overwriting it with `dismissed` releases a
+    // router navigation into the reload it was meant to stand aside for.
     storeContents['attack-sessions'] = [{ sessionId: 's1' }]
     localStore['wxl-locale'] = 'zh-TW'
 

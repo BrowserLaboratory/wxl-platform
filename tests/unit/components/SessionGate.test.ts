@@ -115,12 +115,13 @@ describe('SessionGate', () => {
 
   // ─── The way out of the one state that has none ─────────────────────────────
   //
-  // A clear that stopped after the database delete withdraws continue and fails again on
-  // retry, so both answers are gone and the question is no longer answerable. The
-  // condition is the conjunction of the two facts, and the three tests below pin each
-  // corner of it: a single-fact condition renders this on a state that still has exits.
+  // A clear whose latest run stopped at the sweep withdraws continue and stops there again
+  // on retry, so both answers are gone and the question is no longer answerable. The
+  // condition is a report on screen and that run's phase being the sweep; the tests below
+  // pin the phase side, including the flag set by an earlier run, which alone is not it.
+  // The report side is defensive: the composable never records a phase without an error.
 
-  it('offers a way past the report only once the database delete has resolved', () => {
+  it('offers a way past the report after a run that stopped at the sweep', () => {
     shouldAsk.value = true
     clearError.value = 'QuotaExceededError'
     databaseDeleted.value = true
@@ -133,17 +134,33 @@ describe('SessionGate', () => {
     expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
   })
 
-  it('offers no way past a delete that destroyed nothing', () => {
-    // Continue is present and honoured here, so the question is live and answerable.
-    // Rendering a dismissal would let it be walked away from with the previous
-    // learner's work fully intact — the inheritance this dialog exists to prevent.
+  it('offers reload, not a way past, after a first delete that did not finish', () => {
+    // P2. The delete may still go through; a page left to carry on would write its
+    // in-memory session straight back, so the way out is a reload.
     shouldAsk.value = true
-    clearError.value = 'blocked by another tab'
+    clearStarted.value = true
+    clearFailurePhase.value = 'delete'
+    clearError.value = 'challenge-tools could not be deleted: another tab still has it open'
     databaseDeleted.value = false
     const w = mountGate()
 
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
-    expect(w.find('[data-session-gate-keep]').exists()).toBe(true)
+    expect(w.find('[data-session-gate-reload]').exists()).toBe(true)
+    expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
+  })
+
+  it('offers reload, not a way past, after a later delete that did not finish (K4)', () => {
+    // P7. The flag is set by the earlier run's delete; this run's delete was held.
+    shouldAsk.value = true
+    clearStarted.value = true
+    databaseDeleted.value = true
+    clearFailurePhase.value = 'delete'
+    clearError.value = 'challenge-tools could not be deleted: another tab still has it open'
+    const w = mountGate()
+
+    expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
+    expect(w.find('[data-session-gate-reload]').exists()).toBe(true)
+    expect(w.find('[data-session-gate-keep]').exists()).toBe(false)
   })
 
   it('offers no way past an unanswered choice with nothing yet attempted', () => {
@@ -155,14 +172,15 @@ describe('SessionGate', () => {
     expect(w.find('[data-session-gate-dismiss]').exists()).toBe(false)
   })
 
-  it('offers no way past a clear that is still running', () => {
-    // The window between the two halves: the delete has resolved, so the database is gone,
-    // but the sweep has not thrown and there is nothing yet to acknowledge. The dialog
-    // is still up. A condition reading `databaseDeleted` alone puts a control here that
-    // the handler refuses to honour — an offer written on screen and not kept, which is
-    // the same defect the withdrawn continue button exists to avoid.
+  it('offers no way past a later run that is still running', () => {
+    // P6. An earlier run's delete resolved, so the flag is set; this run has started and
+    // not settled, so there is nothing yet to acknowledge. A condition reading the flag
+    // alone puts a control here that the handler refuses to honour — an offer written on
+    // screen and not kept, which is the same defect the withdrawn continue button exists
+    // to avoid.
     shouldAsk.value = true
     clearError.value = null
+    clearStarted.value = true
     databaseDeleted.value = true
     const w = mountGate()
 
@@ -261,7 +279,8 @@ describe('SessionGate', () => {
   it('offers a full page load and no in-place exit while the outcome is unknown', async () => {
     shouldAsk.value = true
     clearStarted.value = true
-    clearError.value = 'another tab still has it open'
+    clearFailurePhase.value = 'delete'
+    clearError.value = 'challenge-tools could not be deleted: another tab still has it open'
     const w = mountGate()
     const reload = w.find('[data-session-gate-reload]')
     expect(reload.exists()).toBe(true)

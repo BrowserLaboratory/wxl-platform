@@ -153,7 +153,7 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
 
         Which failure, not merely that one happened. The clear has two halves and they
         leave the machine in different states: a delete that did not finish — held by
-        another tab, out of time, or refused for some other reason — may still go through
+        another tab, out of time, or rejected for some other reason — may still go through
         later, since giving up on it does not cancel it, so nobody can say what is left;
         while a sweep that failed ran after the delete resolved — the database is already
         gone, no tab is holding anything, and closing tabs cannot make a `localStorage`
@@ -214,11 +214,13 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         >{{ $t('session_gate.clear') }}</button>
         <!--
           Rendered on exactly the state that has no other exit, and on no other. The
-          condition is the conjunction the handler guards on, not a paraphrase of it: a
-          report is on screen AND the delete already deleted the database. On the
-          delete-failed path continue is present and honoured, so this must not appear —
-          it would let the question be walked away from while both answers still work,
-          which is the one thing the gate exists to prevent.
+          condition is the one the handler guards on, not a paraphrase of it: a report is
+          on screen AND the latest run failed in the sweep, so its delete resolved and no
+          delete issued before it is still pending. Wherever the latest delete did not
+          finish it may still go through, and closing the report would let the learner
+          carry on as if it had, with the attack session in memory saved back once it
+          lands; there the way out is reload, which drops that session, never this. The
+          flag alone is not the test: it stays set through a later run whose delete is held.
 
           Placed after the two answers and not among them, and worded as acknowledging the
           report rather than as a third answer, because it is not one: it writes no marker
@@ -232,14 +234,14 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
           the choice comes back still withholding continue.
         -->
         <button
-          v-if="clearError && !databaseDeleted && clearStarted"
+          v-if="clearError && clearStarted && clearFailurePhase !== 'sweep'"
           data-session-gate-reload
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"
           @click="onReload()"
         >{{ $t('session_gate.reload') }}</button>
         <button
-          v-if="clearError && databaseDeleted"
+          v-if="clearError && clearFailurePhase === 'sweep'"
           data-session-gate-dismiss
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"

@@ -150,3 +150,10 @@ desktop app's Browser panel, on `door-is-open` in both locales.
 
 Squash-merged into `main` as `2239a1d` by the user, through pull request #5 of this repository; every check on
 the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set to `done`.
+
+### 2026-10-11 — correction (recorded on T-0006's branch)
+
+The verification entry above put the one failed run of the `door-is-open` challenge spec down to load from my own
+concurrent runs. That explanation does not hold: during T-0006 the same test failed the same way (`login failed for
+guest`) with nothing else running, and passed on rerun. Its cause is not established; it is raised as a separate
+task outside this epic. CI's challenge job has not failed it.
