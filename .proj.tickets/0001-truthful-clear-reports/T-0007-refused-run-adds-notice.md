@@ -28,7 +28,7 @@ behaves as today.
 - [x] New `clear_retry_not_started_hint` ships exactly, en and zh-TW, no banned term.
 - [x] Truth rows T35, T35b, T35r pass using F4 and F6; P12 (T29) still shows what `72327e2` shows (AC-8).
 - [x] Comment and test locations stating that a refused run always keeps continue are updated (T38/T39 subset).
-- [ ] Verified on the ticket's preview with `sessionStorage.setItem` made to throw after a failed run.
+- [x] Verified on the ticket's preview with `sessionStorage.setItem` made to throw after a failed run.
 
 ## 給使用者（zh-TW）
 
@@ -141,3 +141,21 @@ the sentinel); commit messages scanned. No confirmed security defect; the change
 continue in the same document on P10b, P10c and P11r, and let the gate vanish on the site root. Two notes go to the
 epic's chain analysis: a reload after storage becomes wholly unreadable lands where the start record cannot be read
 (F-1), and a second refused press gives no new feedback (F-4).
+
+### 2026-10-13 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview for `4f4d8e3` (`e562bea6.wxl-platform.pages.dev`), driven in the Claude
+desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same panel. F4 was installed in the page by
+patching `Storage.prototype.setItem` to throw for `sessionStorage`.
+- P10: sweep failure (F1), then F4 and delete pressed. The sweep-failure body and report stay, the raw error
+  `injected: removeItem refused` stays, the notice reads exactly as the copy table and sits after the report hint;
+  no `刪除沒有開始`; dismiss shown, reload and continue absent. A screenshot showed the notice inside the report box.
+- P10b: a second tab at the site root held the database; the first delete was blocked (P2: unconfirmed report, reload);
+  then F4 and delete pressed. The unconfirmed body, report and raw error stay, the notice is added; reload shown;
+  continue and dismiss absent (the base offered continue here).
+- P11r: reload pressed from P10b, landing on the site root `/`; the gate is presented there; F4 installed and delete pressed.
+  `body_unconfirmed`, the notice alone (no heading, no raw error), reload shown, continue and dismiss absent (in the base
+  the gate vanished on the site root here).
+- P15: the second tab closed, the challenge page reloaded, delete pressed with no fault: no gate, the draft removed, the
+  marker written, the page at `/zh-TW/`.
+- The challenge's Browser panel shows FileHub's sign-in page.
