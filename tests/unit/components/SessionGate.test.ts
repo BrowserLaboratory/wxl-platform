@@ -14,13 +14,14 @@ const clearFailurePhase = ref<'delete' | 'sweep' | null>(null)
 // True when the latest press was refused after an earlier run; adds the retry notice.
 const clearRefused = ref(false)
 // True from the instant `deleteDatabase()` resolves, for the rest of the document. The
-// clear has two halves and only the first is irreversible, so this decides whether
-// continuing is still something to offer; it no longer decides the report.
+// clear has two halves and only the first is irreversible, so this is one of the two
+// facts that withdraw continue, beside `clearStarted` below; it no longer decides the
+// report.
 const databaseDeleted = ref(false)
 // True from the instant the delete request is issued — before it settles, and for the
 // rest of the browser session unless a clear confirms success. The offer to continue is
-// keyed on this rather than on the outcome, because between the request and its outcome
-// there is no moment at which the stored work is known to be there.
+// withdrawn on this rather than on the outcome alone, because between the request and
+// its outcome there is no moment at which the stored work is known to be there.
 const clearStarted = ref(false)
 const mockKeep = vi.fn()
 const mockClear = vi.fn(async () => {})
@@ -119,11 +120,12 @@ describe('SessionGate', () => {
 
   // ─── The way out of the one state that has none ─────────────────────────────
   //
-  // A clear whose latest run stopped at the sweep withdraws continue and stops there again
-  // on retry, so both answers are gone and the question is no longer answerable. The
-  // condition is a report on screen and that run's phase being the sweep; the tests below
-  // pin the phase side, including the flag set by an earlier run, which alone is not it.
-  // The report side is defensive: the composable never records a phase without an error.
+  // A clear whose latest run stopped at the sweep withdraws continue and, while its cause
+  // persists, stops there again on retry, so both answers are gone and the question is no
+  // longer answerable. The condition is a report on screen and that run's phase being the
+  // sweep; the tests below pin the phase side, including the flag set by an earlier run,
+  // which alone is not it. The report side is defensive: the composable never records a
+  // phase without an error.
 
   it('offers a way past the report after a run that stopped at the sweep', () => {
     shouldAsk.value = true
@@ -394,7 +396,10 @@ describe('SessionGate', () => {
   // "Continue with this work" is an offer about a database that still exists. Past the
   // resolve of the database delete there is none, so the offer goes rather than being
   // greyed out — a disabled button leaves the sentence on screen and refuses to honour
-  // it. Clear stays: retrying the whole site-wide clear is a real action.
+  // it. `clearStarted` is set here too, as the real composable always has it by then;
+  // the case withdrawn on `clearStarted` alone is 'withdraws continue from the moment a
+  // clear is started, before it settles'. Clear stays: retrying
+  // the whole site-wide clear is a real action.
   it('withdraws the continue offer once the database has been deleted', () => {
     shouldAsk.value = true
     databaseDeleted.value = true

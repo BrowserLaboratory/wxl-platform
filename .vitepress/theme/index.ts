@@ -117,10 +117,11 @@ export default {
           if (target) router.go(target, { replace: true })
         }
 
-        // The preference this redirect reads is `wxl-locale`, and that is one of the
-        // keys the gate deletes when a learner chooses to start fresh. Redirecting
-        // first would take them into the previous learner's locale tree and then need
-        // a second navigation to undo it.
+        // Held until this session has a recorded decision; on a page that does not put
+        // the choice on screen it is released as soon as the check settles (below). The
+        // hold is not about the preference itself: `wxl-locale` is exempt from the clear
+        // (`localStorageKeys.ts`), so a clear leaves the value this redirect reads as it
+        // was. What the hold should guard while the choice is open is not settled.
         //
         // The marker is read synchronously, so the ordinary path — this session has
         // already answered — navigates in the same tick it always did, with no await

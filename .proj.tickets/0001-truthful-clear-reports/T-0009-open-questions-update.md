@@ -42,3 +42,8 @@ evidence inline.
 
 - Record an open question: should `scripts/verify-project.py` (or CI) reject absolute local paths such as `/Users/`, `/home/` or `~/` in tracked files? Found when review records carried them (T-0001 S-1); existing skill files under `.claude/skills/` also contain such paths.
 - Record an open question: should `vue-tsc --noEmit` run in CI? Today nothing typechecks, so a renamed export silently becomes `undefined` in a consumer (T-0001 S-2); 100 existing errors must be cleared first.
+
+### 2026-10-14 — handed over from T-0008 review (scope for the user to confirm at T-0009's plan)
+
+- Candidate open question: the locale redirect in `.vitepress/theme/index.ts` is held until the session has a recorded decision. The reason its comment gave (a clear deletes `wxl-locale`) no longer holds: the key is exempt from the clear. What the hold should guard while the choice is open is not settled; the `cleared` decision's own hold, against a navigation racing the reload, is not in question.
+- Candidate record: two defensive guards are reached by no test — `evaluate`'s `if (databaseDeletedState.value) return` (no path reaches it with the flag set today: `evaluate` runs once per document, at mount, before any clear) and the `!databaseDeleted` term of the continue `v-if` (never alone, since `clearStarted` is set in every state where the choice shows with the flag set).

@@ -46,12 +46,13 @@ export const CLEAR_STARTED = 'started'
  *   Not an answer to the question: no marker is written, so the next cold load asks
  *   again. It exists because that state has no other way out — see
  *   `dismissClearFailure`.
- * - `cleared` — everything local was deleted and the page is being reloaded.
+ * - `cleared` — a site-wide clear confirmed success and the page is being reloaded.
  *
- * The locale redirect reads this: it must not run while the choice is open, because
- * the preference it reads is one of the values that is about to be deleted. Every
- * value other than `cleared` leaves the page in place and therefore releases it;
- * `cleared` is the one that does not, because a full page load is already coming.
+ * The locale redirect in `index.ts` waits on this on a page that puts the choice on
+ * screen; the comment there says when it is held and what that hold does and does not
+ * protect. Every value
+ * other than `cleared` leaves the page in place and therefore releases it; `cleared` is
+ * the one that does not, because a full page load is already coming.
  */
 export type GateDecision = 'undecided' | 'not-needed' | 'kept' | 'dismissed' | 'cleared'
 
@@ -169,8 +170,9 @@ const clearStartedState = ref(false)
  * The recovery from an unconfirmed clear overrides the page, and it has to: a clear
  * replaces the page with a load of the site root, which is not a challenge page. Confining
  * the recovery to challenge pages would put it out of reach from exactly where the learner
- * lands. `databaseDeleted` is the same state one step later — the delete returned and the
- * sweep threw — and it outlives `clearStarted`, which a successful clear forgets.
+ * lands. `databaseDeleted` is read as well, as a second guard: in every state where the
+ * gate is asked to show with the flag set, `clearStarted` is set too, so with `evaluate`
+ * running once at mount the flag alone is never what puts the recovery on a page.
  *
  * Callers read this inside a `computed`, which is what makes it reactive: every ref it
  * touches is one of this module's own.
@@ -213,7 +215,11 @@ export function useProgressBlockReason() {
 
 
 /**
- * Set while a delete request issued from here is outstanding.
+ * Set while this document is awaiting a delete it issued, and cleared once that call settles.
+ *
+ * Not "the request is still outstanding": the platform gives up on a held delete after its
+ * bound and the call rejects, but the request stays queued and may still go through. That
+ * fact is `clearStarted`'s to carry; this only stops two runs overlapping in one document.
  *
  * Not a published fact and not reactive: nothing renders it. It exists so a second press
  * of clear cannot start a second run, because the two would share `clearError` and
@@ -430,11 +436,11 @@ export function useSessionGate() {
 
     if (!hasData) {
       // The other place that dismisses the choice without the learner answering it, and
-      // it needs the same guard as `keepExistingData` for the same reason. After a delete
-      // that succeeded and a sweep that did not, the object stores really are empty, so a
-      // re-run of this check would find nothing, write the marker, and take the failure
-      // report off the screen — recording an answer to a question nobody answered, over
-      // residue that is still there.
+      // a defence in depth: once a delete has resolved in this document, an empty answer
+      // from this check is no reason to record a decision. No path reaches it with the
+      // flag set today: after a clear stopped at the sweep `clearStarted` returns above,
+      // and `evaluate` runs once per document, at mount, before any clear can start. It
+      // stays so that a later caller of `evaluate` does not inherit the gap.
       if (databaseDeletedState.value) return
       // Nobody to ask about. Record the decision so the check does not repeat on every
       // page of this visit.
@@ -449,13 +455,13 @@ export function useSessionGate() {
   }
 
   function keepExistingData(): void {
-    // There is nothing left to continue with. Once the delete has resolved the database
-    // is gone and cannot be brought back, so answering "continue" would write the
-    // session marker over a clear that never finished: the choice would disappear, the
-    // learner would be told nothing more, and an unknown amount of the previous learner's
-    // localStorage would still be on the machine. The surface rendering the choice
-    // withdraws the offer; this refuses it, because a guard that lives only in the markup
-    // is a guard the next caller does not have.
+    // Once the delete has resolved the database is gone and cannot be brought back, so
+    // "continue with this work" no longer describes what is on the machine. Answering it
+    // would write the session marker over a clear that never finished: the choice would
+    // disappear, the learner would be told nothing more, and an unknown amount of the
+    // previous learner's localStorage would still be on the machine. The surface
+    // rendering the choice withdraws the offer; this refuses it, because a guard that
+    // lives only in the markup is a guard the next caller does not have.
     if (databaseDeletedState.value) return
     // The second refusal, and the one that covers the longer window. A clear that has
     // been started put the stored work beyond knowing the moment its delete request was
@@ -475,10 +481,10 @@ export function useSessionGate() {
    * The one state with no other way out. A sweep that threw leaves `databaseDeleted` set,
    * and from there `keepExistingData` refuses, the markup withdraws that button, a retry
    * runs the whole clear again and, while the cause persists, stops at the sweep again,
-   * and `evaluate` returns early on the same flag. Nothing moves `decision` off
-   * `undecided`, so the deferred locale redirect — which waits on it — never runs: the
-   * learner sits behind a report they cannot close, on the wrong locale tree, until they
-   * reload the whole page by hand.
+   * and `evaluate` returns early on `clearStarted`, which that run left set. Nothing moves
+   * `decision` off `undecided`, so the deferred locale redirect — which waits on it —
+   * never runs: the learner sits behind a report they cannot close, on the wrong locale
+   * tree, until they reload the whole page by hand.
    *
    * Two guards. `clearError` is the report being acknowledged, and there is nothing to
    * acknowledge without one. `clearFailurePhase` must say the latest run failed in the
@@ -566,9 +572,13 @@ export function useSessionGate() {
     try {
       await deleteDatabase()
     } catch (err: unknown) {
-      // The choice stays up carrying the reason. Removing the local keys now would
-      // leave half a clear — the locale gone, the previous learner's sessions still
-      // there — and reloading would show a page that still holds their work.
+      // The choice stays up carrying the reason, and the sweep does not run. A delete
+      // rejected by an error left the database in place, so clearing the local keys
+      // alone would be half a clear; a held or timed-out delete may still go through,
+      // so nobody can say what the database holds. Reloading here as if the clear were
+      // done would hand the learner a page that may still hold the previous learner's
+      // work; the reload this state offers keeps the start record, so the choice comes
+      // back still withholding continue.
       clearErrorState.value = err instanceof Error ? err.message : String(err)
       clearFailurePhaseState.value = 'delete'
       clearInFlight = false
@@ -579,8 +589,9 @@ export function useSessionGate() {
     // Between the two halves, because only the first is irreversible. From here the
     // database is gone whatever the sweep does, so continuing with what it held stops
     // being something this platform can offer. Recorded on the fact that the delete
-    // returned, not on which failure follows: the failed-delete path above leaves
-    // everything intact, and continuing there is still exactly true.
+    // returned, not on which failure follows. The failed-delete path above does not set
+    // it, because there nothing is known to have been deleted; continue is withdrawn there
+    // by `clearStarted` instead, since a held or timed-out delete may still go through.
     databaseDeletedState.value = true
 
     try {
