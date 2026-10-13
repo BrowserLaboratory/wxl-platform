@@ -3,7 +3,7 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import {
   resetTruthEnvironment, mountRealGate, sentence, pressClearAndSettle, holdDatabase,
   withSweepFailing, bannedTermsIn, navigations, DATABASE_NAME, seedDatabase, storeNamesOnReopen, rowsOnReopen,
-  withDeleteNeverSettling, withDeleteFailing, pressClearPastDeleteBound,
+  withDeleteNeverSettling, withDeleteFailing, pressClearPastDeleteBound, withStartRecordRefused, inNewDocument, mountGateOnly,
 } from '../../__helpers__/sessionGateTruth'
 
 // The component resolves the site root through VitePress; the harness cannot mock it for us.
@@ -56,6 +56,48 @@ const UNCONFIRMED = {
     hint: '本站還有其他分頁開著同一份資料時，全站清除無法完成。請先關掉其他分頁，再重新載入。',
   },
 } as const
+
+/** `clear_retry_not_started_hint`, written out from the copy table. */
+const RETRY_HINT = {
+  'en': "This browser would not let the site record that the site-wide clear began, so nothing was deleted this time. "
+    + "Free up this browser's storage for this site, or use a normal window, then try again.",
+  'zh-TW': '這個瀏覽器不讓本站記下全站清除已經開始，所以這次沒有刪掉任何東西。請清出本站在這個瀏覽器的儲存空間，或改用一般視窗，再試一次。',
+} as const
+
+/** True when the retry notice comes after the report hint in the document. */
+function noticeFollowsReport(wrapper: Parameters<typeof sentence>[0]): boolean {
+  const hint = wrapper.find('[data-session-gate-report-hint]').element
+  const notice = wrapper.find('[data-session-gate-retry-hint]').element
+  return Boolean(hint.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING)
+}
+
+/** The not-started report a refused first run shows, unchanged by this epic. */
+const NOT_STARTED = {
+  'en': {
+    heading: 'The deletion was not started.',
+    hint: 'This browser would not let the site record that a deletion had begun, and starting one without that record '
+      + 'could later tell you your work was safe when it was not. Nothing was deleted. '
+      + "Free up this browser's storage for this site, or use a normal window, then try again.",
+  },
+  'zh-TW': {
+    heading: '刪除沒有開始。',
+    hint: '這個瀏覽器不讓本站記下「刪除已經開始」這件事，而在沒有這筆記錄的情況下開始刪除，之後可能會告訴你紀錄安然無恙、實際上卻不是。'
+      + '目前沒有刪掉任何東西。請清出這個網站在本瀏覽器的儲存空間，或改用一般視窗，再試一次。',
+  },
+} as const
+
+/**
+ * Press delete while the start record cannot be written, and let the refusal render.
+ *
+ * The bare click is enough here, unlike a run: the refusal is decided before the clear's
+ * first `await`, so it has fully happened when the click handler returns.
+ */
+async function pressRefused(wrapper: Parameters<typeof sentence>[0]): Promise<void> {
+  await withStartRecordRefused(async () => {
+    await wrapper.get('[data-session-gate-clear]').trigger('click')
+    await wrapper.vm.$nextTick()
+  })
+}
 
 /** The two exit labels besides delete, as the copy reads today (unchanged by this epic). */
 const EXIT = {
@@ -446,6 +488,145 @@ describe('session gate truth: a later run starts with the database again (T15)',
   })
 })
 
+describe('session gate truth: a refused press adds a notice and keeps the earlier report', () => {
+  it.each([['en'], ['zh-TW']] as const)('P10: after a sweep failure (%s)', async (locale) => {
+    const { body, heading, hint } = SWEEP_FAILED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+    const before = await indexedDB.databases()
+    const earlierError = sentence(wrapper, 'raw-error')
+    const deleteDatabase = vi.spyOn(indexedDB, 'deleteDatabase')
+
+    await pressRefused(wrapper)
+
+    // Nothing was sent to the database by this press.
+    expect(deleteDatabase).not.toHaveBeenCalled()
+    expect(await indexedDB.databases()).toEqual(before)
+
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(sentence(wrapper, 'retry-hint')).toBe(RETRY_HINT[locale])
+    expect(noticeFollowsReport(wrapper)).toBe(true)
+    expect(sentence(wrapper, 'raw-error')).toBe(earlierError)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: null, dismiss: EXIT[locale].dismiss })
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P10b: after a first delete that timed out (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withDeleteNeverSettling(() => pressClearPastDeleteBound(wrapper, gate))
+    const earlierError = sentence(wrapper, 'raw-error')
+    expect(earlierError).toContain('within the time limit')
+    const before = await indexedDB.databases()
+    const deleteDatabase = vi.spyOn(indexedDB, 'deleteDatabase')
+
+    await pressRefused(wrapper)
+
+    expect(deleteDatabase).not.toHaveBeenCalled()
+    expect(await indexedDB.databases()).toEqual(before)
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(sentence(wrapper, 'retry-hint')).toBe(RETRY_HINT[locale])
+    expect(noticeFollowsReport(wrapper)).toBe(true)
+    expect(sentence(wrapper, 'raw-error')).toBe(earlierError)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
+
+    // The same state on the site root (T29p): presented, with the same report and exits.
+    const root = await mountGateOnly(locale, false)
+    expect(sentence(root, 'report-heading')).toBe(heading)
+    expect(sentence(root, 'retry-hint')).toBe(RETRY_HINT[locale])
+    expect(exitsOnScreen(root)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('P10c: after a later delete that was held (%s)', async (locale) => {
+    const { body, heading, hint } = UNCONFIRMED[locale]
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(wrapper, gate))
+    const held = await holdDatabase()
+    try {
+      await pressClearPastDeleteBound(wrapper, gate)
+      const earlierError = sentence(wrapper, 'raw-error')
+      expect(earlierError).toContain('another tab still has it open')
+      const before = await indexedDB.databases()
+      const deleteDatabase = vi.spyOn(indexedDB, 'deleteDatabase')
+
+      await pressRefused(wrapper)
+
+      expect(deleteDatabase).not.toHaveBeenCalled()
+      expect(await indexedDB.databases()).toEqual(before)
+      expect(sentence(wrapper, 'body')).toBe(body)
+      expect(sentence(wrapper, 'report-heading')).toBe(heading)
+      expect(sentence(wrapper, 'report-hint')).toBe(hint)
+      expect(sentence(wrapper, 'retry-hint')).toBe(RETRY_HINT[locale])
+      expect(noticeFollowsReport(wrapper)).toBe(true)
+      expect(sentence(wrapper, 'raw-error')).toBe(earlierError)
+      expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
+
+      // On the site root too (T29p).
+      const root = await mountGateOnly(locale, false)
+      expect(sentence(root, 'retry-hint')).toBe(RETRY_HINT[locale])
+      expect(exitsOnScreen(root)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
+    } finally {
+      held.close()
+    }
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
+  })
+
+  it.each([
+    ['en', true], ['zh-TW', true], ['en', false],
+  ] as const)('P11r: in a new document after a delete that timed out (%s, challenge page: %s)', async (locale, isChallengePage) => {
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const first = await mountRealGate(locale)
+    await withDeleteNeverSettling(() => pressClearPastDeleteBound(first.wrapper, first.gate))
+    first.wrapper.unmount()
+
+    const { wrapper } = await inNewDocument(locale, isChallengePage)
+    // The record the earlier document left is what this one starts from.
+    expect(sessionStorage.getItem(CLEAR_STARTED_RECORD)).not.toBeNull()
+    const before = await indexedDB.databases()
+    const deleteDatabase = vi.spyOn(indexedDB, 'deleteDatabase')
+
+    await pressRefused(wrapper)
+
+    expect(deleteDatabase).not.toHaveBeenCalled()
+    expect(await indexedDB.databases()).toEqual(before)
+    expect(sentence(wrapper, 'body')).toBe(UNCONFIRMED[locale].body)
+    expect(sentence(wrapper, 'report-heading')).toBeNull()
+    expect(sentence(wrapper, 'report-hint')).toBeNull()
+    expect(sentence(wrapper, 'raw-error')).toBeNull()
+    expect(sentence(wrapper, 'retry-hint')).toBe(RETRY_HINT[locale])
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
+  })
+
+  it.each([
+    ['en', 'This browser already holds saved work for these challenges — requests, notes and flag attempts. '
+      + 'If the machine is shared, it may belong to whoever used it before you. '
+      + 'Nothing is deleted unless you choose to delete it.', 'Continue with this work'],
+    ['zh-TW', '這台瀏覽器裡已經存有這些題目的解題紀錄——請求、筆記與 flag 嘗試。'
+      + '如果這是共用的電腦，那可能是前一位使用者留下的。'
+      + '除非你選擇刪除，否則不會刪掉任何東西。', '沿用這些紀錄'],
+  ] as const)('P12: a refused first run shows what it showed before (%s)', async (locale, body, keep) => {
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { wrapper } = await mountRealGate(locale)
+    const deleteDatabase = vi.spyOn(indexedDB, 'deleteDatabase')
+
+    await pressRefused(wrapper)
+
+    expect(deleteDatabase).not.toHaveBeenCalled()
+    expect(sentence(wrapper, 'body')).toBe(body)
+    expect(sentence(wrapper, 'report-heading')).toBe(NOT_STARTED[locale].heading)
+    expect(sentence(wrapper, 'report-hint')).toBe(NOT_STARTED[locale].hint)
+    expect(sentence(wrapper, 'retry-hint')).toBeNull()
+    expect(sentence(wrapper, 'raw-error')).toBeNull()
+    expect(exitsOnScreen(wrapper)).toEqual({ keep, reload: null, dismiss: null })
+  })
+})
+
 describe('session gate truth: copy invariant CI-1 on the changed sentences', () => {
   it.each([['en'], ['zh-TW']] as const)('the sweep-failure sentences contain no banned term (%s)', (locale) => {
     for (const text of Object.values(SWEEP_FAILED[locale])) expect(bannedTermsIn(text, locale)).toEqual([])
@@ -453,6 +634,10 @@ describe('session gate truth: copy invariant CI-1 on the changed sentences', () 
 
   it.each([['en'], ['zh-TW']] as const)('the new unconfirmed hint contains no banned term (%s)', (locale) => {
     expect(bannedTermsIn(UNCONFIRMED[locale].hint, locale)).toEqual([])
+  })
+
+  it.each([['en'], ['zh-TW']] as const)('the retry notice contains no banned term (%s)', (locale) => {
+    expect(bannedTermsIn(RETRY_HINT[locale], locale)).toEqual([])
   })
 })
 

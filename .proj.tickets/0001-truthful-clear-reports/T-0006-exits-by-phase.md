@@ -144,5 +144,6 @@ desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same
 
 ### 2026-10-13 — landed
 
-Squash-merged into `main` as `f5889ce` by the user, through pull request #7 of this repository; every check on
-the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set to `done`.
+Squash-merged into `main` as `f5889ce` by the user, through pull request #7 of this repository; every check
+on the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set
+to `done`.

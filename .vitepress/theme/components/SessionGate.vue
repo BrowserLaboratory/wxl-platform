@@ -34,7 +34,7 @@ import { withBase } from 'vitepress'
  */
 const props = defineProps<{ isChallengePage: boolean }>()
 
-const { shouldAsk, clearError, clearFailurePhase, databaseDeleted, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
+const { shouldAsk, clearError, clearFailurePhase, clearRefused, databaseDeleted, clearStarted, keepExistingData, clearEverything, dismissClearFailure } = useSessionGate()
 
 /**
  * Whether to put anything on screen here.
@@ -78,11 +78,13 @@ function onReload(): void {
 }
 
 /**
- * Whether the reported failure is that the clear never began.
+ * Whether the reported failure is that a first clear never began.
  *
  * Its own branch because nothing was requested on that path: no deletion is queued, the
  * stored work really is untouched, and continuing with it is still exactly true — so the
- * report has to say that rather than borrow the sentence for an outcome nobody knows.
+ * report has to say that rather than borrow the sentence for an outcome nobody knows. A
+ * refusal after an earlier run never reaches it: that run's report stays, with the retry
+ * notice beneath, because its delete may still be queued.
  */
 const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
 </script>
@@ -147,9 +149,10 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
       </p>
 
       <!--
-        Shown only after a clear that did not finish. The choice deliberately stays on
-        screen: reloading here would hand the learner a page that still holds the
-        previous learner's work while telling them it had been cleared.
+        Shown after a clear that did not finish, and after a press refused because the
+        start record could not be written. The choice deliberately stays on screen:
+        reloading here would hand the learner a page that still holds the previous
+        learner's work while telling them it had been cleared.
 
         Which failure, not merely that one happened. The clear has two halves and they
         leave the machine in different states: a delete that did not finish — held by
@@ -160,32 +163,43 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         write succeed. One message for both was false in every clause on the second path,
         and it named the only remedy on screen knowing it could not work.
 
-        In order: a start that never happened has its own report, read before anything
-        about the earlier run; then the half the latest started run failed in, not whether
+        The report follows the error, in order: a first run that never started has its
+        own report — only a first run, since a refusal after an earlier run leaves that
+        run's error in place; then the half the latest started run failed in, not whether
         some delete ever resolved in this document — a later run whose delete is held after
         an earlier sweep failure is a delete that did not finish, whatever the flag says;
         every other error falls through to the unconfirmed report, the one that claims
-        least.
+        least. With no error there is no report, and the box holds the refusal notice
+        alone.
       -->
       <div
-        v-if="clearError"
+        v-if="clearError || clearRefused"
         data-session-gate-error
         role="alert"
         class="mb-4 px-3 py-2 rounded-lg border border-[var(--ch-border)] bg-[var(--ch-bg-soft)]"
       >
-        <template v-if="clearNotStarted">
-          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_not_started') }}</p>
-          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_not_started_hint') }}</p>
+        <template v-if="clearError">
+          <template v-if="clearNotStarted">
+            <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_not_started') }}</p>
+            <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_not_started_hint') }}</p>
+          </template>
+          <template v-else-if="clearFailurePhase === 'sweep'">
+            <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
+            <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
+          </template>
+          <template v-else>
+            <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_unconfirmed') }}</p>
+            <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_unconfirmed_hint') }}</p>
+          </template>
+          <p v-if="!clearNotStarted" data-session-gate-raw-error class="m-0 mt-1 text-[0.75em] opacity-70 font-mono">{{ clearError }}</p>
         </template>
-        <template v-else-if="clearFailurePhase === 'sweep'">
-          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.sweep_failed') }}</p>
-          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.sweep_failed_hint') }}</p>
-        </template>
-        <template v-else>
-          <p data-session-gate-report-heading class="m-0 text-[0.85em] font-semibold">{{ $t('session_gate.clear_unconfirmed') }}</p>
-          <p data-session-gate-report-hint class="m-0 mt-1 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_unconfirmed_hint') }}</p>
-        </template>
-        <p v-if="!clearNotStarted" data-session-gate-raw-error class="m-0 mt-1 text-[0.75em] opacity-70 font-mono">{{ clearError }}</p>
+        <!--
+          The refusal notice. A press refused after an earlier run adds it beneath whatever
+          that run left, and replaces none of it: that run's report is still the truth about
+          this browser, and its delete may still be queued. In a new document there may be no report
+          above it at all, only the record that a run was started; then this stands alone.
+        -->
+        <p v-if="clearRefused" data-session-gate-retry-hint class="m-0 mt-2 text-[0.8em] color-[var(--ch-text-2)]">{{ $t('session_gate.clear_retry_not_started_hint') }}</p>
       </div>
 
       <!--
@@ -231,10 +245,12 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
           this page in place, and here the deletion may still be queued, so the attack
           session held in a closure would be written back on the next event. It writes no
           decision marker and resolves nothing — the started record outlives the load and
-          the choice comes back still withholding continue.
+          the choice comes back still withholding continue. The refusal notice counts as a
+          report here: in a new document it can stand alone over a delete an earlier
+          document left queued, and reload is still the only way out of that.
         -->
         <button
-          v-if="clearError && clearStarted && clearFailurePhase !== 'sweep'"
+          v-if="(clearError || clearRefused) && clearStarted && clearFailurePhase !== 'sweep'"
           data-session-gate-reload
           type="button"
           class="ch-view-btn flex-1 min-w-[10rem] py-2"

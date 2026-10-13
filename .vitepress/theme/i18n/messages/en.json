@@ -133,7 +133,8 @@
     "clear_unconfirmed_hint": "The site-wide clear cannot finish while another tab of this site has the data open. Close any other tabs, then reload.",
     "reload": "Reload and start over",
     "clear_not_started": "The deletion was not started.",
-    "clear_not_started_hint": "This browser would not let the site record that a deletion had begun, and starting one without that record could later tell you your work was safe when it was not. Nothing was deleted. Free up this browser's storage for this site, or use a normal window, then try again."
+    "clear_not_started_hint": "This browser would not let the site record that a deletion had begun, and starting one without that record could later tell you your work was safe when it was not. Nothing was deleted. Free up this browser's storage for this site, or use a normal window, then try again.",
+    "clear_retry_not_started_hint": "This browser would not let the site record that the site-wide clear began, so nothing was deleted this time. Free up this browser's storage for this site, or use a normal window, then try again."
   },
   "attack_log_import": {
     "title": "Import attack log",

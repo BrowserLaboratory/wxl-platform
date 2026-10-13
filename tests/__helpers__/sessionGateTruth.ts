@@ -66,10 +66,20 @@ export async function mountRealGate(locale: Locale, isChallengePage = true): Pro
   return { gate, wrapper }
 }
 
+/**
+ * Mount one more gate in the current document, without evaluating again: the same module
+ * state, rendered for another kind of page — what an in-site navigation to that page shows.
+ */
+export async function mountGateOnly(locale: Locale, isChallengePage: boolean): Promise<VueWrapper> {
+  const { default: SessionGate } = await import('../../.vitepress/theme/components/SessionGate.vue')
+  const i18n = createI18n({ legacy: false, locale, fallbackLocale: 'en', messages: { en, 'zh-TW': zhTW } })
+  return mount(SessionGate, { props: { isChallengePage }, global: { plugins: [i18n] } })
+}
+
 /** Every part of the gate a truth test reads, by its `data-session-gate-<part>` marker. */
 export type GatePart =
   | 'title' | 'body'
-  | 'report-heading' | 'report-hint' | 'raw-error'
+  | 'report-heading' | 'report-hint' | 'retry-hint' | 'raw-error'
   | 'keep' | 'clear' | 'reload' | 'dismiss'
 
 /**
@@ -217,6 +227,26 @@ function openNative(): Promise<IDBDatabase> {
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
+}
+
+/**
+ * Fault F4: the start record cannot be written while `fn` runs (`sessionStorage.setItem` throws).
+ *
+ * Reads still work, so a record an earlier run or an earlier document wrote stays readable.
+ */
+export function withStartRecordRefused<T>(fn: () => Promise<T>): Promise<T> {
+  return withStorageMethodReplaced(sessionStorage, 'setItem', () => {
+    throw new DOMException('injected: setItem refused', 'SecurityError')
+  }, fn)
+}
+
+/**
+ * Fault F6: a new document. The modules are re-imported, so every module-level state starts
+ * again, while both storages and the database are kept, as a page load keeps them.
+ */
+export async function inNewDocument(locale: Locale, isChallengePage = true): Promise<Awaited<ReturnType<typeof mountRealGate>>> {
+  vi.resetModules()
+  return mountRealGate(locale, isChallengePage)
 }
 
 /**
