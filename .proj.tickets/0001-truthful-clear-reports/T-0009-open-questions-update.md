@@ -163,3 +163,10 @@ write the previous learner's content back (verified by reading `usePentestNotes.
 The title widened from "the attack session" to "state held in memory"; the timing during the delete and whose attack
 session is written back were corrected and kept as inferred. For the epic's chain analysis: this is the strongest
 "writes after the delete" link found in the epic.
+
+### 2026-10-14 — stage 8 end-to-end
+
+Surface: the Cloudflare Pages preview of `eca83f1`, in the Claude desktop app's Browser panel, zh-TW `door-is-open`.
+The ticket changes no product code, so the check is that the built site serves the gate as on `main`: with a note draft
+planted and `sessionStorage` cleared, a reload showed P0 — the title, the standing body, continue and clear, no dismiss or
+reload. The new P11a behaviour was checked in this browser on T-0008's preview (stage 8 there).
