@@ -2,7 +2,7 @@
 id: T-0007
 title: A refused run adds a notice and keeps earlier state
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0006]
 ---
 
@@ -159,3 +159,9 @@ patching `Storage.prototype.setItem` to throw for `sessionStorage`.
 - P15: the second tab closed, the challenge page reloaded, delete pressed with no fault: no gate, the draft removed, the
   marker written, the page at `/zh-TW/`.
 - The challenge's Browser panel shows FileHub's sign-in page.
+
+### 2026-10-13 — landed
+
+Squash-merged into `main` as `7c85be2` by the user, through pull request #8 of this repository; every check
+on the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set
+to `done`.
