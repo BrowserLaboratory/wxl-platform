@@ -274,6 +274,43 @@ describe('session gate truth: P5, the sweep failed after learner rows were delet
   })
 })
 
+describe('session gate truth: P11a, a new document after a sweep failure', () => {
+  // The learner reloads by hand after P5. The new document restores the start record and
+  // nothing else: no run of its own has failed, so there is no report to show, and the flag
+  // that the earlier document set is not carried over.
+  it.each([
+    ['en', true, 'Is this your work?', 'Delete it and start fresh'],
+    ['zh-TW', true, '這些紀錄是你的嗎？', '刪除並重新開始'],
+    ['en', false, 'Is this your work?', 'Delete it and start fresh'],
+  ] as const)('says only that nothing is confirmed (%s, challenge page: %s)', async (locale, isChallengePage, title, clear) => {
+    await seedDatabase([{ store: 'pentest-notes', value: { id: 'n1', challengeSlug: 'door-is-open' } }])
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    expect(await rowsOnReopen('pentest-notes')).toHaveLength(1)
+    const first = await mountRealGate(locale)
+    await withSweepFailing(() => pressClearAndSettle(first.wrapper, first.gate))
+    expect(first.gate.clearFailurePhase.value).toBe('sweep')
+    first.wrapper.unmount()
+
+    const { gate, wrapper } = await inNewDocument(locale, isChallengePage)
+
+    // The record the earlier document left, and a database with nothing in it: the delete
+    // went through, and nothing in this document reopened it.
+    expect(sessionStorage.getItem(CLEAR_STARTED_RECORD)).not.toBeNull()
+    expect(gate.databaseDeleted.value).toBe(false)
+    expect(await indexedDB.databases()).toEqual([])
+    expect(await storeNamesOnReopen()).toEqual([])
+
+    expect(sentence(wrapper, 'title')).toBe(title)
+    expect(sentence(wrapper, 'body')).toBe(UNCONFIRMED[locale].body)
+    expect(sentence(wrapper, 'clear')).toBe(clear)
+    expect(sentence(wrapper, 'report-heading')).toBeNull()
+    expect(sentence(wrapper, 'report-hint')).toBeNull()
+    expect(sentence(wrapper, 'raw-error')).toBeNull()
+    expect(sentence(wrapper, 'retry-hint')).toBeNull()
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: null, dismiss: null })
+  })
+})
+
 describe('session gate truth: P7, a later run blocked after a sweep failure', () => {
   it.each([['en'], ['zh-TW']] as const)('P7: reports the delete that did not finish, not the sweep (%s)', async (locale) => {
     const { body, heading, hint } = UNCONFIRMED[locale]

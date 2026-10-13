@@ -2,7 +2,7 @@
 id: T-0008
 title: Retire stale gate comments and tests
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0007]
 ---
 
@@ -189,3 +189,9 @@ on `main`:
 - P15: clear again (the fault gone with the reload): the page went to the site root and on to `/zh-TW/`; no gate; the draft
   removed, `wxl-locale` kept, the decision marker written, no database.
 - FileHub: the challenge page with no gate, and the in-page browser's Go loaded the FileHub sign-in page.
+
+### 2026-10-14 — landed
+
+Squash-merged into `main` as `fb2091d` by the user, through pull request #9 of this repository; every check
+on the pull request passed (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). Status set
+to `done`.
