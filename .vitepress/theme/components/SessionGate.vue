@@ -206,11 +206,14 @@ const clearNotStarted = computed(() => clearError.value === CLEAR_NOT_STARTED)
         Two buttons, styled alike. Neither takes `autofocus` and neither is drawn as
         the primary one — a visually louder button is a default in everything but name.
 
-        Continue is withdrawn once the database delete has resolved, not greyed out: a
-        disabled control leaves the offer written on screen and refuses to honour it,
-        and the offer is the untrue part once the database it would continue with is
-        gone. Clear stays, because it is the same action already begun and retrying the
-        whole site-wide clear, starting with the database, is truthful.
+        Continue is withdrawn from the moment a clear is started (`clearStarted`);
+        `databaseDeleted` is read as well, as a second guard, though in every state where
+        this choice is on screen with the flag set `clearStarted` is set too. Withdrawn,
+        not greyed out: a disabled control leaves the offer written on screen and refuses
+        to honour it, and the offer is the untrue part once a delete may be queued or the
+        database it would continue with is gone. Clear stays, because it is the same action
+        already begun and retrying the whole site-wide clear, starting with the database,
+        is truthful.
       -->
       <div class="flex flex-wrap gap-3">
         <button

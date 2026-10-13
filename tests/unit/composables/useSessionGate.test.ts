@@ -417,8 +417,9 @@ describe('useSessionGate', () => {
     await gate.evaluate()
     await gate.clearEverything(vi.fn())
 
-    // Half a clear is worse than none: the locale would be gone while the previous
-    // learner's sessions stayed.
+    // The sweep does not run after a failed delete, so the keys stay. The Repeater
+    // snapshots are the key that shows it: the locale is exempt from the clear and would
+    // stay either way.
     expect(localStore['wxl-locale']).toBe('zh-TW')
     expect(localStore['challenge-door-is-open.localhost:repeater-snapshots']).toBe('[]')
   })
@@ -459,7 +460,8 @@ describe('useSessionGate', () => {
 
   // Clearing has two halves and only the first cannot be undone. The sweep runs after the
   // database is already gone, and a sweep that fails keeps the choice on screen — at
-  // which point there is no database left for "continue with this work" to mean.
+  // which point "continue with this work" no longer describes what is on the machine:
+  // the database is gone, and an unknown part of the localStorage residue is left.
   async function reachDeletedDatabase() {
     storeContents['attack-sessions'] = [{ sessionId: 's1' }]
     localStore['wxl-locale'] = 'zh-TW'
@@ -636,10 +638,12 @@ describe('useSessionGate', () => {
   it('a later check does not dismiss the choice by itself once the database is gone', async () => {
     const { gate, GATE_STORAGE_KEY } = await reachDeletedDatabase()
 
-    // What a re-run of the detection would see: the stores are gone, so they answer
-    // empty, and the un-swept residue is a note draft removed here by hand to reach the
-    // branch. Writing the marker there would take the failure report off the screen and
-    // record an answer the learner never gave.
+    // What a re-run of the detection would see if it got that far: the stores answer
+    // empty, and the un-swept residue, a note draft, is removed here by hand so that no
+    // learner data is left to ask about. It does not get that far: the run left
+    // `clearStarted` set, and `evaluate` returns on that first. Writing the marker here
+    // would take the failure report off the screen and record an answer the learner
+    // never gave.
     storeContents['attack-sessions'] = []
     delete localStore['pentest-draft-door-is-open']
     await gate.evaluate()
@@ -657,8 +661,9 @@ describe('useSessionGate', () => {
     // Everything that could have moved the decision is gone by here: continue refuses on
     // `databaseDeleted`, the markup withdraws it, a retry runs the whole clear again and,
     // while the cause persists, stops at the sweep again, and a later `evaluate` returns
-    // early on the same flag. Without this the decision stays `undecided` for the life of
-    // the page, and the deferred locale redirect — which waits on it — never runs.
+    // early on `clearStarted`, which the run left set. Without this the decision stays
+    // `undecided` for the life of the page, and the deferred locale redirect — which
+    // waits on it — never runs.
     expect(gate.decision.value).toBe('undecided')
 
     gate.dismissClearFailure()
