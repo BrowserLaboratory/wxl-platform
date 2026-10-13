@@ -457,12 +457,16 @@ export function useSessionGate() {
    * learner sits behind a report they cannot close, on the wrong locale tree, until they
    * reload the whole page by hand.
    *
-   * Two guards, because the trapped state is the conjunction of two facts and each guard
-   * reads exactly one of them. `clearError` is the report being acknowledged, and there is
-   * nothing to acknowledge without one. `databaseDeleted` is what removed the other exits:
-   * on the delete-failed path nothing was destroyed, continue is still on screen and still
-   * honoured, so the question is live and answerable and this must not stand in for an
-   * answer. Neither fact implies the other, so neither guard covers for the other.
+   * Two guards. `clearError` is the report being acknowledged, and there is nothing to
+   * acknowledge without one. `clearFailurePhase` must say the latest run failed in the
+   * sweep: only then has that run's delete resolved, and since deletes of one database
+   * are processed in order, every delete issued before it has finished too, so nothing
+   * is still pending. When the latest delete did not finish — held, out of time, or
+   * rejected for another reason — the request may still go through, and a page left to
+   * carry on would save the attack session it holds in memory straight back; the way out
+   * there is a reload. The flag cannot stand in for the phase: after a sweep failure it
+   * stays set through a later run whose delete is held, which is exactly the state this
+   * must refuse.
    *
    * No marker is written, and that is the whole difference between this and an answer.
    * The question — whose work is this — was never answered; the clear stopped half way and
@@ -473,7 +477,7 @@ export function useSessionGate() {
    */
   function dismissClearFailure(): void {
     if (clearErrorState.value === null) return
-    if (!databaseDeletedState.value) return
+    if (clearFailurePhaseState.value !== 'sweep') return
     shouldAskState.value = false
     decisionState.value = 'dismissed'
   }

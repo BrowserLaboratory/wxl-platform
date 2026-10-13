@@ -57,6 +57,17 @@ const UNCONFIRMED = {
   },
 } as const
 
+/** The two exit labels besides delete, as the copy reads today (unchanged by this epic). */
+const EXIT = {
+  'en': { reload: 'Reload and start over', dismiss: 'Close this report and carry on' },
+  'zh-TW': { reload: '重新載入並重來', dismiss: '關掉這則說明，繼續使用' },
+} as const
+
+/** Which of continue, reload and dismiss are on screen, by their exact labels. */
+function exitsOnScreen(wrapper: Parameters<typeof sentence>[0]) {
+  return { keep: sentence(wrapper, 'keep'), reload: sentence(wrapper, 'reload'), dismiss: sentence(wrapper, 'dismiss') }
+}
+
 /**
  * What the platform writes on its own when a challenge page first opens: not learner
  * evidence. The harness's own test below shows the platform's detection does not count it.
@@ -246,6 +257,7 @@ describe('session gate truth: P7, a later run blocked after a sweep failure', ()
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
   })
 })
 
@@ -262,6 +274,7 @@ describe('session gate truth: deletes that did not finish', () => {
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
   })
 
   it.each([['en'], ['zh-TW']] as const)('P8: a later run whose delete timed out after a sweep failure (%s)', async (locale) => {
@@ -277,6 +290,7 @@ describe('session gate truth: deletes that did not finish', () => {
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
   })
 
   it.each([['en'], ['zh-TW']] as const)('P3x: a first run whose delete failed for another reason (%s)', async (locale) => {
@@ -290,6 +304,7 @@ describe('session gate truth: deletes that did not finish', () => {
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
   })
 
   it.each([['en'], ['zh-TW']] as const)('P2: a first run whose delete another tab held (%s)', async (locale) => {
@@ -305,6 +320,7 @@ describe('session gate truth: deletes that did not finish', () => {
       expect(sentence(wrapper, 'body')).toBe(body)
       expect(sentence(wrapper, 'report-heading')).toBe(heading)
       expect(sentence(wrapper, 'report-hint')).toBe(hint)
+      expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
     } finally {
       held.close()
     }
@@ -329,6 +345,7 @@ describe('session gate truth: deletes that did not finish', () => {
       expect(sentence(wrapper, 'body')).toBe(body)
       expect(sentence(wrapper, 'report-heading')).toBe(heading)
       expect(sentence(wrapper, 'report-hint')).toBe(hint)
+      expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: EXIT[locale].reload, dismiss: null })
     } finally {
       held.close()
     }
@@ -350,6 +367,7 @@ describe('session gate truth: runs that end on the sweep, and a run in flight', 
       expect(sentence(wrapper, 'body')).toBe(UNCONFIRMED[locale].body)
       expect(sentence(wrapper, 'report-heading')).toBeNull()
       expect(sentence(wrapper, 'raw-error')).toBeNull()
+      expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: null, dismiss: null })
     } finally {
       held.close()
     }
@@ -372,6 +390,7 @@ describe('session gate truth: runs that end on the sweep, and a run in flight', 
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: null, dismiss: EXIT[locale].dismiss })
   })
 
   it.each([['en'], ['zh-TW']] as const)('P14: a held first run, then a later run whose sweep failed (%s)', async (locale) => {
@@ -395,6 +414,35 @@ describe('session gate truth: runs that end on the sweep, and a run in flight', 
     expect(sentence(wrapper, 'body')).toBe(body)
     expect(sentence(wrapper, 'report-heading')).toBe(heading)
     expect(sentence(wrapper, 'report-hint')).toBe(hint)
+    expect(exitsOnScreen(wrapper)).toEqual({ keep: null, reload: null, dismiss: EXIT[locale].dismiss })
+  })
+})
+
+describe('session gate truth: a later run starts with the database again (T15)', () => {
+  it('deletes the database again after a sweep failure, rather than retrying only the sweep', async () => {
+    localStorage.setItem(NOTE_DRAFT, 'a draft the previous learner typed')
+    const { gate, wrapper } = await mountRealGate('en')
+
+    // F1 stays in place for both runs: if the later run went straight to the sweep, it
+    // would fail there again and record a sweep failure.
+    await withSweepFailing(async () => {
+      await pressClearAndSettle(wrapper, gate)
+      expect(gate.clearFailurePhase.value).toBe('sweep')
+
+      const held = await holdDatabase()
+      try {
+        await pressClearPastDeleteBound(wrapper, gate)
+
+        // The later run asked for the database to be deleted, and stopped there.
+        expect(held.deleteRequested()).toBe(true)
+        expect(gate.clearFailurePhase.value).toBe('delete')
+        expect(sentence(wrapper, 'raw-error')).toContain('another tab still has it open')
+        expect(localStorage.getItem(NOTE_DRAFT)).toBe('a draft the previous learner typed')
+      } finally {
+        held.close()
+      }
+    })
+    await vi.waitFor(async () => expect(await indexedDB.databases()).toEqual([]))
   })
 })
 
