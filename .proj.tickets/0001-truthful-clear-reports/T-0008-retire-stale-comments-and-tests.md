@@ -173,3 +173,19 @@ the `evaluate` guard's comment written in stage 6 claimed a protection that does
 `cleared`, and `evaluate` runs once, at mount); it now states a defence in depth that no path reaches today. C2, C4, C5:
 wording made exact. C3 left (the hold's purpose goes to T-0009); C6 already recorded for T-0009. A note for the epic's chain
 analysis: the guards' unreachability rests on `evaluate` running once per document.
+
+### 2026-10-14 — stage 8 end-to-end
+
+Surface: the Cloudflare Pages preview of `4374fc1`, in the Claude desktop app's Browser panel, one tab, zh-TW
+`door-is-open` (the stored locale redirected there). The change has no behaviour, so the check is that the gate behaves as
+on `main`:
+
+- P0: a note draft planted and `sessionStorage` cleared, then a reload: the standing body; continue and clear; no report,
+  dismiss or reload.
+- P4: `Storage.prototype.removeItem` made to throw for `localStorage` in the page, then clear: the cleared body, the sweep
+  report and hint, the raw error "injected: removeItem refused"; clear and dismiss, no continue or reload;
+  `indexedDB.databases()` empty and the draft still there.
+- P11a: a reload by hand: the unconfirmed body with no report; clear only; the start record in `sessionStorage`.
+- P15: clear again (the fault gone with the reload): the page went to the site root and on to `/zh-TW/`; no gate; the draft
+  removed, `wxl-locale` kept, the decision marker written, no database.
+- FileHub: the challenge page with no gate, and the in-page browser's Go loaded the FileHub sign-in page.
