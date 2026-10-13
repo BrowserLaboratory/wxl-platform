@@ -48,8 +48,9 @@ export const CLEAR_STARTED = 'started'
  *   `dismissClearFailure`.
  * - `cleared` — a site-wide clear confirmed success and the page is being reloaded.
  *
- * The locale redirect in `index.ts` waits on this whenever the session has no recorded
- * decision; the comment there says what that hold does and does not protect. Every value
+ * The locale redirect in `index.ts` waits on this on a page that puts the choice on
+ * screen; the comment there says when it is held and what that hold does and does not
+ * protect. Every value
  * other than `cleared` leaves the page in place and therefore releases it; `cleared` is
  * the one that does not, because a full page load is already coming.
  */
@@ -170,8 +171,8 @@ const clearStartedState = ref(false)
  * replaces the page with a load of the site root, which is not a challenge page. Confining
  * the recovery to challenge pages would put it out of reach from exactly where the learner
  * lands. `databaseDeleted` is read as well, as a second guard: in every state where the
- * gate is asked to show, `clearStarted` is already set, and the flag alone is never what
- * puts the recovery on a page.
+ * gate is asked to show with the flag set, `clearStarted` is set too, so with `evaluate`
+ * running once at mount the flag alone is never what puts the recovery on a page.
  *
  * Callers read this inside a `computed`, which is what makes it reactive: every ref it
  * touches is one of this module's own.
@@ -434,13 +435,12 @@ export function useSessionGate() {
     }
 
     if (!hasData) {
-      // The other place that dismisses the choice without the learner answering it. After
-      // a clear stopped at the sweep, a re-run of this check returns on `clearStarted`
-      // above and never gets here. The flag is set here with `clearStarted` clear only in
-      // one window: a clear that succeeded has forgotten its start record and not yet
-      // reloaded, and the marker it wrote did not stick. There `decision` is `cleared`,
-      // which the deferred locale redirect reads as "a full page load is already coming";
-      // writing `not-needed` over it would release a navigation into that reload.
+      // The other place that dismisses the choice without the learner answering it, and
+      // a defence in depth: once a delete has resolved in this document, an empty answer
+      // from this check is no reason to record a decision. No path reaches it with the
+      // flag set today: after a clear stopped at the sweep `clearStarted` returns above,
+      // and `evaluate` runs once per document, at mount, before any clear can start. It
+      // stays so that a later caller of `evaluate` does not inherit the gap.
       if (databaseDeletedState.value) return
       // Nobody to ask about. Record the decision so the check does not repeat on every
       // page of this visit.
@@ -572,11 +572,13 @@ export function useSessionGate() {
     try {
       await deleteDatabase()
     } catch (err: unknown) {
-      // The choice stays up carrying the reason, and the sweep does not run: clearing
-      // the local keys beside a database whose fate is unknown would leave a clear that
-      // is neither done nor undone. A held or timed-out delete may still go through, so
-      // nobody can say what the database holds, and reloading would hand the learner a
-      // page that may still hold the previous learner's work.
+      // The choice stays up carrying the reason, and the sweep does not run. A delete
+      // rejected by an error left the database in place, so clearing the local keys
+      // alone would be half a clear; a held or timed-out delete may still go through,
+      // so nobody can say what the database holds. Reloading here as if the clear were
+      // done would hand the learner a page that may still hold the previous learner's
+      // work; the reload this state offers keeps the start record, so the choice comes
+      // back still withholding continue.
       clearErrorState.value = err instanceof Error ? err.message : String(err)
       clearFailurePhaseState.value = 'delete'
       clearInFlight = false

@@ -51,8 +51,9 @@ The guard at `useSessionGate.ts` 438 is not dead code (it holds between a succes
 reload), so only its comment changes.
 
 
-The last sentence above overstated: see the stage 6 table (Standards F1, Spec F3). The guard is reachable only when a
-successful clear's marker write did not stick and `evaluate` runs again before the reload, and no test reaches it.
+The last sentence above was wrong: see the stage 6 table (Standards F1, Spec F3) and stage 7 (C1). No path reaches the
+guard with the flag set today (`evaluate` runs once per document, at mount, before any clear), and no test reaches it; it
+is kept as a defence in depth.
 
 ### 2026-10-14 — AC-11: each T38 location (line numbers at `72327e2`)
 
@@ -91,7 +92,7 @@ snapshots as the key that shows the sweep did not run.
 | | 96-106 | private flag doc | rewritten in T-0001; no retired claim | unchanged |
 | | 141-144 | `shouldPresentGateHere` doc | "`databaseDeleted` is the same state one step later … and it outlives `clearStarted`" (claim 4; T-0006 F11 "on presentation") | changed: the flag is a second guard; `clearStarted` is set in every state where the gate is asked to show |
 | | 294-309 | public `databaseDeleted` and `clearStarted` docs | rewritten in T-0001 and T-0005; `clearStarted`'s states the body order of `traceability.md` | unchanged |
-| | 378-383 | `evaluate` guard | "the object stores really are empty" (T-0005 Spec 11); the scenario it gave returns on `clearStarted` first (claim 4) | changed (B4): names the one window the guard covers and what it protects (`cleared` against a redirect racing the reload) |
+| | 378-383 | `evaluate` guard | "the object stores really are empty" (T-0005 Spec 11); the scenario it gave returns on `clearStarted` first (claim 4) | changed (B4): a defence in depth that no path reaches today; corrected again in stage 7 (C1) |
 | | 398-404 | `keepExistingData` | "There is nothing left to continue with" (claim 1; T-0006 F11) | changed (B5) |
 | | 418-433 | `dismissClearFailure` doc | rewritten in T-0006 and T-0007 to the Dismiss rule; "returns early on the same flag" left (claim 4) | changed (B6) |
 | | 473-477 | start-record comment in `clearEverything` | "continuing really is still true and the offer stays" (claim 3) was scoped to a first run in T-0007 | unchanged |
@@ -124,7 +125,7 @@ in the `clearStarted` doc is an account of the measured incident that motivated 
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| S1 composable, S2 component (mocked) | unchanged assertions; 124 files, 2170 tests before and after | Not measured: no coverage provider (user decision, T-0001) | AC-11, AC-12 (tables above) | `useSessionGate.ts` `if (databaseDeletedState.value) return` in `evaluate` and the `!databaseDeleted` term of the continue `v-if` are reached by no test; the first only behind a marker write that did not stick, the second never alone. Adding tests is outside this ticket; recorded for T-0009 |
+| S1 composable, S2 component (mocked) | unchanged assertions; 124 files, 2170 tests before and after | Not measured: no coverage provider (user decision, T-0001) | AC-11, AC-12 (tables above) | `useSessionGate.ts` `if (databaseDeletedState.value) return` in `evaluate` and the `!databaseDeleted` term of the continue `v-if` are reached by no test; the first by no path today (`evaluate` runs once, at mount), the second never alone. Adding tests is outside this ticket; recorded for T-0009 |
 | S3 built site | `pnpm build`; `pnpm test:smoke` (18); `pnpm test:challenges` (4) | Not measured | AC 3 (unit suite and smoke) | — |
 | Configuration and types | `python3 scripts/verify-project.py` PASS; `vue-tsc` 100 errors, the baseline (the one in `index.ts` at line 216 predates this change) | Not measured | — | — |
 
@@ -136,7 +137,7 @@ fixed under the user's standing authorisation unless stated.
 
 | Finding | Disposition |
 |---|---|
-| Standards F1, Spec F3: B4's comment gave the wrong window and reason; "not dead code" overstated; "finds no rows" restated the round-2 K-4 claim | Fixed: the comment names the window (successful clear, marker write did not stick, before reload) and what it protects; the overstatement is corrected above |
+| Standards F1, Spec F3: B4's comment gave the wrong window and reason; "not dead code" overstated; "finds no rows" restated the round-2 K-4 claim | Fixed, but the new reason (protecting `cleared` from a redirect racing the reload) was itself wrong; corrected in stage 7 (C1) |
 | Standards F2, Spec F7: "the locale would be gone" in a test comment | Fixed (outside the T38 list, recorded under AC-11) |
 | Standards F3, Spec F8: the keyword-sweep record could not be reproduced | Fixed: the sweep is recorded as a phrase sweep with its phrases, and the single word "gone" is accounted for |
 | Standards F4: coverage table columns | Fixed: the workflow's five columns |
@@ -161,3 +162,14 @@ fixed under the user's standing authorisation unless stated.
 | Spec F16: round-2 P2 items and T-0005 Spec 11's test half not dispositioned | Fixed: K-4's `dismissed` sentence under AC-12; "the work really is gone" recorded as removed earlier; C-3 and V-5 are the T38 mapping itself, now rebuilt |
 | Spec F17: "keeps continue offered" reads as general | No change: scoped by its `describe`; recorded under AC-11 |
 | Spec F18: "Both answers are gone" beside clear always shown | No change: existing wording, qualified by "while its cause persists" |
+
+### 2026-10-14 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0008.md`. One candidate pass, then an independent
+false-positive pass over all six candidates, since the candidate reviewer had filtered its own; the parent checked
+`index.ts` for `evaluate`'s single call site and the decision watcher; commit messages scanned. No confirmed security
+defect; the change is comments and Markdown only. Fixed under the standing authorisation (in scope, no behaviour): C1 —
+the `evaluate` guard's comment written in stage 6 claimed a protection that does not exist (the watcher stops on
+`cleared`, and `evaluate` runs once, at mount); it now states a defence in depth that no path reaches today. C2, C4, C5:
+wording made exact. C3 left (the hold's purpose goes to T-0009); C6 already recorded for T-0009. A note for the epic's chain
+analysis: the guards' unreachability rests on `evaluate` running once per document.
