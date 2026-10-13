@@ -132,3 +132,12 @@ After the fixes, run one at a time: vitest 124 files, 2,170 tests passed; `pnpm 
 test taking 46.9 s against a usual 5–6 s. At the time, operating-system background processes were using much of the CPU.
 The cause is not established; it is the same local failure already raised as a separate task, and the pull
 request's challenge job is the deciding surface.
+
+### 2026-10-13 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0007.md`. One candidate pass and an
+independent false-positive pass; the base's refused path checked with `git show` (it set `clearStarted` false and
+the sentinel); commit messages scanned. No confirmed security defect; the change tightens: the base offered and accepted
+continue in the same document on P10b, P10c and P11r, and let the gate vanish on the site root. Two notes go to the
+epic's chain analysis: a reload after storage becomes wholly unreadable lands where the start record cannot be read
+(F-1), and a second refused press gives no new feedback (F-4).
