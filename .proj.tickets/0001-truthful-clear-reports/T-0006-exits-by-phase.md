@@ -26,7 +26,7 @@ as well as the template.
 - [x] T11, T11a, T16, T16a: continue and progress access unchanged.
 - [x] T37 passes in the built site: second page at the site root holds a native connection; raw error contains "another tab still has it open"; reload shown; dismiss and continue absent (AC-10).
 - [x] Comment and test locations stating the old two-fact dismiss rule are updated (T38/T39 subset).
-- [ ] Verified on the ticket's preview with the K4 setup.
+- [x] Verified on the ticket's preview with the K4 setup.
 
 ## 給使用者（zh-TW）
 
@@ -125,3 +125,19 @@ condition is a strict subset of the old one, and reload is newly offered only on
 were narrowed after review (no delete issued *before* the latest one is pending; what acknowledging would actually
 invite). The non-modal gate with unguarded saves, and the untested ordering of deletes in Firefox and WebKit, go to
 the epic's chain analysis; a stale comment in `.vitepress/theme/index.ts` goes to T-0008.
+
+### 2026-10-13 — stage 8 end-to-end on the preview deployment
+
+Surface: the Cloudflare Pages preview for `b254fe3` (`858726e7.wxl-platform.pages.dev`), driven in the Claude
+desktop app's Browser panel, zh-TW `door-is-open`, with a second tab of the same panel.
+- P4 (F1 installed in the page): the sweep-failure report with dismiss shown and reload absent.
+- K4 (P7): a second tab at the site root held the database (version 7) through the browser's own `indexedDB.open`
+  without `versionchange` handling; delete pressed again in the first tab, waited past the bound. On screen:
+  `body_unconfirmed`, `clear_unconfirmed`, the new hint, raw error `challenge-tools could not be deleted: another tab
+  still has it open`; exits: delete and `重新載入並重來` only, no dismiss, no continue. The second tab's connection
+  recorded one `versionchange`. A screenshot showed the dialog laid out with the two buttons.
+- Reload pressed: the page went to the site root `/`; the gate came back there with `body_unconfirmed` and the delete
+  button only (P11b), in English, the locale redirect waiting as recorded in the security review (I-1).
+- P15 from there (no fault): no gate, the draft removed, the marker written, and the redirect then took the page to
+  `/zh-TW/`.
+- The challenge's Browser panel shows FileHub's sign-in page.
