@@ -234,44 +234,63 @@ convention to new forks, whichever comes first.
 
 ---
 
-## OQ-007 — Can the attack session held in memory be saved back after a site-wide clear?
+## OQ-007 — Can state held in memory be saved back after a site-wide clear?
 
 **Deferred on:** 2026-10-14
 **Status:** open
 
 **Reason.** Epic 0001 made the gate's reports truthful about storage; it did not change who may
-write to storage. A page keeps its current attack session in `useAttackSession`'s closure
-(`.vitepress/theme/composables/useAttackSession.ts:92`), and saving it checks nothing about the gate.
-Closing that needs a decision about the write paths, which was outside the epic (spec 0001, T41).
+write to storage. The gate is a notice and a choice, not access control on the machine: what it
+guards is readable through the browser's developer tools, and it offers to continue with it. Pages
+load stored state into memory without consulting the gate, and every write reopens the database
+without consulting it either. Closing that needs a decision about the read and write paths, which was
+outside the epic (spec 0001, T41, which names the attack session).
 
 **Evidence.** Verified by reading, not reproduced in a browser:
 - `.vitepress/theme/composables/useChallengePersistence.ts:409-415` — `saveAttackSession` is
   `const db = await getDb()` … `await db.put('attack-sessions', plain)`, with no gate check.
-  `recordAttempt` checks first (`:599`, called at `:601`): `if (!isProgressAccessAllowed()) throw …`;
-  the attack-session save does not.
+  `recordAttempt` checks first (`:599`, called at `:601`): `if (!isProgressAccessAllowed()) throw …`.
+  No other write does: `deleteAttackSession` (`:448-450`), `saveActivityTrace` (`:463-465`),
+  `saveCodeDraft` (`:629-631`), `saveNote` (`:647-649`) and `deleteNote` (`:658-660`) each start with
+  `const db = await getDb()`.
+- Stored state is loaded at mount whatever the gate says: notes and the note draft
+  (`.vitepress/theme/composables/usePentestNotes.ts:44-50`, `loadNotesBySlug` and
+  ``localStorage.getItem(`pentest-draft-${slug}`)``), and the code draft
+  (`.vitepress/theme/components/CodeEditorPanel.vue:178`, `loadCodeDraft`), which is saved again after
+  an edit (`:89`). On a shared machine that is the previous learner's content.
+- The attack session is held in `useAttackSession`'s closure
+  (`.vitepress/theme/composables/useAttackSession.ts:92`).
 - `.vitepress/theme/composables/useSessionGate.ts:623-624` — a sweep failure ends
-  `clearFailurePhaseState.value = 'sweep'` then `return`: the page is not reloaded, so its attack
-  session stays in memory and its next save recreates the database the delete removed.
+  `clearFailurePhaseState.value = 'sweep'` then `return`: the page is not reloaded, so what it loaded
+  stays in memory, and the next write recreates the database the delete removed. After a sweep
+  failure acknowledged with dismiss, an edit to a note or the code draft can write the previous
+  learner's content back.
 - `useSessionGate.ts:628` and `:633` — on success `writeMarker()` runs before `reload()`. The two run
-  in one synchronous step, so nothing saves between them; the window is after `reload()` has asked for
-  the site root and before this document unloads, with the marker already written.
+  in one synchronous step, so nothing writes between them; the window is after `reload()` has asked
+  for the site root and before this document unloads, with the marker already written.
 
 Inferred, not verified:
+- Whose attack session: in the tab that runs the clear, the gate was unanswered at load, so
+  `useAttackSession` started a new session for the current visitor (`useAttackSession.ts:141-158`);
+  another tab of the site that answered continue resumed the previous one.
 - `.proj.specs/0001-truthful-clear-reports/review/security-T-0004.md` (F2, confidence 0.4, and its
-  note; not reproduced): after a successful clear and reload, another tab of the site that is still
-  open can save its attack session back; the marker exists by then, so the gate does not ask again.
-  Not introduced by the epic.
-- A save already awaiting `getDb()` while the delete is pending opens a new connection that waits
-  behind the delete and recreates the database after it (from `deleteDatabase` calling `forgetDb()`,
-  `useChallengePersistence.ts:528-533`).
+  note; not reproduced): after a successful clear and reload, such a tab can save its attack session
+  back. The decision marker is per tab (`sessionStorage`), so it says nothing about that tab.
+- Timing during the delete: a connection taken before `deleteDatabase` calls `forgetDb()`
+  (`useChallengePersistence.ts:532`), or opened before the delete request is issued (`:552`), is
+  closed for the delete (`:536`, and `blocking()` at `:375-383`) and does not recreate the database.
+  A `getDb()` called after the request is issued opens behind the delete and recreates the stores
+  once it completes (the upgrade at `:267-384`); if that open outlasts its own timeout
+  (`OPEN_TIMEOUT_MS`, `:227`), the request is not cancelled and can still leave an empty database.
 
 **Blocks.** Any claim that a site-wide clear leaves nothing behind once the report says the database
-was deleted. Options: a gate check on every save path; a reload after a sweep failure as well (the
-epic chose an in-place report there); telling other tabs through a broadcast channel.
+was deleted. Options: a gate check on every read at mount and every write; a reload after a sweep
+failure as well (the epic chose an in-place report there); telling other tabs through a broadcast
+channel.
 
 **Not blocked.** The truth of the reports themselves, which describe the moment they are shown.
 
-**Revisit when.** The session gate's write paths change, or a save path is added to
+**Revisit when.** The session gate's read or write paths change, or a read or write is added to
 `useChallengePersistence.ts`.
 
 ---

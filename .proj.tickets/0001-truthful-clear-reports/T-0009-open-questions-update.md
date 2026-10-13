@@ -150,3 +150,16 @@ product behaviour, so they were fixed under the user's standing authorisation un
 | Spec F7: the mutation note was wrong for the site-root case | Fixed in the re-run record |
 | Spec F14: round-2 V-12, V-13, K-13 not dispositioned | Fixed: recorded under the records |
 | Spec F15: P11b untested | Recorded for the epic close-out |
+
+### 2026-10-14 — stage 7 security review
+
+Report: `.proj.specs/0001-truthful-clear-reports/review/security-T-0009.md`. One candidate pass, unfiltered, then an
+independent false-positive pass over all ten candidates; the parent read the read and write paths the second pass cited;
+commit messages scanned. No confirmed security defect and none at the reporting threshold. Fixed under the standing
+authorisation, as documentation accuracy within OQ-007 (T41's "in-memory write-back"): the entry now covers every
+write path without a gate check, not only the attack session's, and the second pass's finding that notes and the code
+draft are loaded at mount whatever the gate says — so after a sweep failure acknowledged with dismiss, one edit can
+write the previous learner's content back (verified by reading `usePentestNotes.ts:44-50`, `CodeEditorPanel.vue:178`).
+The title widened from "the attack session" to "state held in memory"; the timing during the delete and whose attack
+session is written back were corrected and kept as inferred. For the epic's chain analysis: this is the strongest
+"writes after the delete" link found in the epic.
