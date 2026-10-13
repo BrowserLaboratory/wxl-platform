@@ -41,21 +41,30 @@ listed two defects of the in-flight window: a deletion timeout that rejects with
 request (K5), and a "continue with the stored work" offer that stayed clickable while the deletion
 was awaited (K6).
 
-**Evidence.** Both are addressed in the code this repository starts from (verified by reading):
+**Evidence.** Both are addressed (verified by reading; line numbers re-checked on 2026-10-14):
 
-- `.vitepress/theme/composables/useSessionGate.ts:238` — `markClearStarted()` sets
-  `clearStartedState` before `deleteDatabase()` is called at line 486, and persists it to
-  `sessionStorage`; the offer to continue is withdrawn while it is set (line 157).
+- `.vitepress/theme/composables/useSessionGate.ts:276` — `markClearStarted()` sets
+  `clearStartedState` and persists it to `sessionStorage`; `clearEverything` calls it at line 552,
+  before `deleteDatabase()` at line 573. While it is set, continue is withdrawn on screen
+  (`.vitepress/theme/components/SessionGate.vue:220`) and refused by `keepExistingData`
+  (`useSessionGate.ts:472`).
 - `.vitepress/theme/composables/useChallengePersistence.ts:551` — the timeout still only races the
-  request and does not cancel it, but the failure copy no longer claims nothing was deleted:
+  request and does not cancel it, but the failure copy does not claim nothing was deleted:
   `session_gate.clear_unconfirmed` reads "The outcome could not be confirmed."
-  (`.vitepress/theme/i18n/messages/en.json`).
+  (`.vitepress/theme/i18n/messages/en.json:132`).
+
+**Re-checked on 2026-10-14 (epic 0001).** The revisit condition was met: epic 0001 changed
+`clearEverything`. The in-flight withdrawal described above still holds under that epic's spec:
+continue is refused in every state but the untouched question and a refused first run (T11a in
+`.proj.specs/0001-truthful-clear-reports/traceability.md`), and dismiss is refused while a run is in
+flight (T13). The flag this entry's first version named, `storedWorkGone`, is now `databaseDeleted`
+(renamed in T-0001, with no alias).
 
 **Blocks.** Nothing.
 
-**Not blocked.** The meaning of `storedWorkGone` (K2–K4: an empty database reported as deleted
-work, the continue offer withdrawn on that path, and the wrong half named on retry) is a separate
-epic and is not covered by this entry.
+**Not blocked.** The meaning of `databaseDeleted` (K2–K4: an empty database reported as deleted
+work, the continue offer withdrawn on that path, and the wrong half named on retry) was epic 0001's
+subject and is not covered by this entry.
 
 **Revisit when.** A change touches `clearEverything` in `useSessionGate.ts` or `deleteDatabase` in
 `useChallengePersistence.ts`.
@@ -97,19 +106,51 @@ hides K11 further); let the backdrop take the pointer again (fixes K11, breaks t
 **Deferred on:** 2026-10-10
 **Status:** open
 
-**Reason.** Carried over from the earlier review register (K13). Tests pin which message a failure
-path shows, not whether the message is true on that path.
+**Reason.** Carried over from the earlier review register (K13): tests pinned which message a failure
+path shows, not whether the message is true on that path. Epic 0001 pinned a fixed set of strings and
+states by literal comparison (below); what stays open is everything outside that set.
 
-**Evidence.** Inferred from the register, not re-verified here: rewriting a failure hint into a
-sentence that is false on its path (for example, telling the learner to close other tabs on a path
-where no tab is involved) turns no test red. The routing assertions live in
-`tests/unit/components/SessionGate.test.ts`.
+**Evidence.**
 
-**Blocks.** Nothing directly; it lowers the value of the gate's tests as evidence for copy changes.
+- Before epic 0001, inferred from the register and not re-verified: rewriting a failure hint into a
+  sentence that is false on its path turned no test red. The routing assertions in
+  `tests/unit/components/SessionGate.test.ts` read the message files, so they still cannot tell a true
+  sentence from a false one.
+- Since epic 0001, verified: seam S2 (`tests/unit/components/SessionGate-truth.test.ts`) builds each
+  state with the real composable over fake-indexeddb, asserts its preconditions, then compares the
+  strings below with literals written in the test, by exact equality, in en and zh-TW, so any rewrite
+  of one of them in a listed state fails its test. Keys of `session_gate`,
+  and the states (`.proj.specs/0001-truthful-clear-reports/traceability.md:61-85`) in which each is
+  compared:
+
+  | Key | States |
+  |---|---|
+  | `title` | P0, P1, P4, P5, P11a |
+  | `body` | P0, P12 |
+  | `body_unconfirmed` | P1, P2, P3, P3x, P6, P7, P8, P10b, P10c, P11a, P11r, P13 |
+  | `body_cleared` | P4, P5, P9, P10, P14 |
+  | `sweep_failed`, `sweep_failed_hint` | P4, P5, P9, P10, P14 |
+  | `clear_unconfirmed`, `clear_unconfirmed_hint` | P2, P3, P3x, P7, P8, P10b, P10c, P13 |
+  | `clear_not_started`, `clear_not_started_hint` | P12 |
+  | `clear_retry_not_started_hint` | P10, P10b, P10c, P11r |
+  | `keep` | P0, P12 |
+  | `clear` | P0, P1, P4, P5, P11a |
+  | `reload` | P2, P3, P3x, P7, P8, P10b, P10c, P11r, P13 |
+  | `dismiss` | P4, P5, P9, P10, P14 |
+
+  On the site root as well: P10b (`clear_unconfirmed`, `clear_retry_not_started_hint`, `reload`) and
+  P10c (`clear_retry_not_started_hint`, `reload`) in en and zh-TW; P11a (`title`, `body_unconfirmed`,
+  `clear`) and P11r (`body_unconfirmed`, `clear_retry_not_started_hint`, `reload`) in en. The built
+  site pins T36 (P4) and T37 (P7) in en only (`tests/site-smoke/session-gate-clear-report.spec.ts`).
+
+**Blocks.** Nothing directly. Not compared by literal: a key in a state its row above does not name
+(for example `title` and `clear` in P2), P11b (which T28 gives the same columns as P11a, untested),
+and P15, which shows no gate. There a false sentence still passes.
 
 **Not blocked.** Fixes to the gate's logic, which have their own tests.
 
-**Revisit when.** The K2–K4 epic changes the gate's failure paths, or the gate's copy is rewritten.
+**Revisit when.** A gate string is added or rewritten, or a failure path is added, without a literal
+S2 test for it.
 
 ---
 
@@ -190,3 +231,192 @@ name for drift.
 
 **Revisit when.** Epic 0001 has landed, and before any scaffolder or template ships the glossary
 convention to new forks, whichever comes first.
+
+---
+
+## OQ-007 — Can the attack session held in memory be saved back after a site-wide clear?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Epic 0001 made the gate's reports truthful about storage; it did not change who may
+write to storage. A page keeps its current attack session in `useAttackSession`'s closure
+(`.vitepress/theme/composables/useAttackSession.ts:92`), and saving it checks nothing about the gate.
+Closing that needs a decision about the write paths, which was outside the epic (spec 0001, T41).
+
+**Evidence.** Verified by reading, not reproduced in a browser:
+- `.vitepress/theme/composables/useChallengePersistence.ts:409-415` — `saveAttackSession` is
+  `const db = await getDb()` … `await db.put('attack-sessions', plain)`, with no gate check.
+  `recordAttempt` checks first (`:599`, called at `:601`): `if (!isProgressAccessAllowed()) throw …`;
+  the attack-session save does not.
+- `.vitepress/theme/composables/useSessionGate.ts:623-624` — a sweep failure ends
+  `clearFailurePhaseState.value = 'sweep'` then `return`: the page is not reloaded, so its attack
+  session stays in memory and its next save recreates the database the delete removed.
+- `useSessionGate.ts:628` and `:633` — on success `writeMarker()` runs before `reload()`. The two run
+  in one synchronous step, so nothing saves between them; the window is after `reload()` has asked for
+  the site root and before this document unloads, with the marker already written.
+
+Inferred, not verified:
+- `.proj.specs/0001-truthful-clear-reports/review/security-T-0004.md` (F2, confidence 0.4, and its
+  note; not reproduced): after a successful clear and reload, another tab of the site that is still
+  open can save its attack session back; the marker exists by then, so the gate does not ask again.
+  Not introduced by the epic.
+- A save already awaiting `getDb()` while the delete is pending opens a new connection that waits
+  behind the delete and recreates the database after it (from `deleteDatabase` calling `forgetDb()`,
+  `useChallengePersistence.ts:528-533`).
+
+**Blocks.** Any claim that a site-wide clear leaves nothing behind once the report says the database
+was deleted. Options: a gate check on every save path; a reload after a sweep failure as well (the
+epic chose an in-place report there); telling other tabs through a broadcast channel.
+
+**Not blocked.** The truth of the reports themselves, which describe the moment they are shown.
+
+**Revisit when.** The session gate's write paths change, or a save path is added to
+`useChallengePersistence.ts`.
+
+---
+
+## OQ-008 — Should the gate's fixed sentences stop presupposing saved work where nothing was detected?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Spec 0001 kept the strings that presuppose saved work (`title`, `body`,
+`body_unconfirmed`, `clear_not_started_hint`) as a stated trade-off, CI-2
+(`.proj.specs/0001-truthful-clear-reports/traceability.md:39-44`). Rewriting them is a copy change
+outside that epic (T44).
+
+**Evidence.** Verified by reading. The gate usually asks because detection found learner evidence:
+`hasData = listLearnerEvidenceKeys().length > 0 || (await hasAnyStoredData())`
+(`.vitepress/theme/composables/useSessionGate.ts:425`), then `shouldAskState.value = true` (`:453`).
+On two paths it asks without that evidence, and the presupposition is unbacked:
+- a restored start record: `if (readClearStarted()) clearStartedState.value = true`, then
+  `if (clearStartedState.value) { shouldAskState.value = true … return }` (`useSessionGate.ts:393-401`),
+  before any detection;
+- detection that throws: `} catch { … shouldAskState.value = true … return }`
+  (`useSessionGate.ts:426-435`), where unreadable is treated as unknown.
+
+**Blocks.** A copy rewrite of the gate. Options: separate sentences for the two paths; neutral
+wording for all paths.
+
+**Not blocked.** The banned-term rule CI-1 on the strings epic 0001 changed.
+
+**Revisit when.** The gate's fixed copy is rewritten.
+
+---
+
+## OQ-009 — Should the project measure test coverage?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** The workflow's coverage report table has a "Measured coverage" column, and no coverage
+provider is installed, so every table in epic 0001 reads "Not measured". The user chose not to add one
+during that epic (T-0001, stage 6).
+
+**Evidence.** Verified: no `@vitest/coverage-*` package in `package.json`; the coverage report tables
+under `.proj.tickets/0001-truthful-clear-reports/` record "Not measured" (or "—" for a whole-project
+row).
+
+**Blocks.** Measured numbers in coverage report tables. Options: add a provider and report numbers;
+keep the column and state "Not measured" by policy.
+
+**Not blocked.** The test plan and coverage tables themselves, which name what is and is not tested.
+
+**Revisit when.** A ticket needs a measured number to decide, or test tooling is next changed.
+
+---
+
+## OQ-010 — Should tracked files be checked for local absolute paths?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Review records once carried local absolute paths into tracked files (T-0001 security S-1).
+They are caught by hand today. A check needs an allowlist first, because some tracked files contain
+such paths on purpose.
+
+**Evidence.** Verified on 2026-10-14: tracked content matching `/Users/<name>` or `/home/<name>`
+includes skill scripts and documents under `.claude/skills/` and `.agents/skills/`, pages under
+`.archive/`, and test fixtures (`tests/challenge-lint-staged.test.ts:46`,
+`tests/unit/composables/usePhpRuntime-adapter.test.ts:14`) — examples, fixtures and path-handling
+code, not leaks. A `~/` pattern also matches skill files and binary font files, so it needs the same
+allowlist.
+
+**Blocks.** Nothing; the check is manual. Options: a rule in `scripts/verify-project.py`; a CI step
+over changed files only.
+
+**Not blocked.** Every review, which already scans its own records.
+
+**Revisit when.** A local path reaches `main`, or `verify-project.py` is next extended.
+
+---
+
+## OQ-011 — Should `vue-tsc` run in CI?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Nothing typechecks the project in CI, so a renamed export can silently become
+`undefined` in a consumer (T-0001 security S-2). `pnpm exec vue-tsc --noEmit -p tsconfig.json`
+reports existing errors, which have to be cleared or baselined first.
+
+**Evidence.** Verified on 2026-10-14: `vue-tsc` is a dev dependency in `package.json`; no workflow
+under `.github/` runs it; the command reports 100 errors. Epic 0001's tickets each compared their
+run with that baseline (one interim run in T-0005 counted 101 before a fix).
+
+**Blocks.** Typechecking as a gate. Options: fix the 100 errors, then gate; gate on "no new errors"
+against a baseline.
+
+**Not blocked.** Running it locally and comparing with the baseline, as epic 0001's tickets did.
+
+**Revisit when.** The 100 errors are cleared, or a renamed export breaks a consumer.
+
+---
+
+## OQ-012 — What should the locale redirect's hold guard while the session-gate choice is open?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** The redirect to the stored locale waits until the browser session has a decision, on a
+page that puts the choice on screen. Its comment used to say the clear deletes `wxl-locale`; the key is exempt
+from the clear, so that reason no longer holds, and no other has been recorded (T-0008).
+
+**Evidence.** Verified by reading: the hold and its comment, `.vitepress/theme/index.ts:120-170`; the
+exemption, `.vitepress/theme/composables/localStorageKeys.ts:135`. On a page that does not put the
+choice on screen the redirect is released when the check settles (`index.ts:145-147`). The `cleared`
+decision's own hold, against a navigation racing the reload, is separate and not in question
+(`index.ts:149-154`).
+
+**Blocks.** Nothing. Options: release the redirect while the choice is open; keep the hold and
+record its reason.
+
+**Not blocked.** The gate's decisions and reports.
+
+**Revisit when.** The locale redirect or the gate's decision values change.
+
+---
+
+## OQ-013 — Should the gate's two untested defensive guards get tests?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Two guards are reached by no test, and by reading by no path today either (T-0008,
+security review C1, C2, C6). Removing either turns nothing red: verified on 2026-10-14 by deleting
+each in turn and running the unit suite (2173 tests passed both times).
+
+**Evidence.** Verified by reading:
+- `.vitepress/theme/composables/useSessionGate.ts:444` — `evaluate`'s `if (databaseDeletedState.value)
+  return`. `evaluate` runs once per document, at mount, before any clear can start; after a clear
+  stopped at the sweep it returns earlier on `clearStarted`.
+- `.vitepress/theme/components/SessionGate.vue:220` — the `!databaseDeleted` term of the continue
+  `v-if`. Wherever the choice is on screen with the flag set, `clearStarted` is set too.
+- `.proj.specs/0001-truthful-clear-reports/review/security-T-0008.md`.
+
+**Blocks.** Nothing today. Both become live if `evaluate` gains a second call site.
+
+**Not blocked.** Everything else in the gate, which its tests cover.
+
+**Revisit when.** `evaluate` gains a call site, or either guard changes.
