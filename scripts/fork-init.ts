@@ -10,11 +10,13 @@
  *                  [--name <pkg-name>] [--description <text>]
  *                  [--rebrand <newshortname>] [--dry-run]
  *
- * Modes:
- *   A (default)          minimal fork: identity fields, base, upstream-slug swap, deploy workflow.
- *   B (--rebrand <name>) A + deterministic rename of the four runtime-sensitive keys, plus an
- *                        HONEST residual inventory of every remaining case-insensitive `wxl`
- *                        (which is NOT auto-renamed — see "Why not rename every wxl?" below).
+ * Modes (both currently walk the whole tree for identity fields, base and the upstream-slug
+ * swap, plus the deploy workflow):
+ *   A (default)          identity fields, base, upstream-slug swap, deploy workflow.
+ *   B (--rebrand <name>) also renames the four runtime-sensitive keys (deterministic,
+ *                        structure-aware), plus an HONEST residual inventory of every
+ *                        remaining case-insensitive `wxl` (which is NOT auto-renamed — see
+ *                        "Why not rename every wxl?" below).
  *
  * Why not rename every `wxl`?
  *   In this repo the substring `wxl` spans several unrelated identifier families that a
@@ -29,7 +31,8 @@
  *
  * Exit codes:
  *   0  success (A mode complete; B mode: deterministic edits done — a residual inventory may remain)
- *   1  user input error (missing/invalid flag)
+ *   1  user input error or tree error (invalid/missing flag, or a problem found in the tree — see
+ *      ForkInitArgError and the tree-error returns in runForkInit)
  */
 
 import { parseArgs } from 'node:util'
@@ -40,7 +43,7 @@ import {
   mkdirSync,
   readdirSync,
 } from 'node:fs'
-import { dirname, resolve, join, sep } from 'node:path'
+import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -62,77 +65,229 @@ export interface ForkInitArgs {
 }
 
 export class ForkInitArgError extends Error {
-  constructor(
-    message: string,
-    public readonly exitCode: number = 1,
-  ) {
+  readonly exitCode: number
+
+  constructor(message: string, exitCode: number = 1) {
     super(message)
     this.name = 'ForkInitArgError'
+    this.exitCode = exitCode
   }
 }
 
-const REPO_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/
+// Repository-slug grammar (traceability.md, "Repository-slug grammar" / T45): owner is
+// alphanumerics and `-`, 1-39 characters, no leading or trailing `-`; name is
+// `[A-Za-z0-9._-]{1,100}`, not `.` or `..`, and not ending in `.git` (any case).
+const REPO_OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/
+const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/
 // A safe VitePress base: absolute, slash-separated, only URL-path-safe chars.
 // Rejects quotes and `$` so the value cannot break out of the generated string
 // literal in .vitepress/config.mts (an executable TS module).
 const BASE_RE = /^\/([A-Za-z0-9._~-]+\/)*$/
 
+/** T45: `--repo` is a single `owner/name` slug; the value itself is never trimmed. */
+function validateRepoValue(value: string): void {
+  const firstSlash = value.indexOf('/')
+  const lastSlash = value.lastIndexOf('/')
+  const owner = firstSlash === -1 ? '' : value.slice(0, firstSlash)
+  const name = firstSlash === -1 ? '' : value.slice(firstSlash + 1)
+  const ok =
+    firstSlash !== -1 &&
+    firstSlash === lastSlash &&
+    REPO_OWNER_RE.test(owner) &&
+    REPO_NAME_RE.test(name) &&
+    name !== '.' &&
+    name !== '..' &&
+    !/\.git$/i.test(name)
+  if (!ok) {
+    throw new ForkInitArgError(`--repo must be in owner/repo form, got: ${JSON.stringify(value)}`)
+  }
+}
+
+/** The 66 Unicode noncharacters: U+FDD0-U+FDEF, and every code point ending in FFFE or FFFF. */
+function isNoncharacter(codePoint: number): boolean {
+  if (codePoint >= 0xfdd0 && codePoint <= 0xfdef) return true
+  return (codePoint & 0xfffe) === 0xfffe
+}
+
+/**
+ * The character rule shared by `--author` and (later) `--site-name` (traceability.md,
+ * "Character rules"): length is counted in Unicode code points, without normalisation; the
+ * trimmed value must hold at least one code point other than U+200C/U+200D; Cc, Cs, Zl, Zp, Cf
+ * (except U+200C/U+200D) and the noncharacters are rejected.
+ */
+function validateCharacterRuleValue(trimmed: string, flag: string, rawForMessage: string): void {
+  // Written as escapes, not the literal invisible characters, so the source stays readable.
+  const ZWNJ = '\u200C'
+  const ZWJ = '\u200D'
+  const codePoints = Array.from(trimmed)
+  // `reason` says what was wrong (too long, which character, or only joiners) so the message is
+  // actionable, not just a bare rejection — ready for --site-name later.
+  const fail = (reason: string): never => {
+    throw new ForkInitArgError(`${flag} rejected (${reason}), got: ${JSON.stringify(rawForMessage)}`)
+  }
+  if (codePoints.length < 1) fail('empty')
+  if (codePoints.length > 100) fail('too long')
+  let hasOther = false
+  for (const ch of codePoints) {
+    if (ch !== ZWNJ && ch !== ZWJ) hasOther = true
+    const codePoint = ch.codePointAt(0)!
+    const disallowed =
+      /\p{Cc}|\p{Cs}|\p{Zl}|\p{Zp}/u.test(ch) ||
+      (/\p{Cf}/u.test(ch) && ch !== ZWNJ && ch !== ZWJ) ||
+      isNoncharacter(codePoint)
+    if (disallowed) {
+      fail(`disallowed character U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`)
+    }
+  }
+  if (!hasOther) fail('only joiners')
+}
+
+/** Extract the flag Node names in an `ERR_PARSE_ARGS_INVALID_OPTION_VALUE` message, stopping at
+ *  the first space or quote — handles both the `'--author <value>'` and the plain `'--repo'`
+ *  shape Node uses depending on which sub-case raised the error. Every message this function
+ *  receives (argument missing, argument is ambiguous, does not take an argument — confirmed for
+ *  every flag this CLI declares, on every Node version this code has run against) begins with
+ *  `Option '...'`. The branch below exists only for a future Node message format this code has not
+ *  seen, so a non-match throws a `ForkInitArgError` instead of crashing on a null regex match. */
+function flagFromParseArgsMessage(message: string): string {
+  const m = /^Option '([^ ']+)/.exec(message)
+  if (!m) throw new ForkInitArgError(`invalid arguments: ${JSON.stringify(message)}`)
+  return m[1]
+}
+
+/** The `=value` an argv token gave for `flag` (e.g. `--dry-run=yes` -> `yes`) — Node's own "does
+ *  not take an argument" message for a boolean flag never echoes the value, so this reads it back
+ *  from the original argv instead. */
+function inlineValueFor(argv: string[], flag: string): string | undefined {
+  const prefix = `${flag}=`
+  const token = argv.find((a) => a.startsWith(prefix))
+  return token?.slice(prefix.length)
+}
+
+/**
+ * Rebuild one of Node's `util.parseArgs` errors into a `ForkInitArgError` with our own message:
+ * Node's own text for an unknown option appends a "place it at the end after '--'" hint that does
+ * not apply here (this CLI takes no positionals), and never runs an echoed flag/value through
+ * `JSON.stringify`. Every message here names the flag; every echoed value is
+ * `JSON.stringify`-quoted.
+ */
+function rewrapParseArgsError(err: Error & { code?: string }, argv: string[]): ForkInitArgError {
+  const message = err.message
+  if (err.code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
+    const m = /^Unknown option '([^]*?)'\. To specify/.exec(message)
+    // Every current Node message for an unknown option matches; this branch exists only for a
+    // future Node message format this code has not seen.
+    if (!m) throw new ForkInitArgError(`invalid arguments: ${JSON.stringify(message)}`)
+    return new ForkInitArgError(`unknown flag: ${JSON.stringify(m[1])}`)
+  }
+  const flag = flagFromParseArgsMessage(message)
+  if (/does not take an argument/.test(message)) {
+    return new ForkInitArgError(`${flag} takes no value, got: ${JSON.stringify(inlineValueFor(argv, flag))}`)
+  }
+  // "argument missing" (the flag is the last token) and "argument is ambiguous" (the next known
+  // flag ate the value) are both, from the caller's point of view, this flag not getting a value.
+  return new ForkInitArgError(`${flag} needs a value`)
+}
+
 export function parseForkInitArgs(argv: string[]): ForkInitArgs {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      author: { type: 'string' },
-      repo: { type: 'string' },
-      base: { type: 'string' },
-      name: { type: 'string' },
-      description: { type: 'string' },
-      rebrand: { type: 'string' },
-      'dry-run': { type: 'boolean', default: false },
-    },
-  })
+  const options = {
+    author: { type: 'string' },
+    repo: { type: 'string' },
+    base: { type: 'string' },
+    name: { type: 'string' },
+    description: { type: 'string' },
+    rebrand: { type: 'string' },
+    'dry-run': { type: 'boolean', default: false },
+  } as const
 
-  if (!values.author) throw new ForkInitArgError('missing required flag: --author <name>')
-  if (!values.repo) throw new ForkInitArgError('missing required flag: --repo <owner/repo>')
-  if (!REPO_RE.test(values.repo)) {
-    throw new ForkInitArgError(`--repo must be in owner/repo form, got: ${values.repo}`)
-  }
-  if (values.rebrand !== undefined) {
-    // --rebrand is substituted verbatim into the sensitive-key replacements, which land in
-    // executable TS modules and CI YAML, so it must be a plain identifier — reject
-    // quotes/$/backtick/whitespace that could break out of a string literal at build time.
-    // It MUST start with a letter: the uppercased form seeds an env-var / JS-identifier
-    // (`<UPPER>_VERIFY_RUNTIME`), which cannot begin with a digit. (Interior `-`/`.` are
-    // allowed for the brand short-name and sanitized to `_` when building that identifier.)
-    if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(values.rebrand)) {
-      throw new ForkInitArgError(
-        `--rebrand must start with a letter and contain only [A-Za-z0-9._-] (no spaces/quotes/$), got: ${JSON.stringify(values.rebrand)}`,
-      )
-    }
-    if (values.rebrand.toLowerCase().includes('wxl')) {
-      throw new ForkInitArgError('--rebrand name must not contain "wxl" (case-insensitive; would reintroduce the token and break idempotent rename)')
-    }
-  }
+  try {
+    const { tokens, values } = parseArgs({ args: argv, options, tokens: true, allowPositionals: true })
 
-  let base: string | null | undefined
-  if (values.base === undefined) base = undefined
-  else if (values.base === 'none') base = null
-  else {
-    if (!BASE_RE.test(values.base)) {
-      throw new ForkInitArgError(
-        `--base must be an absolute URL path like /myfork/ (letters, digits, . _ ~ - and slashes), or "none"; got: ${values.base}`,
-      )
+    // This CLI takes no positional arguments; the first one found is itself the rejection.
+    const positional = tokens.find((t) => t.kind === 'positional')
+    if (positional) {
+      throw new ForkInitArgError(`unexpected positional argument: ${JSON.stringify(positional.value)}`)
     }
-    base = values.base
-  }
 
-  return {
-    author: values.author,
-    repo: values.repo,
-    base,
-    name: values.name,
-    description: values.description,
-    rebrand: values.rebrand,
-    dryRun: values['dry-run'] ?? false,
+    // parseArgs silently keeps only the last value of a repeated flag; detect it ourselves.
+    const seenFlags = new Set<string>()
+    for (const t of tokens) {
+      if (t.kind !== 'option') continue
+      if (seenFlags.has(t.name)) {
+        throw new ForkInitArgError(`flag given more than once: --${t.name}`)
+      }
+      seenFlags.add(t.name)
+    }
+
+    const authorRaw = values.author
+    const repoRaw = values.repo
+    if (authorRaw === undefined) {
+      throw new ForkInitArgError('missing required flag: --author <name>')
+    }
+    if (authorRaw.trim() === '') {
+      throw new ForkInitArgError(`--author must not be empty, got: ${JSON.stringify(authorRaw)}`)
+    }
+    if (repoRaw === undefined) {
+      throw new ForkInitArgError('missing required flag: --repo <owner/repo>')
+    }
+    if (repoRaw.trim() === '') {
+      throw new ForkInitArgError(`--repo must not be empty, got: ${JSON.stringify(repoRaw)}`)
+    }
+
+    validateRepoValue(repoRaw)
+    const authorTrimmed = authorRaw.trim()
+    validateCharacterRuleValue(authorTrimmed, '--author', authorRaw)
+
+    const rebrandRaw = values.rebrand
+    if (rebrandRaw !== undefined) {
+      // --rebrand is substituted verbatim into the sensitive-key replacements, which land in
+      // executable TS modules and CI YAML, so it must be a plain identifier — reject
+      // quotes/$/backtick/whitespace that could break out of a string literal at build time.
+      // It MUST start with a letter: the uppercased form seeds an env-var / JS-identifier
+      // (`<UPPER>_VERIFY_RUNTIME`), which cannot begin with a digit. (Interior `-`/`.` are
+      // allowed for the brand short-name and sanitized to `_` when building that identifier.)
+      if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(rebrandRaw)) {
+        throw new ForkInitArgError(
+          `--rebrand must start with a letter and contain only [A-Za-z0-9._-] (no spaces/quotes/$), got: ${JSON.stringify(rebrandRaw)}`,
+        )
+      }
+      if (rebrandRaw.toLowerCase().includes('wxl')) {
+        throw new ForkInitArgError(
+          `--rebrand name must not contain "wxl" (case-insensitive; would reintroduce the token and break idempotent rename), got: ${JSON.stringify(rebrandRaw)}`,
+        )
+      }
+    }
+
+    const baseRaw = values.base
+    let base: string | null | undefined
+    if (baseRaw === undefined) base = undefined
+    else if (baseRaw === 'none') base = null
+    else {
+      if (!BASE_RE.test(baseRaw)) {
+        throw new ForkInitArgError(
+          `--base must be an absolute URL path like /myfork/ (letters, digits, . _ ~ - and slashes), or "none"; got: ${JSON.stringify(baseRaw)}`,
+        )
+      }
+      base = baseRaw
+    }
+
+    return {
+      author: authorTrimmed,
+      repo: repoRaw,
+      base,
+      name: values.name,
+      description: values.description,
+      rebrand: rebrandRaw,
+      dryRun: values['dry-run'],
+    }
+  } catch (err) {
+    if (err instanceof ForkInitArgError) throw err
+    const code = (err as NodeJS.ErrnoException).code
+    // Only Node's own argument-parser errors are rebuilt with our own message; anything else is a
+    // real failure (a bug, a resource error, ...) and must propagate, not be mislabelled as a
+    // user input error.
+    if (!code || !code.startsWith('ERR_PARSE_ARGS_')) throw err
+    throw rewrapParseArgsError(err as Error & { code?: string }, argv)
   }
 }
 
@@ -164,6 +319,34 @@ export interface ForkInitResult {
 
 const UPSTREAM_SLUG = 'BrowserLaboratory/wxl-platform'
 
+/**
+ * A tree error (traceability.md: `exitCode` 1, nothing written) as a returned result, not a
+ * throw — only `parseForkInitArgs` throws (`ForkInitArgError`), for argument errors. Today the
+ * only checked tree error is the manifest check (A1) below; a filesystem failure elsewhere in the
+ * walk (e.g. a permission error) still throws an uncaught exception until T55 wraps it. Every
+ * exitCode 1 `ForkInitResult` — every value this function returns — carries empty
+ * changedFiles/sensitiveKeys/residualFiles/residualHits/warnings arrays: nothing is collected
+ * before the error surfaces.
+ */
+function treeError(message: string): ForkInitResult {
+  return {
+    exitCode: 1,
+    message,
+    changedFiles: [],
+    sensitiveKeys: [],
+    residualFiles: [],
+    residualHits: [],
+    warnings: [],
+  }
+}
+
+/** `value` if it is a plain JSON object (not null, not an array), else an empty base to spread
+ *  from — so a non-object `repository`/`bugs` (string, array, number, boolean, null, absent) is
+ *  replaced wholesale instead of producing spread-indexed keys (T13). */
+function asPlainObject(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
 // Directories/files never touched by any rewrite.
 // The skill trees `.claude`/`.agents` and the Codex config dir `.codex` are excluded because
 // skill identifiers (e.g. `wxl-create`) are structural: they name the skill directories, so a
@@ -171,22 +354,20 @@ const UPSTREAM_SLUG = 'BrowserLaboratory/wxl-platform'
 // inventory).
 const EXCLUDED_DIRS = new Set(['.git', 'node_modules', '.claude', '.agents', '.codex'])
 const EXCLUDED_FILE = new Set(['pnpm-lock.yaml', 'pnpm-lock.yml'])
+// Repo-relative paths below are always `/`-joined (T57: every path in the result uses `/`, on
+// every OS) — `join`/`sep` would produce `\` on Windows. Node's fs functions accept `/` in a
+// relative path on every OS, so this never needs an OS-specific join for file access either.
+//
 // Path prefixes (matched at a path-segment boundary, so `dist-notes.md` is NOT excluded by
 // `.vitepress/dist`): regenerated build output/cache.
-const EXCLUDED_PATH_FRAGMENTS = [
-  join('.vitepress', 'dist'),
-  join('.vitepress', 'cache'),
-]
+const EXCLUDED_PATH_FRAGMENTS = ['.vitepress/dist', '.vitepress/cache']
 // This tool's own source + test must not be rewritten — they need the literal `wxl`/`WXL`
 // probes, fixtures, and UPSTREAM_SLUG to keep working on subsequent runs.
-const SELF_EXCLUDE = new Set([
-  join('scripts', 'fork-init.ts'),
-  join('tests', 'unit', 'scripts', 'fork-init.test.ts'),
-])
+const SELF_EXCLUDE = new Set(['scripts/fork-init.ts', 'tests/unit/scripts/fork-init.test.ts'])
 // package.json is edited structurally, never via text passes.
 const PKG_REL = 'package.json'
-const CONFIG_REL = join('.vitepress', 'config.mts')
-const DEPLOY_TEMPLATE_REL = join('scripts', 'templates', 'deploy.yml.template')
+const CONFIG_REL = '.vitepress/config.mts'
+const DEPLOY_TEMPLATE_REL = 'scripts/templates/deploy.yml.template'
 
 /**
  * The four runtime-sensitive keys, as EXACT full-token rename rules (structure-aware, so
@@ -269,22 +450,44 @@ export function runForkInit(
     return { next, keysHit }
   }
 
-  const DEPLOY_REL = join('.github', 'workflows', 'deploy.yml')
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+
+  // ── A1: the manifest, a tree error (T12) when missing, BOM-prefixed, unparsable, or not a
+  //   JSON object. Checked before anything is written, in both modes (T53, T54). ──
+  const pkgRaw = readIf(PKG_REL)
+  if (pkgRaw === null) {
+    return treeError(`A1: ${PKG_REL} is missing`)
+  }
+  // A leading byte-order mark is not valid JSON syntax, so JSON.parse below would always fail on
+  // it too — checked first so the message names the actual cause instead of the generic one.
+  if (pkgRaw.charCodeAt(0) === 0xfeff) {
+    return treeError(`A1: ${PKG_REL} starts with a byte-order mark`)
+  }
+  let pkg: unknown
+  try {
+    pkg = JSON.parse(pkgRaw)
+  } catch {
+    return treeError(`A1: ${PKG_REL} does not parse as JSON`)
+  }
+  if (typeof pkg !== 'object' || pkg === null || Array.isArray(pkg)) {
+    return treeError(`A1: ${PKG_REL} must be a JSON object`)
+  }
 
   // ── A-mode: package.json identity (structured) ──
-  const pkgRaw = readIf(PKG_REL)
-  if (pkgRaw) {
-    const pkg = JSON.parse(pkgRaw)
-    pkg.version = '0.1.0'
-    pkg.author = args.author
-    pkg.repository = { ...(pkg.repository ?? {}), type: 'git', url: `git+https://github.com/${args.repo}.git` }
-    pkg.bugs = { ...(pkg.bugs ?? {}), url: `https://github.com/${args.repo}/issues` }
-    pkg.homepage = `https://github.com/${args.repo}#readme`
-    pkg.license = 'ECL-2.0'
-    if (args.rebrand) pkg.name = args.name ?? args.rebrand
-    else if (args.name) pkg.name = args.name
-    if (args.description) pkg.description = args.description
-    const pkgNext = JSON.stringify(pkg, null, 2) + '\n'
+  {
+    const pkgObj = pkg as Record<string, unknown>
+    pkgObj.version = '0.1.0'
+    pkgObj.author = args.author
+    // T13: `repository`/`bugs` that is not a plain object is replaced wholesale; a plain object
+    // keeps its other keys (only `repository.type`/`url` and `bugs.url` are set).
+    pkgObj.repository = { ...asPlainObject(pkgObj.repository), type: 'git', url: `git+https://github.com/${args.repo}.git` }
+    pkgObj.bugs = { ...asPlainObject(pkgObj.bugs), url: `https://github.com/${args.repo}/issues` }
+    pkgObj.homepage = `https://github.com/${args.repo}#readme`
+    pkgObj.license = 'ECL-2.0'
+    if (args.rebrand) pkgObj.name = args.name ?? args.rebrand
+    else if (args.name) pkgObj.name = args.name
+    if (args.description) pkgObj.description = args.description
+    const pkgNext = JSON.stringify(pkgObj, null, 2) + '\n'
     applyEdit(PKG_REL, pkgNext, pkgRaw)
     if (args.rebrand) scanResidual(PKG_REL, pkgNext)
   }
@@ -415,15 +618,17 @@ function setViteBase(cfg: string, base: string | null | undefined): string {
 /** True when `childRel` equals an excluded fragment or is a path segment beneath one. */
 function isExcludedPath(childRel: string): boolean {
   return EXCLUDED_PATH_FRAGMENTS.some(
-    (frag) => childRel === frag || childRel.startsWith(frag + sep),
+    (frag) => childRel === frag || childRel.startsWith(frag + '/'),
   )
 }
 
-/** Recursively list repo-relative text files eligible for the text passes. */
+/** Recursively list repo-relative text files eligible for the text passes. `rel` is always
+ *  `/`-joined (T57); `join(root, rel)` below still resolves correctly on Windows, which accepts
+ *  `/` in a path. */
 function walkTextFiles(root: string, rel = ''): string[] {
   const out: string[] = []
   for (const entry of readdirSync(join(root, rel), { withFileTypes: true })) {
-    const childRel = rel ? join(rel, entry.name) : entry.name
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name
     if (entry.isDirectory()) {
       if (EXCLUDED_DIRS.has(entry.name)) continue
       if (isExcludedPath(childRel)) continue
@@ -456,6 +661,11 @@ function main() {
   }
 
   const result = runForkInit(args, { projectRoot: PROJECT_ROOT })
+  if (result.exitCode !== 0) {
+    // A tree error: nothing was written, and no warning collected before it is printed.
+    console.error(`✗ ${result.message}`)
+    process.exit(result.exitCode)
+  }
   console.log(result.message)
   if (result.changedFiles.length) {
     console.log('\nChanged files:')
