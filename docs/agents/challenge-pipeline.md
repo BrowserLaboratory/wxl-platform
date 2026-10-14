@@ -3,7 +3,7 @@
 A new challenge is an epic: one spec, one pass through the nine stages in
 [workflow.md](workflow.md). This file maps that pass onto the `wxl-*` skills and the release-blocking
 gate. Vocabulary — challenge, number, engagement brief, proof of impact, white-box challenge,
-unintended solution, exploit spec, blind solve — is defined in [`CONTEXT.md`](../../CONTEXT.md).
+unintended solution, exploit spec, blind solve — is defined in [`GLOSSARY.md`](../../GLOSSARY.md).
 
 ## Where a challenge lives
 

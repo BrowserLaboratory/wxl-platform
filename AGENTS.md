@@ -26,7 +26,7 @@ backend runs inside the learner's own browser tab, with no server.
 - **Does not:** grow a challenge bank. It keeps a few demonstration challenges, and adds one only
   to exercise a new platform feature.
 
-Domain vocabulary lives in [`CONTEXT.md`](CONTEXT.md). Read it before naming anything in a spec,
+Domain vocabulary lives in [`GLOSSARY.md`](GLOSSARY.md). Read it before naming anything in a spec,
 an interface string, or a document; update it in the same change that adds or changes a term.
 
 ## Delivery model
@@ -128,5 +128,5 @@ Environment pitfalls that cost time: [docs/agents/platform-notes.md](docs/agents
 - **[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)** — where specs and tickets live, ticket frontmatter, the six status views, how blocking is derived.
 - **[docs/agents/review.md](docs/agents/review.md)** — the four adversarial-review axes, P0/P1/P2 grading, and the two-stage security review.
 - **[docs/agents/language.md](docs/agents/language.md)** — which documents are English, which are Traditional Chinese, and how the bilingual spec stays in sync.
-- **[docs/agents/domain.md](docs/agents/domain.md)** — how to consume `CONTEXT.md` and ADRs while exploring.
+- **[docs/agents/domain.md](docs/agents/domain.md)** — how to consume `GLOSSARY.md` and ADRs while exploring.
 - **[docs/agents/platform-notes.md](docs/agents/platform-notes.md)** — the Browser panel's sandbox, test-runner quirks, local server cleanup.

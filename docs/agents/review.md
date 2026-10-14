@@ -22,7 +22,7 @@ Each subagent gets exactly one axis. Fixed axes are what make the review reprodu
 2. **Verifiability.** Can each acceptance criterion be judged pass or fail without interpretation?
    Words like "appropriately", "reasonably", "as needed", "where possible" make a criterion
    unjudgeable: grade those P0.
-3. **Contract conflict.** Does the spec contradict `CONTEXT.md` vocabulary, an existing ADR, or an
+3. **Contract conflict.** Does the spec contradict `GLOSSARY.md` vocabulary, an existing ADR, or an
    established seam? Name the conflicting document and line. A spec that overrides an ADR is
    allowed, but it must say so explicitly rather than silently.
 4. **Red team.** Once this spec is built, what behaviour or attack surface exists that the spec did

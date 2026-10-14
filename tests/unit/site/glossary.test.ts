@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { resolve, join, extname } from 'node:path'
 
-// `CONTEXT.md` is this project's domain glossary: the one place that says what
+// `GLOSSARY.md` is this project's domain glossary: the one place that says what
 // a word means here. It exists because a word can change what it points at
 // without a single line of it appearing in a diff — one change swapped the
 // referent of three terms, and the swap was noticed only when someone sat down
@@ -18,7 +18,7 @@ import { resolve, join, extname } from 'node:path'
 //      it quietly drifts away from the words on screen.
 //
 // The third — the glossary and the outward documentation disagreeing — has no
-// check here, and the boundary section of `CONTEXT.md` says so.
+// check here, and the boundary section of `GLOSSARY.md` says so.
 //
 // WHAT THIS FILE COVERS AND WHAT IT DOES NOT
 //
@@ -30,7 +30,8 @@ import { resolve, join, extname } from 'node:path'
 //     a path token ending in a source or data file extension in a definition
 //     a Chinese term that occurs nowhere in this project's own Chinese prose
 //       and carries no coinage declaration
-//     a second context file appearing at the root
+//     a second glossary file appearing at the root: a glossary map, or the
+//       glossary under its old name
 //     an entry with no definition at all, or a term missing its Chinese half
 //     a line that looks like an entry but does not parse as one — without this
 //       the parser fails open: an unparsed entry is simply absent, every rule is
@@ -81,7 +82,7 @@ import { resolve, join, extname } from 'node:path'
 // have let a word this very file lists under `_Avoid_` vouch for itself.
 
 const ROOT = resolve(__dirname, '../../..')
-const GLOSSARY = join(ROOT, 'CONTEXT.md')
+const GLOSSARY = join(ROOT, 'GLOSSARY.md')
 
 /** A single glossary entry, as parsed out of the file. */
 interface Entry {
@@ -204,19 +205,29 @@ const looseTermLines = source
   .filter(([line]) => !COINAGE_MARKER.test(line) && !AVOID_MARKER.test(line))
   .filter(([line]) => LOOSE_TERM_LINE.test(line))
 
-describe('CONTEXT.md is the single root glossary', () => {
+describe('GLOSSARY.md is the single root glossary', () => {
   it('exists at the repository root', () => {
-    expect(existsSync(GLOSSARY), 'CONTEXT.md is missing from the repository root').toBe(true)
+    expect(existsSync(GLOSSARY), 'GLOSSARY.md is missing from the repository root').toBe(true)
   })
 
   // A context map declares that the repository holds several vocabularies. It
   // does not: the challenge-authoring flow and the platform flow share their
   // core nouns, and splitting those nouns across files is the failure the
   // glossary exists to prevent.
-  it('has no CONTEXT-MAP.md beside it', () => {
+  it('has no GLOSSARY-MAP.md beside it', () => {
     expect(
-      existsSync(join(ROOT, 'CONTEXT-MAP.md')),
-      'CONTEXT-MAP.md exists — this repository is a single context, see design decision D4',
+      existsSync(join(ROOT, 'GLOSSARY-MAP.md')),
+      'GLOSSARY-MAP.md exists — this repository is a single context, see design decision D4',
+    ).toBe(false)
+  })
+
+  // The glossary was renamed from `CONTEXT.md` to follow the upstream skills. A
+  // skill or a fork still using the old name would start a second glossary
+  // beside this one, and the two would drift apart with every rule here green.
+  it('has no CONTEXT.md beside it under the old name', () => {
+    expect(
+      existsSync(join(ROOT, 'CONTEXT.md')),
+      'CONTEXT.md exists — the glossary is GLOSSARY.md; move its terms there and delete the old file',
     ).toBe(false)
   })
 
