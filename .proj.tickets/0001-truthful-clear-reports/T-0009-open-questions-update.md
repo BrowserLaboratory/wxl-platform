@@ -2,7 +2,7 @@
 id: T-0009
 title: Update open questions for this epic
 epic: 0001-truthful-clear-reports
-status: review
+status: done
 blocked_by: [T-0007]
 ---
 
@@ -170,3 +170,11 @@ Surface: the Cloudflare Pages preview of `eca83f1`, in the Claude desktop app's 
 The ticket changes no product code, so the check is that the built site serves the gate as on `main`: with a note draft
 planted and `sessionStorage` cleared, a reload showed P0 — the title, the standing body, continue and clear, no dismiss or
 reload. The new P11a behaviour was checked in this browser on T-0008's preview (stage 8 there).
+
+### 2026-10-14 — landed
+
+Squash-merged into `main` as `013dcff` by the user, through pull request #10 of this repository. The first run of the
+`test` check failed with all 2173 tests passing: vitest reported one unhandled error, `this.win.requestAnimationFrame
+is not a function` from CodeMirror's timer while `SourceViewer.test.ts` ran — the same error `main` showed once before,
+unrelated to this change. The failed job was re-run and passed; every check then passed (test, build, prose-audit,
+site-smoke, challenge-verify, Cloudflare Pages), and the push run on `main` passed. Status set to `done`.
