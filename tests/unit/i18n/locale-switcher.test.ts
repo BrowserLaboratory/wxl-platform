@@ -141,7 +141,7 @@ describe('LocaleSwitcher UI', () => {
   // own docstring forbids ("takes a base-less path; callers wrap the OUTPUT").
   // MergedNav's navLink obeys the contract; this, the only other call site, did
   // not. A non-empty base is a supported configuration: config.mts reads
-  // SITE_BASE, and `pnpm fork:init --base` rewrites it for GitHub Pages forks.
+  // SITE_BASE, which a GitHub Pages range's deploy workflow sets.
   //
   // Under `/wxl/`, switching to zh-TW emitted `/zh-TW/wxl/...` — the locale
   // segment outside the base — and switching back emitted the path unchanged,

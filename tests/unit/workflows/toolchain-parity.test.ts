@@ -13,8 +13,8 @@ import { parse } from 'yaml'
 // The set is quality-gates + release only. A GitHub Pages deploy workflow used
 // to be a third member; it was removed when the site moved to Cloudflare Pages
 // Git integration, which is configured in the Cloudflare dashboard rather than
-// in this repository. Forks still get a GitHub Pages workflow from the
-// fork-init template, and that one is held to a frozen baseline by
+// in this repository. Ranges deployed to GitHub Pages get their workflow from
+// the fork-init template, and that one is held to a frozen baseline by
 // fork-template-parity.test.ts instead.
 const WORKFLOW_DIR = resolve(__dirname, '../../../.github/workflows')
 const WORKFLOWS = ['quality-gates.yml', 'release.yml']

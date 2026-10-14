@@ -6,11 +6,14 @@
 # upstream file no longer exists: this repository deploys through Cloudflare
 # Pages Git integration, not GitHub Actions.
 #
-# Why it is kept: forks still get a GitHub Pages workflow from
-# scripts/templates/deploy.yml.template, and
+# Why it is kept: `pnpm fork:init` installs a GitHub Pages workflow from
+# scripts/templates/deploy.yml.template (Cloudflare Pages ranges get none), and
 # tests/unit/workflows/fork-template-parity.test.ts must still be able to
 # assert that the template has not drifted from a known-good baseline. With
-# the upstream file gone, this fixture IS that baseline.
+# the upstream file gone, this fixture IS that baseline. The template departs
+# from it on purpose in one place: configure-pages runs before the build and
+# the build takes SITE_BASE from its base_path, where this file hardcoded
+# upstream's own path. The parity test asserts that departure directly.
 #
 # RULE FOR MAINTAINERS: this file does not advance on its own. Whenever you
 # upgrade the action pins in deploy.yml.template, update this fixture in the
