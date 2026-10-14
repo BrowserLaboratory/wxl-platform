@@ -283,10 +283,34 @@ Inferred, not verified:
   once it completes (the upgrade at `:267-384`); if that open outlasts its own timeout
   (`OPEN_TIMEOUT_MS`, `:227`), the request is not cancelled and can still leave an empty database.
 
+More consequences, from the epic's chain analysis
+(`.proj.specs/0001-truthful-clear-reports/review/chain-analysis.md`), inferred and not reproduced:
+- `localStorage` is written back as well, not only the database: the code-draft checkpoint
+  (`.vitepress/theme/composables/codeDraftSnapshot.ts:9`, from `CodeEditorPanel.vue:96`) and saved
+  Repeater requests (`.vitepress/theme/components/RepeatPanel.vue:45`, `:63-64`) can restore keys the
+  sweep removed.
+- A tab that ran a successful clear has the decision marker, so if another tab of the site saves the
+  previous learner's attack session back afterwards, this tab resumes that attempt without asking
+  (`useAttackSession.ts:112-143`) — chain B.
+- A write whose `getDb()` is called after the delete request is issued can land after a successful
+  clear, and the tab then loads the previous learner's code draft without asking — chain C.
+- The comments that justify dismiss (`useSessionGate.ts:489-500`, `SessionGate.vue:232-245`) weigh the
+  current visitor's attack session and a queued delete, not the previous learner's notes and draft
+  held in memory.
+
+The epic's close-out ruled (2026-10-14, the user, option A) that this is not a chain that opens a
+ticket within epic 0001: the gate is not access control, the reports are true when shown, and the
+behaviour predates the epic (`72327e2` already had `dismissClearFailure` and no reload after a sweep
+failure), which narrowed the dismiss exit. It is the first candidate for a later epic.
+
 **Blocks.** Any claim that a site-wide clear leaves nothing behind once the report says the database
-was deleted. Options: a gate check on every read at mount and every write; a reload after a sweep
-failure as well (the epic chose an in-place report there); telling other tabs through a broadcast
-channel.
+was deleted. Options: a gate check on every write without one, as `recordAttempt` has (the smallest;
+reads keep working); discarding the notes and drafts held in memory when the sweep-failure report is
+dismissed; making `getDb()` refuse once a delete has resolved in the document (blocks reads too, for
+the rest of the document); a reload after a sweep failure as well (rejected by the epic: it recreates
+the locked door dismiss exists to avoid, `SessionGate.vue:14-20`); telling other tabs through a
+broadcast channel. `deleteDatabase` does not go through `getDb()` (`useChallengePersistence.ts:528-558`),
+so none of these affects a retry.
 
 **Not blocked.** The truth of the reports themselves, which describe the moment they are shown.
 
