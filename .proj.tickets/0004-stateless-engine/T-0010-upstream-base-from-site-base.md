@@ -2,7 +2,7 @@
 id: T-0010
 title: Decide the upstream site's base from SITE_BASE
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -20,7 +20,7 @@ The config defines `const siteBase = process.env.SITE_BASE || '/'` (A9) with `  
 
 - [x] T28: template steps, build env and header strings (S4)
 - [x] T29–T31: config `base` and hrefs with `SITE_BASE` unset, empty, `/x/`, and invalid (S3)
-- [ ] T76: preview deployment — three favicon URLs 200, asset URLs under `/assets/`, `<title>` equals production's (S8)
+- [x] T76: preview deployment — three favicon URLs 200, asset URLs under `/assets/`, `<title>` equals production's (S8)
 - [x] T83: the config, template, parity, toolchain-parity, frozen-baseline and LocaleSwitcher rows (S9)
 
 ## 給使用者（zh-TW）
@@ -100,7 +100,7 @@ Snapshot: base and HEAD `c0f7edf`, final tracked WIP plus the new test file; GLO
 | Spec F1, Standards F6: the frozen baseline's header did not state the template's deliberate departure | fixed: the fixture header now names it |
 | Spec F2, Standards F2: the template header pointed at README's fork section, which still states the old rules until T-0016 | fixed: the pointer is removed. The header's `--host` wording belongs to T-0014, which implements `--host` (noted there) |
 | Spec F3: "every range deployed to GitHub Pages" was imprecise | fixed: parity test, toolchain-parity test and fixture now say Cloudflare Pages ranges get none |
-| Spec F4, Standards F1: ticket lacked the S9 record, the two tables, AC ticks and `status: review` | fixed in this record |
+| Spec F4, Standards F1: ticket lacked the S9 record, the two tables, AC ticks and `status: done` | fixed in this record |
 | Spec F5: T76 not yet verified | stage 8 |
 | Spec F6, Standards F5: until T-0014, today's `fork:init --base` collapses `base: siteBase` into a literal while the hrefs read SITE_BASE; stale `??` comments remain in the fork-init module and test | recorded for T-0014 (its rows rewrite `--base` and those comments). No worse than before: the hrefs ignored a literal base before this change too |
 | Spec F7: README contradicts the new config until T-0016 | accepted transition; T-0016 rewrites the fork section |
@@ -115,3 +115,19 @@ Snapshot: base and HEAD `c0f7edf`, final tracked WIP plus the new test file; GLO
 ### 2026-10-14 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0010.md`. Candidate pass and independent false-positive filter by separate `harness-reviewer` agents: five LOW candidates, none introduced by this diff and exploitable; nothing blocks landing. Pre-existing hardening (job-level permissions, `persist-credentials: false`, toolchain pins) recorded, not fixed here; C3 is recorded against OQ-018 (T-0016 writes OQ-018); C4 is carried by T-0014.
+
+### 2026-10-14 — stage 8 (preview) and landing
+
+PR BrowserLaboratory/wxl-platform#14, squash-merged by the user as `1e5bce4` at 2026-10-14T13:11Z with all six checks green (test, build, prose-audit, site-smoke, challenge-verify, Cloudflare Pages). The T76 check below ran on the PR's preview right after the merge (the user merged before it was recorded); the preview is the build of branch head `549ff22`, whose code equals `1e5bce4`.
+
+Surface: HTTP responses of the Cloudflare Pages preview `https://2b47260d.wxl-platform.pages.dev` (no browser driven; the spec's stated override of hard rule 4 for S8).
+
+| Check | Command | Result |
+|---|---|---|
+| three favicons | `curl -s -o /dev/null -w '%{http_code}' <preview>/<file>` for `favicon.svg`, `favicon.png`, `apple-touch-icon.png` | 200, 200, 200 |
+| favicon hrefs in `/` | `curl -sL <preview>/ \| grep -oE 'rel="(icon\|apple-touch-icon)"[^>]*href="[^"]*"'` | `/favicon.svg`, `/favicon.png`, `/apple-touch-icon.png` |
+| script and modulepreload URLs of `/` and `/zh-TW/` | `curl -sL <preview><page> \| grep -oE '<(script\|link)[^>]*>'` filtered to `src`/`href` | all under `/assets/` (5 per page) |
+| stylesheets of `/` | same, `rel="preload stylesheet"` | `/assets/style.DAos3MhM.css`; `/vp-icons.css` (a single root-level segment, allowed by T76) |
+| `<title>` of `/` and `/zh-TW/` | `curl -sL <url><page> \| grep -oE '<title>[^<]*</title>'` on the preview and on `https://wxl.browserlab.online` | `Web eXploitation Laboratory` on both, for both pages |
+
+All acceptance criteria are met.

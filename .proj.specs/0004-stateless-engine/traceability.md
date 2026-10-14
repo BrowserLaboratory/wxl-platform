@@ -4,17 +4,20 @@
 this file. Stage 1 decisions: Q1–Q24, E1–E6 and F1–F3 (2026-10-14). This epic was split from
 0003-apply-engine after its round 2; the parts of 0003 that depend on a setup record are not here.
 Revision 2 applies the disposition of round 1 (`review/disposition.md`, groups M1–M10); row ids of
-revision 1 are kept, and rows added in revision 2 start at T81.
+revision 1 are kept, and rows added in revision 2 start at T81. Revision 2.1 (2026-10-14) adds the
+clarifications the user approved with the test plans: S2 links `node_modules`, S5 gains the
+expectation check, the end of the file is an end of the line, and an A8 value followed by `;` does
+not parse.
 
 ## Seams (0003's approved seams; S1, S5, S6 and S7 changed with the user's approval, 2026-10-14)
 
 | Seam | Entry point | Observable output |
 |---|---|---|
 | 0004-S1 | `parseForkInitArgs(argv)`; `runForkInit(args, { projectRoot })` on a fixture tree in a temporary directory | files on disk and their modification times; the returned `exitCode`, `message`, `changedFiles`, `warnings`, `sensitiveKeys`, `residualFiles`, `residualHits`; a `ForkInitArgError` thrown by `parseForkInitArgs` |
-| 0004-S2 | the fork-init CLI file copied into a fixture tree under the real path of the temporary directory (symbolic links resolved), whose manifest has `"type": "module"`; run as `node --experimental-strip-types`, without `tsx` or `node_modules` | exit code, stdout, stderr (an ExperimentalWarning on stderr is allowed) |
+| 0004-S2 | the fork-init CLI file copied into a fixture tree under the real path of the temporary directory (symbolic links resolved), whose manifest has `"type": "module"` and whose `node_modules` is a symbolic link to the repository's; run as `node --experimental-strip-types`, without `tsx` | exit code, stdout, stderr (an ExperimentalWarning on stderr is allowed) |
 | 0004-S3 | the VitePress config module imported in a test after setting or unsetting `SITE_BASE` (fresh module registry per case) | the exported config's `base`, `title` and the three `head` hrefs; a thrown error |
 | 0004-S4 | workflow and template files parsed with the `yaml` package (prior art: the fork-template parity test) | step order, step `id`, build-step `env`, job `if:`, job `env`, job matrix, job steps |
-| 0004-S5 | the guard's classification function, the upstream-pristine check function and the shared upstream-decision function, each called on a fixture `{ path → content }` map (the decision also on environment values and a work-tree flag); and the upstream-only tests on the real tracked files. All live in `tests/unit/scripts/upstream-guard.test.ts` | the list of violations (file, line); the list of mismatched field ids; the decision; pass or fail |
+| 0004-S5 | the guard's classification function, the upstream-pristine check function and the shared upstream-decision function, each called on a fixture `{ path → content }` map (the decision also on environment values and a work-tree flag), and the expectation check, called on a decision and a `WXL_EXPECT_UPSTREAM` value; and the upstream-only tests on the real tracked files. All live in `tests/unit/scripts/upstream-guard.test.ts` | the list of violations (file, line); the list of mismatched field ids; the decision; pass or fail |
 | 0004-S6 | the ShortLinkShare, MergedNav and ChallengeList component tests, building their expectations from the `SITE_ORIGIN` they import from the short-link module (no mock) | their assertions |
 | 0004-S7 | stage 8, local, on the HEAD of the epic's last ticket branch: two exports, each `git archive HEAD` into a temporary directory, then in order `git init && git add -A`, `pnpm install`, the export's `pnpm fork:init` command (below), `pnpm wasm:build`, `pnpm challenge:keygen`, `pnpm test --run`, `pnpm build`, **read T74**, `pnpm exec playwright install chromium`, `CI=1 pnpm test:smoke`, `CI=1 pnpm test:challenges`; the GH export then runs `SITE_BASE=/x/ pnpm build` and **reads T75**. Before each Playwright command, nothing listens on ports 4173 and 5173 (`CI=1` makes a busy port fail instead of being reused) | exit codes; the build output's `index.html`, `zh-TW/index.html`, `challenges.html`, `zh-TW/challenges.html`, and every `.html` and `.js` file, read as text (HTML entities decoded before comparing) |
 | 0004-S8 | stage 8, preview: the Cloudflare Pages preview deployment of the ticket that adds A9 | HTTP status of the three favicon URLs; the `src` of every `<script>` and the `href` of every `<link rel="stylesheet">` and `<link rel="modulepreload">` in `/` and `/zh-TW/`; the `<title>` of `/` and `/zh-TW/` |
@@ -62,8 +65,10 @@ value is not a first conversion.
 | A8 | short-link module | short-link origin | code | candidate lines `^export const SITE_ORIGIN = .+$`; must be one, and its value a JS string literal |
 | A9 | VitePress config | base definition | code | candidate lines `^const siteBase = .+$`; must be one, and the config must also hold exactly one line `  base: siteBase,`. The upstream form is exactly `const siteBase = process.env.SITE_BASE \|\| '/'` |
 
-"End of the line" and `$` come before a CR, so a CRLF file is recognised as an LF one. A JS string
-literal is single- or double-quoted with standard escapes. An A7 value is one YAML scalar when the
+"End of the line" and `$` come before a CR, so a CRLF file is recognised as an LF one; the end of
+the file is also an end of the line, and white space after a form is not. A JS string literal is
+single- or double-quoted with standard escapes, with nothing after it (an A8 value followed by `;`
+does not parse). An A7 value is one YAML scalar when the
 `yaml` package parses `name: <value>` as a one-key map whose value is a string, and the value is not
 a block scalar (`|`, `>`) and has nothing after it on the line (a trailing `# comment` is
 unparsable). New A6–A8 values are written as JSON string literals through a function replacer.
