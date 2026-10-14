@@ -29,3 +29,7 @@ README and README.en rewrite the fork section, the `fork:init` command row and t
 改寫文件並做 epic 的端到端驗證：README 與 README.en 的 fork 段落、兩份 fork-init skill、GLOSSARY、OPEN-QUESTIONS 依規定字串更新。第 8 階段在這張分支的 HEAD 上，把 repo 匯出成 GitHub Pages 與 Cloudflare Pages 兩份靶場，各跑完整套建置與測試，確認站名、短連結與 favicon 正確。
 
 ## Comments
+
+### 2026-10-14 — carried from T-0010 stage 7
+
+OQ-018 should note that T-0010 made the project-site base automatic, so more working same-origin ranges may exist (security-T-0010.md, C3).

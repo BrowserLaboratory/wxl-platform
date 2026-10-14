@@ -111,3 +111,7 @@ Snapshot: base and HEAD `c0f7edf`, final tracked WIP plus the new test file; GLO
 | Standards S2: local cast for `id` | fixed: `id?: string` added to the file's `Step` interface |
 | Standards S3: ten fresh imports of the config module | accepted: required by S3; the file runs in about 0.3 s |
 | Standards N1: configure-pages' `base_path` for a root site is `""` | verified on 2026-10-14 in the pinned action's `action.yml` (spec 0004, "Host, base and origin"); T76 and the user's manual deployment confirm |
+
+### 2026-10-14 — stage 7 security review
+
+Report: `.proj.specs/0004-stateless-engine/review/security-T-0010.md`. Candidate pass and independent false-positive filter by separate `harness-reviewer` agents: five LOW candidates, none introduced by this diff and exploitable; nothing blocks landing. Pre-existing hardening (job-level permissions, `persist-credentials: false`, toolchain pins) recorded, not fixed here; C3 is recorded against OQ-018 (T-0016 writes OQ-018); C4 is carried by T-0014.
