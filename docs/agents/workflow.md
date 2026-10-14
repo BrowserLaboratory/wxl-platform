@@ -51,8 +51,13 @@ Alongside the spec, write `traceability.md`: a single table mapping
 derived from this matrix, so a gap in the matrix is a gap in the spec. This is the single source of
 truth that stops the "fix A, miss B" class of revision failure.
 
-**Gate:** spec and traceability matrix both exist, and every row of the matrix reaches an acceptance
-criterion.
+When the spec or the matrix points at existing code, name the function, component or test, not a
+line number. Lines move during implementation, and a line number pinned to an old commit keeps
+reading as current after it has stopped being true.
+
+**Gate:** spec and traceability matrix both exist, every row of the matrix reaches an acceptance
+criterion, and the spec's trust-boundary section names every boundary the epic touches or states
+that it touches none.
 
 ## Stage 3 — Adversarial review
 
@@ -77,8 +82,11 @@ Ticket ids are allocated globally and sequentially (`T-0001`, `T-0002`, …) and
 branch names embed them. Files live under `.proj.tickets/NNNN-<epic-slug>/`. Layout and frontmatter:
 [issue-tracker.md](issue-tracker.md).
 
+With the breakdown, show a claim table that maps every row of `traceability.md` to the ticket that
+delivers it. A row that no ticket claims is a gap in the breakdown, not a detail for later.
+
 **Gate:** the user approves the breakdown — granularity, blocking edges, and what each ticket
-delivers.
+delivers — and every traceability row is claimed by a ticket.
 
 ## Stage 5 — Implement
 
@@ -102,10 +110,18 @@ under test does not exist yet.
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
 
+**Ticket records.** From here through stage 8, every claim in a ticket record that something was
+verified carries a command that reproduces it, or a `path:line` pinned to a named commit. When a
+record compares against an earlier commit, read that commit with `git show <commit>:<path>` from
+the start rather than inferring from the current file.
+
 **Gate:** test plan table approved before the loop starts; coverage report table produced before
 stage 6.
 
 ## Stage 6 — Review the change
+
+**Entry:** the ticket's `status` is `review`, and every acceptance criterion the implementation
+meets is checked in the ticket file.
 
 Run `/code-review`. It reviews on two axes: does the code follow this repo's documented standards,
 and does it match what the spec asked for. Direction and requirement are what matter here;

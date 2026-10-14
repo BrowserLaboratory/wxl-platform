@@ -55,6 +55,12 @@ before round 2, or the review is chasing a target that moves as fast as it advan
 any rule or acceptance criterion mid-review, check it against the existing ones for mutual
 exclusion — a guarantee added to close one hole routinely opens another.
 
+### Disposition
+
+Record each finding's disposition in a table. Answer every claim the finding makes: a finding that
+raises two problems gets two answers, and a claim left unanswered stays open. Answering one half of
+a finding is how the other half escapes review while the table reads as done.
+
 ### Adjudication
 
 Reviewers will disagree. The **user** adjudicates. Do not resolve a disagreement by majority vote

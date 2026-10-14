@@ -27,7 +27,7 @@
 
 ## 要改的地方
 
-| # | 觀察 | 證據 | 提案（尚未套用，待使用者決定） |
+| # | 觀察 | 證據 | 提案（#1～#7 已於 2026-10-14 套用到 `docs/agents/workflow.md`、`docs/agents/review.md` 與兩棵樹的 `to-spec`、`security-review`；#8～#10 已在本表處理） |
 |---|---|---|---|
 | 1 | traceability 的 T34（P11a 的 S2 真話測試）沒有任何 ticket 認領，直到 T-0009 盤點時才發現 | T-0009 ticket「scope added by the user: T34」 | 第 4 階段拆 ticket 時，列一張「T 列 → ticket」對照表，確認每一列都有人認領 |
 | 2 | T-0003～T-0007 每一張進第 6 階段時，status 都還沒改成 `review`、AC 也沒勾 | 各 ticket 的 stage 6 處置表；handoff「從這幾張學到的」 | 在 `docs/agents/workflow.md` 第 6 階段的入口條件加上這兩項 |

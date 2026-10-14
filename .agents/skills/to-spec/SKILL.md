@@ -57,6 +57,13 @@ Do NOT include specific file paths or code snippets. They may end up being outda
 
 Exception: if a prototype produced a snippet that encodes a decision more precisely than prose can (state machine, reducer, schema, type shape), inline it within the relevant decision and note briefly that it came from a prototype. Trim to the decision-rich parts, not a working demo, just the important bits.
 
+## Trust Boundaries and Threat Model
+
+Each trust boundary the feature touches: who or what sits on each side, what the boundary protects
+and what it does not, and which actors are outside the threat model. Name the ADR that settles a
+boundary when one exists. A feature that touches no boundary says so. Epic close-out's chain
+analysis reads this section as its input.
+
 ## Testing Decisions
 
 A list of testing decisions that were made. Include:

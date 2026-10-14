@@ -182,7 +182,8 @@
         "Portable host tool invocation.",
         "Explicit base and pending/untracked scope.",
         "Project threat model overrides unsafe blanket exclusions.",
-        "Taiwan report and local evidence output."
+        "Taiwan report and local evidence output.",
+        "Candidate reviewer reports unfiltered; only an independent reviewer judges false positives."
       ]
     }
   },
@@ -191,7 +192,7 @@
     "archify": "Add agents/openai.yaml for Codex discovery metadata; preserve upstream implicit invocation policy. Disable Windows artifact and preview automatic opening before process launch (2026-09-13); add regression coverage and restriction documentation. Native Windows reproduction is deferred. Update fast-uri override and lockfile to 3.1.6; add test:portable and test:preview scripts for the bundled subset. Keep upstream test command and invocation policy unchanged. Canonicalize the native directory before fs.watch to address Windows short-path libuv assertion failures; assert the watcher boundary in existing preview coverage.",
     "code-review": "Capture committed and pending layers with a shared snapshot; disclose smell reference on demand.",
     "grilling": "Bound question batches and factual delegation; carry forward approvals while retaining final confirmation.",
-    "to-spec": "Use configured tracker and traceability; replace length and seam-count preferences with coverage.",
+    "to-spec": "Use configured tracker and traceability; replace length and seam-count preferences with coverage. Add a trust-boundary section to the spec template; epic close-out chain analysis reads it.",
     "implement": "Preserve TDD gates, scope checks to configured tools and review pending work before skill-owned commits.",
     "tdd": "Reuse approved test plans and seams; load examples on demand. Keep the CONTEXT.md glossary name where mattpocock/skills d80fa0f (2026-09-17) switched to GLOSSARY.md; the rename is deferred project-wide (OQ-006).",
     "init-template": "Trigger on requested adoption, not placeholder presence alone.",
