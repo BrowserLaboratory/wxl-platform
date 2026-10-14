@@ -49,7 +49,9 @@ from an executed verification. Redact secret values in findings.
 The candidate reviewer reports every suspected defect with severity and confidence,
 including ones the upstream methodology says to skip or not report: those thresholds
 (HIGH/MEDIUM, confidence >= 0.8) apply only when writing the report, after
-false-positive validation. Record excluded coverage (including dependency scanning,
+false-positive validation. The candidate reviewer does not judge its own candidates
+to be false positives; state this in its prompt, because that judgment belongs to
+the independent reviewer. Record excluded coverage (including dependency scanning,
 availability/rate limiting and low-severity hardening) in the report; expand it
 when the project's threat model explicitly requires those areas. Language choice,
 documentation, AI prompts, shell scripts, unsafe Rust or FFI are not automatic
