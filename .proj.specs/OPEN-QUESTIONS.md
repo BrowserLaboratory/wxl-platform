@@ -198,7 +198,7 @@ it adds a third identity to keep consistent with `--repo` and `--base`.
 ## OQ-006 — Should the project follow upstream in renaming `CONTEXT.md` to `GLOSSARY.md`?
 
 **Deferred on:** 2026-10-11
-**Status:** open
+**Status:** resolved
 
 **Reason.** Upstream `mattpocock/skills` commit `d80fa0f` (2026-09-17) renamed the domain-glossary
 convention from `CONTEXT.md` / `CONTEXT-MAP.md` to `GLOSSARY.md` / `GLOSSARY-MAP.md` in every skill at
@@ -217,7 +217,18 @@ change, which is too wide to take mid-epic.
   `docs/agents/domain.md`, `docs/agents/review.md`, `docs/agents/challenge-pipeline.md`,
   `tests/unit/site/context-glossary.test.ts`, and epic 0001's spec and tickets.
 
-**Blocks.** Nothing today: every skill and document still names the same file. Options:
+**Resolved on 2026-10-14.** The user chose to rename everywhere in one change, before W4.5
+(`create-wxl`) ships the glossary convention to new forks. The glossary is now `GLOSSARY.md`, and
+`CONTEXT-FORMAT.md` is `GLOSSARY-FORMAT.md` in both trees. Both trees' `domain-modeling` files
+(`SKILL.md`, `GLOSSARY-FORMAT.md`, `ADR-FORMAT.md`) are byte-identical to upstream `d80fa0f`: fetch
+each with `gh api "repos/mattpocock/skills/contents/skills/engineering/domain-modeling/<file>?ref=d80fa0f4ebe0c5714af0adf8670336065233ecc6" --jq .content | base64 -d`
+and compare with `cmp`. The seven OQ-006 adaptations in `docs/agents/skill-sources.json` are removed:
+`setup-matt-pocock-skills` and `tdd` are back to their wording before `f480dcf`, and the five
+entries that held only this adaptation are gone. The glossary test now also fails if a
+`CONTEXT.md` reappears at the root. Epic 0001's spec and tickets keep the old name as a record of
+what was true when they were written, as upstream kept its changelog.
+
+**Blocks.** Nothing. The options as they stood before the decision:
 - Keep `CONTEXT.md` permanently and leave the recorded adaptation in place. Ruled in.
 - Rename everywhere in one change: the glossary file, the shared instructions, the three
   `docs/agents/` documents, the seven skills in both trees, the glossary test, and references in
@@ -225,12 +236,11 @@ change, which is too wide to take mid-epic.
 - Update only some skills. Ruled out: a skill told to create `GLOSSARY.md` when none exists, beside
   others that read `CONTEXT.md`, produces two glossaries.
 
-**Not blocked.** Skill updates that do not touch the glossary name. The adaptation is recorded per
-skill in `docs/agents/skill-sources.json`, so the next upstream comparison does not mistake the old
-name for drift.
+**Not blocked.** Skill updates that did not touch the glossary name. While this was open, the
+adaptation was recorded per skill in `docs/agents/skill-sources.json`, so an upstream comparison
+would not mistake the old name for drift.
 
-**Revisit when.** Epic 0001 has landed, and before any scaffolder or template ships the glossary
-convention to new forks, whichever comes first.
+**Revisit when.** Upstream renames the glossary convention again.
 
 ---
 
