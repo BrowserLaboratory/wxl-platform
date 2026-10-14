@@ -1,11 +1,11 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: d16096ffcf8606c54c400ca7ff317271f9a2174d
+synced_from_sha: cabfbfb97a5d9665433f9c6e77cf395762bdc6a8
 ---
 
 # Spec 0004：不帶狀態的 fork-init 引擎，以及保持綠燈的靶場 CI
 
-狀態：第 2 版。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
+狀態：第 2.1 版（第 2 版加上隨測試計畫核准、列在 `traceability.md` 的澄清）。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
 第 2 版套用第 1 輪的裁決（`review/disposition.md`，群組 M1–M10）。本檔由英文版翻譯，以英文版為準。
 本文衍生自 `traceability.md`，其中保存本規格引用的固定清單（模式與「今天」、repository slug 的文法、
 第一次轉換、身分定位點 A1–A9、base 的文法、workflow 狀態、上游 repository slug 的限制與守門清單、
@@ -83,8 +83,9 @@ repository slug，都會被取代；一次跑到一半中斷的執行，只要�
 ### 引擎介面與錯誤
 
 - `runForkInit(args, { projectRoot })` 仍是唯一的引擎，整個引擎留在 fork-init CLI 的這一個檔案
-  裡，而 rebrand 模式本身的掃描已經排除這個檔案。它只匯入 Node 內建模組，並只使用可被抹除的
-  TypeScript 語法，因此 CLI 能在 Node 的型別抹除下執行，不需要 `tsx` 或 `node_modules`（錯誤類別
+  裡，而 rebrand 模式本身的掃描已經排除這個檔案。它匯入 Node 內建模組與 `yaml` 套件
+  （每個靶場都會安裝的開發依賴套件，用來判斷 workflow），並只使用可被抹除的
+  TypeScript 語法，因此 CLI 能在 Node 的型別抹除下執行，不需要 `tsx`（錯誤類別
   裡的參數屬性寫法被移除；`fork:init` 的套件 script 仍可保留 `tsx`）。它匯出上游 repository slug
   為 `UPSTREAM_SLUG`。
 - 新參數：`origin`、`siteName`、`host`（`github-pages` | `cloudflare-pages`），分別以
@@ -328,7 +329,7 @@ workflow）且是部署在網域根目錄；`--base` 會讓靶場的網站冒煙
 - **AC-E2** `--dry-run` 不寫入任何東西，在 `changedFiles` 裡列出每一項會改變的內容（包括
   workflow 的安裝、替換與移除），並回報與一次真正執行相同的錯誤與警告；結果及其訊息裡的每個路徑，
   在任何作業系統上都用 `/`。(T56, T57)
-- **AC-E3** 複製進一個 fixture 的 CLI，在不帶 `tsx` 或 `node_modules` 的情況下，以
+- **AC-E3** 複製進一個 fixture 的 CLI，連結上該 repository 的 `node_modules`，在不帶 `tsx` 的情況下，以
   `node --experimental-strip-types` 執行：在一個合法的 fixture 上以 exit 0 搭配 T58 的
   stdout 結束；對一個不合法的參數，以 exit 1 搭配 stderr 上的 `✗ ` 與訊息結束。(T58, T59)
 - **AC-E4** 「Overridden contracts」底下列出的測試都被改寫為新的契約，其餘每一個既有的 fork-init

@@ -1,6 +1,7 @@
 # Spec 0004: a stateless fork-init engine, and range CI that stays green
 
-Status: revision 2. Round 1 of adversarial review found no P0 (`review/round-1.md`), so the stage 3
+Status: revision 2.1 (revision 2 plus the clarifications approved with the test plans, listed in
+`traceability.md`). Round 1 of adversarial review found no P0 (`review/round-1.md`), so the stage 3
 gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups M1–M10).
 Derived from `traceability.md`, which holds the fixed lists this spec refers to (modes and "today",
 repository-slug grammar, first conversion, identity anchors A1–A9, base grammar, workflow states,
@@ -84,9 +85,10 @@ From `GLOSSARY.md` (section 靶場與老師的工具): **range**, **teacher**, *
 ### Engine interface and errors
 
 - `runForkInit(args, { projectRoot })` remains the one engine and the whole engine stays in the
-  fork-init CLI file, which rebrand mode already excludes from its own walk. It imports only Node
-  built-ins and uses only erasable TypeScript syntax, so the CLI runs under Node's type stripping
-  without `tsx` or `node_modules` (the parameter property in the argument error class is removed;
+  fork-init CLI file, which rebrand mode already excludes from its own walk. It imports Node
+  built-ins and the `yaml` package (a dev dependency every range installs, used to judge workflows)
+  and uses only erasable TypeScript syntax, so the CLI runs under Node's type stripping without
+  `tsx` (the parameter property in the argument error class is removed;
   the `fork:init` package script may keep `tsx`). It exports the upstream repository slug as
   `UPSTREAM_SLUG`.
 - New arguments: `origin`, `siteName`, `host` (`github-pages` | `cloudflare-pages`), exposed as
@@ -295,7 +297,7 @@ open-questions register change as T79–T80 list. All of these are checked at st
 
 - **AC-E1** A tree error returns `exitCode` 1 with a message naming the anchor id, field or template and the file, printed by the CLI on stderr as `✗ ` and the message, alone, with exit 1; an error found before writing changes, creates and removes no file; in anchor mode a write failure returns `exitCode` 1 naming the file and containing `run the same command again`. (T53–T55)
 - **AC-E2** `--dry-run` writes nothing, lists in `changedFiles` everything that would change (workflow installs, replacements and removals included), and reports the same errors and warnings as a real run; every path in the result and its messages uses `/` on every OS. (T56, T57)
-- **AC-E3** The CLI copied into a fixture runs under `node --experimental-strip-types` without `tsx` or `node_modules`: exit 0 with the T58 stdout on a valid fixture, exit 1 with `✗ ` and the message on stderr for an invalid argument. (T58, T59)
+- **AC-E3** The CLI copied into a fixture, with the repository's `node_modules` linked, runs under `node --experimental-strip-types` without `tsx`: exit 0 with the T58 stdout on a valid fixture, exit 1 with `✗ ` and the message on stderr for an invalid argument. (T58, T59)
 - **AC-E4** The tests listed under "Overridden contracts" are rewritten to their new contract, and every other existing fork-init test passes with its body unchanged. (T60)
 
 ### CI

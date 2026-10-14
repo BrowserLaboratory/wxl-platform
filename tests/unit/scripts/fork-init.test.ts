@@ -1,14 +1,88 @@
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+/**
+ * @vitest-environment node
+ *
+ * Forced to the `node` environment (not the project default, `happy-dom`). Checked directly: a
+ * throwaway test run under the default `happy-dom` environment printed `import.meta.url` as a
+ * plain `file://` URL, but printed `new URL('../../..', import.meta.url).href` — the same join
+ * `CLI_REPO_ROOT` below performs — as an `http://localhost:.../@fs/...` dev-server URL instead.
+ * `fileURLToPath` throws on a non-`file:` URL, so `CLI_REPO_ROOT` could not be computed under
+ * `happy-dom`. The need is specific to this file's `CLI_REPO_ROOT`, not to this file in general.
+ * Three other files in this project already carry the same directive, each for its own, different
+ * reason: tests/unit/workers/challenge-sw-response.test.ts (happy-dom's `Response` drops
+ * `Set-Cookie` headers entirely), tests/unit/workers/runtimeHost-response.test.ts (happy-dom's
+ * `Response` accepts a non-empty body with a null-body status that a real engine rejects), and
+ * tests/unit/workers/runtime-guard-invariants.test.ts (pure source-text regex checks with no DOM
+ * dependency at all).
+ */
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+  readdirSync,
+  utimesSync,
+  statSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   parseForkInitArgs,
   runForkInit,
   ForkInitArgError,
+  type ForkInitResult,
 } from '../../../scripts/fork-init'
 
 // ─── fixture builder ─────────────────────────────────────────────────────────
+
+/** A fixed past time: real writes land after it, so a snapshot taken before and after an
+ * operation that is supposed to write nothing matches only when mtimes truly did not change. */
+const FIXED_PAST = new Date('2020-01-01T00:00:00Z')
+
+/** Recursively list every file under `root`, relative path posix-joined. `node_modules` is
+ *  skipped: the CLI fixture symlinks the repository's own (huge, and never touched by the
+ *  engine's own exclusion list). */
+function listFiles(root: string, rel = ''): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(join(root, rel), { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue
+    const childRel = rel ? `${rel}/${entry.name}` : entry.name
+    if (entry.isDirectory()) out.push(...listFiles(root, childRel))
+    else if (entry.isFile()) out.push(childRel)
+  }
+  return out
+}
+
+/** Set every file's mtime to FIXED_PAST, ahead of a snapshot comparison. */
+function pinMtimes(root: string) {
+  for (const rel of listFiles(root)) utimesSync(join(root, rel), FIXED_PAST, FIXED_PAST)
+}
+
+/** Every file's relative path, bytes and mtimeMs — a byte- and time-exact tree snapshot. */
+function snapshotTree(root: string): Array<{ path: string; bytes: string; mtimeMs: number }> {
+  return listFiles(root)
+    .sort()
+    .map((rel) => {
+      const abs = join(root, rel)
+      return {
+        path: rel,
+        bytes: readFileSync(abs).toString('base64'),
+        mtimeMs: statSync(abs).mtimeMs,
+      }
+    })
+}
+
+/** Overwrite the fixture's manifest with an arbitrary (possibly invalid) raw string. */
+function writeManifest(root: string, raw: string) {
+  writeFileSync(join(root, 'package.json'), raw)
+}
 
 function writeFixture(root: string) {
   const w = (rel: string, content: string) => {
@@ -102,6 +176,35 @@ function writeConfigWithBase(root: string, basePath: string) {
 const A_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--base', '/myfork/']
 const B_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme']
 
+/** The two fork modes, in the shapes every describe below needs: `rebrand` is the argv tail that
+ *  selects the mode for an arbitrary base argv, `args` is the full, ready-to-use argv (A_ARGS /
+ *  B_ARGS). Declared once so no describe below keeps its own copy of this table. */
+const MODES = [
+  { label: 'anchor', rebrand: [] as string[], args: A_ARGS },
+  { label: 'rebrand', rebrand: ['--rebrand', 'acme'], args: B_ARGS },
+] as const
+
+/** Run `parseForkInitArgs(argv)`, assert it throws a `ForkInitArgError`, and return it for
+ *  further assertions — shared by every argument-rule test below so the throw/catch/instanceof
+ *  boilerplate is written once, and so a case that unexpectedly does NOT throw fails the test
+ *  loudly instead of silently falling through. */
+function argError(argv: string[]): ForkInitArgError {
+  let caught: unknown
+  try {
+    parseForkInitArgs(argv)
+  } catch (e) {
+    caught = e
+  }
+  expect(caught, `expected a throw for ${JSON.stringify(argv)}`).toBeInstanceOf(ForkInitArgError)
+  return caught as ForkInitArgError
+}
+
+/** Escape a string for safe embedding inside a `RegExp` source — used to match a
+ *  `JSON.stringify`-quoted value verbatim inside a larger error message. */
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 describe('parseForkInitArgs', () => {
   it('requires --repo and rejects a malformed owner/repo value', () => {
     expect(() => parseForkInitArgs(['--author', 'me'])).toThrow(ForkInitArgError)
@@ -160,6 +263,435 @@ describe('parseForkInitArgs', () => {
     }
     // letter-first with interior dashes/dots is fine (interior is sanitized for the env var)
     expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'my-ctf']).rebrand).toBe('my-ctf')
+  })
+})
+
+describe('parseForkInitArgs — argument rules', () => {
+  it.each(MODES)(
+    "wraps any error Node's argument parser raises into a ForkInitArgError naming the flag ($label)",
+    ({ rebrand }) => {
+      const cases: Array<{ argv: string[]; flag: string }> = [
+        { argv: ['--bogus', ...rebrand], flag: '--bogus' },
+        { argv: ['-x', ...rebrand], flag: '-x' },
+        { argv: ['--no-dry-run', ...rebrand], flag: '--no-dry-run' },
+        { argv: ['--repo', 'me/myfork', ...rebrand, '--author'], flag: '--author' },
+        { argv: ['--repo', '--author', 'me', ...rebrand], flag: '--repo' },
+        { argv: ['--dry-run=yes', ...rebrand], flag: '--dry-run' },
+      ]
+      for (const { argv, flag } of cases) {
+        const err = argError(argv)
+        expect(err.exitCode).toBe(1)
+        expect(err.message).toContain(flag)
+      }
+    },
+  )
+
+  it("builds its own exact message for each Node parser error kind, not Node's raw text", () => {
+    expect(() => parseForkInitArgs(['--bogus'])).toThrowError('unknown flag: "--bogus"')
+    expect(() => parseForkInitArgs(['--repo', 'me/myfork', '--author'])).toThrowError('--author needs a value')
+    expect(() => parseForkInitArgs(['--repo', '--author', 'me'])).toThrowError('--repo needs a value')
+    expect(() => parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--dry-run=yes'])).toThrowError(
+      '--dry-run takes no value, got: "yes"',
+    )
+    // Node's own "place it at the end after '--'" hint must not leak into our message.
+    expect(argError(['--bogus']).message).not.toMatch(/place it at the end/)
+  })
+
+  it('rethrows a non-ERR_PARSE_ARGS_ error from Node unwrapped, not as a ForkInitArgError', () => {
+    // A non-array argv makes Node's own parseArgs throw a plain TypeError coded
+    // ERR_INVALID_ARG_TYPE — a real defect in the caller, not a user-input error, so it must
+    // propagate as-is instead of being mislabelled with exitCode 1.
+    let caught: unknown
+    try {
+      parseForkInitArgs(123 as unknown as string[])
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(TypeError)
+    expect(caught).not.toBeInstanceOf(ForkInitArgError)
+    expect((caught as NodeJS.ErrnoException).code).toBe('ERR_INVALID_ARG_TYPE')
+  })
+
+  it('echoes an unknown flag containing a control character JSON-escaped, not raw (ESC)', () => {
+    const rawName = '--bogus\u001b'
+    const err = argError([rawName])
+    expect(err.message).toBe(`unknown flag: ${JSON.stringify(rawName)}`)
+    expect(err.message).toContain('\\u001b')
+  })
+
+  it.each(MODES)('rejects a positional argument, naming it and quoting it with JSON.stringify ($label)', ({ rebrand }) => {
+    const positionalCases: Array<{ argvTail: string[]; positional: string }> = [
+      { argvTail: ['extra'], positional: 'extra' },
+      { argvTail: ['a"b'], positional: 'a"b' },
+      { argvTail: ['--', 'x'], positional: 'x' }, // positional because it follows `--`
+    ]
+    for (const { argvTail, positional } of positionalCases) {
+      const err = argError(['--author', 'me', '--repo', 'me/myfork', ...rebrand, ...argvTail])
+      expect(err.message).toContain('positional')
+      expect(err.message).toContain(JSON.stringify(positional))
+    }
+  })
+
+  it.each(MODES)('rejects a flag given twice, naming it ($label)', ({ rebrand }) => {
+    const cases: Array<{ argv: string[]; flag: string }> = [
+      { argv: ['--author', 'a', '--repo', 'me/myfork', ...rebrand, '--author', 'b'], flag: '--author' },
+      { argv: ['--author', 'me', '--repo=o/n', '--repo', 'o/n', ...rebrand], flag: '--repo' },
+      { argv: ['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--dry-run', '--dry-run'], flag: '--dry-run' },
+      { argv: ['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--base', '/a/', '--base', '/b/'], flag: '--base' },
+      { argv: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme', '--rebrand', 'beta'], flag: '--rebrand' },
+      { argv: ['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--name', 'a', '--name', 'b'], flag: '--name' },
+      {
+        argv: ['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--description', 'a', '--description', 'b'],
+        flag: '--description',
+      },
+    ]
+    for (const { argv, flag } of cases) {
+      expect(argError(argv).message).toContain(flag)
+    }
+  })
+
+  it.each(MODES)('rejects a missing or blank --author/--repo, naming the flag ($label)', ({ rebrand }) => {
+    // U+2028/U+2029 (lone, as the entire value): String.prototype.trim() strips a LineTerminator,
+    // so these land on the empty-after-trim path (T47), not the character-rule rejection path —
+    // see the ticket's red -> green log (row 8) for how the embedded `a\u2028b` case differs.
+    const blanks = [undefined, '', '   ', '\u3000', '\u2028', '\u2029']
+    for (const blank of blanks) {
+      const authorArgv = ['--repo', 'me/myfork', ...rebrand, ...(blank === undefined ? [] : ['--author', blank])]
+      const authorErr = argError(authorArgv)
+      expect(authorErr.exitCode).toBe(1)
+      expect(authorErr.message).toContain('--author')
+
+      const repoArgv = ['--author', 'me', ...rebrand, ...(blank === undefined ? [] : ['--repo', blank])]
+      const repoErr = argError(repoArgv)
+      expect(repoErr.exitCode).toBe(1)
+      expect(repoErr.message).toContain('--repo')
+    }
+  })
+
+  it('distinguishes a truly missing flag from one given empty after trim, in the message', () => {
+    expect(argError(['--repo', 'me/myfork']).message).toBe('missing required flag: --author <name>')
+    expect(argError(['--repo', 'me/myfork', '--author', '  ']).message).toBe(
+      `--author must not be empty, got: ${JSON.stringify('  ')}`,
+    )
+    // A lone U+2028/U+2029 as the entire --author value: String.prototype.trim() strips a
+    // LineTerminator, so these two values are reported through this same blank-after-trim
+    // branch, carrying the flag and the JSON-quoted (now-empty-looking) value — not through the
+    // character-rejection branch that handles every other disallowed code point.
+    expect(argError(['--repo', 'me/myfork', '--author', '\u2028']).message).toBe(
+      `--author must not be empty, got: ${JSON.stringify('\u2028')}`,
+    )
+    expect(argError(['--repo', 'me/myfork', '--author', '\u2029']).message).toBe(
+      `--author must not be empty, got: ${JSON.stringify('\u2029')}`,
+    )
+    expect(argError(['--author', 'me']).message).toBe('missing required flag: --repo <owner/repo>')
+    expect(argError(['--author', 'me', '--repo', '\u3000']).message).toBe(
+      `--repo must not be empty, got: ${JSON.stringify('\u3000')}`,
+    )
+  })
+
+  it.each(MODES)('accepts a valid --repo verbatim, without trimming ($label)', ({ rebrand }) => {
+    const owners = ['a', 'a'.repeat(39), 'a-b', 'a--b']
+    const names = ['x', 'x'.repeat(100), '.x', '...', 'a_b', 'git', 'x.gitx']
+    for (const owner of owners) {
+      for (const name of names) {
+        const repo = `${owner}/${name}`
+        const a = parseForkInitArgs(['--author', 'me', '--repo', repo, ...rebrand])
+        expect(a.repo).toBe(repo)
+      }
+    }
+  })
+
+  it.each(MODES)('rejects an invalid --repo, message containing --repo and JSON.stringify(value) ($label)', ({ rebrand }) => {
+    const badOwners = ['a'.repeat(40), '-a', 'a-', 'a_b', 'a.b', '']
+    const badNames = ['x'.repeat(101), '.', '..', 'x.git', 'x.GIT', '.git', 'a b', 'ü']
+    const badWhole = ['no-slash', 'a/b/c', '/b', 'a/', ' a/b']
+    const bad = [...badOwners.map((o) => `${o}/x`), ...badNames.map((n) => `a/${n}`), ...badWhole]
+    for (const value of bad) {
+      // `=` form (a deviation from a plain `--repo`, `<value>` pair): some values start with `-`,
+      // which Node's own parser would otherwise treat as the start of another flag.
+      const err = argError(['--author', 'me', `--repo=${value}`, ...rebrand])
+      expect(err.message).toContain('--repo')
+      expect(err.message).toContain(JSON.stringify(value))
+    }
+  })
+
+  it.each(MODES)('accepts a valid --author, trimmed ($label)', ({ rebrand }) => {
+    const values = [
+      'a',
+      'a'.repeat(100),
+      '\u{1F600}'.repeat(100),
+      '林老師',
+      'a\u200Db',
+      'a\u200Cb',
+      '\u{1F600}\uFDCF',
+      '\uFDF0',
+      '\uFFFD',
+      '\uFDCF',
+      '  Test Teacher  ',
+      '\u3000林\u3000',
+      '\uFEFFTeacher',
+    ]
+    const expected = [
+      'a',
+      'a'.repeat(100),
+      '\u{1F600}'.repeat(100),
+      '林老師',
+      'a\u200Db',
+      'a\u200Cb',
+      '\u{1F600}\uFDCF',
+      '\uFDF0',
+      '\uFFFD',
+      '\uFDCF',
+      'Test Teacher',
+      '林',
+      'Teacher',
+    ]
+    values.forEach((value, i) => {
+      const a = parseForkInitArgs(['--author', value, '--repo', 'me/myfork', ...rebrand])
+      expect(a.author).toBe(expected[i])
+    })
+  })
+
+  it.each(MODES)('rejects an invalid --author, message containing --author and the JSON-quoted value ($label)', ({ rebrand }) => {
+    const bad = [
+      'a'.repeat(101),
+      '\u200C',
+      '\u200D\u200C',
+      '\u0007',
+      '\u007F',
+      '\u0085',
+      '\uD800',
+      'a\u2028b', // interior: unlike a bare U+2028 (trimmed away entirely, see the exact-message test above), this embedded value survives trim() and still reaches character-level rejection
+      'a\u2029b', // interior, same reason for U+2029
+      '\u200B',
+      '\u00AD',
+      '\u202E',
+      `a\uFEFFb`,
+      '\uFDD0',
+      '\uFDEF',
+      '\uFFFE',
+      '\uFFFF',
+      '\u{1FFFE}',
+      '\u{10FFFF}',
+    ]
+    for (const value of bad) {
+      const err = argError(['--author', value, '--repo', 'me/myfork', ...rebrand])
+      expect(err.message).toContain('--author')
+      expect(err.message).toContain(JSON.stringify(value))
+    }
+  })
+
+  it('decides which message is thrown when several flags are wrong, by the argument check order', () => {
+    const cases: Array<{ argv: string[]; expect: RegExp }> = [
+      { argv: ['--repo', 'me/myfork', 'extra'], expect: /positional/ },
+      { argv: ['--repo=o/n', '--repo', 'o/n'], expect: /--repo/ },
+      { argv: [], expect: /--author/ },
+      { argv: ['--author', '', '--repo', 'bad'], expect: /--author/ },
+      { argv: ['--repo', 'bad', '--author', 'a'.repeat(101)], expect: /--repo/ },
+      { argv: ['--author', '\u0007', '--repo', 'me/myfork', '--rebrand', '2x'], expect: /--author/ },
+      { argv: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', '2x', '--base', "/a'/"], expect: /--rebrand/ },
+    ]
+    for (const { argv, expect: re } of cases) {
+      expect(argError(argv).message).toMatch(re)
+    }
+  })
+
+  it('quotes every rejected value with JSON.stringify, including --base and --repo', () => {
+    expect(() => parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', "/a'/"])).toThrow(
+      new RegExp(escapeRe(JSON.stringify("/a'/"))),
+    )
+    expect(() => parseForkInitArgs(['--author', 'me', '--repo', 'a b'])).toThrow(new RegExp(escapeRe(JSON.stringify('a b'))))
+  })
+
+  it('rejects a --rebrand name whose uppercased form contains WXL, quoting the value with JSON.stringify', () => {
+    const err1 = argError(['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'fooWXLbar'])
+    expect(err1.message).toContain(`got: ${JSON.stringify('fooWXLbar')}`)
+    const err2 = argError(['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'WXL2'])
+    expect(err2.message).toContain(`got: ${JSON.stringify('WXL2')}`)
+  })
+})
+
+describe('runForkInit — arguments reach the manifest', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-authorwrite-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('writes the trimmed --author to the manifest (anchor mode)', () => {
+    runForkInit(parseForkInitArgs(['--author', '  Test Teacher  ', '--repo', 'me/myfork', '--base', '/myfork/']), {
+      projectRoot: root,
+    })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.author).toBe('Test Teacher')
+  })
+
+  it('writes the trimmed --author to the manifest (rebrand mode)', () => {
+    runForkInit(parseForkInitArgs(['--author', '  Test Teacher  ', '--repo', 'me/myfork', '--rebrand', 'acme']), {
+      projectRoot: root,
+    })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.author).toBe('Test Teacher')
+  })
+})
+
+describe('runForkInit — manifest (T12–T13)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-manifest-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const manifestStates: Array<{ label: string; apply: (r: string) => void; exactMessage?: string }> = [
+    { label: 'missing', apply: (r) => rmSync(join(r, 'package.json')) },
+    {
+      label: 'BOM-prefixed',
+      apply: (r) => writeManifest(r, '\uFEFF' + readFileSync(join(r, 'package.json'), 'utf8')),
+      exactMessage: 'A1: package.json starts with a byte-order mark',
+    },
+    { label: 'unparsable ({)', apply: (r) => writeManifest(r, '{'), exactMessage: 'A1: package.json does not parse as JSON' },
+    {
+      label: 'unparsable (empty)',
+      apply: (r) => writeManifest(r, ''),
+      exactMessage: 'A1: package.json does not parse as JSON',
+    },
+    { label: 'not an object ([])', apply: (r) => writeManifest(r, '[]') },
+    { label: 'not an object (null)', apply: (r) => writeManifest(r, 'null') },
+    { label: 'not an object ("x")', apply: (r) => writeManifest(r, '"x"') },
+    { label: 'not an object (42)', apply: (r) => writeManifest(r, '42') },
+    { label: 'not an object (true)', apply: (r) => writeManifest(r, 'true') },
+  ]
+
+  for (const mode of MODES) {
+    for (const state of manifestStates) {
+      it(`manifest ${state.label} (${mode.label}) -> exitCode 1 naming A1/package.json, nothing written`, () => {
+        state.apply(root)
+        pinMtimes(root)
+        const before = snapshotTree(root)
+        const res = runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+        expect(res.exitCode).toBe(1)
+        expect(res.message).toContain('A1')
+        expect(res.message).toContain('package.json')
+        // A BOM gets its own message, distinct from a generic parse failure, so the cause is named precisely.
+        if (state.exactMessage) expect(res.message).toBe(state.exactMessage)
+        const after = snapshotTree(root)
+        expect(after).toEqual(before)
+        expect(existsSync(join(root, '.github/workflows/deploy.yml'))).toBe(false)
+      })
+    }
+  }
+})
+
+describe('runForkInit — manifest repository/bugs become objects (T13)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-t13-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const nonObjectValues: Array<[string, unknown]> = [
+    ['string', 'https://example.com'],
+    ['absent', undefined],
+    ['null', null],
+    ['array', ['a', 'b']],
+    ['number', 1],
+    ['boolean', true],
+  ]
+
+  for (const mode of MODES) {
+    for (const [label, value] of nonObjectValues) {
+      it(`repository/bugs ${label} -> object form, no stray indexed keys (${mode.label})`, () => {
+        const raw = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+        if (value === undefined) {
+          delete raw.repository
+          delete raw.bugs
+        } else {
+          raw.repository = value
+          raw.bugs = value
+        }
+        writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+        runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+        const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+        expect(pkg.repository).toEqual({ type: 'git', url: 'git+https://github.com/me/myfork.git' })
+        expect(pkg.bugs).toEqual({ url: 'https://github.com/me/myfork/issues' })
+      })
+    }
+
+    it(`repository/bugs plain object -> keeps its other keys (${mode.label})`, () => {
+      const raw = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+      raw.repository = { type: 'svn', url: 'svn://old.example/repo', directory: 'packages/site' }
+      raw.bugs = { url: 'https://old.example/bugs', email: 'a@b.example' }
+      writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+      runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+      expect(pkg.repository).toEqual({
+        type: 'git',
+        url: 'git+https://github.com/me/myfork.git',
+        directory: 'packages/site',
+      })
+      expect(pkg.bugs).toEqual({ url: 'https://github.com/me/myfork/issues', email: 'a@b.example' })
+    })
+  }
+})
+
+describe('runForkInit — result paths use /', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-slash-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  function assertNoBackslash(paths: string[]) {
+    for (const p of paths) expect(p).not.toContain('\\')
+  }
+
+  it('anchor mode: changedFiles use / (deploy.yml, config.mts)', () => {
+    const res = runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    expect(res.changedFiles).toContain('.github/workflows/deploy.yml')
+    expect(res.changedFiles).toContain('.vitepress/config.mts')
+    assertNoBackslash(res.changedFiles)
+  })
+
+  it('rebrand mode: sensitiveKeys[].files, residualFiles and residualHits[].file use /', () => {
+    const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+    const allFiles = res.sensitiveKeys.flatMap((k) => k.files)
+    expect(allFiles).toContain('.vitepress/theme/i18n/index.ts')
+    expect(allFiles).toContain('.github/workflows/release.yml')
+    assertNoBackslash(allFiles)
+    expect(res.residualFiles).toContain('.vitepress/theme/useWxlsh.ts')
+    assertNoBackslash(res.residualFiles)
+    assertNoBackslash(res.residualHits.map((h) => h.file))
+    expect(res.residualHits.map((h) => h.file)).toContain('.vitepress/theme/useWxlsh.ts')
+  })
+
+  it('--dry-run: changedFiles still use /', () => {
+    const res = runForkInit(parseForkInitArgs([...A_ARGS, '--dry-run']), { projectRoot: root })
+    assertNoBackslash(res.changedFiles)
+    expect(res.changedFiles).toContain('.github/workflows/deploy.yml')
+  })
+
+  it('warnings reference deploy.yml with /', () => {
+    const res = runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const tagRule = res.warnings.find((w) => w.includes('Tag rule'))
+    expect(tagRule).toContain('.github/workflows/deploy.yml')
+    expect(tagRule).not.toContain('.github\\workflows\\deploy.yml')
+
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, '.github/workflows/deploy.yml'), 'name: MyCustomDeploy\n')
+    const res2 = runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const already = res2.warnings.find((w) => w.includes('already exists with different content'))
+    expect(already).toContain('.github/workflows/deploy.yml')
+  })
+
+  it('a manifest tree error names package.json with / (trivially, no separator in it)', () => {
+    rmSync(join(root, 'package.json'))
+    const res = runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    expect(res.message).toContain('package.json')
+    expect(res.message).not.toContain('\\')
   })
 })
 
@@ -519,3 +1051,206 @@ describe('runForkInit — dry-run writes nothing', () => {
     expect(res.residualFiles).toContain('.vitepress/theme/useWxlsh.ts')
   })
 })
+
+// ─── S2: the CLI under type stripping ───────────────────────────────────────
+
+/** The repo root, derived from this test file's own URL (three levels up from
+ *  tests/unit/scripts/) rather than `process.cwd()`, so it is correct regardless of the
+ *  directory vitest was invoked from. */
+const CLI_REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+
+/** A fixture under the real path of a temp dir (symlinks resolved — macOS's /tmp is one),
+ *  manifest `"type": "module"`, the real engine source in place of the stub, and the
+ *  repository's own `node_modules` linked in (S2, spec revision 2.1). */
+function writeCliFixture(): string {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'fork-init-cli-'))
+  writeFixture(root)
+  const pkgPath = join(root, 'package.json')
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+  pkg.type = 'module'
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+  const realSrc = readFileSync(join(CLI_REPO_ROOT, 'scripts/fork-init.ts'), 'utf8')
+  writeFileSync(join(root, 'scripts/fork-init.ts'), realSrc)
+  try {
+    // 'junction' on Windows: a non-privileged account cannot create a 'dir' symlink there.
+    symlinkSync(join(CLI_REPO_ROOT, 'node_modules'), join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (err) {
+    // Without this, a symlink failure here would leak the temp tree already built above it.
+    rmSync(root, { recursive: true, force: true })
+    throw err
+  }
+  return root
+}
+
+/** Reconstruct exactly the stdout bytes `main()` prints for a successful `ForkInitResult`: one
+ *  string per `console.log` call, in the same order, each terminated by exactly one `\n` —
+ *  matching `console.log`'s own behaviour and `main()`'s current exact format. */
+function composeExpectedStdout(result: ForkInitResult): string {
+  const calls: string[] = [result.message]
+  if (result.changedFiles.length) {
+    calls.push('\nChanged files:')
+    for (const f of result.changedFiles) calls.push(`  ${f}`)
+  }
+  if (result.sensitiveKeys.length) {
+    calls.push('\n[!] Runtime-sensitive keys renamed (verify storage/env/release impact):')
+    for (const k of result.sensitiveKeys) calls.push(`  ${k.key} -> in ${k.files.join(', ')}`)
+  }
+  if (result.residualFiles.length) {
+    calls.push(
+      `\n[!] ${result.residualFiles.length} file(s) still contain a case-insensitive "wxl" (NOT auto-renamed — finish manually):`,
+    )
+    for (const f of result.residualFiles) calls.push(`  ${f}`)
+    calls.push('    Run `git grep -in wxl` to review each; decide brand vs wxlsh-subsystem vs skill/spec dir per occurrence.')
+  }
+  for (const w of result.warnings) calls.push(`\n[i] ${w}`)
+  return calls.map((c) => `${c}\n`).join('')
+}
+
+/** Run the fixture's copy of the CLI under `node --experimental-strip-types`, without `tsx`. */
+function runCli(root: string, argv: string[]) {
+  const env = { ...process.env }
+  delete env.NODE_OPTIONS
+  return spawnSync(process.execPath, ['--experimental-strip-types', 'scripts/fork-init.ts', ...argv], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 20_000,
+    env,
+  })
+}
+
+/** Node 22 prints the type-stripping ExperimentalWarning (and a --trace-warnings hint) on
+ *  stderr; Node 24 does not (S2 risk noted by the ticket). Both are allowed and filtered out. */
+function filterExperimentalWarnings(stderr: string): string {
+  return stderr
+    .split('\n')
+    .filter((l) => l.trim() !== '' && !/ExperimentalWarning/.test(l) && !/--trace-warnings/.test(l))
+    .join('\n')
+}
+
+/** Build a second CLI fixture as the S1 reference tree, run `expectedFn` against it, then clean it
+ *  up in a `finally` — so the reference tree built for one assertion never leaks when that
+ *  assertion throws. Built with `writeCliFixture()` too (type module, real engine source,
+ *  `node_modules` link), so the S1 reference tree and the S2 fixture under test are truly
+ *  identical trees, differing only in how they are run. */
+function withS1Reference<T>(expectedFn: (s1Root: string) => T): T {
+  let s1Root: string | undefined
+  try {
+    s1Root = writeCliFixture()
+    return expectedFn(s1Root)
+  } finally {
+    // `writeCliFixture()` cleans up after itself if it fails partway (symlink step), so s1Root is
+    // only set here once the tree fully exists.
+    if (s1Root !== undefined) {
+      const nodeModulesLink = join(s1Root, 'node_modules')
+      if (existsSync(nodeModulesLink)) unlinkSync(nodeModulesLink)
+      rmSync(s1Root, { recursive: true, force: true })
+    }
+  }
+}
+
+describe(
+  'fork-init CLI under type stripping',
+  () => {
+    let root: string
+    beforeEach(() => {
+      root = writeCliFixture()
+    })
+    afterEach(() => {
+      if (!root) return
+      // rmSync's recursive walk does not follow a symbolic link it meets along the way — it
+      // unlinks the link itself, never touching the real dependency tree the link points at, so
+      // rmSync(root, { recursive: true }) alone is already safe here. Unlinking first is only a
+      // belt-and-braces step: if `node_modules` were ever NOT a symlink here, unlinkSync throws
+      // instead of silently taking the different (and, for a real directory, very slow) code path.
+      const nodeModulesLink = join(root, 'node_modules')
+      if (existsSync(nodeModulesLink)) unlinkSync(nodeModulesLink)
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    const ANCHOR_ARGV = ['--author', 'Test Teacher', '--repo', 'test-owner/web-range']
+
+    it('anchor mode: exit 0, no stderr beyond an ExperimentalWarning, stdout matches an equivalent S1 run', () => {
+      const expected = withS1Reference((s1Root) => runForkInit(parseForkInitArgs(ANCHOR_ARGV), { projectRoot: s1Root }))
+
+      const res = runCli(root, ANCHOR_ARGV)
+      expect(res.status).toBe(0)
+      expect(filterExperimentalWarnings(res.stderr)).toBe('')
+
+      const stdoutLines = res.stdout.split('\n')
+      expect(stdoutLines[0]).toBe(expected.message)
+      const changedIdx = stdoutLines.indexOf('Changed files:')
+      expect(changedIdx).toBeGreaterThan(0) // the message prints first
+
+      // Order, not just presence: every changed-file line comes after 'Changed files:', and every
+      // warning line comes after the LAST changed-file line.
+      const pathIndices = expected.changedFiles.map((f) => stdoutLines.indexOf(`  ${f}`))
+      for (const idx of pathIndices) expect(idx).toBeGreaterThan(changedIdx)
+      const lastPathIdx = Math.max(...pathIndices)
+      const warningIndices = expected.warnings.map((w) => stdoutLines.indexOf(`[i] ${w}`))
+      for (const idx of warningIndices) expect(idx).toBeGreaterThan(lastPathIdx)
+    })
+
+    it("rebrand mode: stdout exactly matches an equivalent S1 run, in main()'s current format", () => {
+      const expected = withS1Reference((s1Root) => runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: s1Root }))
+
+      const res = runCli(root, B_ARGS)
+      expect(res.status).toBe(0)
+      expect(filterExperimentalWarnings(res.stderr)).toBe('')
+      expect(res.stdout).toBe(composeExpectedStdout(expected))
+    })
+
+    it('invalid arguments: exit 1, empty stdout, stderr is exactly ✗ + the message S1 throws for the same argv; tree unchanged', () => {
+      const argvCases: string[][] = [
+        ['--bogus'],
+        ['--author', 'Test Teacher', '--repo', 'test-owner/web-range', 'extra'],
+        ['--author', 'a', '--repo', 'test-owner/web-range', '--author', 'b'],
+        ['--repo', 'test-owner/web-range'],
+        ['--author', 'Test Teacher', '--repo', 'not-a-slug'],
+      ]
+      for (const argv of argvCases) {
+        const expectedMessage = argError(argv).message
+        pinMtimes(root)
+        const before = snapshotTree(root)
+        const res = runCli(root, argv)
+        expect(res.status).toBe(1)
+        expect(res.stdout).toBe('')
+        expect(filterExperimentalWarnings(res.stderr)).toBe(`✗ ${expectedMessage}`)
+        expect(snapshotTree(root)).toEqual(before)
+      }
+    })
+
+    it.each(['missing', 'BOM-prefixed'] as const)(
+      'tree error (manifest %s): exit 1, empty stdout, stderr is exactly ✗ + the message from an equivalent S1 run, tree unchanged',
+      (state) => {
+        const corrupt = (r: string) => {
+          if (state === 'missing') rmSync(join(r, 'package.json'))
+          else writeFileSync(join(r, 'package.json'), '\uFEFF' + JSON.stringify({ type: 'module' }))
+        }
+        corrupt(root)
+
+        // The top-level MODES table (anchor, rebrand), not a one-off list, so this test tracks
+        // the same two modes every other S1/S2 describe above uses. The expected message is
+        // computed from its own S1 reference tree, run in the SAME mode as the CLI invocation it
+        // is compared against (one reference tree per mode) — a tree-error message happens not to
+        // vary by mode today, but asserting mode-for-mode is what actually proves that, instead of
+        // assuming it and reusing a single anchor-mode reference for both comparisons.
+        for (const mode of MODES) {
+          const argv = [...ANCHOR_ARGV, ...mode.rebrand]
+          const expectedMessage = withS1Reference((s1Root) => {
+            corrupt(s1Root)
+            return runForkInit(parseForkInitArgs(argv), { projectRoot: s1Root }).message
+          })
+
+          pinMtimes(root)
+          const before = snapshotTree(root)
+          const res = runCli(root, argv)
+          expect(res.status).toBe(1)
+          expect(res.stdout).toBe('')
+          expect(filterExperimentalWarnings(res.stderr)).toBe(`✗ ${expectedMessage}`)
+          expect(snapshotTree(root)).toEqual(before)
+        }
+      },
+    )
+  },
+  60_000,
+)
