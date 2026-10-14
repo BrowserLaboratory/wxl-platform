@@ -283,10 +283,34 @@ Inferred, not verified:
   once it completes (the upgrade at `:267-384`); if that open outlasts its own timeout
   (`OPEN_TIMEOUT_MS`, `:227`), the request is not cancelled and can still leave an empty database.
 
+More consequences, from the epic's chain analysis
+(`.proj.specs/0001-truthful-clear-reports/review/chain-analysis.md`), inferred and not reproduced:
+- `localStorage` is written back as well, not only the database: the code-draft checkpoint
+  (`.vitepress/theme/composables/codeDraftSnapshot.ts:9`, from `CodeEditorPanel.vue:96`) and saved
+  Repeater requests (`.vitepress/theme/components/RepeatPanel.vue:45`, `:63-64`) can restore keys the
+  sweep removed.
+- A tab that ran a successful clear has the decision marker, so if another tab of the site saves the
+  previous learner's attack session back afterwards, this tab resumes that attempt without asking
+  (`useAttackSession.ts:112-143`) — chain B.
+- A write whose `getDb()` is called after the delete request is issued can land after a successful
+  clear, and the tab then loads the previous learner's code draft without asking — chain C.
+- The comments that justify dismiss (`useSessionGate.ts:489-500`, `SessionGate.vue:232-245`) weigh the
+  current visitor's attack session and a queued delete, not the previous learner's notes and draft
+  held in memory.
+
+The epic's close-out ruled (2026-10-14, the user, option A) that this is not a chain that opens a
+ticket within epic 0001: the gate is not access control, the reports are true when shown, and the
+behaviour predates the epic (`72327e2` already had `dismissClearFailure` and no reload after a sweep
+failure), which narrowed the dismiss exit. It is the first candidate for a later epic.
+
 **Blocks.** Any claim that a site-wide clear leaves nothing behind once the report says the database
-was deleted. Options: a gate check on every read at mount and every write; a reload after a sweep
-failure as well (the epic chose an in-place report there); telling other tabs through a broadcast
-channel.
+was deleted. Options: a gate check on every write without one, as `recordAttempt` has (the smallest;
+reads keep working); discarding the notes and drafts held in memory when the sweep-failure report is
+dismissed; making `getDb()` refuse once a delete has resolved in the document (blocks reads too, for
+the rest of the document); a reload after a sweep failure as well (rejected by the epic: it recreates
+the locked door dismiss exists to avoid, `SessionGate.vue:14-20`); telling other tabs through a
+broadcast channel. `deleteDatabase` does not go through `getDb()` (`useChallengePersistence.ts:528-558`),
+so none of these affects a retry.
 
 **Not blocked.** The truth of the reports themselves, which describe the moment they are shown.
 
@@ -439,3 +463,52 @@ each in turn and running the unit suite (2173 tests passed both times).
 **Not blocked.** Everything else in the gate, which its tests cover.
 
 **Revisit when.** `evaluate` gains a call site, or either guard changes.
+
+---
+
+## OQ-014 — Should the gate survive a start record it cannot read back?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Spec 0001 lists as an existing limit, with no revisit condition, that a new document which
+cannot read the start record treats the machine as untouched
+(`.proj.specs/0001-truthful-clear-reports/spec.en.md`, Out of Scope). The epic's chain analysis (chain
+D, `.proj.specs/0001-truthful-clear-reports/review/chain-analysis.md`) traced where that leads.
+
+**Evidence.** Inferred from reading, not reproduced: from a state where a delete may be queued (P2,
+P7), `sessionStorage` becoming unreadable mid-page, then a refused press and the reload, lands in a
+document where `readClearStarted` returns false (`.vitepress/theme/composables/useSessionGate.ts:254-264`);
+the gate asks with `body` ("Nothing is deleted unless you choose to delete it") and offers continue,
+while the queued delete may still go through. The consequence falls on the current learner only; no
+other learner's data is involved (`security-T-0007.md`, F-1, F-5).
+
+**Blocks.** Nothing. Options: a second, independent record (for example in IndexedDB metadata or
+`localStorage`); a body that does not promise nothing is deleted when the start record cannot be read.
+
+**Not blocked.** Every path where storage stays readable.
+
+**Revisit when.** A report of storage turning unreadable mid-session in a supported browser, or a
+change to how the start record is stored.
+
+---
+
+## OQ-015 — Does the dismiss exit's reasoning hold in Firefox and WebKit?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Dismiss is offered only after the latest run failed in the sweep, on the reasoning that its
+delete resolved and, since deletes of one database are processed in order, no delete issued before it
+is still pending (`.vitepress/theme/composables/useSessionGate.ts:489-494`). That ordering is what the
+IndexedDB specification requires, and it was observed in Chromium only (`security-T-0006.md`, I-4).
+
+**Evidence.** Verified: the reasoning and its comment. Not verified: Firefox and WebKit behaviour; the
+epic's browser checks ran in Chromium (Playwright smoke and the Browser panel).
+
+**Blocks.** Nothing. If a browser broke the ordering, an earlier delete could still land after dismiss,
+with the consequence falling on the current learner's own data.
+
+**Not blocked.** Chromium, where the behaviour was observed.
+
+**Revisit when.** The smoke suite gains a Firefox or WebKit project, or a supported browser is added.
