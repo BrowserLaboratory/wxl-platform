@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0001 收尾證據</title>
+<style>
+:root {
+  --bg: #f6f7f7;
+  --surface: #ffffff;
+  --fg: #1d2326;
+  --muted: #56625f;
+  --rule: #d5dbd9;
+  --accent: #0f6b5c;
+  --accent-soft: #e2f0ec;
+  --warn: #8a5a12;
+  --warn-soft: #f6ecda;
+  --code-bg: #eef1f0;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131817; --surface: #1a2120; --fg: #e3e8e6; --muted: #9aa8a4; --rule: #2f3a38;
+    --accent: #5cc4ae; --accent-soft: #1d332e; --warn: #e2b161; --warn-soft: #34291a; --code-bg: #222b29;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131817; --surface: #1a2120; --fg: #e3e8e6; --muted: #9aa8a4; --rule: #2f3a38;
+  --accent: #5cc4ae; --accent-soft: #1d332e; --warn: #e2b161; --warn-soft: #34291a; --code-bg: #222b29;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.7 -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+main { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+h1 { font-size: 1.75rem; line-height: 1.3; margin: 0 0 .5rem; text-wrap: balance; }
+h2 { font-size: 1.2rem; margin: 2.75rem 0 .75rem; padding-bottom: .35rem; border-bottom: 1px solid var(--rule); text-wrap: balance; }
+h3 { font-size: 1rem; margin: 1.5rem 0 .4rem; }
+p, li { max-width: 46rem; }
+.meta { color: var(--muted); font-size: .9rem; margin: 0 0 1.5rem; }
+.answer {
+  background: var(--accent-soft); border-left: 4px solid var(--accent);
+  padding: 1rem 1.25rem; margin: 1.5rem 0;
+}
+.answer p { margin: .4rem 0; }
+.answer strong { color: var(--accent); }
+.cost { background: var(--warn-soft); border-left: 4px solid var(--warn); padding: .75rem 1.25rem; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; background: var(--code-bg); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; margin: .75rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; background: var(--surface); }
+th, td { border: 1px solid var(--rule); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tier { font-weight: 600; white-space: nowrap; }
+.t-v { color: var(--accent); }
+.t-i { color: var(--warn); }
+.t-e { color: var(--muted); }
+.copy td:nth-child(2) { color: var(--muted); }
+ol.chain li { margin: .35rem 0; }
+.decision { border: 1px solid var(--accent); padding: 1rem 1.25rem; background: var(--surface); }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0001 收尾證據：全站清除的回報要說真話</h1>
+<p class="meta">2026-10-14 · 範圍 <code>72327e2</code>（起點）→ <code>013dcff</code>（T-0009 合併）· 收尾分支 <code>chore/epic-0001-close-out</code></p>
+
+<section class="answer">
+<p><strong>結論：epic 0001 已交付，可以收尾。</strong>K2～K4 三條會說假話的路徑都已修正。AC-1～AC-14 全數完成，9 張 ticket 都已 <code>done</code>，10 個 PR 都已合併。</p>
+<p>9 份 ticket 安全審查都沒有確認的安全缺陷。串連分析只找到一條可能跨越信任邊界的鏈（鏈 A）；使用者裁決不開 ticket，改由 OQ-007 追蹤，因為這是 epic 之前就存在的行為，而且本 epic 收窄了它。</p>
+<p>還有一件事要使用者決定：要不要發 release。旗標改名沒有保留別名，對 fork 來說是不相容的變更。</p>
+</section>
+
+<h2>要決定的是什麼</h2>
+<p>依 <code>docs/agents/workflow.md</code> 的 Epic close-out，最後一張 ticket 落地後要完成三件事：串連分析、證據報告、回顧。這份報告回答的是：epic 交付了什麼、每一項說法的證據在哪裡，以及哪些事沒有做到。要不要發 release、要不要把回顧的流程提案套用到下一個 epic，都取決於這份報告。</p>
+
+<h2>交付了什麼</h2>
+<h3>三條路徑，修改前後</h3>
+<p>以下是英文文案；zh-TW 的對應句子也一起改了，並由同一組真話測試以字面比對。</p>
+<div class="scroll">
+<table class="copy">
+<thead><tr><th>Key</th><th>起點 <code>72327e2</code></th><th>現在</th></tr></thead>
+<tbody>
+<tr><td><code>body_cleared</code></td><td>The saved work has already been deleted and cannot be brought back. What is left is whatever this browser would not let go of.</td><td>This site's database in this browser has been deleted, and anything it held cannot be brought back.</td></tr>
+<tr><td><code>sweep_failed</code></td><td>The saved work was deleted. Some of this site's stored values could not be removed.</td><td>Not every other value this site stored in this browser could be removed.</td></tr>
+<tr><td><code>sweep_failed_hint</code></td><td>…closing other tabs does not remove them. Pressing delete again retries the part that did not finish.</td><td>There is no way to tell from here how many are left. Pressing delete again retries the whole site-wide clear, starting with the database.</td></tr>
+<tr><td><code>clear_unconfirmed_hint</code></td><td>Another tab of this site still has the data open, which is what the deletion is waiting on. Closing the other tabs lets it finish. Reload to see what is left.</td><td>The site-wide clear cannot finish while another tab of this site has the data open. Close any other tabs, then reload.</td></tr>
+<tr><td><code>clear_retry_not_started_hint</code></td><td>（不存在）</td><td>This browser would not let the site record that the site-wide clear began, so nothing was deleted this time. …</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>每張 ticket</h3>
+<div class="scroll">
+<table>
+<thead><tr><th>Ticket</th><th>交付</th><th>PR</th><th>合併</th><th>測試數</th></tr></thead>
+<tbody>
+<tr><td>T-0001</td><td>旗標改名為 <code>databaseDeleted</code>，不留別名</td><td>#1</td><td><code>52bc03f</code></td><td class="num">2,083</td></tr>
+<tr><td>T-0002</td><td>S2 真話測試架構，釘住 P0、P1</td><td>#2</td><td><code>6987b24</code></td><td class="num">2,099</td></tr>
+<tr><td>T-0003</td><td>記錄最近一次執行在哪一半失敗（<code>clearFailurePhase</code>）</td><td>#4</td><td><code>2197d5b</code></td><td class="num">2,112</td></tr>
+<tr><td>T-0004</td><td>sweep 失敗的文案改說真話（K2）</td><td>#5</td><td><code>2239a1d</code></td><td class="num">2,120</td></tr>
+<tr><td>T-0005</td><td>body 與報告依失敗階段選擇（K4 文案）</td><td>#6</td><td><code>5cb77af</code></td><td class="num">2,143</td></tr>
+<tr><td>T-0006</td><td>出口依失敗階段決定（K4 出口）</td><td>#7</td><td><code>f5889ce</code></td><td class="num">2,150</td></tr>
+<tr><td>T-0007</td><td>被拒的按壓保留先前的狀態，只在下方加一則說明</td><td>#8</td><td><code>7c85be2</code></td><td class="num">2,170</td></tr>
+<tr><td>T-0008</td><td>清掉註解與測試註解裡已退役的說法</td><td>#9</td><td><code>fb2091d</code></td><td class="num">2,170</td></tr>
+<tr><td>T-0009</td><td>更新 OPEN-QUESTIONS，補上 T34（P11a）真話測試</td><td>#10</td><td><code>013dcff</code></td><td class="num">2,173</td></tr>
+</tbody>
+</table>
+</div>
+<p>維護 PR #3（OQ-006，保留 <code>CONTEXT.md</code> 的命名慣例）也在這段期間合併，不屬於任何 ticket。</p>
+
+<h2>證據鏈</h2>
+<ol class="chain">
+<li>每條路徑先寫成狀態（P0～P15），再寫成 traceability 的 T 列；spec 的 AC 引用的是 T 列，不是散文描述。</li>
+<li>S2 真話測試先用真正的 composable 加上 fake-indexeddb 建立狀態、斷言前置條件，再逐字比對 en 與 zh-TW 的字串。目前共 64 個案例。</li>
+<li>mutation 檢查：把句子改成假的、拿掉 start record 的還原、放寬 reload 的條件，測試都會轉紅（T-0004、T-0007、T-0009）。</li>
+<li>建置後的網站上，T36（P4）與 T37（P7）以 Playwright 逐字比對（S3，只有 en）。每張 ticket 也在 Cloudflare Pages 預覽上，用 Browser 面板手動驗證過（Chromium）。</li>
+<li>每張 ticket 都經過 Standards 與 Spec 兩軸審查、候選安全審查加獨立的誤報判斷；最後再做跨 ticket 的串連分析，並由獨立的挑戰者檢驗。</li>
+</ol>
+
+<h2>代價與沒做到的</h2>
+<div class="cost">
+<ul>
+<li><strong>清除後的寫回仍然存在（OQ-007）。</strong>掃除失敗並 dismiss 之後，同一個分頁編輯筆記或程式草稿，可能把上一位學習者的內容寫回。觸發條件很罕見，而且在 epic 之前就存在，但「清除後什麼都沒留下」這句話依然不能說。</li>
+<li><strong>fork 不相容。</strong>旗標改名沒有保留別名，自訂 gate 的 fork 讀舊名稱會靜默拿到 <code>undefined</code>；composable 的防護照常生效（T-0001 S-2）。</li>
+<li><strong>只驗證過 Chromium。</strong>dismiss 的推論依賴「同一個資料庫的刪除依序處理」，Firefox 與 WebKit 沒有驗證（OQ-015）。</li>
+<li><strong>P11b 沒有字面測試。</strong>T28 規定它和 P11a 顯示同樣的欄位，但 spec 的 S2 列沒有點名它（OQ-003）。</li>
+<li><strong>CI 有偶發錯誤。</strong>CodeMirror 的 unhandled error 出現過兩次，都靠重跑通過，根因仍在調查。</li>
+</ul>
+</div>
+
+<h2>證據表</h2>
+<p>層級：<span class="tier t-v">已驗證</span> 指讀過檔案或執行過指令；<span class="tier t-i">推論</span> 指從已驗證的事實推導而來；<span class="tier t-e">外部</span> 指來自 repo 以外的來源。</p>
+<div class="scroll">
+<table>
+<thead><tr><th>#</th><th>說法</th><th>出處</th><th>層級</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td>9 張 ticket 都是 <code>done</code>，沒有未勾選的 AC</td><td><code>.proj.tickets/0001-truthful-clear-reports/T-*.md</code> 的 frontmatter 與 AC 清單（以 grep 計數）</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">2</td><td>PR #1～#10 都以 squash 合併進 <code>main</code></td><td><code>git log --oneline 72327e2..013dcff</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">3</td><td>文案修改前後如上表</td><td><code>git show 72327e2:.vitepress/theme/i18n/messages/en.json</code> 對照現行 <code>en.json</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">4</td><td>body 與報告在 sweep 失敗時依 phase 選擇；reload 與 dismiss 的條件也看 phase</td><td><code>.vitepress/theme/components/SessionGate.vue:145</code>、<code>:186</code>、<code>:256</code>、<code>:263</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">5</td><td>測試數從 2,083 增加到 2,173</td><td>T-0001 ticket 第 100 行；2026-10-14 在本機執行 <code>pnpm vitest run</code>（124 個檔案，2,173 個測試）</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">6</td><td>S2 真話測試目前有 64 個案例</td><td><code>pnpm vitest run tests/unit/components/SessionGate-truth.test.ts</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">7</td><td>mutation 會讓真話測試轉紅</td><td>T-0004、T-0007、T-0009 ticket 的 red → green 紀錄</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">8</td><td>建置後的網站以字面釘住 T36、T37（只有 en）</td><td><code>tests/site-smoke/session-gate-clear-report.spec.ts</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">9</td><td>9 份安全審查都沒有確認的安全缺陷</td><td><code>review/security-T-0001.md</code>～<code>security-T-0009.md</code> 的結論段</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">10</td><td>鏈 A 由使用者裁決不開 ticket</td><td><code>review/chain-analysis.md</code>「使用者裁決」段</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">11</td><td>鏈 A 在 epic 之前就存在：起點已有 dismiss，掃除失敗後也不重新載入</td><td><code>git show 72327e2:.vitepress/theme/composables/useSessionGate.ts</code> 的 <code>dismissClearFailure</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">12</td><td>鏈 A 的機制成立（筆記與草稿在掛載時讀入，寫入沒有 gate 檢查）</td><td><code>usePentestNotes.ts:44-50</code>、<code>CodeEditorPanel.vue:178</code>、<code>useChallengePersistence.ts:629-631</code>、<code>:647-649</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">13</td><td>鏈 A 實際發生時，寫回會在卸載前完成</td><td>從第 12 列與 IndexedDB 的佇列順序推導；沒有在瀏覽器重現</td><td class="tier t-i">推論</td></tr>
+<tr><td class="num">14</td><td>sweep 只有在特定瀏覽器實作或擴充功能下才會拋錯，所以鏈 A 很罕見</td><td>spec Problem Statement 的說法：HTML Standard 沒有定義 <code>removeItem</code> 會拋錯的步驟</td><td class="tier t-e">外部</td></tr>
+<tr><td class="num">15</td><td>Playwright 只跑 Chromium</td><td><code>playwright.config.ts:46-48</code>、<code>playwright.site.config.ts:56-58</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">16</td><td>CodeMirror 的 unhandled error 出現兩次</td><td>T-0009 ticket 的 landed 紀錄；先前 <code>main</code> 的 CI 紀錄</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">17</td><td>.vitepress 與 tests 共 11 個檔案，+2,195／−233 行</td><td><code>git diff --stat 72327e2 013dcff -- .vitepress tests</code></td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">18</td><td>W4 在 10/14 前合併完畢</td><td><code>gh pr view 10</code> 的 mergedAt：2026-10-13T23:30:31Z（UTC+8 為 10/14 07:30）</td><td class="tier t-v">已驗證</td></tr>
+<tr><td class="num">19</td><td>新增 ADR-0006（gate 不是存取控制）、ADR-0007（字面真話測試）</td><td><code>docs/adr/0006-*.md</code>、<code>docs/adr/0007-*.md</code></td><td class="tier t-v">已驗證</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>這份報告不主張的事</h3>
+<ul>
+<li>不主張整個專案是安全的。安全審查只涵蓋各 ticket 的 diff 與跨 ticket 的串連分析，沒有做依賴套件掃描，也沒有做可用性分析。</li>
+<li>不主張全站清除之後什麼都沒留下（見 OQ-007）。</li>
+<li>不主張在 Firefox 或 WebKit 上的行為。</li>
+<li>回顧裡的流程提案只是提案，這份報告沒有決定要不要套用。</li>
+</ul>
+
+<h2>需要你決定的事</h2>
+<div class="decision">
+<p>要不要為這個 epic 發一個 release？release note 會寫明旗標改名、不留別名，以及對 fork 的影響。推 tag 與 <code>gh release create</code> 都會先問你。</p>
+</div>
+</main>
+</body>
+</html>
