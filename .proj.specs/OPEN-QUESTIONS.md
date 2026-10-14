@@ -463,3 +463,52 @@ each in turn and running the unit suite (2173 tests passed both times).
 **Not blocked.** Everything else in the gate, which its tests cover.
 
 **Revisit when.** `evaluate` gains a call site, or either guard changes.
+
+---
+
+## OQ-014 — Should the gate survive a start record it cannot read back?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Spec 0001 lists as an existing limit, with no revisit condition, that a new document which
+cannot read the start record treats the machine as untouched
+(`.proj.specs/0001-truthful-clear-reports/spec.en.md`, Out of Scope). The epic's chain analysis (chain
+D, `.proj.specs/0001-truthful-clear-reports/review/chain-analysis.md`) traced where that leads.
+
+**Evidence.** Inferred from reading, not reproduced: from a state where a delete may be queued (P2,
+P7), `sessionStorage` becoming unreadable mid-page, then a refused press and the reload, lands in a
+document where `readClearStarted` returns false (`.vitepress/theme/composables/useSessionGate.ts:254-264`);
+the gate asks with `body` ("Nothing is deleted unless you choose to delete it") and offers continue,
+while the queued delete may still go through. The consequence falls on the current learner only; no
+other learner's data is involved (`security-T-0007.md`, F-1, F-5).
+
+**Blocks.** Nothing. Options: a second, independent record (for example in IndexedDB metadata or
+`localStorage`); a body that does not promise nothing is deleted when the start record cannot be read.
+
+**Not blocked.** Every path where storage stays readable.
+
+**Revisit when.** A report of storage turning unreadable mid-session in a supported browser, or a
+change to how the start record is stored.
+
+---
+
+## OQ-015 — Does the dismiss exit's reasoning hold in Firefox and WebKit?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Dismiss is offered only after the latest run failed in the sweep, on the reasoning that its
+delete resolved and, since deletes of one database are processed in order, no delete issued before it
+is still pending (`.vitepress/theme/composables/useSessionGate.ts:489-494`). That ordering is what the
+IndexedDB specification requires, and it was observed in Chromium only (`security-T-0006.md`, I-4).
+
+**Evidence.** Verified: the reasoning and its comment. Not verified: Firefox and WebKit behaviour; the
+epic's browser checks ran in Chromium (Playwright smoke and the Browser panel).
+
+**Blocks.** Nothing. If a browser broke the ordering, an earlier delete could still land after dismiss,
+with the consequence falling on the current learner's own data.
+
+**Not blocked.** Chromium, where the behaviour was observed.
+
+**Revisit when.** The smoke suite gains a Firefox or WebKit project, or a supported browser is added.
