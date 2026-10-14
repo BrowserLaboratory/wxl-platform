@@ -6,20 +6,26 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { extractMarkdownBody } from './challenge/plugin'
 
+// A site served from a sub-path needs a matching base or every asset/JS/WASM
+// URL 404s. The base is read once, here, from SITE_BASE: the GitHub Pages deploy
+// workflow a range installs sets it from configure-pages' base_path, which
+// follows project sites, user sites and custom domains alike. Upstream deploys
+// to Cloudflare Pages at a domain root and leaves it unset, and locally and in
+// CI (dev server, vitepress preview, Playwright site-smoke + challenge L3, the
+// release zip) it is unset too, so the site serves at root and test navigation
+// stays base-agnostic. `||` makes an empty value mean root as well. A range that
+// needs a fixed path writes it on this line instead of reading SITE_BASE.
+const siteBase = process.env.SITE_BASE || '/'
+// `/`, or segments each ending in `/`; `.` and `..` are not segments.
+if (!/^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/.test(siteBase)) {
+  throw new Error(`SITE_BASE must be "/" or a path like "/my-repo/", got ${JSON.stringify(siteBase)}`)
+}
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   srcDir: "platform",
-  // A site served from a sub-path needs a matching base or every asset/JS/WASM
-  // URL 404s. Nothing in this repository sets SITE_BASE any more: the upstream
-  // site deploys to Cloudflare Pages at a domain root, which is configured in
-  // the Cloudflare dashboard and deliberately leaves the variable unset. The
-  // env-conditional is kept because it is the seam a sub-path deployment plugs
-  // into — set SITE_BASE in the build environment and the base follows —
-  // and because locally and in CI (dev server, vitepress preview, Playwright
-  // site-smoke + challenge L3, the release zip) it is unset, so the site serves
-  // at root and test navigation stays base-agnostic. `pnpm fork:init --base`
-  // rewrites this line to a plain literal for forks that need a fixed path.
-  base: process.env.SITE_BASE ?? '/',
+  // See siteBase above.
+  base: siteBase,
   // Cloudflare Pages serves this site's pages without the extension:
   // `/zh-TW/challenges` answers 200, while `/zh-TW/challenges.html` and
   // `/zh-TW/challenges/` both 308 to it. Left at VitePress's default (false),
@@ -69,14 +75,12 @@ export default defineConfig({
   // Measured, because it is the opposite of how every other asset behaves:
   // VitePress does NOT prefix `base` onto an href written inside `head`. A
   // build with `SITE_BASE=/sub/` emits `src="/sub/assets/app.*.js"` for its own
-  // assets and `href="/favicon.png"` for these lines, unchanged. Upstream that is
-  // correct — `base` is `/` and nothing sets SITE_BASE (see the note above it).
-  // A fork that passes `pnpm fork:init --base /sub/` rewrites the `base:` line
-  // and MUST edit these hrefs to match; nothing checks it for them.
+  // assets but leaves these hrefs as written, so the hrefs follow siteBase by
+  // hand.
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
-    ['link', { rel: 'icon', type: 'image/png', href: '/favicon.png' }],
-    ['link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${siteBase}favicon.svg` }],
+    ['link', { rel: 'icon', type: 'image/png', href: `${siteBase}favicon.png` }],
+    ['link', { rel: 'apple-touch-icon', href: `${siteBase}apple-touch-icon.png` }],
   ],
   locales: {
     root: {

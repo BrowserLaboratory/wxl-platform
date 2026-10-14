@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
-// `pnpm fork:init` copies deploy.yml.template into every fork as its deploy
-// workflow, so the template is what forks actually run. Nothing linked it to a
+// `pnpm fork:init` installs deploy.yml.template as the deploy workflow of a
+// range deployed to GitHub Pages (Cloudflare Pages ranges get none), so the
+// template is what those ranges actually run. Nothing linked it to a
 // known-good baseline: the template sat at unpinned `@v4` actions, Node 22,
 // `cargo install wasm-pack`, and no wasm-tools at all, while the upstream
 // GitHub Pages workflow moved to SHA pins, Node 24, and a pinned wasm-pack +
@@ -13,14 +14,16 @@ import { parse } from 'yaml'
 //
 // The baseline used to be .github/workflows/deploy.yml. That file is gone —
 // this repository deploys through Cloudflare Pages Git integration, not GitHub
-// Actions — but forks keep the GitHub Pages option, so the template still needs
+// Actions — but ranges keep the GitHub Pages option, so the template still needs
 // a baseline to be held against. That baseline is now the frozen fixture below,
 // a verbatim copy of the upstream workflow as it stood when it was deleted.
 //
 // These assertions derive the expected values FROM the baseline rather than
 // restating them, so the next upgrade to the baseline fails here until the
-// template follows. Note the baseline no longer advances on its own: whoever
-// upgrades the template must update the fixture in the same change.
+// template follows. One part departs from the baseline on purpose: the step
+// order and the build's SITE_BASE, asserted directly below. Note the baseline
+// no longer advances on its own: whoever upgrades the template must update the
+// fixture in the same change.
 
 const ROOT = resolve(__dirname, '../../..')
 const TEMPLATE = resolve(ROOT, 'scripts/templates/deploy.yml.template')
@@ -28,6 +31,7 @@ const UPSTREAM = resolve(ROOT, 'tests/unit/workflows/fixtures/upstream-deploy.ym
 
 interface Step {
   name?: string
+  id?: string
   uses?: string
   run?: string
   env?: Record<string, string>
@@ -67,7 +71,7 @@ const upstream = load(UPSTREAM)
 describe('fork deploy template parity', () => {
   it('SHA-pins every action, with a version comment', () => {
     // A floating `@v4` is the supply-chain hole this repo closed everywhere
-    // else; a fork inheriting the template must not reopen it.
+    // else; a range inheriting the template must not reopen it.
     const uses = [...template.raw.matchAll(/^\s*uses:\s*(\S+)\s*(#.*)?$/gm)]
     expect(uses.length).toBeGreaterThan(0)
     for (const [line, ref, comment] of uses) {
@@ -87,7 +91,7 @@ describe('fork deploy template parity', () => {
 
   it('installs the same pinned tool list as upstream', () => {
     // Missing wasm-tools does not fail the build — keygen degrades to a warning
-    // and the fork ships an unstripped, unmutated payload while CI stays green.
+    // and the range ships an unstripped, unmutated payload while CI stays green.
     const toolOf = (doc: Workflow) =>
       buildSteps(doc).find((s) => s.uses?.startsWith('taiki-e/install-action@'))?.with?.tool
     expect(toolOf(template.doc)).toBe(toolOf(upstream.doc))
@@ -125,13 +129,32 @@ describe('fork deploy template parity', () => {
     expect(template.raw).toMatch(/Settings\s*→\s*Environments/)
   })
 
-  it('deliberately omits SITE_BASE — forks get a literal base instead', () => {
-    // Upstream bakes the project-site base in via SITE_BASE. `fork:init --base`
-    // rewrites .vitepress/config.mts to a plain literal, so a copied SITE_BASE
-    // would hardcode the UPSTREAM path into every fork's asset URLs.
+  // The three cases below are where the template departs from the baseline: the
+  // upstream workflow baked its own project path into SITE_BASE after building,
+  // while a range's base must come from GitHub's Pages configuration of that
+  // range, so configure-pages runs first and the build reads its base_path.
+  it('runs configure-pages (id `pages`) before the build step', () => {
+    const steps = buildSteps(template.doc)
+    const pagesAt = steps.findIndex((s) => s.uses?.startsWith('actions/configure-pages@'))
+    const buildAt = steps.findIndex((s) => s.run === 'pnpm build')
+    expect(buildAt, 'template has no `pnpm build` step').toBeGreaterThanOrEqual(0)
+    expect(pagesAt, 'template has no configure-pages step').toBeGreaterThanOrEqual(0)
+    expect(steps[pagesAt].id).toBe('pages')
+    expect(pagesAt).toBeLessThan(buildAt)
+  })
+
+  it("builds with SITE_BASE from configure-pages' base_path", () => {
     const buildStep = buildSteps(template.doc).find((s) => s.run === 'pnpm build')
-    expect(buildStep, 'template has no `pnpm build` step').toBeTruthy()
-    expect(buildStep?.env?.SITE_BASE).toBeUndefined()
-    expect(buildSteps(upstream.doc).find((s) => s.run === 'pnpm build')?.env?.SITE_BASE).toBeTruthy()
+    expect(buildStep?.env?.SITE_BASE).toBe('${{ steps.pages.outputs.base_path }}/')
+  })
+
+  it('says in its header where the base comes from, and drops the literal-base advice', () => {
+    const lines = template.raw.split('\n')
+    const header = lines.slice(0, lines.findIndex((l) => !l.startsWith('#'))).join('\n')
+    expect(header).toContain('steps.pages.outputs.base_path')
+    const stale = ['刻意不設', '必須在 .vitepress/config.mts 設', '--base /<repo>/', '--base none', '不會被覆蓋']
+    for (const s of stale) {
+      expect(header).not.toContain(s)
+    }
   })
 })

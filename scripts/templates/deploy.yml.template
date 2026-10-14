@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# WXL fork — GitHub Pages 部署 workflow 範本
+# WXL 靶場 — GitHub Pages 部署 workflow 範本
 #
-# 用法：fork 後把本檔複製成 .github/workflows/deploy.yml（去掉 .template）：
+# 用法：本檔是 GitHub Pages 靶場的 .github/workflows/deploy.yml（去掉 .template）。
+#   部署在 GitHub Pages 的靶場由 `pnpm fork:init` 安裝；也可以手動複製：
 #   cp scripts/templates/deploy.yml.template .github/workflows/deploy.yml
-# `pnpm fork:init` 會自動做這件事（既有且內容不同的 deploy.yml 不會被覆蓋）。
 #
 # ⚠️ 部署前必做（否則第一次 tag push 會被擋下）：
 #   本 workflow 由 `v*` tag 觸發，但 GitHub 的 `github-pages` environment 預設
@@ -13,12 +13,12 @@
 #   沒設定的話 tag push 會在 deploy job 直接失敗，且錯誤訊息不會指向這裡。
 #
 # ⚠️ base path（第二個最容易踩的雷）：
-#   GitHub Pages「專案站」的網址是 https://<owner>.github.io/<repo>/，
-#   因此必須在 .vitepress/config.mts 設 `base: '/<repo>/'`，否則所有 asset 會 404。
-#   `pnpm fork:init --base /<repo>/` 會把 base 寫成字面值；因此本 workflow
-#   不需要（也刻意不設）上游用的 SITE_BASE 環境變數。
-#   若是使用者/組織站（<owner>.github.io 這個 repo）或自訂網域掛在根目錄，
-#   則用 `--base none`，不要加 base。
+#   GitHub Pages「專案站」的網址是 https://<owner>.github.io/<repo>/，每個 asset
+#   都要帶 /<repo>/ 前綴，否則全部 404。本 workflow 先執行 configure-pages
+#   （id: pages），再以 SITE_BASE = steps.pages.outputs.base_path 加上結尾的 / 建置：
+#   專案站、使用者/組織站與自訂網域的 base 都由 GitHub 算出，repo 改名或換網域時
+#   也會跟著變，原始碼不用改。.vitepress/config.mts 依 SITE_BASE 決定 base 與
+#   head 裡的 favicon 路徑（沒設時為 /）。
 #
 # 建置前置：本專案 build 需 Rust toolchain + wasm-pack + wasm-tools + binaryen
 #   （wasm-opt）。下方步驟已完整安裝，版本與凍結基準
@@ -32,6 +32,8 @@
 # 為什麼基準是 fixture 而不是上游的 .github/workflows/deploy.yml：上游站台已改用
 # Cloudflare Pages 部署，那個檔案不再存在。該 fixture 是它被刪除前的逐字副本。
 # 它不會自己前進——升級本範本時必須在同一次變更裡一併更新該 fixture。
+# 步驟順序與 build 的 SITE_BASE 刻意偏離凍結基準：基準把上游自己的路徑寫死在
+# SITE_BASE、在 build 之後才 configure-pages；靶場的 base 必須來自它自己的 Pages 設定。
 # ─────────────────────────────────────────────────────────────────────────────
 name: Deploy
 
@@ -91,11 +93,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build (WASM + keygen + VitePress)
-        run: pnpm build
-
       - name: Configure Pages
+        id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Build (WASM + keygen + VitePress)
+        env:
+          SITE_BASE: ${{ steps.pages.outputs.base_path }}/
+        run: pnpm build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

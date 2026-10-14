@@ -63,9 +63,9 @@ function select(target: Locale) {
     // `navLink` obeys it. Strip the base off, localise, put it back.
     //
     // A non-empty base is a supported configuration (`config.mts` reads
-    // `SITE_BASE`, and `pnpm fork:init --base` rewrites it for GitHub Pages
-    // forks). Feeding the prefixed path in emitted `/zh-TW/<base>/...` — the
-    // locale segment outside the base — and, switching the other way, returned
+    // `SITE_BASE`, which a GitHub Pages range's deploy workflow sets from its
+    // Pages configuration). Feeding the prefixed path in emitted
+    // `/zh-TW/<base>/...` — the locale segment outside the base — and, switching the other way, returned
     // the path unchanged so the navigation silently did nothing while the
     // runtime locale and localStorage had already been written.
     //
