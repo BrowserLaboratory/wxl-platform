@@ -24,7 +24,7 @@
 
 ## 要改的地方
 
-| # | 觀察 | 證據 | 提案 |
+| # | 觀察 | 證據 | 提案（#1、#3 已於 2026-10-16 套用到 `.claude/agents/harness-executor.md`、`.claude/hooks/guard-executor-git.sh` 與 `docs/agents/claude-orchestration.md`；其餘延到研習後） |
 |---|---|---|---|
 | 1 | executor 連續三張整批實作（T-0013、T-0014、T-0015），第三次是在 prompt 已明文「不能逐列就停下回報」之後；每次都要使用者另外裁決 | 三張 ticket 的 Deviations；使用者三次選 A | 派工改成兩段：executor 先回報「每一列的增量切法」，主 session 確認後才開始寫程式；做不到逐列的列，在第 5 階段之前就交使用者裁決 |
 | 2 | 每張 ticket 都要多一輪修紀錄品質：重現指令跑不出來、字面不可見字元、計數錯、殘留審查編號 | T-0012～T-0016 的 stage 6 處置 | 把主 session 每次手動跑的檢查（不可見字元、本機路徑、審查編號、簡體字、`-t` 選到的測試數）寫成一支腳本，executor 交件前和審查前各跑一次 |
@@ -36,4 +36,4 @@
 | 8 | 測試計畫表都用中文寫，但 `docs/agents/language.md` 規定 ticket 內文用英文 | T-0017 第 6 階段審查 | 交使用者決定：在 language.md 把核准表列為例外，或之後改用英文 |
 | 9 | 本機的題目測試 flaky（`door-is-open` 等 service worker 逾時、`staff-only` 登入失敗），CI 沒出現過 | T-0016 的 S7 紀錄 | 另一個 session 正在調查；結果出來要開成 ticket 或 OQ（見第 4 項） |
 
-上表的提案還沒套用。要不要在 0005 `create-wxl` 與升級／migration 這兩個 epic 開始前先套用，由使用者決定。
+使用者在 2026-10-16 裁決，0005 `create-wxl` 與升級／migration 兩個 epic 開始前只套用 #1 與 #3，其餘延後。

@@ -2,7 +2,7 @@
 id: T-0018
 title: Set WXL_EXPECT_UPSTREAM on the release job
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0017]
 ---
 
@@ -130,3 +130,7 @@ Approved by the user on 2026-10-16, quoted verbatim: "核准".
 ### 2026-10-16 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0018.md`. Six candidates, independently filtered: no exploitable defect. The spec-prose mismatch and the duplicated comment were fixed in the stage 6 and 7 disposition above; the untested step composition and order of the release job, and step-level overrides, are recorded as known limits.
+
+### 2026-10-16 — landing
+
+PR BrowserLaboratory/wxl-platform#22, squash-merged by the user as `152f117`. Its CI passed: `test`, `build`, `prose-audit`, `site-smoke`, `challenge-verify`, four `fork-init-cross-os` jobs and `Cloudflare Pages` all succeeded (`gh pr view 22 --json statusCheckRollup`). The `release` job itself did not run, since no tag was pushed; the stage 8 note above still applies.
