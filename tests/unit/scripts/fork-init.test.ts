@@ -31,7 +31,7 @@ import {
   chmodSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
@@ -41,6 +41,8 @@ import {
   parseForkInitArgs,
   runForkInit,
   ForkInitArgError,
+  UPSTREAM_SLUG,
+  matchesOriginGrammar,
   type ForkInitResult,
 } from '../../../scripts/fork-init'
 
@@ -285,6 +287,13 @@ function argError(argv: string[]): ForkInitArgError {
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+describe('UPSTREAM_SLUG', () => {
+  it('is exported and equals the upstream repository slug exactly, case included', () => {
+    // T44/AC-G1: this file is on the keep list, so a literal is allowed here.
+    expect(UPSTREAM_SLUG).toBe('BrowserLaboratory/wxl-platform')
+  })
+})
 
 describe('parseForkInitArgs', () => {
   it('requires --repo and rejects a malformed owner/repo value', () => {
@@ -566,6 +575,32 @@ describe('parseForkInitArgs — --origin, --site-name, --rebrand combinations', 
     expect(() => parseForkInitArgs([...REBRAND_BASE, '--name', 'pkg'])).not.toThrow()
     expect(() => parseForkInitArgs([...REBRAND_BASE, '--description', 'd'])).not.toThrow()
     expect(() => parseForkInitArgs([...REBRAND_BASE, '--dry-run'])).not.toThrow()
+  })
+})
+
+// T70/AC-C1: matchesOriginGrammar (traceability.md, "Origin grammar") is the same function S6's
+// component tests reuse to assert SITE_ORIGIN's shape (Note 8, T-0011). --origin's own argument
+// tests above already cover the grammar's positive/negative shape through parseForkInitArgs; this
+// describe instead targets matchesOriginGrammar directly, including forms --origin's path-argument
+// checks never exercise (no --host, no path-vs-cloudflare interaction).
+describe('matchesOriginGrammar', () => {
+  it.each([
+    ['http, not https', 'http://e.example'],
+    ['single label', 'https://localhost'],
+    ['port', 'https://e.example:443'],
+    ['query', 'https://e.example?q'],
+    ['fragment', 'https://e.example#f'],
+    ['trailing slash', 'https://e.example/'],
+    ['userinfo', 'https://u@e.example'],
+  ])('rejects %s', (_label, value) => {
+    expect(matchesOriginGrammar(value)).toBe(false)
+  })
+
+  it.each([
+    ['a path', 'https://e.example/a/b'],
+    ['an uppercase hostname (grammar accepts it; lowercasing is validateOriginValue’s own return shape)', 'https://Example.COM'],
+  ])('accepts %s', (_label, value) => {
+    expect(matchesOriginGrammar(value)).toBe(true)
   })
 })
 
@@ -4139,6 +4174,62 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     writeFileSync(join(root, '.github/workflows/deploy.yml'), CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n'))
     const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
     expect(res.warnings.some((w) => w.includes('already exists with different content'))).toBe(true)
+  })
+
+  // T52/AC-B3: a rebrand run must never touch the upstream-only CI lines (T71), the test that
+  // imports UPSTREAM_SLUG, or the engine file itself — confinement (traceability.md) holds even
+  // under B mode's tree-wide swap. Real copies are added to the fixture ONLY in this test (per the
+  // approved test plan), read from the actual repository so a future edit to any of them is
+  // exercised here too.
+  it('--author x --rebrand acme --repo me/x leaves the upstream-only if:/env lines, the UPSTREAM_SLUG import and the engine file byte-identical', () => {
+    const repoRoot = resolve(__dirname, '../../..')
+    const releaseYmlBefore = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
+    const qualityGatesYmlBefore = readFileSync(join(repoRoot, '.github/workflows/quality-gates.yml'), 'utf8')
+    const guardTestBefore = readFileSync(join(repoRoot, 'tests/unit/scripts/upstream-guard.test.ts'), 'utf8')
+    const engineFileBefore = readFileSync(join(repoRoot, 'scripts/fork-init.ts'), 'utf8')
+
+    writeFileSync(join(root, '.github/workflows/release.yml'), releaseYmlBefore)
+    writeFileSync(join(root, '.github/workflows/quality-gates.yml'), qualityGatesYmlBefore)
+    mkdirSync(join(root, 'tests/unit/scripts'), { recursive: true })
+    writeFileSync(join(root, 'tests/unit/scripts/upstream-guard.test.ts'), guardTestBefore)
+    // Overwrites writeFixture's own self-exclude stub with the real engine file, bytes and all.
+    writeFileSync(join(root, 'scripts/fork-init.ts'), engineFileBefore)
+
+    const IF_LINE_RE = /^.*if: github\.repository == format\(.*\)\s*$/gm
+    const EXPECT_UPSTREAM_LINE_RE = /^.*WXL_EXPECT_UPSTREAM:.*$/gm
+    // The whole import statement (traceability.md, T52) — from `import {` to the closing
+    // `from '…/scripts/fork-init'` — not only the `UPSTREAM_SLUG,` specifier line within it, so a
+    // rebrand run touching any OTHER specifier on that import (or its quote style, line breaks,
+    // etc.) is caught too, not only a change to the one line previously compared.
+    const UPSTREAM_SLUG_IMPORT_RE = /import \{[^}]*\} from '[^']*\/scripts\/fork-init'/
+
+    const ifLinesBefore = [...releaseYmlBefore.matchAll(IF_LINE_RE), ...qualityGatesYmlBefore.matchAll(IF_LINE_RE)].map((m) => m[0])
+    const expectUpstreamLinesBefore = [...qualityGatesYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])
+    const importBefore = guardTestBefore.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]
+    expect(ifLinesBefore.length).toBe(2) // positive control: both files actually hold the line
+    expect(expectUpstreamLinesBefore.length).toBe(2)
+    expect(importBefore).toBeDefined()
+    // Positive control (traceability.md, T52): the SAME release.yml file holds a sensitive-key
+    // token the walk DOES rewrite, proving the walk reads this file at all (not skipped whole).
+    expect(releaseYmlBefore).toContain('wxl-${')
+
+    const res = runForkInit(parseForkInitArgs(['--author', 'x', '--rebrand', 'acme', '--repo', 'me/x']), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+
+    const releaseYmlAfter = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8')
+    const qualityGatesYmlAfter = readFileSync(join(root, '.github/workflows/quality-gates.yml'), 'utf8')
+    const guardTestAfter = readFileSync(join(root, 'tests/unit/scripts/upstream-guard.test.ts'), 'utf8')
+    const engineFileAfter = readFileSync(join(root, 'scripts/fork-init.ts'), 'utf8')
+
+    expect([...releaseYmlAfter.matchAll(IF_LINE_RE), ...qualityGatesYmlAfter.matchAll(IF_LINE_RE)].map((m) => m[0])).toEqual(
+      ifLinesBefore,
+    )
+    expect([...qualityGatesYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])).toEqual(expectUpstreamLinesBefore)
+    expect(guardTestAfter.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]).toBe(importBefore)
+    expect(engineFileAfter).toBe(engineFileBefore)
+    // the positive control: the walk DID rewrite the sensitive-key token elsewhere in this file
+    expect(releaseYmlAfter).toContain('acme-${')
+    expect(releaseYmlAfter).not.toContain('wxl-${')
   })
 })
 

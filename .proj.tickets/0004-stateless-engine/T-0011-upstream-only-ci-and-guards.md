@@ -2,7 +2,7 @@
 id: T-0011
 title: Keep upstream-only CI upstream, and guard upstream's identity
 epic: 0004-stateless-engine
-status: todo
+status: review
 blocked_by: [T-0010, T-0015]
 ---
 
@@ -10,7 +10,7 @@ blocked_by: [T-0010, T-0015]
 
 A range copies upstream's workflows and tests. Today the release job would run in every range, three component tests hardcode the upstream address, and nothing fails if the engine is ever run on upstream. The upstream repository slug must also stay out of anything rebrand mode's tree-wide swap could redirect.
 
-Spec: `.proj.specs/0004-stateless-engine/spec.en.md`; rows in `traceability.md` (revision 2). Round 1 disposition: `review/disposition.md`.
+Spec: `.proj.specs/0004-stateless-engine/spec.en.md`; rows in `traceability.md` (revision 2.1). Round 1 disposition: `review/disposition.md`.
 
 ## Deliverable
 
@@ -18,15 +18,15 @@ The fork-init module exports `UPSTREAM_SLUG` and the list of known old template 
 
 ## Acceptance criteria
 
-- [ ] T27: known old outputs and the template-hash pin; the fixture copy hashes to the list's first value (S5)
-- [ ] T44: `UPSTREAM_SLUG` exported (S1)
-- [ ] T52: `--author x --rebrand acme --repo me/x` leaves the `if:`/`env` lines, `UPSTREAM_SLUG` imports and the engine file byte-identical (S1)
-- [ ] T61–T64: guard violations, binary files, letter case (S5)
-- [ ] T65–T66: upstream decision (S5)
-- [ ] T67–T68: pristine check and field ids (S5)
-- [ ] T69: real-tree runs only upstream; `WXL_EXPECT_UPSTREAM` contradiction fails (S5)
-- [ ] T70: component tests from the imported `SITE_ORIGIN` (S6)
-- [ ] T71–T72: `if:`, `env`, cross-OS matrix and steps (S4)
+- [x] T27: known old outputs and the template-hash pin; the fixture copy hashes to the list's first value (S5)
+- [x] T44: `UPSTREAM_SLUG` exported (S1)
+- [x] T52: `--author x --rebrand acme --repo me/x` leaves the `if:`/`env` lines, `UPSTREAM_SLUG` imports and the engine file byte-identical (S1)
+- [x] T61–T64: guard violations, binary files, letter case (S5)
+- [x] T65–T66: upstream decision (S5)
+- [x] T67–T68: pristine check and field ids (S5)
+- [x] T69: real-tree runs only upstream; `WXL_EXPECT_UPSTREAM` contradiction fails (S5)
+- [x] T70: component tests from the imported `SITE_ORIGIN` (S6)
+- [x] T71–T72: `if:`, `env`, cross-OS matrix and steps (S4)
 
 ## 給使用者（zh-TW）
 
@@ -100,3 +100,356 @@ Changed at approval: T-0014 adds the frozen copy; this ticket pins it (T27) and 
 13. **釘住的 hash 等實作時再算**：T27 要釘的 current template hash，在 T-0015 合入後的 main 上計算，現在不算，因為 T-0014 可能還會改範本的 header。
 14. **T69「在本 epic 結束後的上游 HEAD 上通過」**：T-0016 在本 ticket 之後才落地，會改寫 README（A2/A3 所在）和兩份 skill。它的 CI `test` job 會再跑一次 guard 和原貌檢查，但 T-0016 的 AC 沒有宣告 T69，要記得在那裡再確認一次。
 15. **判定為上游但不是 work tree 的情況**：如果有人在 export 出來的目錄手動設 `GITHUB_REPOSITORY` 成上游 slug，真實 tree 的 guard 跑 `git ls-files` 會失敗。這會明確報錯，不會悄悄跳過，可以接受。
+
+### 2026-10-15 — open notes settled before implementation
+
+- Note 2: neither `UPSTREAM_SLUG` nor the known-old-output list is exported on `main` after T-0015 (`1f4096a`), so this ticket adds both exports.
+- Note 3: settled by the approval rule above as the option that does not widen S5: the "no git installed" case is not tested in S5.
+- Note 6, letter case: the A2–A5 slug comparison is case-sensitive, as the plan states.
+- Note 6, zero forms: put to the user on 2026-10-15. The user's answer, quoted verbatim: "A" (option A: a file holding none of its A2–A5 forms is a mismatch, reported under that field id, e.g. `A2:README.md`).
+- Note 9: the new job's id is `fork-init-cross-os`; adding its checks to branch protection is the user's repository setting and is not part of this ticket.
+
+### 2026-10-15 — red → green log
+
+Implemented on branch `tickets/T-0011/upstream-only-ci-and-guards`, from `main` `1f4096a`. New
+files: `tests/unit/scripts/upstream-guard.test.ts`, `tests/unit/workflows/upstream-only-jobs.test.ts`.
+Changed: `scripts/fork-init.ts` (exports only — see Deviations for the one regex change),
+`tests/unit/scripts/fork-init.test.ts`, `.github/workflows/release.yml`,
+`.github/workflows/quality-gates.yml`, `tests/unit/components/{ShortLinkShare,MergedNav,ChallengeList}.test.ts`.
+
+Execution order departs from the table's row order; see Deviations for why. Each row below names
+its table row id(s), whether its first test was seen failing for the expected reason (true red) or
+passed on first run against an already-general implementation (needs a mutation check, recorded
+separately), the reproduce command, and the exact `Tests` summary line.
+
+| Row(s) | Red seen | Reproduce command | Tests summary |
+|---|---|---|---|
+| T44 | true red (`UPSTREAM_SLUG` not exported → `undefined`) | `pnpm vitest run tests/unit/scripts/fork-init.test.ts -t 'is exported and equals the upstream repository slug exactly, case included'` | `Tests  1 passed | 1882 skipped (1883)` |
+| T61 | true red (`DOC_ANCHORS is not iterable` — not exported) | `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'upstream guard'` | `Tests  23 passed | 42 skipped (65)` |
+| T62–T64 | passed on first run (same `guardViolations`); mutation checks below | same command as T61 | same summary as T61 |
+| T65 (first case) | true red (`isUpstreamDecision is not defined`, confirmed by temporarily renaming the function) | `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'upstream decision'` | `Tests  14 passed | 51 skipped (65)` |
+| T65 (remaining cases), T66 | passed on first run (same `isUpstreamDecision`); mutation check below | same command as T65 | same summary as T65 |
+| T67 (first case) | **import failure, not a behavioural red** (`A6_CANDIDATE_RE` etc. not exported, which fails the whole module import, not this row's own logic; then two self-made bugs in the test's own slug-extraction regex, fixed before the engine was touched further — see the `docAnchorRegex` capture-group change under Deviations). A genuine behavioural mutation for this row is recorded separately below (2026-10-15 disposition, mutation check 10) | `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'upstream pristine check'` | `Tests  24 passed | 41 skipped (65)` |
+| T68 | passed on first run (same `pristineMismatches`) once T67's own bugs were fixed; mutation check below | same command as T67 | same summary as T67 |
+| T27 | **import failure, not a behavioural red** (`normalizeLf`/`sha256Hex` not exported, which fails the whole module import, not this row's own logic; then a wrong fixture path). A genuine behavioural mutation for this row is recorded separately below (2026-10-15 disposition, mutation check 11) | `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'deploy template hash pin'` | `Tests  2 passed | 63 skipped (65)` |
+| T69 (3 its) | **import failure, not a behavioural red** (ran together with T27's export fix; all three its were failing because the whole module failed to import — a missing export — not because any of the three row's own branching logic was exercised and found wrong). A genuine behavioural mutation for the `WXL_EXPECT_UPSTREAM` gate is recorded separately below (2026-10-15 disposition, mutation check 12) | `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'real tree \(upstream only\)|WXL_EXPECT_UPSTREAM, when set'` | `Tests  3 passed | 62 skipped (65)` |
+| T70 (ShortLinkShare: origin-grammar it) | true red (`matchesOriginGrammar is not a function`, confirmed by temporarily renaming the export) | `pnpm vitest run tests/unit/components/ShortLinkShare.test.ts -t 'SITE_ORIGIN matches the origin grammar'` | `Tests  1 passed | 10 skipped (11)` |
+| T70 (ShortLinkShare: 4 overridden its) | passed on first run (component behaviour unchanged); mutation check below | `pnpm vitest run tests/unit/components/ShortLinkShare.test.ts -t 'shows the host and path without the scheme|copies the absolute URL, scheme included|shows and copies the localised path in Traditional Chinese|pads the number to three digits and leaves a wider one alone|SITE_ORIGIN matches the origin grammar'` | `Tests  5 passed | 6 skipped (11)` |
+| T70 (MergedNav: 2 overridden its) | passed on first run; mutation check below | `pnpm vitest run tests/unit/components/MergedNav.test.ts -t 'shows the challenge short link beside the title|follows the page locale, not the runtime locale'` | `Tests  2 passed | 45 skipped (47)` |
+| T70 (ChallengeList: 2 overridden its) | passed on first run; mutation check below | `pnpm vitest run tests/unit/components/ChallengeList.test.ts -t 'shows each row its own short link|does not navigate when the copy control is activated'` | `Tests  2 passed | 38 skipped (40)` |
+| T71, T72 | true red (9 of 10 failed: the job and its `if:`/`env`/matrix/steps did not exist yet) | `pnpm vitest run tests/unit/workflows/upstream-only-jobs.test.ts` | `Tests  10 passed (10)` |
+| T52 | passed on first run (confinement already held after T44/T61/T71's work); mutation check below | `pnpm vitest run tests/unit/scripts/fork-init.test.ts -t 'leaves the upstream-only if:/env lines, the UPSTREAM_SLUG import and the engine file byte-identical'` | `Tests  1 passed | 1882 skipped (1883)` |
+
+**Mutation checks** (for every row recorded above as "passed on first run"). Each pair was applied,
+confirmed to fail for the targeted reason, reverted, confirmed byte-identical to the pre-mutation
+copy with `cmp`, and re-run to confirm green again.
+
+Re-run and updated on 2026-10-15 (stage 6/7 disposition): checks 1-3 target code this disposition
+rewrote (`manifestA1UrlLines`/`exemptLines` replaces `MANIFEST_URL_LINE_RE`; `isBinary` now decodes
+`latin1`, not `utf8`; the per-line regex rebuilding was hoisted into the single `SLUG_MATCH_ALL_RE`),
+so their commands and byte counts changed; checks 4, 5 and 9 target code this disposition did not
+touch, so their commands are unchanged — only the whole-file re-run counts grew (more tests were
+added elsewhere in the same files). Checks 6-8 were updated only for the `DISPLAY_HOST` →
+`DISPLAY_ORIGIN` rename (item 12 of the disposition); their own counts are unchanged.
+
+1. **T62** (manifest A1-URL-line exemption), in `tests/unit/scripts/upstream-guard.test.ts`:
+   - apply: `perl -0pi -e "s/if \(!exemptLines\.has\(i\)\) \{/if (exemptLines.has(i)) {/" tests/unit/scripts/upstream-guard.test.ts`
+   - inverse: `perl -0pi -e "s/if \(exemptLines\.has\(i\)\) \{/if (!exemptLines.has(i)) {/" tests/unit/scripts/upstream-guard.test.ts`
+   - caught: `reports the manifest description or name field holding the slug` failed (`line: 6` instead of `line: 3`); `cmp` after inverse: identical; re-run: `Tests  92 passed | 1 skipped (93)`.
+2. **T63** (8000-byte binary boundary), same file:
+   - apply: `perl -0pi -e "s/function isBinary\(content: string\): boolean \{\n  return Buffer\.from\(content, 'latin1'\)\.subarray\(0, 8000\)\.includes\(0\)\n\}/function isBinary(content: string): boolean {\n  return false\n}/" tests/unit/scripts/upstream-guard.test.ts`
+   - inverse: `perl -0pi -e "s/function isBinary\(content: string\): boolean \{\n  return false\n\}/function isBinary(content: string): boolean {\n  return Buffer.from(content, 'latin1').subarray(0, 8000).includes(0)\n}/" tests/unit/scripts/upstream-guard.test.ts`
+   - caught: 3 its failed, including the new real-tree-reading-path high-bit-byte test (reported a violation instead of none); `cmp` identical after inverse; re-run: `Tests  92 passed | 1 skipped (93)`.
+3. **T64** (case-insensitive occurrence search), same file:
+   - apply: `perl -0pi -e "s/const SLUG_MATCH_ALL_RE = new RegExp\(escapeRe\(UPSTREAM_SLUG\), 'gi'\)/const SLUG_MATCH_ALL_RE = new RegExp(escapeRe(UPSTREAM_SLUG), 'g')/" tests/unit/scripts/upstream-guard.test.ts`
+   - inverse: `perl -0pi -e "s/const SLUG_MATCH_ALL_RE = new RegExp\(escapeRe\(UPSTREAM_SLUG\), 'g'\)/const SLUG_MATCH_ALL_RE = new RegExp(escapeRe(UPSTREAM_SLUG), 'gi')/" tests/unit/scripts/upstream-guard.test.ts`
+   - caught: all three letter-case its failed (lowercase/uppercase/mixed case no longer reported); `cmp` identical after inverse; re-run: `Tests  92 passed | 1 skipped (93)`.
+4. **T66** (work-tree requirement in the manifest fallback), same file:
+   - apply: `perl -0pi -e "s/return url === \`git\+https:\/\/github\.com\/\\\${UPSTREAM_SLUG}\.git\` && isWorkTree/return url === \`git+https:\/\/github.com\/\\\${UPSTREAM_SLUG}.git\`/" tests/unit/scripts/upstream-guard.test.ts`
+   - inverse: `perl -0pi -e "s/return url === \`git\+https:\/\/github\.com\/\\\${UPSTREAM_SLUG}\.git\`\n\}/return url === \`git+https:\/\/github.com\/\\\${UPSTREAM_SLUG}.git\` && isWorkTree\n}/" tests/unit/scripts/upstream-guard.test.ts`
+   - caught: `falls back to the manifest and work tree when GITHUB_REPOSITORY is unset/empty string` both failed (the non-work-tree half returned `true`); `cmp` identical after inverse; re-run: `Tests  92 passed | 1 skipped (93)`.
+5. **T68** (the `version` field id), same file:
+   - apply: `perl -0pi -e "s/if \(pkg\.version === '0\.1\.0'\) mismatches\.push\('version'\)/if (pkg.version === '0.1.1') mismatches.push('version')/" tests/unit/scripts/upstream-guard.test.ts`
+   - inverse: `perl -0pi -e "s/if \(pkg\.version === '0\.1\.1'\) mismatches\.push\('version'\)/if (pkg.version === '0.1.0') mismatches.push('version')/" tests/unit/scripts/upstream-guard.test.ts`
+   - caught: `reports exactly version when only it changes` and `does not report version 0.1.1` both failed; `cmp` identical after inverse; re-run: `Tests  92 passed | 1 skipped (93)`.
+6. **T70 (ShortLinkShare)** — `DISPLAY_ORIGIN` must strip the scheme, not just alias `SITE_ORIGIN`:
+   - apply: `perl -0pi -e "s/SITE_ORIGIN\.replace\(\/\^https:\\\\\/\\\\\/\/, ''\)/SITE_ORIGIN/" tests/unit/components/ShortLinkShare.test.ts`
+   - inverse: `perl -0pi -e "s/const DISPLAY_ORIGIN = SITE_ORIGIN\$/const DISPLAY_ORIGIN = SITE_ORIGIN.replace(\/\^https:\\\\\/\\\\\/\/, '')/m" tests/unit/components/ShortLinkShare.test.ts`
+   - caught: 3 its failed (the scheme was no longer stripped, e.g. expected `wxl.browserlab.online/zh/c/001`, got `https://wxl.browserlab.online/zh/c/001`); `cmp` identical after inverse; re-run: `Tests  11 passed (11)`.
+7. **T70 (MergedNav)**: the same apply/inverse pair, on `tests/unit/components/MergedNav.test.ts` — caught: both overridden its failed the same way; `cmp` identical after inverse; re-run: `Tests  47 passed (47)`.
+8. **T70 (ChallengeList)**: the same apply/inverse pair, on `tests/unit/components/ChallengeList.test.ts` — caught: `shows each row its own short link` failed; `cmp` identical after inverse; re-run: `Tests  40 passed (40)`.
+9. **T52** (`SELF_EXCLUDE` must keep excluding the engine file from the rebrand walk), in `scripts/fork-init.ts`:
+   - apply: `perl -0pi -e "s/const SELF_EXCLUDE = new Set\(\['scripts\/fork-init\.ts', 'tests\/unit\/scripts\/fork-init\.test\.ts'\]\)/const SELF_EXCLUDE = new Set(['tests\/unit\/scripts\/fork-init.test.ts'])/" scripts/fork-init.ts`
+   - inverse: `perl -0pi -e "s/const SELF_EXCLUDE = new Set\(\['tests\/unit\/scripts\/fork-init\.test\.ts'\]\)/const SELF_EXCLUDE = new Set(['scripts\/fork-init.ts', 'tests\/unit\/scripts\/fork-init.test.ts'])/" scripts/fork-init.ts`
+   - caught: the T52 test's `expect(engineFileAfter).toBe(engineFileBefore)` failed (the walk rewrote the fixture's engine-file copy, swapping `wxl`-locale/`WXL_VERIFY_RUNTIME`/slug tokens inside it); `cmp` identical after inverse; re-run (whole file): `Tests  1892 passed (1892)`.
+
+Mutation checks 10-12 (new behavioural mutations for the T67, T27 and T69 rows, added by the
+2026-10-15 stage 6/7 disposition) are recorded in that section below, not here, since they did not
+exist at the original red→green time.
+
+**T69 command record** (traceability.md's own table; all four run from the repo root, upstream's
+own manifest/work-tree, no mocking). **Re-run on 2026-10-15** (stage 6/7 disposition) after the
+file's test count grew from 65 to 93; the four rows' exit codes are unchanged, only the counts:
+
+| # | Command | Exit code | `Tests` summary |
+|---|---|---|---|
+| 1 | `WXL_EXPECT_UPSTREAM=false pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` | 1 | `Tests  1 failed | 92 passed (93)` |
+| 2 | `GITHUB_REPOSITORY=someone/else pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` | 0 | `Tests  86 passed | 7 skipped (93)` |
+| 3 | `GITHUB_REPOSITORY=someone/else WXL_EXPECT_UPSTREAM=true pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` | 1 | `Tests  1 failed | 86 passed | 6 skipped (93)` |
+| 4 | `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` | 0 | `Tests  93 passed (93)` |
+
+Row 4's `GITHUB_REPOSITORY` value is a literal typed at an interactive shell prompt to exercise the
+decision function, not a source-file literal; it does not touch the confinement rule (which
+governs tracked files, checked by the guard itself — row 4's own run confirms zero violations).
+
+**Affected-file run** (every file touched or added, together; re-run 2026-10-15):
+
+```
+pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts \
+  tests/unit/components/ShortLinkShare.test.ts tests/unit/components/MergedNav.test.ts \
+  tests/unit/components/ChallengeList.test.ts tests/unit/workflows/
+```
+Result: `Test Files  10 passed (10)` / `Tests  2127 passed | 1 skipped (2128)`.
+
+**Full suite**: `pnpm test --run` → `Test Files  127 passed (127)` / `Tests  4175 passed | 1 skipped (4176)`
+(2026-10-15 re-run; exit code 0).
+An `ECONNREFUSED ::1:3000` / `127.0.0.1:3000` `AggregateError` is printed to stderr after the
+summary on every run of this suite. Re-checked on 2026-10-15 without touching this branch's working
+tree (the first write-up here had said "confirmed with `git stash`", which this disposition retracts
+as a method this branch's instructions forbid): `git archive 1f4096a` was exported to a scratch
+directory, its `node_modules` symlinked to this repository's own, and `pnpm test --run` run there —
+the same `ECONNREFUSED` `AggregateError` appeared on `main` at `1f4096a` too, after its own summary
+line. (That scratch run also showed 110 unrelated failures from `wasm_fs_init` being undefined — the
+archived tree has no `pnpm wasm:build`/`pnpm challenge:keygen` run against it; that is an artefact of
+the scratch export, not evidence about `main`, and is not what this check was for.) So: observed on
+this branch and on `main` before this ticket's change; not shown to come from this ticket's change —
+consistent with a pre-existing, unrelated async leak (a test leaves a client socket retrying after
+the run ends), not newly introduced and not affecting either run's reported pass counts or exit code.
+Reproduce: `git archive 1f4096a | tar -x -C <scratch-dir>`, `ln -s <this-repo>/node_modules
+<scratch-dir>/node_modules`, `cd <scratch-dir> && pnpm test --run` (the full suite; a single test
+file's run did not reproduce it), then `grep ECONNREFUSED` the output. The 110 unrelated failures
+mentioned above come from the scratch tree never having run `pnpm wasm:build`/`pnpm challenge:keygen`
+— skip them; they are not part of what this check verifies.
+
+### Deviations
+
+1. **Execution order departs from the approved table's row order.** The table lists T44, T52,
+   T61–T64, T65–T66, T67–T68, T27, T69, T70, T71–T72 in that sequence. T52's own fixture copies the
+   *real, current* `release.yml`, `quality-gates.yml` and `upstream-guard.test.ts` into the B-mode
+   tree and asserts specific lines in them survive a rebrand run byte-identical — lines that do not
+   exist until T71/T72 add the `if:`/`env` lines and until T61 onward creates
+   `upstream-guard.test.ts` with its `UPSTREAM_SLUG` import. Implementing T52 first, as the table
+   orders it, would make its first run red for the wrong reason (those lines are simply absent),
+   not for a confinement defect — the kind of guessing the method asks an executor to avoid rather
+   than paper over. The implemented order is T44 → T61–T64 → T65–T66 → T67–T68 → T27 → T69 → T70 →
+   T71–T72 → T52 (last, once every file it reads has its final shape). Within that order, every row
+   still got its own failing test seen for the right reason, or — where the already-general
+   function covered a later row for free — a recorded mutation check; no row's implementation was
+   written before its own test existed, and no two rows' implementations were batched ahead of their
+   tests.
+2. **`docAnchorRegex` gained a capture group** (`scripts/fork-init.ts`): the A2–A5 slug now sits in
+   `m[1]` instead of being embedded, unretrievable, in the whole match. `runForkInit` itself only
+   ever uses this regex via `.match()` (count) and `.replace()` with a replacer function (which
+   ignores capture groups), so this does not change `runForkInit`'s observable behaviour — the
+   existing 1883-test `fork-init.test.ts` suite, every one of them byte-identical in body to HEAD,
+   stayed green throughout. Checked with `git diff -U0 1f4096a -- tests/unit/scripts/fork-init.test.ts`:
+   the only removed line across the whole file is the `import { join, dirname } from 'node:path'`
+   line gaining `resolve` (an import this ticket's own T52 test needs); every other line is a pure
+   addition (new `describe`/`it` blocks), none of the file's pre-existing test bodies changed.
+   It is a genuine (if small) modification to a shared function rather than
+   a pure addition, which is why it is called out here rather than folded silently into "exports."
+   The alternative (re-deriving the slug's start/end from the matched text with a second,
+   boundary-unaware regex) was tried first and produced wrong extractions at an A3/A4 suffix
+   (`.git` swallowed into the name) and at A2's shared `github.com/` prefix (`com/BrowserLaboratory`
+   misread as the slug) — both logged as genuine red runs before this fix.
+3. **The manifest's A1-URL-line heuristic** (guard and pristine check, `upstream-guard.test.ts`):
+   traceability.md's Note 7 leaves "how the guard maps to a manifest line" to the implementer for a
+   2-space-indented fixture. Implemented as: a line matching `^\s*"(?:url|homepage)"\s*:` is exempt
+   (the manifest's `repository.url`, `bugs.url`, `homepage`); every other line (`description`,
+   `name`, ...) is not. A manifest compressed onto one line is explicitly out of scope per the same
+   note and is not handled.
+4. **Cross-OS coverage is local to macOS (Darwin) only**, per Note 10: this session ran on
+   `Darwin … arm64`, Node `v24.13.0` — one of the four matrix cells
+   (`macos-latest`/24). Windows, Ubuntu and Node 22 are unverified until the PR's own
+   `fork-init-cross-os` job runs. Not verified beyond macOS/Node 24 locally; the PR's CI covers the
+   other three matrix cells (`windows-latest`/24, `ubuntu-latest`/24, `ubuntu-latest`/22).
+5. **`UPSTREAM_SLUG` and the known-old-output list**: both were unexported on `main` after T-0015
+   (confirmed on `1f4096a`); this ticket adds `export` to both, per the settled Note 2.
+
+### 2026-10-15 — coverage report table
+
+Coverage is **not measured: no coverage provider is installed** in this project; "Measured
+coverage" below names which reproduce command exercises the seam instead.
+
+Counts below are the 2026-10-15 stage 6/7 disposition's re-count (`--reporter=verbose`, grouped by
+`describe`); the original 2026-10-15 implementation's counts are superseded (the original "upstream
+decision" row had said 14 its — it was always 13; the 14 in that day's red→green log row instead
+counted the module-scope `WXL_EXPECT_UPSTREAM` it together with the 13, which does not belong to
+the "upstream decision" describe at all — a mislabel this disposition corrects, not a changed count).
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| S1 (`UPSTREAM_SLUG` export, T52 confinement) | `fork-init.test.ts` — `UPSTREAM_SLUG` describe (1 it) + the new B-mode T52 it (1 it) + `matchesOriginGrammar` describe (9 its, disposition item 10) | not measured: no coverage provider is installed | T44, T52 / AC-G1, AC-B3 | — |
+| S5 (guard classification) | `upstream-guard.test.ts` — "upstream guard — confinement" describe (29 its) | not measured: no coverage provider is installed | T61–T64 / AC-G1 | The "no git installed" case is explicitly out of scope (Note 3, settled) |
+| S5 (upstream decision) | `upstream-guard.test.ts` — "upstream decision" describe (13 its) | not measured: no coverage provider is installed | T65–T66 / AC-G2 | Same as above: the work-tree flag's own git-detection probe is not exercised with a missing `git` binary |
+| S5 (pristine check) | `upstream-guard.test.ts` — "upstream pristine check" describe (34 its) | not measured: no coverage provider is installed | T67–T68 / AC-G3 | — |
+| S5 (template-hash pin) | `upstream-guard.test.ts` — "deploy template hash pin" describe (2 its, upstream only) | not measured: no coverage provider is installed | T27 / AC-H3 | Runs only when the upstream decision is true (by design — an upstream-only test) |
+| S5 (real tree + expectation check) | `upstream-guard.test.ts` — "real tree" describe (4 its, upstream only) + "expectation check (WXL_EXPECT_UPSTREAM)" describe (10 its, disposition item 1) + the standalone `WXL_EXPECT_UPSTREAM` it (1 it, `it.runIf`-gated) + the T69 command-record table above | not measured: no coverage provider is installed | T69 / AC-G3 | — |
+| S6 (component tests) | `ShortLinkShare.test.ts` (5 its incl. the origin-grammar it), `MergedNav.test.ts` (2 its), `ChallengeList.test.ts` (2 its) | not measured: no coverage provider is installed | T70 / AC-C1 | "換任何 origin 都成立" only reaches a real alternate origin at T-0016's S7 (Note 5), not in this ticket's S6 scope |
+| S4 (upstream-only `if:`/`env`, cross-OS job) | `upstream-only-jobs.test.ts` (11 its, including the disposition item 2 dtolnay/Swatinem job-set describe) | not measured: no coverage provider is installed | T71–T72 / AC-C2, AC-C3 | The job's actual behaviour on Windows/macOS/Ubuntu/Node 22 runners is unverified locally (Deviation 4); only its YAML shape is checked here |
+
+### 2026-10-15 — stage 6 and 7 disposition
+
+Applied directly (behaviour-preserving, within this ticket's own test plan, traceability.md
+revision 2.1 and recorded Notes/settled notes), per the user's prior authorisation for this class of
+fix. Each item below: what the finding was, what was done, the evidence.
+
+1. **S5's expectation check was an inline `if`/`return`, not a callable function.** Extracted
+   `expectationHolds(decision, raw)` (`tests/unit/scripts/upstream-guard.test.ts:809`), returning
+   `'skip' | 'pass' | 'fail'` so "unset" is distinguishable from a vacuous pass. Added a 10-case
+   `it.each` (`:814`) over unset/`'true'`/`'false'`/`'TRUE'`/`'1'` × decision true/false. The
+   real-environment it now uses `it.runIf(process.env.WXL_EXPECT_UPSTREAM !== undefined)` (`:836`)
+   and asserts `expectationHolds(REAL_DECISION, ...)` equals `'pass'`, so an unset env var renders as
+   **skipped**, not a silently-passing empty assertion. `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `Tests  92 passed | 1 skipped (93)`.
+2. **T72's "the set of jobs using `dtolnay/rust-toolchain@`/`Swatinem/rust-cache@` is unchanged" had
+   no test.** Added `describe('dtolnay/rust-toolchain and Swatinem/rust-cache job sets (T72)', ...)`
+   (`tests/unit/workflows/upstream-only-jobs.test.ts:99`), asserting both action prefixes are used in
+   exactly the five jobs confirmed against `git show 1f4096a:.github/workflows/quality-gates.yml` /
+   `release.yml` (quality-gates.yml: `build`, `challenge-verify`, `site-smoke`, `test`; release.yml:
+   `release`). `pnpm vitest run tests/unit/workflows/upstream-only-jobs.test.ts` → `Tests  11 passed (11)`.
+3. **The pristine check's A7 decoding used a hand-rolled regex and the JS-string-literal rule,
+   not the engine's own YAML-scalar rule.** Exported `A7_CANDIDATE_RE` (`scripts/fork-init.ts:1003`)
+   and extracted `parseA7ScalarValue(line): string | null` from `isA7ScalarValue`'s body
+   (`scripts/fork-init.ts:1040`; `isA7ScalarValue` now calls it and returns `!== null` — behaviour
+   unchanged, confirmed by the full `fork-init.test.ts` suite staying green). The guard test now
+   calls it directly (`tests/unit/scripts/upstream-guard.test.ts:483`) and compares the decoded value
+   to `'WXL'`. Added a case: an unquoted plain scalar `name: WXL` is not a mismatch.
+4. **`isBinary` re-encoded fixture content as `utf8` before checking the first 8000 bytes, while
+   `realTreeFiles` reads with `latin1`.** Fixed to decode with `latin1` throughout
+   (`tests/unit/scripts/upstream-guard.test.ts:69`). Added exact-boundary fixture cases (NUL at
+   index 7999 → binary, at 8000 → text) and a real-tree-reading-path case: a synthetic file with
+   high-bit bytes and a NUL at byte 7999, read through the same `readTreeFile` function
+   `realTreeFiles` itself uses (`:708`, `:716`), confirming the fix against actual bytes on disk, not
+   only a fixture string.
+5. **`trackedFiles` ignored `git ls-files`'s own exit status; `isGitWorkTree` had a dead
+   `try`/`catch` (`spawnSync` does not throw).** `trackedFiles` (`:692`) now throws when
+   `res.error` or a non-zero `res.status` is seen; `isGitWorkTree` (`:735`) checks the same two
+   fields directly, no `try`/`catch`. Added an assertion that the real tree has at least one tracked
+   file.
+6. **Non-regular tracked paths were skipped with `existsSync`, and the comment's own explanation
+   (submodule directories skipped via `existsSync`) does not match what actually happens there
+   (`EISDIR`).** `realTreeFiles` (`:716`) now `statSync`s each path and skips anything that throws
+   or is not `isFile()`; the comment states the real reason.
+7. **The manifest's URL-line exemption matched any `"url"`/`"homepage"` key by name, at any
+   nesting.** Replaced with `manifestA1UrlLines` (`:80`), a small structural walk that only exempts
+   `repository.url`, `bugs.url` and `homepage` at their actual nesting. Added a case: a
+   `funding.url` field holding the slug is reported.
+8. **A line's second (and later) occurrence of the slug broke out of the loop instead of being
+   reported.** The `break` is gone (`:140`); every occurrence now pushes its own violation. Added
+   two T61 cases: two occurrences on one line, and two occurrences on different lines of the same
+   file.
+9. **T68 was missing several cases the approved table lists.** Added: an A2 badge line with only
+   one of its two forms rewritten (`:633`); a case-only A2 change (uppercase slug, still a mismatch
+   per Note 6); `base:` replaced with the literal `'/x/'`; A3/A4/A5 cases where the slug becomes
+   `me/x` rather than being deleted; a `deploy.yml` whose content is the tree's own current template
+   output (read from `scripts/templates/deploy.yml.template`), still reported since T67 requires the
+   file be absent. `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts -t 'reports exactly'`
+   confirms all of these pass.
+10. **`matchesOriginGrammar`'s `catch` swallowed every exception, not only `ForkInitArgError`.**
+    Changed to re-throw anything that is not a `ForkInitArgError` (`scripts/fork-init.ts:170`).
+    `validateOriginValue` (the only function it calls) never throws anything else for a `string`
+    argument, so this is behaviour-preserving for every caller; it is listed as an engine change
+    because the catch clause's shape changed, not because any input now behaves differently. Added a
+    `describe('matchesOriginGrammar', ...)` in `fork-init.test.ts` with the requested counter-examples
+    (`http://`, single label, port, query, fragment, trailing slash, userinfo → `false`; a path,
+    an uppercase label → `true`).
+11. **T52's import-line comparison only checked the `UPSTREAM_SLUG,` specifier line.** Replaced
+    `UPSTREAM_SLUG_IMPORT_LINE_RE` with `UPSTREAM_SLUG_IMPORT_RE`
+    (`tests/unit/scripts/fork-init.test.ts:4204`), matching the whole `import { ... } from
+    '…/scripts/fork-init'` statement.
+12. **Naming and small cleanups**: the `upstream-only-jobs.test.ts` test title now says "has a step
+    running exactly …" (`:78`), not "runs exactly … nothing else" (it does not check for the absence
+    of other steps); the triggers-only test there is removed (covered by `trigger-branches.test.ts`,
+    per the approved plan's own note); the manifest test now also covers a `name` field case, not
+    only `description`; `DocAnchor_Id` is gone, replaced by `DocAnchor['id']` imported as a type
+    (`:439`); the three component tests' new `DISPLAY_HOST` constant is renamed `DISPLAY_ORIGIN`
+    (`tests/unit/components/{ShortLinkShare,MergedNav,ChallengeList}.test.ts`); the per-line
+    `new RegExp(slugRe.source, ...)` reconstruction is gone, replaced by the single module-scope
+    `SLUG_MATCH_ALL_RE` (`:140`).
+
+   **Not adopted, with reasons**: `escapeRe` is not extracted into a shared helper — the test file
+   already carries its own small, self-contained copy (consistent with the rest of the file, which
+   intentionally avoids depending on more of the engine than the specific regexes/functions named by
+   Note 8). `DOC_ANCHORS`'s shared, stateful global regex objects are not changed — the engine itself
+   only ever calls `.match()` or `.replace()` on them (which do not read or depend on `lastIndex`),
+   and every test use here is `matchAll()` (which clones the regex internally, per the language
+   specification, rather than mutating the shared instance's `lastIndex`); neither caller is affected
+   by the regex objects being shared.
+13. **Three code comments cited the wrong source, or described behaviour inaccurately.** The
+    `trackedFiles` comment now cites "T-0011 ticket, approved test plan, T69 row" instead of
+    `traceability.md`, in English, with no literal Chinese (`:692`). `quality-gates.yml`'s `test` job
+    comment now says the decision is computed by `upstream-guard.test.ts` itself, not by "the
+    engine's own upstream decision" (the engine computes no such decision). The cross-OS job's
+    comment now says "every OS/Node a teacher may run `pnpm fork:init` on", not "a fork's own CI will
+    run on" (a teacher runs `fork:init` locally, once, before any CI exists for that fork).
+    `docAnchorRegex`'s trailing `//` comment, which said the function itself was "exported" (it is
+    not — `DOC_ANCHORS`, which carries its output, is), is folded into the function's own JSDoc with
+    the correction.
+14. **Ticket record quality** (this file):
+    - The red→green log's T69/T27/T67 rows now say "import failure, not a behavioural red", with a
+      pointer to the new mutation checks 10-12 (above) that give each row its own genuine behavioural
+      coverage.
+    - The "confirmed with `git stash`" sentence is gone — see the rewritten "Full suite" paragraph
+      above: re-confirmed via `git archive 1f4096a` into a scratch directory with a symlinked
+      `node_modules`, not by touching this branch's working tree.
+    - Deviation 2 now cites the actual `git diff -U0 1f4096a -- tests/unit/scripts/fork-init.test.ts`
+      check and its result (one line changed: the `resolve` import addition; everything else a pure
+      addition).
+    - Deviation 4's "No portability concern" is replaced with the plain fact: not verified beyond
+      macOS/Node 24 locally; the PR's CI covers the other three matrix cells.
+    - The coverage table's "upstream decision describe (14 its)" is corrected to 13; the 14 the
+      original red→green log counted included the module-scope `WXL_EXPECT_UPSTREAM` it, which is
+      not part of that `describe` block at all.
+    - Context's "traceability.md (revision 2)" is corrected to "revision 2.1".
+**Mutation checks 10-12** (the genuine behavioural coverage item 14 above adds for the T67, T27 and
+T69 rows the red→green log had mislabelled as "true red"; same apply/confirm-fail/revert/`cmp`/re-run
+method as checks 1-9):
+
+10. **T67** (`pristineMismatches` must actually compare A6 against upstream's value, not always
+    report it), in `tests/unit/scripts/upstream-guard.test.ts`:
+    - apply: `perl -0pi -e "s/if \(a6Value !== 'Web eXploitation Laboratory'\) mismatches\.push\('A6'\)/mismatches.push('A6')/" tests/unit/scripts/upstream-guard.test.ts`
+    - inverse: `perl -0pi -e "s/mismatches\.push\('A6'\)\n\n  \/\/ A7/if (a6Value !== 'Web eXploitation Laboratory') mismatches.push('A6')\n\n  \/\/ A7/" tests/unit/scripts/upstream-guard.test.ts`
+    - caught: `reports no mismatch for a fixture holding every upstream value` failed (`['A6']` instead
+      of `[]`); `cmp` after inverse: identical; re-run: `Tests  92 passed | 1 skipped (93)`.
+11. **T27** (the pinned current-template hash must actually match the real template, not any
+    string), same file:
+    - apply: `perl -0pi -e "s/2a6b8a55d5738429388056c4342e766d1282d23f20b9d4c77e565d479c92635d/2a6b8a55d5738429388056c4342e766d1282d23f20b9d4c77e565d479c92635e/" tests/unit/scripts/upstream-guard.test.ts`
+    - inverse: `perl -0pi -e "s/2a6b8a55d5738429388056c4342e766d1282d23f20b9d4c77e565d479c92635e/2a6b8a55d5738429388056c4342e766d1282d23f20b9d4c77e565d479c92635d/" tests/unit/scripts/upstream-guard.test.ts`
+    - caught: `the current template's LF-normalised SHA-256 is pinned …` failed (mismatched hash,
+      `1 failed | 91 passed | 1 skipped (93)`); `cmp` after inverse: identical; re-run:
+      `Tests  92 passed | 1 skipped (93)`.
+12. **T69** (the `WXL_EXPECT_UPSTREAM` gate must actually be gated — removing it must surface a
+    real failure when the env var is unset), same file:
+    - apply: `perl -0pi -e "s/it\.runIf\(process\.env\.WXL_EXPECT_UPSTREAM !== undefined\)\(\n  'WXL_EXPECT_UPSTREAM, when set, matches the upstream decision',/it(\n  'WXL_EXPECT_UPSTREAM, when set, matches the upstream decision',/" tests/unit/scripts/upstream-guard.test.ts`
+    - inverse: `perl -0pi -e "s/it\(\n  'WXL_EXPECT_UPSTREAM, when set, matches the upstream decision',/it.runIf(process.env.WXL_EXPECT_UPSTREAM !== undefined)(\n  'WXL_EXPECT_UPSTREAM, when set, matches the upstream decision',/" tests/unit/scripts/upstream-guard.test.ts`
+    - caught (run as `GITHUB_REPOSITORY=someone/else pnpm vitest run tests/unit/scripts/upstream-guard.test.ts`,
+      `WXL_EXPECT_UPSTREAM` left unset): `WXL_EXPECT_UPSTREAM, when set, matches the upstream decision`
+      failed (`expected 'skip' to be 'pass'` — the gate no longer skipped it, and without the env var
+      `expectationHolds` correctly returns `'skip'`, not `'pass'`); `cmp` after inverse: identical;
+      re-run (same env): `Tests  86 passed | 7 skipped (93)`.
+
+15. **Final verification** (after every item above): `pnpm vitest run tests/unit/scripts/
+    tests/unit/workflows/ tests/unit/components/` → `Test Files  53 passed (53)` /
+    `Tests  2755 passed | 1 skipped (2756)`; `pnpm test --run` → `Test Files  127 passed (127)` /
+    `Tests  4175 passed | 1 skipped (4176)`, exit 0 (the pre-existing `ECONNREFUSED` leak noted
+    above prints to stderr but does not change the exit code or counts). `git diff -U0 1f4096a --
+    tests/unit/scripts/fork-init.test.ts` confirms the file's pre-existing test bodies are all
+    untouched (one import line changed; the rest is addition). No literal Chinese, no local
+    filesystem path, no simplified-Chinese character and no review-round id (`S-0N`/`F#`/`C#`) was
+    found in `tests/unit/scripts/upstream-guard.test.ts` or `tests/unit/workflows/
+    upstream-only-jobs.test.ts`; neither file contains the upstream slug as a literal, nor any of the
+    four rebrand keys (Note 11), confirmed by `grep`.
+
+### 2026-10-15 — stage 7 security review
+
+Report: `.proj.specs/0004-stateless-engine/review/security-T-0011.md`. Seventeen candidates, independently filtered: no exploitable defect. Eight real non-security items were fixed in the stage 6 and 7 disposition above; one (a range whose work tree sits inside another repository) is recorded there as a known limit.

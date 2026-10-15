@@ -16,6 +16,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Upstream-only tests (tests/unit/scripts/upstream-guard.test.ts) must fail, not silently skip,
+    # if this ever disagrees with the decision upstream-guard.test.ts computes itself (T-0011).
+    # Spelled through format(), never UPSTREAM_SLUG — a workflow YAML cannot import a TS module.
+    env:
+      WXL_EXPECT_UPSTREAM: ${{ github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform') }}
 
     steps:
       - name: Checkout repository
@@ -281,3 +286,45 @@ jobs:
 
       - name: Run challenge exploit suite
         run: pnpm test:challenges
+
+  fork-init-cross-os:
+    # Upstream-only (T-0011): the fork-init engine and its upstream guard must prove out on every
+    # OS/Node combination a teacher may run `pnpm fork:init` on — Windows, macOS and Ubuntu, and
+    # both LTS Node lines — but only upstream itself pays for the matrix. Spelled through format(),
+    # never UPSTREAM_SLUG (a workflow YAML cannot import a TS module); pinned by
+    # tests/unit/workflows/upstream-only-jobs.test.ts.
+    if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node-version: 24
+          - os: macos-latest
+            node-version: 24
+          - os: ubuntu-latest
+            node-version: 24
+          - os: ubuntu-latest
+            node-version: 22
+    runs-on: ${{ matrix.os }}
+    env:
+      WXL_EXPECT_UPSTREAM: ${{ github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform') }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run fork-init and upstream-guard tests
+        run: pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts

@@ -4,6 +4,14 @@ import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
 import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 import ShortLinkShare from '../../../.vitepress/theme/components/ShortLinkShare.vue'
+import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
+import { matchesOriginGrammar } from '../../../scripts/fork-init'
+
+// Expectations are built here with plain string operations on the imported SITE_ORIGIN — never by
+// calling shortLinkDisplay/shortLinkUrl — so this file stays a test of the component's OWN output
+// against the real origin, not a tautology against the helper it happens to share with the
+// component (T70/AC-C1).
+const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 
 // The control exists because a link nobody can see is a link nobody hands out.
 // Both halves matter and the failure case is the reason the visible half is
@@ -50,7 +58,7 @@ describe('ShortLinkShare', () => {
   })
 
   it('shows the host and path without the scheme', () => {
-    expect(mountShare('en').find('[data-short-link]').text()).toBe('wxl.browserlab.online/c/001')
+    expect(mountShare('en').find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/001`)
   })
 
   it('copies the absolute URL, scheme included', async () => {
@@ -59,21 +67,25 @@ describe('ShortLinkShare', () => {
 
     await wrapper.find('[data-copy-link]').trigger('click')
 
-    expect(writeText).toHaveBeenCalledWith('https://wxl.browserlab.online/c/001')
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
   })
 
   it('shows and copies the localised path in Traditional Chinese', async () => {
     const writeText = stubClipboard('resolve')
     const wrapper = mountShare('zh-TW')
 
-    expect(wrapper.find('[data-short-link]').text()).toBe('wxl.browserlab.online/zh/c/001')
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh/c/001`)
     await wrapper.find('[data-copy-link]').trigger('click')
-    expect(writeText).toHaveBeenCalledWith('https://wxl.browserlab.online/zh/c/001')
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/zh/c/001`)
   })
 
   it('pads the number to three digits and leaves a wider one alone', () => {
-    expect(mountShare('en', 42).find('[data-short-link]').text()).toBe('wxl.browserlab.online/c/042')
-    expect(mountShare('en', 1234).find('[data-short-link]').text()).toBe('wxl.browserlab.online/c/1234')
+    expect(mountShare('en', 42).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/042`)
+    expect(mountShare('en', 1234).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/1234`)
+  })
+
+  it('SITE_ORIGIN matches the origin grammar (traceability.md)', () => {
+    expect(matchesOriginGrammar(SITE_ORIGIN)).toBe(true)
   })
 
   it('announces a successful copy through a live region and then returns to rest', async () => {

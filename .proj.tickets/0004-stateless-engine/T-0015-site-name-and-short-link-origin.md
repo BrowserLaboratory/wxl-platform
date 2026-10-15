@@ -2,7 +2,7 @@
 id: T-0015
 title: Set the site name and the short-link origin; converge every run
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0014]
 ---
 
@@ -785,3 +785,18 @@ ticket's Coverage report). `pnpm test --run` (the whole suite) is also green.
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0015.md`. Seven candidates, independently filtered: no exploitable defect. Three real non-security items (the string-literal parser, the frontmatter start, byte fidelity outside the anchors) were fixed in the stage 6 and 7 disposition above; one (A7's single-line rule) is recorded there as a known limit.
+
+### 2026-10-15 — stage 8 and landing
+
+Stage 8 surface: the CLI, no browser (the ticket changes no page), on a `git archive HEAD` export of `da2eb78` committed into a scratch git repository with `node_modules` linked from the checkout; every run is `node --experimental-strip-types scripts/fork-init.ts --author "Test Teacher" --repo test-owner/web-range <flags>` unless stated.
+
+| `<flags>` | Exit | Observed |
+|---|---|---|
+| `--host github-pages --site-name "測試靶場"` | 0 | `fork:init done — 9 file(s) changed` (`.vitepress/config.mts`, both home pages, `.vitepress/challenge/shortLink.ts`, `package.json`, `README.md`, `README.en.md`, `CONTRIBUTE.md`, `.github/workflows/deploy.yml`); config `  title: "測試靶場",`; `platform/index.md` `  name: "測試靶場"` with the four feature `title:` lines unchanged; `export const SITE_ORIGIN = "https://test-owner.github.io/web-range"`. The same command again: `fork:init done — 0 file(s) changed` |
+| `--host cloudflare-pages --origin https://Range.Example.TW` | 0 | `export const SITE_ORIGIN = "https://range.example.tw"` |
+| `--host cloudflare-pages` | 1 | stderr `✗ --origin is required with --host cloudflare-pages` |
+| `--rebrand acme --author "Test Teacher" --repo test-owner/web-range --host github-pages` | 1 | stderr `✗ --rebrand cannot be combined with --host` |
+| `--author T --repo test-owner/test-owner.github.io --host github-pages` | 0 | `export const SITE_ORIGIN = "https://test-owner.github.io"` |
+| `--origin https://e.example`, after hand-editing A8 to `'\u{41'` | 1 | stderr `✗ A8: .vitepress/challenge/shortLink.ts existing value does not parse as a JS string literal`; the run ends at once and `git status --porcelain` lists only the hand-edited file |
+
+PR BrowserLaboratory/wxl-platform#18, squash-merged as `1f4096a`; `gh pr checks 18` lists `Cloudflare Pages`, `build`, `challenge-verify`, `prose-audit`, `site-smoke` and `test`, all `pass`.
