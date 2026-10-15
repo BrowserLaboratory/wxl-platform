@@ -1,9 +1,9 @@
 # Spec 0004: a stateless fork-init engine, and range CI that stays green
 
-Status: revision 2.2 (revision 2 plus the clarifications approved with the test plans and, in 2.2,
-seam 0004-S10 with row T85, all listed in `traceability.md`). Round 1 of adversarial review found no
-P0 (`review/round-1.md`), so the stage 3 gate is met; revision 2 applies the round 1 disposition
-(`review/disposition.md`, groups M1–M10).
+Status: revision 2.3 (revision 2 plus the clarifications approved with the test plans; 2.2 adds
+seam 0004-S10 with row T85, and 2.3 extends T71 to the `release` job; all listed in
+`traceability.md`). Round 1 of adversarial review found no P0 (`review/round-1.md`), so the stage 3
+gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups M1–M10).
 Derived from `traceability.md`, which holds the fixed lists this spec refers to (modes and "today",
 repository-slug grammar, first conversion, identity anchors A1–A9, base grammar, workflow states,
 upstream repository-slug confinement with the guard's lists, overridden contracts, character rules, origin
@@ -206,7 +206,7 @@ swap cannot redirect the upstream-only machinery to a range.
   by the pristine test.
 - The `release` job (release workflow) and a new cross-OS job (quality-gates workflow) carry exactly
   `if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')`. The quality-gates
-  `test` job and the new job set `WXL_EXPECT_UPSTREAM` to the same comparison, so an upstream-only
+  `test` job, the new job and the `release` job set `WXL_EXPECT_UPSTREAM` to the same comparison, so an upstream-only
   test that wrongly decides "not upstream" fails instead of skipping. The new job runs the fork-init
   and upstream-guard tests on Windows, macOS and Ubuntu with Node 24 and on Ubuntu with Node 22, and
   has no Rust toolchain, Rust cache, install-action or binaryen step.
@@ -304,7 +304,7 @@ open-questions register change as T79–T80 list. All of these are checked at st
 ### CI
 
 - **AC-C1** The three component tests build their expectations from the imported `SITE_ORIGIN`, contain no upstream hostname, and check that `SITE_ORIGIN` matches the origin grammar. (T70)
-- **AC-C2** The `release` job and the new job carry exactly the `if:` of T71, and the `test` job and the new job carry exactly its `env`. (T71)
+- **AC-C2** The `release` job and the new job carry exactly the `if:` of T71, and the `test` job, the new job and the `release` job carry exactly its `env`. (T71)
 - **AC-C3** The new job is in the quality-gates workflow with its triggers unchanged and the four `include` entries of T72, runs the two named test files, and adds no Rust toolchain, Rust cache, install-action or binaryen step. (T72)
 - **AC-C4** No SourceViewer component test leaves a CodeMirror editor alive after it ends, so the SourceViewer test file's run reports no unhandled error from an editor timer firing after the test environment is torn down. (T85)
 

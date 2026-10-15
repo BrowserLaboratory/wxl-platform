@@ -18,6 +18,14 @@ jobs:
     # tests/unit/workflows/upstream-only-jobs.test.ts.
     if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')
     runs-on: ubuntu-latest
+    # This job runs only when the `if:` above holds, and GitHub Actions' `==` comparison is
+    # case-insensitive, so this env is always true here. It exists so that if the upstream
+    # organisation's name is ever spelled with a different letter case, the upstream-only tests
+    # this job's `pnpm test --run` step runs — which independently decide "not upstream" — fail
+    # instead of silently skipping (spec B3).
+    # Spelled through format(), never UPSTREAM_SLUG — a workflow YAML cannot import a TS module.
+    env:
+      WXL_EXPECT_UPSTREAM: ${{ github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform') }}
 
     steps:
       - name: Checkout repository

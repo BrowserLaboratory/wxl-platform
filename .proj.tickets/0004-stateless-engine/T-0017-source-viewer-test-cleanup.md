@@ -2,7 +2,7 @@
 id: T-0017
 title: Leave no CodeMirror editor alive after a SourceViewer test
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0016]
 ---
 
@@ -369,3 +369,7 @@ Run on HEAD `608abcd9d74c8c29f6ccda762c7cb87644664bda` with T-0016's S7 script c
 | CF (`--host cloudflare-pages --origin https://web-range.pages.dev --site-name 'Lin'"'"'s "Web" Range \ $'"'"' $1'`) | exit 0 | `Tests  4169 passed \| 7 skipped (4176)`, no `Errors` line |
 
 The PR's CI `test` job is the remaining stage 8 evidence; its result is added at landing.
+
+### 2026-10-15 — landing
+
+PR BrowserLaboratory/wxl-platform#21, squash-merged by the user as `c142833`. Its CI passed on the first run, the `test` job included (`test`, `build`, `prose-audit`, `site-smoke`, `challenge-verify`, four `fork-init-cross-os` jobs and `Cloudflare Pages` all succeeded; `gh pr view 21 --json statusCheckRollup`). Epic 0001's retrospective (item 8) had already recorded the same CodeMirror unhandled error twice, on `main` and on a PR, with an investigation task opened at the time; this ticket is where its cause was found and fixed.

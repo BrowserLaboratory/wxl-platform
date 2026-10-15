@@ -1,11 +1,11 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: 259f9ef468a26f09459a65d2bac01e587c91ee03
+synced_from_sha: 702eccf0a6f95400a26ad0629d7d985cf17b4a0a
 ---
 
 # Spec 0004：不帶狀態的 fork-init 引擎，以及保持綠燈的靶場 CI
 
-狀態：第 2.2 版（第 2 版加上隨測試計畫核准的澄清；2.2 版另加 seam 0004-S10 與 T85，都列在 `traceability.md`）。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
+狀態：第 2.3 版（第 2 版加上隨測試計畫核准的澄清；2.2 版另加 seam 0004-S10 與 T85，2.3 版把 T71 延伸到 `release` job，都列在 `traceability.md`）。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
 第 2 版套用第 1 輪的裁決（`review/disposition.md`，群組 M1–M10）。本檔由英文版翻譯，以英文版為準。
 本文衍生自 `traceability.md`，其中保存本規格引用的固定清單（模式與「今天」、repository slug 的文法、
 第一次轉換、身分定位點 A1–A9、base 的文法、workflow 狀態、上游 repository slug 的限制與守門清單、
@@ -187,7 +187,7 @@ slug 被限制在 `traceability.md` 列出的那幾個檔案裡，而且只在�
   預期字串，因此對任何 origin 都成立；上游自己的值則由 pristine 測試檢查。
 - `release` job（release workflow）與新增的跨作業系統 job（quality-gates workflow）都帶著
   完全相同的 `if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')`。
-  quality-gates 的 `test` job 與新 job 都設定 `WXL_EXPECT_UPSTREAM` 為同一個比較結果，因此一個
+  quality-gates 的 `test` job、新 job 與 `release` job 都設定 `WXL_EXPECT_UPSTREAM` 為同一個比較結果，因此一個
   只在上游執行的測試若錯誤地判定「不是上游」就會失敗，而不是被跳過。新 job 在 Windows、macOS 和
   Ubuntu 上搭配 Node 24、以及在 Ubuntu 上搭配 Node 22，執行 fork-init 與 upstream-guard 這兩組
   測試，不帶 Rust 工具鏈、Rust cache、install-action 或 binaryen 步驟。
@@ -339,8 +339,8 @@ workflow）且是部署在網域根目錄；`--base` 會讓靶場的網站冒煙
 
 - **AC-C1** 三個元件測試從匯入的 `SITE_ORIGIN` 組出它們的期望值，不含任何上游 hostname，並且
   檢查 `SITE_ORIGIN` 符合 origin 文法。(T70)
-- **AC-C2** `release` job 與新 job 都帶著 T71 所列、精確相同的 `if:`，`test` job 與新 job 都
-  帶著其精確相同的 `env`。(T71)
+- **AC-C2** `release` job 與新 job 都帶著 T71 所列、精確相同的 `if:`，`test` job、新 job 與
+  `release` job 都帶著其精確相同的 `env`。(T71)
 - **AC-C3** 新 job 在 quality-gates workflow 裡，觸發條件不變，帶有 T72 所列四個 `include`
   項目，執行那兩個指名的測試檔案，且不新增任何 Rust 工具鏈、Rust cache、install-action 或
   binaryen 步驟。(T72)
