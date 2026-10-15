@@ -6,7 +6,8 @@
  * plain `file://` URL, but printed `new URL('../../..', import.meta.url).href` — the same join
  * `CLI_REPO_ROOT` below performs — as an `http://localhost:.../@fs/...` dev-server URL instead.
  * `fileURLToPath` throws on a non-`file:` URL, so `CLI_REPO_ROOT` could not be computed under
- * `happy-dom`. The need is specific to this file's `CLI_REPO_ROOT`, not to this file in general.
+ * `happy-dom`. The need is specific to this file's `CLI_REPO_ROOT` and `TEST_FILE_DIR` (below),
+ * both module-scope `import.meta.url` derivations — not to this file in general.
  * Three other files in this project already carry the same directive, each for its own, different
  * reason: tests/unit/workers/challenge-sw-response.test.ts (happy-dom's `Response` drops
  * `Set-Cookie` headers entirely), tests/unit/workers/runtimeHost-response.test.ts (happy-dom's
@@ -85,6 +86,34 @@ function writeManifest(root: string, raw: string) {
   writeFileSync(join(root, 'package.json'), raw)
 }
 
+// T60's minimal, SITE_BASE-deriving template — shared so workflow-state tests below can build
+// "current"/"old"/"other" deploy.yml fixtures against exactly what `writeFixture` installs.
+const CURRENT_TEMPLATE_LF = [
+  '# WXL fork deploy — from scripts/templates/deploy.yml.template',
+  'name: Deploy',
+  'jobs:',
+  '  build:',
+  '    steps:',
+  '      - name: Configure Pages',
+  '        id: pages',
+  '        uses: actions/configure-pages@test',
+  '      - name: Build',
+  '        env:',
+  '          SITE_BASE: ${{ steps.pages.outputs.base_path }}/',
+  '        run: pnpm build',
+  '',
+].join('\n')
+
+// The frozen, verbatim copy of the template at `72327e2` (traceability.md "Workflow states" and
+// T27): the engine's one known old output. Read from the ticket's own frozen fixture file so this
+// test file and the engine's `KNOWN_OLD_DEPLOY_SHA256` list stay pinned to the same bytes.
+const TEST_FILE_DIR = fileURLToPath(new URL('.', import.meta.url))
+const OLD_TEMPLATE_LF = readFileSync(join(TEST_FILE_DIR, '../workflows/fixtures/deploy-template-72327e2.yml'), 'utf8')
+// The "literal SITE_BASE" non-deriving shape, read from the frozen upstream fixture (its
+// `env.SITE_BASE: /wxl-platform/` is fixed, not derived from `steps.pages.outputs.base_path`)
+// rather than a hand-written minimal YAML — so the case exercises the real upstream shape.
+const UPSTREAM_DEPLOY_LITERAL_SITE_BASE = readFileSync(join(TEST_FILE_DIR, '../workflows/fixtures/upstream-deploy.yml'), 'utf8')
+
 function writeFixture(root: string) {
   const w = (rel: string, content: string) => {
     const abs = join(root, rel)
@@ -110,11 +139,15 @@ function writeFixture(root: string) {
     ) + '\n',
   )
 
+  // T60: the shared fixture gains A9 (upstream form) and its required `  base: siteBase,` line.
   w(
     '.vitepress/config.mts',
     [
+      "const siteBase = process.env.SITE_BASE || '/'",
+      '',
       'export default {',
       "  title: 'Web eXploitation Laboratory',",
+      '  base: siteBase,',
       '  themeConfig: {',
       "    socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],",
       '  },',
@@ -148,8 +181,10 @@ function writeFixture(root: string) {
     ].join('\n'),
   )
   // the real template carries `wxl` in a comment + a skill path — the created deploy.yml must
-  // therefore be inventoried like any other active file (not silently omitted).
-  w('scripts/templates/deploy.yml.template', '# WXL fork deploy — from scripts/templates/deploy.yml.template\nname: Deploy\njobs: {}\n')
+  // therefore be inventoried like any other active file (not silently omitted). T60: the template
+  // becomes a minimal workflow that derives SITE_BASE (a `configure-pages` step with id `pages`
+  // before a `pnpm build` step setting it), keeping the `# WXL fork deploy` comment line.
+  w('scripts/templates/deploy.yml.template', CURRENT_TEMPLATE_LF)
 
   // runtime-sensitive keys
   w('.vitepress/theme/i18n/index.ts', "export const LOCALE_STORAGE_KEY = 'wxl-locale'\n")
@@ -171,13 +206,17 @@ function writeFixture(root: string) {
   w('.vitepress/theme/useWxlsh.ts', 'export function useWxlsh() {} // Wxlsh title-case identifier\n')
 }
 
+// T60: rewritten to the A9 version — a config whose A9 line is already a literal (not upstream's
+// form), with its required `  base: siteBase,` line.
 function writeConfigWithBase(root: string, basePath: string) {
   writeFileSync(
     join(root, '.vitepress/config.mts'),
     [
+      `const siteBase = '${basePath}'`,
+      '',
       'export default {',
-      `  base: '${basePath}',`,
       "  title: 'Web eXploitation Laboratory',",
+      '  base: siteBase,',
       '  themeConfig: {',
       "    socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],",
       '  },',
@@ -239,7 +278,10 @@ describe('parseForkInitArgs', () => {
     expect(a.rebrand).toBeUndefined()
   })
 
-  it('--base none marks base for removal, --rebrand selects B mode, --dry-run sets dryRun', () => {
+  // Overridden (T60/AC-E4): title says the base becomes `/` (A9: `--base none` writes
+  // `const siteBase = '/'`); body unchanged (toBeNull() still names parseForkInitArgs' own
+  // null-means-removal argument shape, which --base none still maps to internally).
+  it('--base none makes the base /, --rebrand selects B mode, --dry-run sets dryRun', () => {
     const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', 'none', '--rebrand', 'acme', '--dry-run'])
     expect(a.base).toBeNull()
     expect(a.rebrand).toBe('acme')
@@ -277,6 +319,87 @@ describe('parseForkInitArgs', () => {
     }
     // letter-first with interior dashes/dots is fine (interior is sanitized for the env var)
     expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'my-ctf']).rebrand).toBe('my-ctf')
+  })
+})
+
+describe('parseForkInitArgs — --host and --base', () => {
+  // T16/AC-H1: the two legal values parse into args.host; not given leaves it undefined.
+  it('parses --host into args.host; undefined when not given', () => {
+    expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']).host).toBe(
+      'github-pages',
+    )
+    expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']).host).toBe(
+      'cloudflare-pages',
+    )
+    expect(parseForkInitArgs(A_ARGS).host).toBeUndefined()
+  })
+
+  // T16/AC-H1: anything other than the two legal values is an argument error naming --host and
+  // quoting the rejected value with JSON.stringify.
+  it.each(['github', 'GitHub-Pages', '', 'cloudflare', 'github-pages '])(
+    'rejects an unknown --host value (%j), naming --host and the value',
+    (value) => {
+      const err = argError(['--author', 'me', '--repo', 'me/myfork', '--host', value])
+      expect(err.message).toContain('--host')
+      expect(err.message).toContain(JSON.stringify(value))
+    },
+  )
+
+  // T16/T48/AC-H1/AC-P3: --host goes through the same parser-error machinery as every other flag —
+  // no value, and given twice.
+  it('rejects --host with no value, and --host given twice, naming --host', () => {
+    expect(argError(['--author', 'me', '--repo', 'me/myfork', '--host']).message).toContain('--host')
+    expect(
+      argError(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages', '--host', 'cloudflare-pages'])
+        .message,
+    ).toContain('--host')
+  })
+
+  // T17/AC-H1: --host together with --base is an argument error naming --base; T17 is checked
+  // before T16 (the --host value check) and before T21 (the --base value check), so an invalid
+  // value on either side still surfaces the T17 message.
+  it('rejects --host together with --base, naming --base; T17 precedes T16 and T21', () => {
+    for (const host of ['github-pages', 'cloudflare-pages']) {
+      expect(argError(['--author', 'me', '--repo', 'me/myfork', '--host', host, '--base', '/x/']).message).toContain(
+        '--base',
+      )
+      expect(argError(['--author', 'me', '--repo', 'me/myfork', '--host', host, '--base', 'none']).message).toContain(
+        '--base',
+      )
+    }
+    expect(argError(['--author', 'me', '--repo', 'me/myfork', '--host', 'bogus', '--base', '/x/']).message).toContain(
+      '--base',
+    )
+    expect(
+      argError(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages', '--base', '/../']).message,
+    ).toContain('--base')
+  })
+
+  // T16/T49 (order fragment; the full order is T-0015's): T16 (the --host value check) is checked
+  // before T45 (the --repo value check), so an invalid --repo alongside a bogus --host still
+  // surfaces the T16 message.
+  it('checks --host before --repo (T16 before T45)', () => {
+    expect(argError(['--author', 'me', '--repo', 'bad', '--host', 'bogus']).message).toContain('--host')
+  })
+
+  // T21/AC-H5: every value matching the base grammar, and "none", is accepted in both modes.
+  it.each(MODES)('accepts every --base value matching the base grammar, and "none" ($label)', ({ rebrand }) => {
+    const good = ['/', '/x/', '/a/b/', '/.../', '/.x/', '/a.b~c-d_e/', 'none']
+    for (const value of good) {
+      const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--base', value])
+      expect(a.base, value).toBe(value === 'none' ? null : value)
+    }
+  })
+
+  // T21/AC-H5: `.` and `..` segments are newly refused, along with every other non-conforming
+  // value; the message names --base and quotes the value with JSON.stringify.
+  it.each(MODES)('rejects --base values with . or .. segments, or otherwise outside the grammar ($label)', ({ rebrand }) => {
+    const bad = ['/./', '/../', '/a/../', '/a/./b/', '/x', 'x/', '//', '/a b/']
+    for (const value of bad) {
+      const err = argError(['--author', 'me', '--repo', 'me/myfork', ...rebrand, '--base', value])
+      expect(err.message).toContain('--base')
+      expect(err.message).toContain(JSON.stringify(value))
+    }
   })
 })
 
@@ -767,10 +890,12 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(readFileSync(join(root, '.vitepress/dist/old.html'), 'utf8')).toContain('BrowserLaboratory/wxl-platform')
   })
 
+  // Overridden (T60/AC-E4): the base assertion is rewritten to A9; the existsSync assertion is
+  // unchanged.
   it('sets base when a path is given and copies the deploy workflow', () => {
     runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    expect(cfg).toMatch(/base:\s*['"]\/myfork\/['"]/)
+    expect(cfg).toContain("const siteBase = '/myfork/'")
     expect(existsSync(join(root, '.github/workflows/deploy.yml'))).toBe(true)
   })
 
@@ -795,10 +920,13 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(second.warnings.some((w) => w.includes('github-pages'))).toBe(false)
   })
 
-  it('--base none does not declare a base', () => {
+  // Overridden (T60/AC-E4): "--base none does not declare a base" -> the base becomes `/`, A9
+  // written exactly (renamed to say so; body rewritten to A9).
+  it('--base none sets the base to /', () => {
     runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', 'none']), { projectRoot: root })
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    expect(cfg).not.toMatch(/base:/)
+    expect(cfg).toContain("const siteBase = '/'")
+    expect(cfg.match(/^ {2}base: siteBase,$/m)).toHaveLength(1)
   })
 
   it('does not clobber a pre-existing deploy.yml with different content; warns instead', () => {
@@ -809,19 +937,22 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(res.warnings.some((w) => w.includes('deploy.yml'))).toBe(true)
   })
 
+  // Overridden (T60/AC-E4): A9's literal form is replaced by another literal, $-safe; the title
+  // line (and everything else outside A9) is untouched.
   it('replaces an existing base line exactly (H1 replacer branch), $-safe', () => {
     writeConfigWithBase(root, '/wxl-platform/')
     runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/a-b_c/']), { projectRoot: root })
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    expect(cfg).toMatch(/base:\s*'\/a-b_c\/'/)
+    expect(cfg).toContain("const siteBase = '/a-b_c/'")
     expect(cfg).not.toContain('/wxl-platform/')
     expect(cfg).toContain("title: 'Web eXploitation Laboratory'") // untouched
   })
 
+  // Overridden (T60/T18/AC-E4): the upstream-shaped `??` line is not A9 (traceability.md's A9
+  // recognises only `^const siteBase = .+$`), so a config holding it has no A9 line at all — T18:
+  // exitCode 1 naming A9, nothing written. The stale `??`-collapsing comment this test used to
+  // guard is gone with the old code path (T83).
   it('collapses an env-conditional base line to a plain literal (upstream shape)', () => {
-    // The upstream .vitepress/config.mts declares `base: process.env.SITE_BASE ?? '/'`
-    // so its own tests/preview stay at root while the Pages build sets SITE_BASE.
-    // A downstream `--base /path/` must still rewrite this to a plain literal.
     writeFileSync(
       join(root, '.vitepress/config.mts'),
       [
@@ -832,20 +963,30 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
         '',
       ].join('\n'),
     )
-    runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/myfork/']), { projectRoot: root })
-    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    expect(cfg).toMatch(/^\s*base:\s*'\/myfork\/',\s*$/m)
-    expect(cfg).not.toContain('process.env.SITE_BASE')
-    expect(cfg).toContain("title: 'Web eXploitation Laboratory'") // untouched
+    const before = readFileSync(join(root, '.vitepress/config.mts'))
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/myfork/']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain('A9')
+    expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(before)
   })
 
+  // Overridden (T60/T18/AC-E4): a literal `base:` line (no A9 line) is the same T18 shape —
+  // exitCode 1 naming A9, nothing written.
   it('--base none strips an existing base line, leaving the rest intact', () => {
-    writeConfigWithBase(root, '/wxl-platform/')
-    runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', 'none']), { projectRoot: root })
-    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    expect(cfg).not.toMatch(/base:/)
-    expect(cfg).toContain('title:')
-    expect(cfg).toContain('themeConfig')
+    // A literal `base:` line with no A9 line at all: T18's "literal base: line" boundary.
+    writeFileSync(
+      join(root, '.vitepress/config.mts'),
+      ['export default {', "  base: '/wxl-platform/',", "  title: 'Web eXploitation Laboratory',", '}', ''].join('\n'),
+    )
+    const before = readFileSync(join(root, '.vitepress/config.mts'))
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', 'none']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain('A9')
+    expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(before)
   })
 
   it('sets package.json description only when --description is given', () => {
@@ -864,6 +1005,945 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(res.residualFiles).toEqual([])
     expect(res.residualHits).toEqual([])
     expect(res.sensitiveKeys).toEqual([])
+  })
+})
+
+// T8 (A9 part), T20/AC-H5: --base writes A9 whole, as one of two exact lines; the config's
+// `  base: siteBase,` line and everything else is untouched.
+describe('runForkInit — A9 base', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-a9-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it("--base /x/ writes A9 as const siteBase = '/x/'; the base: siteBase line is untouched", () => {
+    const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']), { projectRoot: root })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/x/'")
+    expect(cfg).toContain('  base: siteBase,')
+    // nothing else in the file changed: the only different line is the A9 line itself
+    const before = cfgBefore.split('\n')
+    const after = cfg.split('\n')
+    expect(after.length).toBe(before.length)
+    const diffLines = after.filter((line, i) => line !== before[i])
+    expect(diffLines).toEqual(["const siteBase = '/x/'"])
+  })
+
+  it.each([
+    ['--base none', ['--author', 'me', '--repo', 'me/myfork', '--base', 'none']],
+    ['--base /', ['--author', 'me', '--repo', 'me/myfork', '--base', '/']],
+  ])("%s writes A9 as const siteBase = '/'", (_label, argv) => {
+    runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/'")
+    expect(cfg).toContain('  base: siteBase,')
+  })
+
+  // --base writes A9 from a literal (not just upstream's own form) and from an unparseable
+  // expression (A9's existing value is never parsed, only replaced); either way the config is
+  // listed in changedFiles.
+  it.each([
+    ["a literal '/old/'", '/old/'],
+    ['an unparseable expression (42)', '42'],
+  ])('--base /x/ writes A9 starting from %s, config listed in changedFiles', (_label, oldValue) => {
+    writeFileSync(
+      join(root, '.vitepress/config.mts'),
+      [`const siteBase = ${/^\d+$/.test(oldValue) ? oldValue : `'${oldValue}'`}`, '', 'export default {', "  title: 'x',", '  base: siteBase,', '}', ''].join(
+        '\n',
+      ),
+    )
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/x/'")
+    expect(res.changedFiles).toContain('.vitepress/config.mts')
+  })
+
+  // --base on a config already at the target A9 line writes nothing — bytes and mtime unchanged,
+  // and the config is absent from changedFiles.
+  it('--base /x/ on a config already at the target A9 line: no write (bytes, mtime, changedFiles)', () => {
+    writeConfigWithBase(root, '/x/')
+    pinMtimes(root)
+    const before = readFileSync(join(root, '.vitepress/config.mts'))
+    const mtimeBefore = statSync(join(root, '.vitepress/config.mts')).mtimeMs
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(before)
+    expect(statSync(join(root, '.vitepress/config.mts')).mtimeMs).toBe(mtimeBefore)
+    expect(res.changedFiles).not.toContain('.vitepress/config.mts')
+  })
+
+  // T19/T82/AC-H2: --host (either value) always resets A9 to the upstream form; a run whose A9
+  // was already something else (a literal, or an unparseable expression) warns, naming A9, the old
+  // line and the upstream form.
+  it.each(['github-pages', 'cloudflare-pages'])(
+    '--host %s resets A9 to the upstream form, warning when it was not already upstream',
+    (host) => {
+      writeConfigWithBase(root, '/x/')
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+      const warning = res.warnings.find((w) => w.includes('A9'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      expect(warning).toContain("const siteBase = '/x/'")
+      expect(warning).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+    },
+  )
+
+  // The old-line '/' shape (--base none's own output) also warns on reset, and the warning
+  // contains the old line and the upstream form.
+  it.each(['github-pages', 'cloudflare-pages'])(
+    "--host %s resets A9 from the old line '/' to the upstream form, warning on reset",
+    (host) => {
+      writeConfigWithBase(root, '/')
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+      const warning = res.warnings.find((w) => w.includes('A9'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      expect(warning).toContain(`const siteBase = '/'`)
+      expect(warning).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+    },
+  )
+
+  it.each(['github-pages', 'cloudflare-pages'])(
+    '--host %s warns on an unparseable existing A9 value too (A9 is never parsed, only replaced)',
+    (host) => {
+      // A9's existing value is never parsed (traceability.md's stated exception) — only replaced —
+      // so an unparseable value such as a bare number still triggers the same reset and warning.
+      writeFileSync(
+        join(root, '.vitepress/config.mts'),
+        ['const siteBase = 42', '', 'export default {', "  title: 'x',", '  base: siteBase,', '}', ''].join('\n'),
+      )
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+      expect(res.warnings.some((w) => w.includes('A9') && w.includes('const siteBase = 42'))).toBe(true)
+    },
+  )
+
+  it.each(['github-pages', 'cloudflare-pages'])(
+    '--host %s does not write or warn when A9 is already the upstream form',
+    (host) => {
+      // writeFixture's config already has the upstream A9 form.
+      pinMtimes(root)
+      const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'))
+      const mtimeBefore = statSync(join(root, '.vitepress/config.mts')).mtimeMs
+      // the template and the workflow must still be usable for --host to reach the A9 branch at
+      // all in a meaningful way; the shared fixture's template derives SITE_BASE and is installed
+      // as-is, so this run is otherwise clean
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      expect(res.exitCode).toBe(0)
+      expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(cfgBefore)
+      expect(statSync(join(root, '.vitepress/config.mts')).mtimeMs).toBe(mtimeBefore)
+      expect(res.warnings.some((w) => w.includes('A9'))).toBe(false)
+      expect(res.changedFiles).not.toContain('.vitepress/config.mts')
+    },
+  )
+
+  // T18/T9 (A9 part)/T54/AC-H2/AC-A5/AC-E1: --host or --base on a config without exactly one A9
+  // line and exactly one `  base: siteBase,` line is a tree error naming A9, with nothing written.
+  const T18_SHAPES: Array<[string, string | null]> = [
+    [
+      'literal base: line (no A9)',
+      ['export default {', "  base: '/wxl-platform/',", "  title: 'x',", '}', ''].join('\n'),
+    ],
+    [
+      'env-conditional ?? line (no A9)',
+      ['export default {', "  base: process.env.SITE_BASE ?? '/',", "  title: 'x',", '}', ''].join('\n'),
+    ],
+    ['no base line at all', ['export default {', "  title: 'x',", '}', ''].join('\n')],
+    [
+      'A9 present, no base: siteBase line',
+      [`const siteBase = process.env.SITE_BASE || '/'`, '', 'export default {', "  title: 'x',", '}', ''].join('\n'),
+    ],
+    [
+      'base: siteBase line present, no A9',
+      ['export default {', "  title: 'x',", '  base: siteBase,', '}', ''].join('\n'),
+    ],
+    [
+      'A9 two candidate lines',
+      [
+        `const siteBase = process.env.SITE_BASE || '/'`,
+        `const siteBase = '/other/'`,
+        '',
+        'export default {',
+        "  title: 'x',",
+        '  base: siteBase,',
+        '}',
+        '',
+      ].join('\n'),
+    ],
+    [
+      'base: siteBase two candidate lines',
+      [
+        `const siteBase = process.env.SITE_BASE || '/'`,
+        '',
+        'export default {',
+        "  title: 'x',",
+        '  base: siteBase,',
+        '  base: siteBase,',
+        '}',
+        '',
+      ].join('\n'),
+    ],
+    [
+      'indented const siteBase line (not a candidate — A9 requires column 0)',
+      ['export default {', `  const siteBase = process.env.SITE_BASE || '/',`, "  title: 'x',", '  base: siteBase,', '}', ''].join(
+        '\n',
+      ),
+    ],
+    [
+      'four-space-indented base: siteBase line (not the exact candidate)',
+      [
+        `const siteBase = process.env.SITE_BASE || '/'`,
+        '',
+        'export default {',
+        "  title: 'x',",
+        '    base: siteBase,',
+        '}',
+        '',
+      ].join('\n'),
+    ],
+    ['config file does not exist', null],
+  ]
+  const T18_FLAGS: Array<[string, string[]]> = [
+    ['--base /x/', ['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']],
+    ['--base none', ['--author', 'me', '--repo', 'me/myfork', '--base', 'none']],
+    ['--host github-pages', ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']],
+    ['--host cloudflare-pages', ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']],
+    [
+      '--rebrand acme --base /x/',
+      ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme', '--base', '/x/'],
+    ],
+  ]
+  for (const [shapeLabel, cfgBody] of T18_SHAPES) {
+    for (const [flagLabel, argv] of T18_FLAGS) {
+      it(`T18: ${shapeLabel} × ${flagLabel} -> exitCode 1 naming A9, nothing written`, () => {
+        if (cfgBody === null) rmSync(join(root, '.vitepress/config.mts'))
+        else writeFileSync(join(root, '.vitepress/config.mts'), cfgBody)
+        pinMtimes(root)
+        const before = snapshotTree(root)
+        const res = runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+        expect(res.exitCode).toBe(1)
+        expect(res.message).toContain('A9')
+        expect(res.message).toContain('.vitepress/config.mts')
+        expect(res.message).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
+        expect(res.message).toContain('base: siteBase')
+        expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
+        const after = snapshotTree(root)
+        expect(after).toEqual(before)
+        expect(existsSync(join(root, '.github/workflows/deploy.yml'))).toBe(false)
+      })
+    }
+  }
+
+  // T5/T18 (counterexample)/AC-A5: neither --base nor --host given -> A9 need not exist at all;
+  // a legacy config is not an error, exitCode 0, the base line (if any) is unchanged.
+  it.each(T18_SHAPES.filter(([label]) => label !== 'config file does not exist'))(
+    'no --base and no --host: A9 need not exist (%s) -> exitCode 0, config unchanged',
+    (_label, cfgBody) => {
+      writeFileSync(join(root, '.vitepress/config.mts'), cfgBody as string)
+      const before = readFileSync(join(root, '.vitepress/config.mts'))
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(before)
+    },
+  )
+
+  // The same counterexample, in rebrand mode — legacy A9 shapes are not an A9 error
+  // there either; the config only gets today's slug swap, never an A9-related failure.
+  it.each(T18_SHAPES.filter(([label]) => label !== 'config file does not exist'))(
+    'no --base and no --host (rebrand): A9 need not exist (%s) -> exitCode 0, config gets only the slug swap',
+    (_label, cfgBody) => {
+      writeFileSync(join(root, '.vitepress/config.mts'), cfgBody as string)
+      const before = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      const after = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      // these shapes contain neither the upstream slug nor a sensitive key, so the slug swap is a
+      // no-op and the config is byte-identical — never an A9 tree error.
+      expect(after).toBe(before)
+    },
+  )
+
+  // T11 (A9 part)/AC-A6: A9 and base: siteBase are recognised in a CRLF config as in an LF one;
+  // the written line keeps CRLF, every other byte is unchanged.
+  it.each([
+    ['--base /x/', ['--author', 'me', '--repo', 'me/myfork', '--base', '/x/'], "const siteBase = '/x/'"],
+    ['--host github-pages', ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], `const siteBase = process.env.SITE_BASE || '/'`],
+    // Rebrand mode's A9 handling is also CRLF-aware.
+    ['--rebrand acme --base /x/', [...B_ARGS, '--base', '/x/'], "const siteBase = '/x/'"],
+  ] as Array<[string, string[], string]>)('CRLF config: %s recognised and written CRLF; other lines unchanged', (_label, argv, expectedA9) => {
+    const crlfCfg =
+      `const siteBase = process.env.SITE_BASE || '/'\r\n` +
+      '\r\n' +
+      'export default {\r\n' +
+      "  title: 'Web eXploitation Laboratory',\r\n" +
+      '  base: siteBase,\r\n' +
+      '}\r\n'
+    writeFileSync(join(root, '.vitepress/config.mts'), crlfCfg)
+    runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain('\r\n')
+    const lines = cfg.split('\n')
+    // the A9 line's full content, not just its trailing \r
+    expect(lines[0]).toBe(`${expectedA9}\r`)
+    // every other line keeps its own CRLF ending and content, including the closing brace line
+    expect(lines[1]).toBe('\r')
+    expect(lines[2]).toBe('export default {\r')
+    expect(lines[3]).toBe("  title: 'Web eXploitation Laboratory',\r")
+    expect(lines[4]).toBe('  base: siteBase,\r')
+    expect(lines[5]).toBe('}\r')
+  })
+
+  // T11/AC-A6: a CRLF config already in the upstream form, under --host, is recognised as such —
+  // no write, no T82 warning (its old line, if it HAD warned, must not carry a literal \r either).
+  it('CRLF config already upstream form under --host: no write, no T82 warning', () => {
+    const crlfCfg =
+      `const siteBase = process.env.SITE_BASE || '/'\r\n` + 'export default {\r\n' + '  base: siteBase,\r\n' + '}\r\n'
+    writeFileSync(join(root, '.vitepress/config.mts'), crlfCfg)
+    const before = readFileSync(join(root, '.vitepress/config.mts'))
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']), {
+      projectRoot: root,
+    })
+    expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(before)
+    expect(res.warnings.some((w) => w.includes('A9'))).toBe(false)
+  })
+
+  // A CRLF config whose A9 is a literal (not upstream's form) is reset under --host like
+  // an LF one; the T82 warning quotes the old line WITHOUT a trailing \r (the warning text is not
+  // itself a file line, so it must not carry the file's own line ending).
+  it("CRLF config with a literal A9 under --host: reset, T82 warning does not contain \\r", () => {
+    const crlfCfg = `const siteBase = '/x/'\r\n` + 'export default {\r\n' + '  base: siteBase,\r\n' + '}\r\n'
+    writeFileSync(join(root, '.vitepress/config.mts'), crlfCfg)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']), {
+      projectRoot: root,
+    })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg.split('\n')[0]).toBe(`const siteBase = process.env.SITE_BASE || '/'\r`)
+    const warning = res.warnings.find((w) => w.includes('A9'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).not.toContain('\r')
+  })
+})
+
+const GH_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']
+const CF_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages'] // T-0015 adds --origin
+
+// T22/AC-H3: --host github-pages handles each of the five workflow states.
+describe('runForkInit — --host workflow states', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-host-workflow-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+  const OTHER_WITH_DERIVE = CURRENT_TEMPLATE_LF.replace('name: Deploy', 'name: Deploy\n# an extra comment line')
+  const OTHER_WITHOUT_DERIVE_CASES: Array<[string, string]> = [
+    ['name: MyCustomDeploy', 'name: MyCustomDeploy\n'],
+    [
+      'literal SITE_BASE',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        env:\n          SITE_BASE: /fixed/\n',
+    ],
+    ['literal SITE_BASE (upstream fixture, tests/unit/workflows/fixtures/upstream-deploy.yml)', UPSTREAM_DEPLOY_LITERAL_SITE_BASE],
+    ['unparseable YAML', 'name: Deploy\njobs: [\n'],
+    [
+      'SITE_BASE missing trailing slash',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}\n',
+    ],
+    [
+      'run is not exactly pnpm build',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build --x\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n',
+    ],
+    // A parseable but malformed workflow (a non-object `jobs`, a null job, non-iterable steps, a
+    // null step) must be judged "does not derive SITE_BASE" without derivesSiteBase throwing.
+    ['jobs is a number, not an object', 'name: Deploy\njobs: 5\n'],
+    ['jobs is an array, not an object', 'name: Deploy\njobs: [~]\n'],
+    ['jobs with a null job', 'name: Deploy\njobs:\n  build:\n'],
+    ['steps not an array (number)', 'name: Deploy\njobs:\n  build:\n    steps: 5\n'],
+    ['steps not an array (object)', 'name: Deploy\njobs:\n  build:\n    steps: { a: 1 }\n'],
+    ['a null step', 'name: Deploy\njobs:\n  build:\n    steps:\n      - ~\n'],
+    // Naive string comparison and the yaml-parsed result diverge on these shapes too —
+    // the value only appears in a comment line (not the real env), and a `run: |` block scalar
+    // carries a trailing newline so it never equals the literal `pnpm build` exactly.
+    [
+      'SITE_BASE only in a comment line',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        # SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n        env:\n          OTHER: x\n',
+    ],
+    [
+      'run is a block scalar (run: |)',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: |\n          pnpm build\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n',
+    ],
+  ]
+  // Divergent shapes that DO derive once YAML-parsed, even though a naive string
+  // comparison against `run: pnpm build` would miss them.
+  const OTHER_WITH_DERIVE_DIVERGENT_CASES: Array<[string, string]> = [
+    [
+      'quoted run',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: "pnpm build"\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n',
+    ],
+    [
+      'flow-style env',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        env: { SITE_BASE: "${{ steps.pages.outputs.base_path }}/" }\n',
+    ],
+  ]
+
+  it('absent: installed, LF-normalised to the template output, with the tag-rule warning, listed in changedFiles', () => {
+    const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(CURRENT_TEMPLATE_LF)
+    expect(res.changedFiles).toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(true)
+  })
+
+  // writeFixture already creates `.github/workflows/release.yml`, so the test above never
+  // exercises the boundary where `.github` itself does not exist yet.
+  it('absent (no .github directory at all): still installed, with the tag-rule warning', () => {
+    rmSync(join(root, '.github'), { recursive: true, force: true })
+    const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(CURRENT_TEMPLATE_LF)
+    expect(res.changedFiles).toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(true)
+  })
+
+  it.each([
+    ['current template output (LF)', CURRENT_TEMPLATE_LF],
+    ['current template output (CRLF)', CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n')],
+  ])('%s: nothing written, no workflow warning', (_label, content) => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), content)
+    const before = readFileSync(join(root, DEPLOY_REL))
+    const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL))).toEqual(before)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL))).toBe(false)
+  })
+
+  it.each([
+    ['known old output (LF)', OLD_TEMPLATE_LF],
+    ['known old output (CRLF)', OLD_TEMPLATE_LF.replace(/\n/g, '\r\n')],
+  ])('%s: replaced by the current template output, warning containing replaced and the path', (_label, content) => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), content)
+    const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(CURRENT_TEMPLATE_LF)
+    expect(res.changedFiles).toContain(DEPLOY_REL)
+    const warning = res.warnings.find((w) => w.includes('replaced'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain(DEPLOY_REL)
+  })
+
+  it('other that derives SITE_BASE: left untouched, warning containing left untouched and the path', () => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), OTHER_WITH_DERIVE)
+    const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(OTHER_WITH_DERIVE)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    const warning = res.warnings.find((w) => w.includes('left untouched'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain(DEPLOY_REL)
+  })
+
+  it.each(OTHER_WITH_DERIVE_DIVERGENT_CASES)(
+    'other that derives SITE_BASE (%s, naive string match would miss it): left untouched, warning containing left untouched and the path',
+    (_label, content) => {
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), content)
+      const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(content)
+      expect(res.changedFiles).not.toContain(DEPLOY_REL)
+      const warning = res.warnings.find((w) => w.includes('left untouched'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      expect(warning).toContain(DEPLOY_REL)
+    },
+  )
+
+  it.each(OTHER_WITHOUT_DERIVE_CASES)(
+    'other that does not derive SITE_BASE (%s): left untouched, warning with path, SITE_BASE and 404',
+    (_label, content) => {
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), content)
+      const res = runForkInit(parseForkInitArgs(GH_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(content)
+      expect(res.changedFiles).not.toContain(DEPLOY_REL)
+      const warning = res.warnings.find((w) => w.includes('SITE_BASE') && w.includes('404'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      expect(warning).toContain(DEPLOY_REL)
+    },
+  )
+})
+
+// T23/AC-H4: --host cloudflare-pages installs no workflow; current/old output is removed, any
+// other is left, with no tag-rule warning in any state.
+describe('runForkInit — --host cloudflare-pages workflow states', () => {
+  let root: string
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-cf-workflow-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('absent: no file created, no workflow warning, not in changedFiles', () => {
+    const res = runForkInit(parseForkInitArgs(CF_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(existsSync(join(root, DEPLOY_REL))).toBe(false)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL))).toBe(false)
+  })
+
+  it.each([
+    ['current template output (LF)', CURRENT_TEMPLATE_LF],
+    ['current template output (CRLF)', CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n')],
+    ['known old output (LF)', OLD_TEMPLATE_LF],
+    ['known old output (CRLF)', OLD_TEMPLATE_LF.replace(/\n/g, '\r\n')],
+  ])('%s: removed, listed in changedFiles, warning containing removed and the path', (_label, content) => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), content)
+    const res = runForkInit(parseForkInitArgs(CF_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(existsSync(join(root, DEPLOY_REL))).toBe(false)
+    expect(res.changedFiles).toContain(DEPLOY_REL)
+    const warning = res.warnings.find((w) => w.includes('removed'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(false)
+  })
+
+  it.each([
+    ['has derive', CURRENT_TEMPLATE_LF.replace('name: Deploy', 'name: Deploy\n# an extra comment line')],
+    ['no derive', 'name: MyCustomDeploy\n'],
+  ])('other (%s): left untouched, warning containing left untouched and the path, no tag-rule warning', (_label, content) => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), content)
+    const res = runForkInit(parseForkInitArgs(CF_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(content)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    const warning = res.warnings.find((w) => w.includes('left untouched'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(false)
+  })
+})
+
+// T24/T54/AC-H3/AC-E1: --host needs a usable template; the message names the template's path and
+// upstream's URL, and nothing is written (A9 not reset, workflow not installed or removed).
+describe('runForkInit — --host: unusable template', () => {
+  let root: string
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+  const TEMPLATE_REL = 'scripts/templates/deploy.yml.template'
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-host-template-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  function assertNothingWritten(before: ReturnType<typeof snapshotTree>) {
+    const after = snapshotTree(root)
+    expect(after).toEqual(before)
+  }
+
+  it.each(['github-pages', 'cloudflare-pages'])('%s: template missing -> exitCode 1', (host) => {
+    rmSync(join(root, TEMPLATE_REL))
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain(TEMPLATE_REL)
+    expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
+    assertNothingWritten(before)
+  })
+
+  // The fixture's A9 already starts upstream and no deploy.yml exists, so a case where
+  // A9 is still a literal (something T24 would otherwise reset) and a deploy.yml already matches
+  // the current template (something CF would otherwise remove) makes the "nothing written"
+  // assertion load-bearing rather than vacuous.
+  it.each(['github-pages', 'cloudflare-pages'])(
+    '%s: template missing, A9 a literal and a current-template deploy.yml already present -> exitCode 1, both unchanged',
+    (host) => {
+      writeConfigWithBase(root, '/x/')
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), CURRENT_TEMPLATE_LF)
+      rmSync(join(root, TEMPLATE_REL))
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      expect(res.exitCode).toBe(1)
+      assertNothingWritten(before)
+    },
+  )
+
+  // Cloudflare's own workflow state is irrelevant: the template check (T24) happens before either
+  // host's workflow handling, so a missing template errors even with no existing workflow to act on.
+  it('cloudflare-pages: template missing and workflow also absent -> exitCode 1', () => {
+    rmSync(join(root, TEMPLATE_REL))
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain(TEMPLATE_REL)
+    assertNothingWritten(before)
+  })
+
+  it.each(['github-pages', 'cloudflare-pages'])(
+    "%s: template's LF-normalised hash equals a known old output -> exitCode 1",
+    (host) => {
+      writeFileSync(join(root, TEMPLATE_REL), OLD_TEMPLATE_LF)
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      expect(res.exitCode).toBe(1)
+      expect(res.message).toContain(TEMPLATE_REL)
+      expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
+      assertNothingWritten(before)
+    },
+  )
+
+  it.each(['github-pages', 'cloudflare-pages'])(
+    '%s: template is a known old output (CRLF) -> exitCode 1',
+    (host) => {
+      writeFileSync(join(root, TEMPLATE_REL), OLD_TEMPLATE_LF.replace(/\n/g, '\r\n'))
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
+        projectRoot: root,
+      })
+      expect(res.exitCode).toBe(1)
+      assertNothingWritten(before)
+    },
+  )
+
+  it('github-pages: template does not derive SITE_BASE -> exitCode 1', () => {
+    writeFileSync(join(root, TEMPLATE_REL), 'name: Deploy\njobs: {}\n')
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain(TEMPLATE_REL)
+    expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
+    assertNothingWritten(before)
+  })
+
+  // Counterexample: cloudflare-pages does not require the template to derive SITE_BASE.
+  it('cloudflare-pages: a template that does not derive SITE_BASE is still fine -> exitCode 0', () => {
+    writeFileSync(join(root, TEMPLATE_REL), 'name: Deploy\njobs: {}\n')
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+  })
+})
+
+// T25/AC-H5: without --host, today's workflow behaviour stands, compared LF-normalised.
+describe('runForkInit — no --host workflow', () => {
+  let root: string
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+  const TEMPLATE_REL = 'scripts/templates/deploy.yml.template'
+  const ANCHOR_ARGS = ['--author', 'me', '--repo', 'me/myfork']
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-no-host-workflow-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('absent: installs the LF-normalised template (CRLF template installs as LF), with the tag-rule warning', () => {
+    writeFileSync(join(root, TEMPLATE_REL), CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n'))
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(CURRENT_TEMPLATE_LF)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(true)
+  })
+
+  it('a prior --host cloudflare-pages run removed it: a later run without --host reinstalls, with the tag-rule warning', () => {
+    runForkInit(parseForkInitArgs(CF_ARGS), { projectRoot: root })
+    expect(existsSync(join(root, DEPLOY_REL))).toBe(false)
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(CURRENT_TEMPLATE_LF)
+    expect(res.warnings.some((w) => /Tag rule/i.test(w))).toBe(true)
+  })
+
+  it('CRLF current template output: left untouched, no warning', () => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n'))
+    const before = readFileSync(join(root, DEPLOY_REL))
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL))).toEqual(before)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL))).toBe(false)
+  })
+
+  it("known old output: not replaced, today's already-exists warning", () => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), OLD_TEMPLATE_LF)
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL), 'utf8')).toBe(OLD_TEMPLATE_LF)
+    expect(res.changedFiles).not.toContain(DEPLOY_REL)
+    expect(res.warnings.some((w) => w.includes('already exists with different content'))).toBe(true)
+  })
+
+  it('template missing, workflow absent: nothing installed, warning containing the template path', () => {
+    rmSync(join(root, TEMPLATE_REL))
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(existsSync(join(root, DEPLOY_REL))).toBe(false)
+    expect(res.warnings.some((w) => w.includes(TEMPLATE_REL))).toBe(true)
+  })
+
+  it('template missing, workflow present: byte-identical, warning containing the template path', () => {
+    rmSync(join(root, TEMPLATE_REL))
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), 'name: SomePreexisting\n')
+    const before = readFileSync(join(root, DEPLOY_REL))
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, DEPLOY_REL))).toEqual(before)
+    expect(res.warnings.some((w) => w.includes(TEMPLATE_REL))).toBe(true)
+  })
+})
+
+// T26/AC-H5: without --host, when A9 ends this run in the upstream form and the workflow exists
+// but does not derive SITE_BASE, warn naming the path, SITE_BASE, 404 and --host github-pages.
+describe('runForkInit — no --host: SITE_BASE 404 warning (T26)', () => {
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+  const NO_DERIVE_WORKFLOW = 'name: MyCustomDeploy\n'
+
+  for (const mode of [
+    { label: 'anchor', args: ['--author', 'me', '--repo', 'me/myfork'] },
+    { label: 'rebrand', args: B_ARGS },
+  ] as const) {
+    it(`warns (${mode.label}): an existing workflow that does not derive SITE_BASE, A9 already upstream`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-'))
+      writeFixture(root)
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+      const res = runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+      const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      expect(warning).toContain('--host github-pages')
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it(`warns (${mode.label}): just-installed non-deriving template, A9 already upstream`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-install-'))
+      writeFixture(root)
+      writeFileSync(join(root, 'scripts/templates/deploy.yml.template'), NO_DERIVE_WORKFLOW)
+      const res = runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+      const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it(`warns (${mode.label}): a known-old (non-deriving) workflow output, A9 already upstream`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-old-'))
+      writeFixture(root)
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), OLD_TEMPLATE_LF)
+      const res = runForkInit(parseForkInitArgs(mode.args), { projectRoot: root })
+      const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+      expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it(`does not warn (${mode.label}): --base /x/ given (A9 ends a literal, never upstream)`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-nowarn-base-'))
+      writeFixture(root)
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+      const res = runForkInit(parseForkInitArgs([...mode.args, '--base', '/x/']), { projectRoot: root })
+      expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it(`does not warn (${mode.label}): --base none given ('/' does not count as upstream form)`, () => {
+      const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-nowarn-none-'))
+      writeFixture(root)
+      mkdirSync(join(root, '.github/workflows'), { recursive: true })
+      writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+      const res = runForkInit(parseForkInitArgs([...mode.args, '--base', 'none']), { projectRoot: root })
+      expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+      rmSync(root, { recursive: true, force: true })
+    })
+  }
+
+  // Rebrand mode with the template removed takes the walk's untransformed path for
+  // deploy.yml (finalDeployRaw falls back to the pre-swap existingDeploy, fork-init.ts's own
+  // comment on this path) — still warns correctly when that leftover workflow does not derive
+  // SITE_BASE.
+  it('warns (rebrand): template missing but a leftover non-deriving deploy.yml remains, A9 already upstream', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-rebrand-no-template-'))
+    writeFixture(root)
+    rmSync(join(root, 'scripts/templates/deploy.yml.template'))
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+    const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+    const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain('--host github-pages')
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('warns: the upstream fixture literal-SITE_BASE shape does not derive SITE_BASE, A9 already upstream', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-literal-fixture-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), UPSTREAM_DEPLOY_LITERAL_SITE_BASE)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('warns: a run: | block scalar workflow (naive match would miss it) does not derive SITE_BASE, A9 already upstream', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-blockscalar-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(
+      join(root, DEPLOY_REL),
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: |\n          pnpm build\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n',
+    )
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it.each([
+    ['a null job', 'name: Deploy\njobs:\n  build:\n'],
+    ['non-iterable steps', 'name: Deploy\njobs:\n  build:\n    steps: 5\n'],
+  ])('warns: a malformed workflow (%s) does not derive SITE_BASE, A9 already upstream', (_label, workflow) => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-malformed-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), workflow)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('warns: SITE_BASE only in a comment line (naive string match would miss the real value) does not derive SITE_BASE, A9 already upstream', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-comment-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(
+      join(root, DEPLOY_REL),
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        # SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n        env:\n          OTHER: x\n',
+    )
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const warning = res.warnings.find((w) => w.includes(DEPLOY_REL) && w.includes('SITE_BASE') && w.includes('404'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it.each([
+    [
+      'quoted run',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: "pnpm build"\n        env:\n          SITE_BASE: ${{ steps.pages.outputs.base_path }}/\n',
+    ],
+    [
+      'flow-style env',
+      'name: Deploy\njobs:\n  build:\n    steps:\n      - run: pnpm build\n        env: { SITE_BASE: "${{ steps.pages.outputs.base_path }}/" }\n',
+    ],
+  ])('does not warn: a divergent shape that still derives SITE_BASE (%s, naive string match would miss it)', (_label, workflow) => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-derives-divergent-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), workflow)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('does not warn: A9 was already a literal (not upstream) to begin with', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-literal-'))
+    writeFixture(root)
+    writeConfigWithBase(root, '/x/')
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('does not warn: workflow derives SITE_BASE', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-derives-'))
+    writeFixture(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('does not warn: workflow does not exist', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-noworkflow-'))
+    writeFixture(root)
+    rmSync(join(root, 'scripts/templates/deploy.yml.template'))
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('does not warn: config has no A9 at all', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-noa9-'))
+    writeFixture(root)
+    writeFileSync(
+      join(root, '.vitepress/config.mts'),
+      ['export default {', "  title: 'x',", '}', ''].join('\n'),
+    )
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('does not warn: --host given', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t26-host-'))
+    writeFixture(root)
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+      projectRoot: root,
+    })
+    expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
   })
 })
 
@@ -1703,9 +2783,11 @@ describe('runForkInit — anchor mode: write failure', () => {
       expect(res.message).toContain('package.json')
 
       // the subdirectory write (.vitepress is not itself made read-only) succeeded and stays
+      // (T-0014: --base now writes A9, not a `base:` line; kept working under the new semantics,
+      // per the ticket's carried-over note from T-0013)
       const cfgAfter = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
       expect(cfgAfter).not.toBe(cfgBefore)
-      expect(cfgAfter).toMatch(/base:\s*['"]\/myfork\/['"]/)
+      expect(cfgAfter).toContain("const siteBase = '/myfork/'")
 
       // the root write that failed left the manifest at its original bytes
       expect(readFileSync(join(root, 'package.json'))).toEqual(pkgBefore)
@@ -1906,6 +2988,46 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
   it('writes --name verbatim, without trimming (trimming is anchor-mode only)', () => {
     runForkInit(parseForkInitArgs([...B_ARGS, '--name', '  pkg-x  ']), { projectRoot: root })
     expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name).toBe('  pkg-x  ')
+  })
+
+  // T51 (base part)/AC-B2: rebrand mode's own differences for the base — A9, same as anchor mode
+  // — while everything else about rebrand mode (the tree-wide swap, workflow comparison) stays
+  // today's.
+  it('--rebrand acme --base /x/ writes A9, and the config socialLinks slug is still swapped (today\'s way)', () => {
+    runForkInit(parseForkInitArgs([...B_ARGS, '--base', '/x/']), { projectRoot: root })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/x/'")
+    expect(cfg).toContain('me/myfork') // today's tree-wide slug swap still applies to socialLinks
+    expect(cfg).not.toContain('BrowserLaboratory/wxl-platform')
+  })
+
+  it('--rebrand acme --base none writes A9 as /', () => {
+    runForkInit(parseForkInitArgs([...B_ARGS, '--base', 'none']), { projectRoot: root })
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/'")
+  })
+
+  it('a legacy config (no A9) with --base given exits 1; the tree walk writes nothing (CHANGELOG unchanged)', () => {
+    writeFileSync(
+      join(root, '.vitepress/config.mts'),
+      ['export default {', "  base: '/wxl-platform/',", "  title: 'x',", '}', ''].join('\n'),
+    )
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs([...B_ARGS, '--base', '/x/']), { projectRoot: root })
+    expect(res.exitCode).toBe(1)
+    expect(res.message).toContain('A9')
+    const after = snapshotTree(root)
+    expect(after).toEqual(before)
+  })
+
+  // T51: rebrand mode's workflow comparison stays today's — raw bytes, no LF normalisation — so a
+  // CRLF-converted current-template-output is still "different content" there, unlike anchor mode.
+  it("compares the workflow today's way (no LF normalisation): a CRLF current-template-output still warns", () => {
+    mkdirSync(join(root, '.github/workflows'), { recursive: true })
+    writeFileSync(join(root, '.github/workflows/deploy.yml'), CURRENT_TEMPLATE_LF.replace(/\n/g, '\r\n'))
+    const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes('already exists with different content'))).toBe(true)
   })
 })
 
