@@ -36,6 +36,16 @@ None of this has been measured here; revisit it with evidence from real runs.
   (for example the `/tdd` loop required by hard rule 2), put that skill's steps
   and gates into the handoff. Commits stay with the main session and the commit
   skill.
+- **Two-step executor handoff for test-driven work.** First ask only for an
+  increment plan: per row of the approved test plan table, the one test, the
+  minimal change that turns it green, and any row that cannot be done alone.
+  Confirm the plan, then send the go-ahead. A row that cannot be done alone goes
+  to the user before implementation starts, not after a batch lands.
+- **Executor Git guard.** A `PreToolUse` hook in the executor's frontmatter
+  (`.claude/hooks/guard-executor-git.sh`) makes `git stash`, `checkout`,
+  `switch`, `reset` and `restore` ask the user, including forms such as
+  `git -C <dir> stash`. It runs only inside that role, and only once the
+  workspace is trusted. After a handoff, still check `git stash list`.
 - **Nesting.** Critics and the executor do not start subagents.
 
 ## Writing for the reader
