@@ -2,7 +2,7 @@
 id: T-0014
 title: Write the base through A9 and choose the workflow by host
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0010, T-0013]
 ---
 
@@ -876,3 +876,30 @@ given their own line below, as the rest were not:
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0014.md`. Ten candidates, independently filtered: no exploitable defect; the real non-security items were fixed or recorded in the stage 6 disposition.
+
+### 2026-10-15 — user confirmation, stage 8 and landing
+
+The user accepted the describe-block split (three approved groups → six) in chat on 2026-10-15 (option A).
+
+Stage 8 surface: the CLI, no browser (the ticket changes no page). Each case runs on a fresh export
+of the merged commit, committed into a scratch git repository with `node_modules` linked from the
+checkout:
+
+```
+E=$(mktemp -d); git archive 5225193 | tar -x -C "$E"; ln -s "$PWD/node_modules" "$E/node_modules"
+cd "$E" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm base
+node --experimental-strip-types scripts/fork-init.ts --author "Test Teacher" --repo test-owner/web-range <flags>
+```
+
+| `<flags>` | Exit | Observed |
+|---|---|---|
+| `--host github-pages` | 0 | `fork:init done — 5 file(s) changed`; `.vitepress/config.mts` line 18 `const siteBase = process.env.SITE_BASE \|\| '/'`; `.github/workflows/` holds `deploy.yml`, `quality-gates.yml`, `release.yml`; `deploy.yml` line 102 `SITE_BASE: ${{ steps.pages.outputs.base_path }}/` |
+| `--host cloudflare-pages` | 0 | `fork:init done — 4 file(s) changed`; A9 as above; `.github/workflows/` holds only `quality-gates.yml`, `release.yml` |
+| `--base /x/` | 0 | `fork:init done — 6 file(s) changed`, `.vitepress/config.mts` among them; line 18 `const siteBase = '/x/'` |
+| `--host github-pages --base /x/` | 1 | stderr `✗ --host decides the workflow and cannot be combined with --base (which only applies without --host), got --base: "/x/"`; A9 unchanged, no `deploy.yml` |
+
+These runs were repeated on 2026-10-15 against `5225193` to record the full commands; the results
+agree with the shorter record first written here. Checks: `gh pr checks 17` lists `Cloudflare Pages`, `build`,
+`challenge-verify`, `prose-audit`, `site-smoke` and `test`, all `pass`.
+
+PR BrowserLaboratory/wxl-platform#17, squash-merged as `5225193`.

@@ -31,10 +31,12 @@ import {
   chmodSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { runInNewContext } from 'node:vm'
+import { parse as parseYaml } from 'yaml'
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest'
 import {
   parseForkInitArgs,
   runForkInit,
@@ -204,6 +206,32 @@ function writeFixture(root: string) {
   w('scripts/fork-init.ts', "const probe = /wxl-locale/ // WXL tool self\n")
   // a Title-case brand token the exact-case rename can't handle -> must be reported as residual
   w('.vitepress/theme/useWxlsh.ts', 'export function useWxlsh() {} // Wxlsh title-case identifier\n')
+
+  // T-0015/T60: the shared fixture gains both home pages (A7) — shaped like the real files: ONE
+  // frontmatter block (`hero:` and `features:` both column-0 keys INSIDE it, matching
+  // platform/index.md), `hero:` holding a double-quoted `  name: "WXL"`, and `features:` holding a
+  // deeper-indented `title:` that must never be mistaken for an A7 candidate — and the short-link
+  // module (A8), at its upstream value.
+  const heroPage = (tagline: string) =>
+    [
+      '---',
+      'layout: home',
+      '',
+      'hero:',
+      '  name: "WXL"',
+      `  tagline: ${tagline}`,
+      '',
+      'features:',
+      '  - icon:',
+      '      src: /icons/browser.svg',
+      '    title: Browser Emulator',
+      '    details: Built-in sandbox',
+      '---',
+      '',
+    ].join('\n')
+  w('platform/index.md', heroPage('Browser-based web exploitation challenge platform'))
+  w('platform/zh-TW/index.md', heroPage('完全基於前端 WASM 的 Web 資安挑戰平台'))
+  w('.vitepress/challenge/shortLink.ts', "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\n")
 }
 
 // T60: rewritten to the A9 version — a config whose A9 line is already a literal (not upstream's
@@ -322,15 +350,377 @@ describe('parseForkInitArgs', () => {
   })
 })
 
+// T32/AC-O1: a valid --origin (origin grammar, traceability.md "Origin grammar") is accepted; A8's
+// hostname is written lowercased, the path (if any) unchanged.
+describe('parseForkInitArgs — --origin, --site-name, --rebrand combinations', () => {
+  it.each([
+    ['at least two labels', 'https://a.bc', 'https://a.bc'],
+    ['a label exactly 63 characters', `https://${'x'.repeat(63)}.example`, `https://${'x'.repeat(63)}.example`],
+    [
+      'a hostname exactly 253 characters',
+      `https://${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(61)}`,
+      `https://${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(61)}`,
+    ],
+    ['a non-final label all digits', 'https://1.example', 'https://1.example'],
+    ['a label containing -', 'https://a-b.example', 'https://a-b.example'],
+    ['an uppercase hostname', 'https://Example.COM', 'https://example.com'],
+    [
+      'a multi-segment path',
+      'https://e.example/My_Path/a.b~c-d',
+      'https://e.example/My_Path/a.b~c-d',
+    ],
+  ])('accepts a valid --origin (%s)', (_label, value, expected) => {
+    const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', value])
+    expect(a.origin).toBe(expected)
+  })
+
+  // T33/AC-O1: every form outside the origin grammar is an argument error naming --origin and
+  // quoting the rejected value with JSON.stringify.
+  it.each([
+    ['empty', ''],
+    ['http, not https', 'http://e.example'],
+    ['uppercase scheme', 'HTTPS://e.example'],
+    ['single slash', 'https:/e.example'],
+    ['no scheme at all', 'e.example'],
+    ['userinfo', 'https://u@e.example'],
+    ['userinfo with password', 'https://u:p@e.example'],
+    ['port', 'https://e.example:443'],
+    ['query', 'https://e.example?q'],
+    ['fragment', 'https://e.example#f'],
+    ['trailing slash, no path', 'https://e.example/'],
+    ['trailing slash, with path', 'https://e.example/a/'],
+    ['label starts with -', 'https://-a.example'],
+    ['label ends with -', 'https://a-.example'],
+    ['label exactly 64 characters', `https://${'x'.repeat(64)}.example`],
+    ['underscore in a label', 'https://a_b.example'],
+    ['empty label', 'https://a..example'],
+    ['trailing dot', 'https://e.example.'],
+    ['single label', 'https://localhost'],
+    ['all-digit last label (IP-shaped)', 'https://1.2.3.4'],
+    ['all-digit last label', 'https://e.123'],
+    [
+      'hostname exactly 254 characters',
+      `https://${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(63)}.${'x'.repeat(62)}`,
+    ],
+    ['path segment .', 'https://e.example/.'],
+    ['path segment ..', 'https://e.example/..'],
+    ['path contains %20', 'https://e.example/a%20b'],
+    ['path contains a space', 'https://e.example/a b'],
+    ['path contains @', 'https://e.example/a@b'],
+    ['IDN label', 'https://bücher.example'],
+  ])('rejects an invalid --origin (%s), naming --origin and JSON.stringify(value)', (_label, value) => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--origin', value])
+    expect(err.message).toContain('--origin')
+    expect(err.message).toContain(JSON.stringify(value))
+  })
+
+  // T34/AC-O1: --origin with a path together with --host cloudflare-pages is an argument error
+  // naming --origin and `path`; the same origin without a path, and --host github-pages with a
+  // path, are both accepted.
+  it.each([
+    ['one path segment', 'https://e.example/a'],
+    ['two path segments', 'https://e.example/a/b'],
+  ])('rejects --host cloudflare-pages with a path in --origin (%s), naming --origin and path', (_label, value) => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', value])
+    expect(err.message).toContain('--origin')
+    expect(err.message).toContain('path')
+    // item 5: T33's own message also contains the substring "path" (from "[/path]" in its usage
+    // text), so the two assertions above alone would still pass if this were actually T33's
+    // message, not T34's -- a T34-specific fragment (absent from every T33 message) tells them
+    // apart.
+    expect(err.message).toContain('cloudflare-pages')
+  })
+
+  // item 5: confirms "cloudflare-pages" is actually T34-specific -- no T33 rejection message
+  // contains it, so the assertion above could not accidentally be satisfied by T33's message.
+  it('T33 messages never contain "cloudflare-pages" (so the T34 check above actually discriminates)', () => {
+    for (const value of ['', 'http://e.example', 'https://e.example/']) {
+      const err = argError(['--author', 'me', '--repo', 'me/myfork', '--origin', value])
+      expect(err.message).not.toContain('cloudflare-pages')
+    }
+  })
+
+  it('accepts --host cloudflare-pages with the same origin without a path', () => {
+    const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example'])
+    expect(a.origin).toBe('https://e.example')
+  })
+
+  it('accepts --host github-pages with a path in --origin', () => {
+    const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages', '--origin', 'https://e.example/a/b'])
+    expect(a.origin).toBe('https://e.example/a/b')
+  })
+
+  // T35/AC-O2: --host cloudflare-pages without --origin is an argument error naming --origin and
+  // cloudflare-pages; --host github-pages without --origin is accepted.
+  it('rejects --host cloudflare-pages without --origin, naming --origin and cloudflare-pages', () => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages'])
+    expect(err.message).toContain('--origin')
+    expect(err.message).toContain('cloudflare-pages')
+  })
+
+  it('accepts --host github-pages without --origin', () => {
+    const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'])
+    expect(a.origin).toBeUndefined()
+  })
+
+  // T39/T43/AC-N1: a valid --site-name is accepted; siteName is the value after trim(). Length is
+  // counted in Unicode code points (not UTF-16 code units).
+  it.each([
+    ['1 code point', 'x', 'x'],
+    ['exactly 60 code points, all astral emoji (120 UTF-16 code units)', '\u{1F600}'.repeat(60), '\u{1F600}'.repeat(60)],
+    ['leading/trailing ASCII space, U+3000, \\n and U+FEFF, all trimmed', ' \u3000\n\uFEFF Lab \uFEFF\n\u3000 ', 'Lab'],
+    ['a ZWJ emoji sequence', '\u{1F469}\u200D\u{1F4BB}', '\u{1F469}\u200D\u{1F4BB}'],
+    ['interior U+200C/U+200D alongside other characters', 'a\u200Cb\u200Dc', 'a\u200Cb\u200Dc'],
+    ['U+FE0F (Mn, variation selector, not rejected)', 'a\uFE0F', 'a\uFE0F'],
+    ['U+1F3FB (skin tone modifier, Sk)', 'a\u{1F3FB}', 'a\u{1F3FB}'],
+    ['U+FDF0 (Lo, bordering the noncharacter block)', 'a\uFDF0', 'a\uFDF0'],
+  ])('accepts a valid --site-name (%s)', (_label, value, expected) => {
+    const a = parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--site-name', value])
+    expect(a.siteName).toBe(expected)
+  })
+
+  // T40/AC-N1: a --site-name outside the character rule is an argument error naming --site-name.
+  // Only characters whose Unicode category is the same in Node 22 and 24 are used.
+  it.each([
+    ['empty', ''],
+    ['only ASCII spaces', '   '],
+    ['only ZWNJ/ZWJ', '\u200C\u200D'],
+    ['61 code points', 'x'.repeat(61)],
+    ['Cc (bell)', '\u0007'],
+    ['Cc interior (\\n)', 'a\nb'],
+    ['Cs lone surrogate', '\uD800'],
+    ['Zl', '\u2028'],
+    ['Zp', '\u2029'],
+    ['Cf (soft hyphen)', '\u00AD'],
+    ['Cf (zero width space)', '\u200B'],
+    ['Cf (left-to-right mark)', '\u200E'],
+    ['Cf (word joiner)', '\u2060'],
+    ['Cf interior BOM', 'a\uFEFFb'],
+    ['Cf subdivision-flag tag character', '\u{E0067}'],
+    ['noncharacter U+FDD0', '\uFDD0'],
+    ['noncharacter U+FDEF', '\uFDEF'],
+    ['noncharacter U+FFFE', '\uFFFE'],
+    ['noncharacter U+1FFFF', '\u{1FFFF}'],
+    ['noncharacter U+10FFFF', '\u{10FFFF}'],
+  ])('rejects an invalid --site-name (%s), naming --site-name', (_label, value) => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--site-name', value])
+    expect(err.message).toContain('--site-name')
+  })
+
+  // T41/AC-N2: <, > and & are each an argument error naming --site-name and the refused
+  // character, at the start, middle or end of the value.
+  it.each([
+    ['< at the start', '<Lab'],
+    ['< in the middle', 'My<Lab'],
+    ['< at the end', 'Lab<'],
+    ['> at the start', '>Lab'],
+    ['> in the middle', 'My>Lab'],
+    ['> at the end', 'Lab>'],
+    ['& at the start', '&Lab'],
+    ['& in the middle', 'My&Lab'],
+    ['& at the end', 'Lab&'],
+  ])('rejects --site-name containing %s, naming --site-name and the character', (_label, value) => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--site-name', value])
+    expect(err.message).toContain('--site-name')
+    const ch = value.replace(/[^<>&]/g, '')
+    expect(err.message).toContain(JSON.stringify(ch))
+  })
+
+  // T50/AC-B1: --rebrand together with any non-empty subset of {--host, --origin, --site-name} is
+  // an argument error naming --rebrand and every one of those flags given.
+  const REBRAND_BASE = ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme']
+  const FLAG_ARGS: Record<string, string[]> = {
+    '--host': ['--host', 'github-pages'],
+    '--origin': ['--origin', 'https://e.example'],
+    '--site-name': ['--site-name', 'Lab'],
+  }
+  const ALL_FLAGS = ['--host', '--origin', '--site-name']
+
+  // every non-empty subset of the 3 flags: 7 combinations
+  const subsets: string[][] = []
+  for (let mask = 1; mask < 8; mask++) {
+    subsets.push(ALL_FLAGS.filter((_, i) => mask & (1 << i)))
+  }
+
+  it.each(subsets.map((s) => [s]))('rejects --rebrand with %j, naming --rebrand and each given flag', (flags: string[]) => {
+    const argv = [...REBRAND_BASE, ...flags.flatMap((f) => FLAG_ARGS[f])]
+    const err = argError(argv)
+    expect(err.message).toContain('--rebrand')
+    for (const f of flags) expect(err.message).toContain(f)
+  })
+
+  it('reports T50 (not T35) for --rebrand acme --host cloudflare-pages without --origin', () => {
+    const err = argError([...REBRAND_BASE, '--host', 'cloudflare-pages'])
+    expect(err.message).toContain('--rebrand')
+    expect(err.message).toContain('--host')
+  })
+
+  it('reports T50 (not the --rebrand value check) for an invalid --rebrand value given with --host', () => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', '--rebrand', '2x', '--host', 'github-pages'])
+    expect(err.message).toContain('--rebrand')
+    expect(err.message).toContain('--host')
+  })
+
+  it('does not reject --rebrand together with --base, --name, --description or --dry-run', () => {
+    expect(() => parseForkInitArgs([...REBRAND_BASE, '--base', '/x/'])).not.toThrow()
+    expect(() => parseForkInitArgs([...REBRAND_BASE, '--name', 'pkg'])).not.toThrow()
+    expect(() => parseForkInitArgs([...REBRAND_BASE, '--description', 'd'])).not.toThrow()
+    expect(() => parseForkInitArgs([...REBRAND_BASE, '--dry-run'])).not.toThrow()
+  })
+})
+
+// T49/AC-P3: the full argument check order (traceability.md "Argument check order"). For each
+// pair of checks, an argv that fails both is compared — after every JSON.stringify-quoted span in
+// the message is replaced with the same placeholder — against the message an argv triggering only
+// the EARLIER check produces; equal (modulo the quoted value) means the earlier check decided it.
+describe('parseForkInitArgs — T49 full argument check order', () => {
+  /** Replace every JSON.stringify-quoted span (a double-quoted string with standard JSON escapes)
+   *  with the same placeholder, so two messages that differ only in the quoted value compare equal. */
+  function placeholder(message: string): string {
+    return message.replace(/"(?:[^"\\]|\\.)*"/g, '<<Q>>')
+  }
+
+  const CASES: Array<{ label: string; both: string[]; earlyOnly: string[] }> = [
+    {
+      label: 'T48 (unknown flag) before T47 (missing --author)',
+      both: ['--bogus'],
+      earlyOnly: ['--bogus', '--author', 'me', '--repo', 'me/myfork'],
+    },
+    {
+      label: 'T47 (missing --author) before T50 (rebrand combo)',
+      both: ['--repo', 'me/myfork', '--rebrand', 'acme', '--host', 'github-pages'],
+      earlyOnly: ['--repo', 'me/myfork'],
+    },
+    {
+      label: 'T50 (rebrand combo) before T17 (host+base)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme', '--host', 'github-pages', '--base', '/x/'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme', '--host', 'github-pages'],
+    },
+    {
+      label: 'T17 (host+base) before T16 (host value)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--host', 'bogus', '--base', '/x/'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages', '--base', '/x/'],
+    },
+    {
+      label: 'T17 (host+base) before T35 (cloudflare without origin)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--base', '/x/'],
+      earlyOnly: [
+        '--author',
+        'me',
+        '--repo',
+        'me/myfork',
+        '--host',
+        'cloudflare-pages',
+        '--origin',
+        'https://e.example',
+        '--base',
+        '/x/',
+      ],
+    },
+    {
+      label: 'T16 (host value) before --repo value (T45)',
+      both: ['--author', 'me', '--repo', 'bad', '--host', 'bogus'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--host', 'bogus'],
+    },
+    {
+      label: 'T35 (cloudflare without origin) before --repo value (T45)',
+      both: ['--author', 'me', '--repo', 'bad', '--host', 'cloudflare-pages'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages'],
+    },
+    {
+      label: '--repo value (T45) before --author value (T46)',
+      both: ['--author', '\u0007', '--repo', 'bad'],
+      earlyOnly: ['--author', 'me', '--repo', 'bad'],
+    },
+    {
+      label: '--author value (T46) before --rebrand value',
+      both: ['--author', '\u0007', '--repo', 'me/myfork', '--rebrand', '2x'],
+      earlyOnly: ['--author', '\u0007', '--repo', 'me/myfork'],
+    },
+    {
+      label: '--rebrand value before --base value (T21)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', '2x', '--base', "/a'/"],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--rebrand', '2x'],
+    },
+    {
+      label: '--base value (T21) before --origin value (T33)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--base', "/a'/", '--origin', 'not-a-url'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--base', "/a'/"],
+    },
+    {
+      label: 'T33 (origin grammar) before T34 (origin path + cloudflare)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example/a/'],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example/a/'],
+    },
+    {
+      label: '--origin value (T33) before --site-name value (T40)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--origin', 'not-a-url', '--site-name', ''],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--origin', 'not-a-url'],
+    },
+    {
+      label: 'T40 (site-name length) before T41 (refused character)',
+      both: ['--author', 'me', '--repo', 'me/myfork', '--site-name', `${'x'.repeat(60)}<`],
+      earlyOnly: ['--author', 'me', '--repo', 'me/myfork', '--site-name', 'x'.repeat(61)],
+    },
+  ]
+
+  it.each(CASES)('$label', ({ both, earlyOnly }) => {
+    const bothMessage = placeholder(argError(both).message)
+    const earlyMessage = placeholder(argError(earlyOnly).message)
+    expect(bothMessage).toBe(earlyMessage)
+  })
+
+  it('reports T48 when every check would otherwise fail', () => {
+    const err = argError([
+      '--bogus',
+      '--repo',
+      'bad',
+      '--host',
+      'bogus',
+      '--rebrand',
+      '2x',
+      '--base',
+      "/a'/",
+      '--origin',
+      'not-a-url',
+      '--site-name',
+      '',
+    ])
+    expect(err.message).toMatch(/unknown flag/)
+  })
+})
+
+// T48 (new flags, suggested addition per the ticket's Notes): --origin, --site-name and --host
+// given twice, or without a value, are each a ForkInitArgError naming the flag.
+describe('parseForkInitArgs — T48 new flags given twice or without a value', () => {
+  // item 6: each value is legal on its own (an illegal one, like the earlier "x", would make the
+  // test pass even with the repeated-flag check itself removed -- the resulting "invalid value"
+  // error also names the flag, so the test would never catch that mutation); the message is also
+  // asserted to contain `more than once`, the fragment unique to the repeated-flag check itself.
+  it.each(['--origin', '--site-name', '--host'])('rejects %s given twice, naming it', (flag) => {
+    const value = flag === '--host' ? 'github-pages' : flag === '--origin' ? 'https://e.example' : 'New Name'
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', flag, value, flag, value])
+    expect(err.message).toContain(flag)
+    expect(err.message).toContain('more than once')
+  })
+
+  it.each(['--origin', '--site-name'])('rejects %s with no value, naming it', (flag) => {
+    const err = argError(['--author', 'me', '--repo', 'me/myfork', flag])
+    expect(err.message).toContain(flag)
+  })
+})
+
 describe('parseForkInitArgs — --host and --base', () => {
   // T16/AC-H1: the two legal values parse into args.host; not given leaves it undefined.
   it('parses --host into args.host; undefined when not given', () => {
     expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']).host).toBe(
       'github-pages',
     )
-    expect(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']).host).toBe(
-      'cloudflare-pages',
-    )
+    // T35: --host cloudflare-pages needs --origin.
+    expect(
+      parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example'])
+        .host,
+    ).toBe('cloudflare-pages')
     expect(parseForkInitArgs(A_ARGS).host).toBeUndefined()
   })
 
@@ -1008,6 +1398,638 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
   })
 })
 
+// T39/T8/AC-N1/AC-A5: --site-name sets A6 and both A7s, all written as a JSON string literal;
+// changedFiles lists exactly these three files.
+describe('runForkInit — anchor mode: site name (A6, A7)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-sitename-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const UPSTREAM_ARGS = ['--author', 'CXPh03n1x', '--repo', 'BrowserLaboratory/wxl-platform']
+
+  it.each([
+    ["the fixture's single-quoted A6, double-quoted A7", undefined, undefined],
+    [
+      'a real-config double-quoted A6',
+      [
+        'export default {',
+        '  title: "Web eXploitation Laboratory",',
+        '  themeConfig: {',
+        "    title: 'Nested',",
+        '  },',
+        '}',
+        '',
+      ].join('\n'),
+      undefined,
+    ],
+    ['a single-quoted A7', undefined, "'WXL'"],
+    ['a plain-scalar A7', undefined, 'WXL'],
+  ])('sets A6 and both A7 (%s), changedFiles lists exactly these three files', (_label, cfgBody, a7Value) => {
+    if (cfgBody) writeFileSync(join(root, '.vitepress/config.mts'), cfgBody)
+    if (a7Value !== undefined) {
+      for (const file of ['platform/index.md', 'platform/zh-TW/index.md']) {
+        const before = readFileSync(join(root, file), 'utf8')
+        writeFileSync(join(root, file), before.replace('  name: "WXL"', `  name: ${a7Value}`))
+      }
+    }
+    // First run: converge every OTHER anchor (package.json, the doc anchors, the workflow) to
+    // its steady state without touching --site-name, so the second run below changes nothing but
+    // A6 and both A7s.
+    runForkInit(parseForkInitArgs(UPSTREAM_ARGS), { projectRoot: root })
+    const res = runForkInit(parseForkInitArgs([...UPSTREAM_ARGS, '--site-name', 'New Name']), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain('  title: "New Name",')
+    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const homeZh = readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')
+    expect(home).toContain('  name: "New Name"')
+    expect(homeZh).toContain('  name: "New Name"')
+    expect(res.changedFiles.sort()).toEqual(
+      ['.vitepress/config.mts', 'platform/index.md', 'platform/zh-TW/index.md'].sort(),
+    )
+    // frontmatter's other lines and config's deeper-indented feature title are unchanged
+    expect(home).toContain('layout: home')
+    expect(home).toContain('    title: Browser Emulator')
+    expect(cfg).toContain('themeConfig')
+    // item 8: a deeper-indented `title:` inside `themeConfig` (4-space, not A6's 2-space) must
+    // survive untouched; checked here as a whole-file comparison -- the only line allowed to
+    // differ from `cfgBody` is A6's own -- not just a `toContain`, which could not catch an
+    // accidental extra/duplicated/reordered line elsewhere.
+    if (_label === 'a real-config double-quoted A6') {
+      const expectedCfg = cfgBody!.replace('  title: "Web eXploitation Laboratory",', '  title: "New Name",')
+      expect(cfg).toBe(expectedCfg)
+      expect(cfg).toContain("    title: 'Nested',")
+    }
+  })
+
+  // T42/AC-N3: a --site-name value containing a character with special meaning in a JS string
+  // literal or in unquoted YAML round-trips intact: the written A6 literal, evaluated with
+  // node:vm, equals the value; both frontmatters, parsed with yaml, give hero.name equal to it.
+  it.each([
+    'double quote "',
+    "single quote '",
+    'backslash \\',
+    'backtick `',
+    'dollar $',
+    'dollar-backtick $`',
+    "dollar-quote $'",
+    'double dollar $$',
+    'dollar-one $1',
+    `Lin's "Web" Range \\ $' $1`,
+    '# x',
+    '- x',
+    'a: b',
+    '[x]',
+    '*x',
+    '!x',
+    'yes',
+    'null',
+    '123',
+  ])('round-trips a value containing %j', (value) => {
+    // the `=` form: several values here start with `-`, which Node's own parser would otherwise
+    // treat as the start of another flag.
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', `--site-name=${value}`]), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    const titleLine = cfg.split('\n').find((l) => l.startsWith('  title: '))!
+    const literal = titleLine.slice('  title: '.length, -1) // strip the trailing comma
+    expect(runInNewContext(literal)).toBe(value)
+
+    for (const file of ['platform/index.md', 'platform/zh-TW/index.md']) {
+      const raw = readFileSync(join(root, file), 'utf8')
+      const frontmatter = raw.slice(raw.indexOf('\n') + 1, raw.indexOf('\n---', 1))
+      const doc = parseYaml(frontmatter)
+      expect((doc as { hero: { name: string } }).hero.name).toBe(value)
+    }
+  })
+
+  // T43/AC-N1: the written value is the trimmed one; a ZWJ emoji sequence is written as-is.
+  it.each([
+    ['leading/trailing U+3000 and ASCII space', ' \u3000 Trimmed Lab \u3000 ', 'Trimmed Lab'],
+    ['a ZWJ emoji sequence', '\u{1F469}\u200D\u{1F4BB}', '\u{1F469}\u200D\u{1F4BB}'],
+    ['a leading U+FEFF', '\uFEFFLab', 'Lab'],
+  ])('writes the trimmed value (%s)', (_label, raw, expected) => {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', `--site-name=${raw}`]), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain(`  title: ${JSON.stringify(expected)},`)
+    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    expect(home).toContain(`  name: ${JSON.stringify(expected)}`)
+  })
+})
+
+// T32/T8/AC-O1/AC-A5: --origin writes A8 as a JSON string literal, hostname lowercased, path case
+// unchanged.
+describe('runForkInit — anchor mode: short-link origin (A8)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-origin-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  function readShortLink(): string {
+    return readFileSync(join(root, '.vitepress/challenge/shortLink.ts'), 'utf8')
+  }
+
+  it('--origin without --host sets A8', () => {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://e.example"`)
+  })
+
+  it('--host github-pages with --origin given: the given value wins, not the derived one', () => {
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'test-owner/web-range', '--host', 'github-pages', '--origin', 'https://e.example']),
+      { projectRoot: root },
+    )
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://e.example"`)
+  })
+
+  it('--host cloudflare-pages without a path in --origin sets A8', () => {
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://web-range.pages.dev']),
+      { projectRoot: root },
+    )
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://web-range.pages.dev"`)
+  })
+
+  it('lowercases the hostname but keeps the path case', () => {
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://Example.COM/My-Path']),
+      { projectRoot: root },
+    )
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://example.com/My-Path"`)
+  })
+
+  // T36/AC-O2: --host github-pages without --origin derives A8 as
+  // `https://<owner, lowercased>.github.io/<name as given>`, on every such run.
+  it.each([
+    ['S7 GH', 'test-owner/web-range', 'https://test-owner.github.io/web-range'],
+    ['mixed-case owner and name', 'Test-Owner/Web-Range', 'https://test-owner.github.io/Web-Range'],
+    ['name containing . and _', 'owner/my.range_1', 'https://owner.github.io/my.range_1'],
+    ['name looking like another owner.github.io, not the user site', 'owner/other.github.io', 'https://owner.github.io/other.github.io'],
+    [
+      'name that is NOT exactly owner.github.io (a .bak suffix)',
+      'owner/owner.github.io.bak',
+      'https://owner.github.io/owner.github.io.bak',
+    ],
+  ])('derives A8 (%s)', (_label, repo, expectedOrigin) => {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', repo, '--host', 'github-pages']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = ${JSON.stringify(expectedOrigin)}`)
+  })
+
+  it('re-derives on every run: a custom --origin run followed by a GH run without --origin resets A8, warning (T81)', () => {
+    runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'test-owner/web-range', '--origin', 'https://c.example']), {
+      projectRoot: root,
+    })
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'test-owner/web-range', '--host', 'github-pages']),
+      { projectRoot: root },
+    )
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://test-owner.github.io/web-range"`)
+    const warning = res.warnings.find((w) => w.includes('A8'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain('https://c.example')
+    expect(warning).toContain('https://test-owner.github.io/web-range')
+  })
+
+  // T37/AC-O2: name = <owner>.github.io (compared case-insensitively) derives the user-site A8,
+  // with no path.
+  it.each([
+    ['exact case', 'owner/owner.github.io'],
+    ['mixed case', 'Owner/OWNER.GitHub.IO'],
+  ])('derives the user-site A8 with no path (%s)', (_label, repo) => {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', repo, '--host', 'github-pages']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    expect(readShortLink()).toContain(`export const SITE_ORIGIN = "https://owner.github.io"`)
+  })
+
+  // T38/AC-O2: with neither --origin nor --host, A8 is untouched: bytes and mtime unchanged, and
+  // the file is absent from changedFiles.
+  it.each([
+    ['--author --repo only', ['--author', 'me', '--repo', 'me/myfork']],
+    ['with --base', ['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']],
+    ['with --site-name', ['--author', 'me', '--repo', 'me/myfork', '--site-name', 'New Name']],
+  ])('A8 untouched (%s)', (_label, argv) => {
+    pinMtimes(root)
+    const before = statSync(join(root, '.vitepress/challenge/shortLink.ts'))
+    const beforeBytes = readFileSync(join(root, '.vitepress/challenge/shortLink.ts'))
+    const res = runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, '.vitepress/challenge/shortLink.ts'))).toEqual(beforeBytes)
+    expect(statSync(join(root, '.vitepress/challenge/shortLink.ts')).mtimeMs).toBe(before.mtimeMs)
+    expect(res.changedFiles).not.toContain('.vitepress/challenge/shortLink.ts')
+  })
+
+  // T81/AC-O2: replacing an A8 value that is not upstream's warns, naming A8 and the old and new
+  // values; the upstream value (either quote style) and an unchanged value never warn.
+  function setShortLink(literalLine: string) {
+    writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), `export const SITE_ORIGIN = ${literalLine}\n`)
+  }
+
+  it.each([
+    ["single-quoted upstream value", "'https://wxl.browserlab.online'"],
+    ["double-quoted upstream value", '"https://wxl.browserlab.online"'],
+  ])('does not warn when the existing value is upstream\'s (%s)', (_label, literal) => {
+    setShortLink(literal)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    expect(res.warnings.some((w) => w.includes('A8'))).toBe(false)
+  })
+
+  it('does not warn and does not write when the existing value already equals the new one', () => {
+    setShortLink('"https://e.example"')
+    pinMtimes(root)
+    const before = statSync(join(root, '.vitepress/challenge/shortLink.ts')).mtimeMs
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    expect(res.warnings.some((w) => w.includes('A8'))).toBe(false)
+    expect(res.changedFiles).not.toContain('.vitepress/challenge/shortLink.ts')
+    expect(statSync(join(root, '.vitepress/challenge/shortLink.ts')).mtimeMs).toBe(before)
+  })
+
+  // T8/item 4: A6-A8 are written as a JSON string literal regardless of the existing value's own
+  // quoting -- comparing DECODED values for "already the target, skip" let a single-quoted line
+  // holding the same value survive unrewritten (not a JSON string literal), which is wrong. The
+  // write decision must compare the WHOLE LINE; the T81 warning, separately, must still compare
+  // the decoded value (so this re-quoting alone never warns).
+  it('a single-quoted existing value equal to the new one is rewritten to the JSON form, without a T81 warning; a second run then changes nothing', () => {
+    setShortLink("'https://e.example'")
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    expect(res.warnings.some((w) => w.includes('A8'))).toBe(false)
+    expect(res.changedFiles).toContain('.vitepress/challenge/shortLink.ts')
+    expect(readShortLink()).toContain('export const SITE_ORIGIN = "https://e.example"')
+
+    const second = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    expect(second.changedFiles).toEqual([])
+  })
+
+  it('warns when a custom existing value is replaced by --origin', () => {
+    setShortLink("'https://custom.example'")
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']), {
+      projectRoot: root,
+    })
+    const warning = res.warnings.find((w) => w.includes('A8'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain('https://custom.example')
+    expect(warning).toContain('https://e.example')
+  })
+
+  it('warns when a custom existing value is replaced by a derived GitHub Pages origin', () => {
+    setShortLink("'https://custom.example'")
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'test-owner/web-range', '--host', 'github-pages']),
+      { projectRoot: root },
+    )
+    const warning = res.warnings.find((w) => w.includes('A8'))
+    expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
+    expect(warning).toContain('https://custom.example')
+    expect(warning).toContain('https://test-owner.github.io/web-range')
+  })
+
+  it('does not warn when no --origin is given and none is derived', () => {
+    setShortLink("'https://custom.example'")
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.warnings.some((w) => w.includes('A8'))).toBe(false)
+  })
+})
+
+// T9/T54/AC-A5: a code anchor being set (A6-A8) with zero or several candidate lines (a missing
+// file counts as zero), or an unparsable existing value, returns exitCode 1 naming the anchor id
+// and the file; nothing is written: every file's bytes and mtime are unchanged, no file is
+// created or removed, and no `*.fork-init-tmp` is left.
+describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-anchor-errors-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  function assertNothingWritten(before: ReturnType<typeof snapshotTree>) {
+    const after = snapshotTree(root)
+    expect(after).toEqual(before)
+    for (const f of listFiles(root)) expect(f.endsWith('.fork-init-tmp')).toBe(false)
+  }
+
+  const SITE_NAME_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--site-name', 'New Name']
+  const ORIGIN_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example']
+
+  const A6_CASES: Array<[string, string | null]> = [
+    ['only a 4-space-indented title:', ['export default {', "    title: 'x',", '}', ''].join('\n')],
+    ['title: line not ending in a comma (not a candidate)', ['export default {', "  title: 'x', // c", '}', ''].join('\n')],
+    ['config does not exist', null],
+    ['two title: lines', ['export default {', "  title: 'a',", "  title: 'b',", '}', ''].join('\n')],
+    ['value is an identifier (siteTitle)', ['export default {', '  title: siteTitle,', '}', ''].join('\n')],
+    ['value is a template literal', ['export default {', '  title: `x`,', '}', ''].join('\n')],
+    ["value is 'a' + 'b'", ['export default {', "  title: 'a' + 'b',", '}', ''].join('\n')],
+    ["value is an unterminated 'a", ['export default {', "  title: 'a,", '}', ''].join('\n')],
+    // T9 (A6 part): only standard ECMAScript escapes are accepted (traceability.md, "standard
+    // escapes") -- an unterminated \u{, an empty \u{}, an out-of-range \u{...}, an invalid \x hex
+    // pair, a \u with too few hex digits, and a numeric escape (\1, not a standard single-char
+    // escape) must all fail to parse, not be silently decoded.
+    ["value is '\\u{41abc' (unterminated \\u{...})", ['export default {', "  title: '\\u{41abc',", '}', ''].join('\n')],
+    ["value is '\\u{}' (empty hex in \\u{...})", ['export default {', "  title: '\\u{}',", '}', ''].join('\n')],
+    ["value is '\\u{110000}' (out of range)", ['export default {', "  title: '\\u{110000}',", '}', ''].join('\n')],
+    ["value is '\\xZZ' (invalid hex)", ['export default {', "  title: '\\xZZ',", '}', ''].join('\n')],
+    ["value is '\\u12' (too few hex digits)", ['export default {', "  title: '\\u12',", '}', ''].join('\n')],
+    ["value is '\\1' (numeric escape, not standard)", ['export default {', "  title: '\\1',", '}', ''].join('\n')],
+  ]
+  for (const [label, body] of A6_CASES) {
+    it(`A6: ${label} -> exitCode 1 naming A6 and the config path, nothing written`, () => {
+      if (body === null) rmSync(join(root, '.vitepress/config.mts'))
+      else writeFileSync(join(root, '.vitepress/config.mts'), body)
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(1)
+      expect(res.message).toContain('A6')
+      expect(res.message).toContain('.vitepress/config.mts')
+      assertNothingWritten(before)
+    })
+  }
+
+  const FM = (heroBlock: string) => ['---', 'layout: home', '', heroBlock, '---', ''].join('\n')
+  const A7_CASES: Array<[string, string | null]> = [
+    ['hero has no name: line', FM(['hero:', '  tagline: x'].join('\n'))],
+    ['name: indented 4 spaces (not a candidate)', FM(['hero:', '    name: "WXL"'].join('\n'))],
+    ['name: at column 0 (sibling, outside hero)', ['---', 'hero:', '  tagline: x', 'name: "WXL"', '---', ''].join('\n')],
+    [
+      'name: under another column-0 key after hero',
+      ['---', 'hero:', '  tagline: x', 'features:', '  name: "WXL"', '---', ''].join('\n'),
+    ],
+    [
+      'name: only in the second --- block',
+      ['---', 'hero:', '  tagline: x', '---', '---', 'hero:', '  name: "WXL"', '---', ''].join('\n'),
+    ],
+    ['hero has two name: lines', FM(['hero:', '  name: "WXL"', '  name: "Other"'].join('\n'))],
+    ['no frontmatter at all', '# No frontmatter\n'],
+    ['file does not exist', null],
+    ['value is | (block literal)', FM(['hero:', '  name: |'].join('\n'))],
+    ['value is > (block folded)', FM(['hero:', '  name: >'].join('\n'))],
+    ['value is "WXL" # c (trailing comment)', FM(['hero:', '  name: "WXL" # c'].join('\n'))],
+    ['value is 123', FM(['hero:', '  name: 123'].join('\n'))],
+    ['value is true', FM(['hero:', '  name: true'].join('\n'))],
+    ['value is null', FM(['hero:', '  name: null'].join('\n'))],
+    ['value is [a]', FM(['hero:', '  name: [a]'].join('\n'))],
+    // T9 (A7 part): the frontmatter block must start at the file's own first line (traceability.md
+    // scoping rule) -- a body `---`/`---` pair that merely LOOKS like frontmatter further down the
+    // file (after other prose) must not be mistaken for it, even when it has its own `hero:` /
+    // `  name:` shape.
+    [
+      'no frontmatter at the top, but a later --- divider forms a false frontmatter-like block',
+      ['# Not frontmatter at all', '', 'Some prose.', '', '---', 'hero:', '  name: "WXL"', '---', '', 'More prose.', ''].join(
+        '\n',
+      ),
+    ],
+  ]
+  // T9 (A7 part)/item 9: every A7_CASES entry is run against BOTH home pages, not only
+  // platform/index.md, so platform/zh-TW/index.md's own candidate-search path is exercised too.
+  const A7_HOME_FILES = ['platform/index.md', 'platform/zh-TW/index.md'] as const
+  for (const homeFile of A7_HOME_FILES) {
+    for (const [label, body] of A7_CASES) {
+      it(`A7: ${label} (${homeFile}) -> exitCode 1 naming A7 and the path, nothing written`, () => {
+        if (body === null) rmSync(join(root, homeFile))
+        else writeFileSync(join(root, homeFile), body)
+        pinMtimes(root)
+        const before = snapshotTree(root)
+        const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+        expect(res.exitCode).toBe(1)
+        expect(res.message).toContain('A7')
+        expect(res.message).toContain(homeFile)
+        assertNothingWritten(before)
+      })
+    }
+  }
+
+  it('A7: when only one home page is broken, the other (valid) one is not written either', () => {
+    rmSync(join(root, 'platform/index.md'))
+    pinMtimes(root)
+    const zhBefore = readFileSync(join(root, 'platform/zh-TW/index.md'))
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(1)
+    assertNothingWritten(before)
+    expect(readFileSync(join(root, 'platform/zh-TW/index.md'))).toEqual(zhBefore)
+  })
+
+  const A8_CASES: Array<[string, string | null]> = [
+    ['a TS type annotation breaks the candidate form', "export const SITE_ORIGIN: string = 'x'\n"],
+    ['indented (not column 0)', "  export const SITE_ORIGIN = 'x'\n"],
+    ['export let, not export const', "export let SITE_ORIGIN = 'x'\n"],
+    ['two lines', "export const SITE_ORIGIN = 'a'\nexport const SITE_ORIGIN = 'b'\n"],
+    ['value is an identifier (location.origin)', 'export const SITE_ORIGIN = location.origin\n'],
+    ['value is a template literal', 'export const SITE_ORIGIN = `x`\n'],
+    ["value is 'x' // c (trailing comment)", "export const SITE_ORIGIN = 'x' // c\n"],
+    // T9 (A8 part): same standard-escape rule as A6. The unterminated \u{ case used to hang
+    // (evalJsStringLiteral looped forever when the closing } was never found) -- demonstrated
+    // separately with a timeboxed subprocess (see the ticket's red->green log), not run in this
+    // in-process loop until the fix was in place.
+    ["value has an unterminated \\u{ escape", "export const SITE_ORIGIN = '\\u{41abc'\n"],
+    ["value has an empty \\u{} escape", "export const SITE_ORIGIN = '\\u{}'\n"],
+    ["value's \\u{...} escape is out of range", "export const SITE_ORIGIN = '\\u{110000}'\n"],
+    ["value has an invalid \\x escape", "export const SITE_ORIGIN = '\\xZZ'\n"],
+    ["value has a \\u escape with too few hex digits", "export const SITE_ORIGIN = '\\u12'\n"],
+    ["value has a numeric escape \\1", "export const SITE_ORIGIN = '\\1'\n"],
+    ['file does not exist', null],
+  ]
+  for (const [label, body] of A8_CASES) {
+    it(`A8: ${label} -> exitCode 1 naming A8 and the short-link path, nothing written`, () => {
+      if (body === null) rmSync(join(root, '.vitepress/challenge/shortLink.ts'))
+      else writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), body)
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(ORIGIN_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(1)
+      expect(res.message).toContain('A8')
+      expect(res.message).toContain('.vitepress/challenge/shortLink.ts')
+      assertNothingWritten(before)
+    })
+  }
+
+  // T10/AC-A5: an existing A6-A8 value containing escapes is fully replaced; the file still
+  // parses and no fragment of the old value survives.
+  it.each([
+    ['double-quoted with escaped quotes', '"a \\"b\\" c"'],
+    ['single-quoted with an escaped backslash', "'a\\\\b'"],
+    ["single-quoted with an escaped quote", "'it\\'s'"],
+  ])('A6: %s -> fully replaced, config still parses', (_label, oldLiteral) => {
+    writeFileSync(join(root, '.vitepress/config.mts'), ['export default {', `  title: ${oldLiteral},`, '}', ''].join('\n'))
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain('  title: "New Name",')
+    expect(cfg).not.toContain('a \\"b\\" c')
+    expect(cfg).not.toContain('a\\\\b')
+    expect(cfg).not.toContain("it\\'s")
+  })
+
+  it.each([
+    ["single-quoted, doubled single quote", "'it''s'"],
+    ['double-quoted with escaped quotes', '"a \\"b\\""'],
+  ])('A7: %s -> fully replaced, parses with yaml to the new value', (_label, oldLiteral) => {
+    const body = ['---', 'hero:', `  name: ${oldLiteral}`, '---', ''].join('\n')
+    writeFileSync(join(root, 'platform/index.md'), body)
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const raw = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const frontmatter = raw.slice(raw.indexOf('\n') + 1, raw.indexOf('\n---', 1))
+    const doc = parseYaml(frontmatter) as { hero: { name: string } }
+    expect(doc.hero.name).toBe('New Name')
+    expect(raw).not.toContain("it''s")
+    expect(raw).not.toContain('a \\"b\\"')
+  })
+
+  it("A8: 'https://x\\'y.example' -> fully replaced", () => {
+    writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://x\\'y.example'\n")
+    const res = runForkInit(parseForkInitArgs(ORIGIN_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const content = readFileSync(join(root, '.vitepress/challenge/shortLink.ts'), 'utf8')
+    expect(content).toBe(`export const SITE_ORIGIN = "https://e.example"\n`)
+    expect(content).not.toContain('x\\')
+  })
+
+  // T11/T4/T5 (A6-A8 part)/AC-A6/AC-A2 (suggested addition): A6-A8's files are recognised in
+  // CRLF form, the written line keeps CRLF and every other byte is unchanged; a code anchor not
+  // being set need not exist, and the run still succeeds.
+  it('CRLF: config (A6/A9), both home pages (A7) and the short-link module (A8) each keep CRLF, other bytes unchanged', () => {
+    const crlfCfg = [
+      "const siteBase = process.env.SITE_BASE || '/'",
+      '',
+      'export default {',
+      "  title: 'Web eXploitation Laboratory',",
+      '  base: siteBase,',
+      '}',
+      '',
+    ].join('\r\n')
+    writeFileSync(join(root, '.vitepress/config.mts'), crlfCfg)
+    const crlfHome = ['---', 'hero:', '  name: "WXL"', '---', ''].join('\r\n')
+    writeFileSync(join(root, 'platform/index.md'), crlfHome)
+    writeFileSync(join(root, 'platform/zh-TW/index.md'), crlfHome)
+    const crlfShortLink = "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\r\n"
+    writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), crlfShortLink)
+
+    const res = runForkInit(
+      parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--site-name', 'New Name', '--origin', 'https://e.example']),
+      { projectRoot: root },
+    )
+    expect(res.exitCode).toBe(0)
+
+    // Whole-file comparison (item 8): the expected content is the ORIGINAL bytes with only the
+    // written line substituted, byte for byte -- a stronger check than the line-by-line `toContain`
+    // assertions this replaces, since it also catches anything the engine might change elsewhere.
+    const expectedCfg = crlfCfg.replace("  title: 'Web eXploitation Laboratory',", '  title: "New Name",')
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toBe(expectedCfg)
+
+    const expectedHome = crlfHome.replace('  name: "WXL"', '  name: "New Name"')
+    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    expect(home).toBe(expectedHome)
+    const homeZh = readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')
+    expect(homeZh).toBe(expectedHome)
+
+    const shortLink = readFileSync(join(root, '.vitepress/challenge/shortLink.ts'), 'utf8')
+    expect(shortLink).toBe('export const SITE_ORIGIN = "https://e.example"\r\n')
+  })
+
+  // T4 (A6-A8 part, suggested addition): a byte outside the written line -- including one that is
+  // not valid UTF-8 on its own -- round-trips unchanged; only the anchor's own line changes. Read
+  // back as a Buffer (not a UTF-8 string) so the comparison itself cannot paper over a corrupted
+  // byte the way decoding-then-reencoding would.
+  it('A6: an invalid-UTF-8 byte outside the title: line is preserved, only that line changes', () => {
+    const before = readFileSync(join(root, '.vitepress/config.mts'))
+    const marked = Buffer.concat([before, Buffer.from([0xff]), Buffer.from('\n// invalid byte above\n')])
+    writeFileSync(join(root, '.vitepress/config.mts'), marked)
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const after = readFileSync(join(root, '.vitepress/config.mts'))
+    // Build the expected bytes directly from `marked` (the only line allowed to differ is the
+    // title line), rather than from a fresh utf8 decode/encode round trip, which would itself
+    // destroy the 0xFF byte this test exists to protect.
+    const beforeLines = marked.toString('latin1').split('\n')
+    const titleIdx = beforeLines.findIndex((l) => /^ {2}title: .+,\r?$/.test(l))
+    expect(titleIdx).toBeGreaterThanOrEqual(0)
+    beforeLines[titleIdx] = '  title: "New Name",'
+    expect(after.toString('latin1')).toBe(beforeLines.join('\n'))
+  })
+
+  it('A7: an invalid-UTF-8 byte outside the name: line is preserved, only that line changes', () => {
+    const before = readFileSync(join(root, 'platform/index.md'))
+    const marked = Buffer.concat([before, Buffer.from([0xff]), Buffer.from('\n<!-- invalid byte above -->\n')])
+    writeFileSync(join(root, 'platform/index.md'), marked)
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const after = readFileSync(join(root, 'platform/index.md'))
+    const beforeLines = marked.toString('latin1').split('\n')
+    const nameIdx = beforeLines.findIndex((l) => /^ {2}name: .+\r?$/.test(l))
+    expect(nameIdx).toBeGreaterThanOrEqual(0)
+    beforeLines[nameIdx] = '  name: "New Name"'
+    expect(after.toString('latin1')).toBe(beforeLines.join('\n'))
+  })
+
+  it('A8: an invalid-UTF-8 byte outside the SITE_ORIGIN line is preserved, only that line changes', () => {
+    const before = readFileSync(join(root, '.vitepress/challenge/shortLink.ts'))
+    const marked = Buffer.concat([before, Buffer.from([0xff]), Buffer.from('\n// invalid byte above\n')])
+    writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), marked)
+    const res = runForkInit(parseForkInitArgs(ORIGIN_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    const after = readFileSync(join(root, '.vitepress/challenge/shortLink.ts'))
+    const beforeLines = marked.toString('latin1').split('\n')
+    const originIdx = beforeLines.findIndex((l) => /^export const SITE_ORIGIN = .+\r?$/.test(l))
+    expect(originIdx).toBeGreaterThanOrEqual(0)
+    beforeLines[originIdx] = 'export const SITE_ORIGIN = "https://e.example"'
+    expect(after.toString('latin1')).toBe(beforeLines.join('\n'))
+  })
+
+  it('only --origin given: a missing config (A6/A9 unused) does not fail the run', () => {
+    rmSync(join(root, '.vitepress/config.mts'))
+    const res = runForkInit(parseForkInitArgs(ORIGIN_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+  })
+
+  it('only --site-name given: a missing short-link module (A8 unused) does not fail the run', () => {
+    rmSync(join(root, '.vitepress/challenge/shortLink.ts'))
+    const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(existsSync(join(root, '.vitepress/challenge/shortLink.ts'))).toBe(false)
+  })
+
+  it('--base /x/ without --site-name: the config changes only the A9 line, not the title', () => {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    expect(cfg).toContain("const siteBase = '/x/'")
+    expect(cfg).toContain("title: 'Web eXploitation Laboratory'")
+  })
+})
+
 // T8 (A9 part), T20/AC-H5: --base writes A9 whole, as one of two exact lines; the config's
 // `  base: siteBase,` line and everything else is untouched.
 describe('runForkInit — A9 base', () => {
@@ -1087,9 +2109,19 @@ describe('runForkInit — A9 base', () => {
     '--host %s resets A9 to the upstream form, warning when it was not already upstream',
     (host) => {
       writeConfigWithBase(root, '/x/')
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
       expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
       const warning = res.warnings.find((w) => w.includes('A9'))
@@ -1105,9 +2137,19 @@ describe('runForkInit — A9 base', () => {
     "--host %s resets A9 from the old line '/' to the upstream form, warning on reset",
     (host) => {
       writeConfigWithBase(root, '/')
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
       expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
       const warning = res.warnings.find((w) => w.includes('A9'))
@@ -1126,9 +2168,19 @@ describe('runForkInit — A9 base', () => {
         join(root, '.vitepress/config.mts'),
         ['const siteBase = 42', '', 'export default {', "  title: 'x',", '  base: siteBase,', '}', ''].join('\n'),
       )
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
       expect(cfg).toContain(`const siteBase = process.env.SITE_BASE || '/'`)
       expect(res.warnings.some((w) => w.includes('A9') && w.includes('const siteBase = 42'))).toBe(true)
@@ -1145,9 +2197,19 @@ describe('runForkInit — A9 base', () => {
       // the template and the workflow must still be usable for --host to reach the A9 branch at
       // all in a meaningful way; the shared fixture's template derives SITE_BASE and is installed
       // as-is, so this run is otherwise clean
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       expect(res.exitCode).toBe(0)
       expect(readFileSync(join(root, '.vitepress/config.mts'))).toEqual(cfgBefore)
       expect(statSync(join(root, '.vitepress/config.mts')).mtimeMs).toBe(mtimeBefore)
@@ -1226,7 +2288,11 @@ describe('runForkInit — A9 base', () => {
     ['--base /x/', ['--author', 'me', '--repo', 'me/myfork', '--base', '/x/']],
     ['--base none', ['--author', 'me', '--repo', 'me/myfork', '--base', 'none']],
     ['--host github-pages', ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']],
-    ['--host cloudflare-pages', ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']],
+    // T35: --host cloudflare-pages needs --origin.
+    [
+      '--host cloudflare-pages',
+      ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example'],
+    ],
     [
       '--rebrand acme --base /x/',
       ['--author', 'me', '--repo', 'me/myfork', '--rebrand', 'acme', '--base', '/x/'],
@@ -1344,7 +2410,8 @@ describe('runForkInit — A9 base', () => {
 })
 
 const GH_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages']
-const CF_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages'] // T-0015 adds --origin
+// T35: --host cloudflare-pages needs --origin.
+const CF_ARGS = ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://myfork.pages.dev']
 
 // T22/AC-H3: --host github-pages handles each of the five workflow states.
 describe('runForkInit — --host workflow states', () => {
@@ -1572,9 +2639,19 @@ describe('runForkInit — --host: unusable template', () => {
     rmSync(join(root, TEMPLATE_REL))
     pinMtimes(root)
     const before = snapshotTree(root)
-    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-      projectRoot: root,
-    })
+    // T35: --host cloudflare-pages needs --origin.
+    const res = runForkInit(
+      parseForkInitArgs([
+        '--author',
+        'me',
+        '--repo',
+        'me/myfork',
+        '--host',
+        host,
+        ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+      ]),
+      { projectRoot: root },
+    )
     expect(res.exitCode).toBe(1)
     expect(res.message).toContain(TEMPLATE_REL)
     expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
@@ -1594,9 +2671,19 @@ describe('runForkInit — --host: unusable template', () => {
       rmSync(join(root, TEMPLATE_REL))
       pinMtimes(root)
       const before = snapshotTree(root)
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       expect(res.exitCode).toBe(1)
       assertNothingWritten(before)
     },
@@ -1608,7 +2695,7 @@ describe('runForkInit — --host: unusable template', () => {
     rmSync(join(root, TEMPLATE_REL))
     pinMtimes(root)
     const before = snapshotTree(root)
-    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example']), {
       projectRoot: root,
     })
     expect(res.exitCode).toBe(1)
@@ -1622,9 +2709,19 @@ describe('runForkInit — --host: unusable template', () => {
       writeFileSync(join(root, TEMPLATE_REL), OLD_TEMPLATE_LF)
       pinMtimes(root)
       const before = snapshotTree(root)
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       expect(res.exitCode).toBe(1)
       expect(res.message).toContain(TEMPLATE_REL)
       expect(res.message).toContain('https://github.com/BrowserLaboratory/wxl-platform')
@@ -1638,9 +2735,19 @@ describe('runForkInit — --host: unusable template', () => {
       writeFileSync(join(root, TEMPLATE_REL), OLD_TEMPLATE_LF.replace(/\n/g, '\r\n'))
       pinMtimes(root)
       const before = snapshotTree(root)
-      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', host]), {
-        projectRoot: root,
-      })
+      // T35: --host cloudflare-pages needs --origin.
+      const res = runForkInit(
+        parseForkInitArgs([
+          '--author',
+          'me',
+          '--repo',
+          'me/myfork',
+          '--host',
+          host,
+          ...(host === 'cloudflare-pages' ? ['--origin', 'https://e.example'] : []),
+        ]),
+        { projectRoot: root },
+      )
       expect(res.exitCode).toBe(1)
       assertNothingWritten(before)
     },
@@ -1662,7 +2769,7 @@ describe('runForkInit — --host: unusable template', () => {
   // Counterexample: cloudflare-pages does not require the template to derive SITE_BASE.
   it('cloudflare-pages: a template that does not derive SITE_BASE is still fine -> exitCode 0', () => {
     writeFileSync(join(root, TEMPLATE_REL), 'name: Deploy\njobs: {}\n')
-    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example']), {
       projectRoot: root,
     })
     expect(res.exitCode).toBe(0)
@@ -1939,7 +3046,7 @@ describe('runForkInit — no --host: SITE_BASE 404 warning (T26)', () => {
     writeFixture(root)
     mkdirSync(join(root, '.github/workflows'), { recursive: true })
     writeFileSync(join(root, DEPLOY_REL), NO_DERIVE_WORKFLOW)
-    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages']), {
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example']), {
       projectRoot: root,
     })
     expect(res.warnings.some((w) => w.includes(DEPLOY_REL) && w.includes('404'))).toBe(false)
@@ -2335,7 +3442,7 @@ describe('runForkInit — anchor mode: untouched files', () => {
     expect(res.warnings.some((w) => /A6|A7|A8|A9/.test(w))).toBe(false)
   })
 
-  it('A6 (unparsable), A7 (two candidate lines) and A8/A9 (file absent) all stay untouched: no flag sets them in this ticket', () => {
+  it('A6 (unparsable), A7 (two candidate lines) and A8/A9 (file absent) all stay untouched when no flag sets them', () => {
     // A6: a title that is a variable, not a string literal — unparsable if it were ever set.
     writeFileSync(
       join(root, '.vitepress/config.mts'),
@@ -2348,6 +3455,10 @@ describe('runForkInit — anchor mode: untouched files', () => {
       ['---', 'hero:', '  name: |', '  name: WXL', '---', ''].join('\n'),
     )
     // platform/zh-TW/index.md (A7) and the short-link module (A8) are left absent entirely.
+    // T-0015: the shared fixture now ships both (T60's fixture note) — removed here so this
+    // test's own precondition (both files absent) still holds.
+    rmSync(join(root, 'platform/zh-TW/index.md'), { force: true })
+    rmSync(join(root, '.vitepress/challenge/shortLink.ts'), { force: true })
     const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
     const heroBefore = readFileSync(join(root, 'platform/index.md'), 'utf8')
     const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
@@ -2547,7 +3658,7 @@ describe('runForkInit — anchor mode: manifest', () => {
   })
 
   it.each(['name', 'description'] as const)('--%s: trimmed when non-empty after trim; unchanged when empty after trim or not given', (flag) => {
-    const values = ['  x  ', '　x　']
+    const values = ['  x  ', '\u3000x\u3000']
     for (const value of values) {
       const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', `--${flag}`, value]), { projectRoot: root })
       expect(res.exitCode).toBe(0)
@@ -3062,6 +4173,385 @@ describe('runForkInit — dry-run writes nothing', () => {
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toContain('tmp/wxl-verify')
     // the residual inventory is computed from the would-be final bytes, not the on-disk snapshot
     expect(res.residualFiles).toContain('.vitepress/theme/useWxlsh.ts')
+  })
+})
+
+// T56/AC-E2: --dry-run writes nothing; changedFiles equals (as a set) a twin fixture's real run
+// on the same arguments, workflow installs/replacements/removals included; warnings and an
+// error's exitCode/message also match the real run.
+describe('runForkInit — anchor mode: dry-run (T56)', () => {
+  const DEPLOY_REL = '.github/workflows/deploy.yml'
+
+  /** Builds two identical fixture trees, `customize` applied to each identically, and runs `argv`
+   *  for real on one and with --dry-run on the other — so the comparison is between a real run
+   *  and a dry run of the SAME starting tree, never the same tree twice. */
+  function runRealAndDry(argv: string[], customize: (root: string) => void = () => {}) {
+    const realRoot = mkdtempSync(join(tmpdir(), 'fork-init-t56-real-'))
+    const dryRoot = mkdtempSync(join(tmpdir(), 'fork-init-t56-dry-'))
+    writeFixture(realRoot)
+    writeFixture(dryRoot)
+    customize(realRoot)
+    customize(dryRoot)
+    pinMtimes(dryRoot)
+    const before = snapshotTree(dryRoot)
+    const real = runForkInit(parseForkInitArgs(argv), { projectRoot: realRoot })
+    const dry = runForkInit(parseForkInitArgs([...argv, '--dry-run']), { projectRoot: dryRoot })
+    const after = snapshotTree(dryRoot)
+    rmSync(realRoot, { recursive: true, force: true })
+    rmSync(dryRoot, { recursive: true, force: true })
+    return { real, dry, before, after }
+  }
+
+  function assertDryMatchesReal(real: ForkInitResult, dry: ForkInitResult, before: ReturnType<typeof snapshotTree>, after: ReturnType<typeof snapshotTree>) {
+    expect(dry.exitCode).toBe(real.exitCode)
+    expect(dry.message).toBe(dry.exitCode === 0 ? `dry-run: ${real.changedFiles.length} file(s) would change` : real.message)
+    expect(new Set(dry.changedFiles)).toEqual(new Set(real.changedFiles))
+    expect(new Set(dry.warnings)).toEqual(new Set(real.warnings))
+    expect(after).toEqual(before)
+  }
+
+  it('no --host, workflow absent: changedFiles/warnings match a real install', () => {
+    const { real, dry, before, after } = runRealAndDry(['--author', 'me', '--repo', 'me/myfork'])
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.changedFiles).toContain(DEPLOY_REL)
+  })
+
+  it('--host github-pages, workflow absent: changedFiles/warnings match a real install', () => {
+    const { real, dry, before, after } = runRealAndDry(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'])
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.changedFiles).toContain(DEPLOY_REL)
+  })
+
+  it('--host github-pages, workflow is a known old output: changedFiles/warnings match a real replace', () => {
+    const { real, dry, before, after } = runRealAndDry(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, DEPLOY_REL), OLD_TEMPLATE_LF)
+    })
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.changedFiles).toContain(DEPLOY_REL)
+  })
+
+  it('--host cloudflare-pages, workflow equals the current template output: changedFiles/warnings match a real removal; the file is still present (dry-run)', () => {
+    const { real, dry, before, after } = runRealAndDry(
+      ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://myfork.pages.dev'],
+      (r) => {
+        mkdirSync(join(r, '.github/workflows'), { recursive: true })
+        writeFileSync(join(r, DEPLOY_REL), CURRENT_TEMPLATE_LF)
+      },
+    )
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.changedFiles).toContain(DEPLOY_REL)
+    expect(after.some((f) => f.path === DEPLOY_REL)).toBe(true)
+  })
+
+  it('--site-name and --origin together: A6/A7/A8 are all listed; a T81 warning still appears', () => {
+    const { real, dry, before, after } = runRealAndDry(
+      ['--author', 'me', '--repo', 'me/myfork', '--site-name', 'New Name', '--origin', 'https://e.example'],
+      (r) => writeFileSync(join(r, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://custom.example'\n"),
+    )
+    assertDryMatchesReal(real, dry, before, after)
+    for (const f of ['.vitepress/config.mts', 'platform/index.md', 'platform/zh-TW/index.md', '.vitepress/challenge/shortLink.ts']) {
+      expect(dry.changedFiles).toContain(f)
+    }
+    expect(dry.warnings.some((w) => w.includes('A8'))).toBe(true)
+  })
+
+  it('error: a missing platform/zh-TW/index.md (T9) gives the same exitCode and message as a real run', () => {
+    const { real, dry, before, after } = runRealAndDry(['--author', 'me', '--repo', 'me/myfork', '--site-name', 'New Name'], (r) =>
+      rmSync(join(r, 'platform/zh-TW/index.md')),
+    )
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.exitCode).toBe(1)
+    expect(dry.message).toContain('A7')
+  })
+
+  it('error: --host with the template missing (T24) gives the same exitCode and message as a real run', () => {
+    const { real, dry, before, after } = runRealAndDry(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) =>
+      rmSync(join(r, 'scripts/templates/deploy.yml.template')),
+    )
+    assertDryMatchesReal(real, dry, before, after)
+    expect(dry.exitCode).toBe(1)
+  })
+})
+
+// T6/AC-A3: for each fixed argument set X, the unapplied fixture (no workflow) exits 0; a tree
+// with any subset of X's writes already done, then run with X again, ends byte-identical to X
+// run on the unapplied fixture. Every subset is tested — risk noted in the ticket: ~1,280 runs,
+// so one baseline tree per X is built, with only the differing files overwritten per subset
+// (never a fresh fixture tree per subset).
+// item 12: the three fixed argument sets both T6 (convergence) and T7 (second identical run) run
+// against are the same set, verbatim — a single file-level constant shared by both, rather than
+// each describe keeping its own copy.
+const CONVERGENCE_X_CASES: Array<{ label: string; argv: string[] }> = [
+  {
+    label: 'S7 GH',
+    argv: [
+      '--author',
+      'Test Teacher',
+      '--repo',
+      'test-owner/web-range',
+      '--host',
+      'github-pages',
+      '--site-name',
+      '林老師的資安靶場',
+    ],
+  },
+  {
+    label: 'S7 CF',
+    argv: [
+      '--author',
+      'Test Teacher',
+      '--repo',
+      'test-owner/web-range',
+      '--host',
+      'cloudflare-pages',
+      '--origin',
+      'https://web-range.pages.dev',
+      '--site-name',
+      `Lin's "Web" Range \\ $' $1`,
+    ],
+  },
+  {
+    label: 'custom (--base, --site-name, --origin, no --host)',
+    argv: ['--author', 'a', '--repo', 'o/n', '--base', '/x/', '--site-name', 'N', '--origin', 'https://e.example'],
+  },
+]
+
+describe('runForkInit — anchor mode: convergence (T6)', () => {
+  describe.each(CONVERGENCE_X_CASES)('$label', ({ argv }) => {
+    // The reference tree: X run once on a pristine, unapplied fixture. Its final tree is the
+    // target every subset below must converge to; `changedFiles` is X's own list of write items.
+    const refRoot = mkdtempSync(join(tmpdir(), 'fork-init-t6-ref-'))
+    writeFixture(refRoot)
+    const refResult = runForkInit(parseForkInitArgs(argv), { projectRoot: refRoot })
+    if (refResult.exitCode !== 0) {
+      throw new Error(`T6 reference run failed for ${JSON.stringify(argv)}: ${refResult.message}`)
+    }
+    const writeItems = refResult.changedFiles.slice()
+    const afterContent = new Map<string, string | null>(
+      writeItems.map((p) => [p, existsSync(join(refRoot, p)) ? readFileSync(join(refRoot, p), 'utf8') : null]),
+    )
+    const referenceSnapshot = listFiles(refRoot)
+      .sort()
+      .map((p) => ({ path: p, bytes: readFileSync(join(refRoot, p)).toString('base64') }))
+    rmSync(refRoot, { recursive: true, force: true })
+
+    // The work tree: one pristine fixture, reused for every subset below. Before each subset's
+    // run, every write item is reset to its "before" (unapplied) content, then the subset's own
+    // items are overwritten to their "after" (reference) content — reproducing a half-applied
+    // tree without rebuilding the whole fixture.
+    const workRoot = mkdtempSync(join(tmpdir(), 'fork-init-t6-work-'))
+    writeFixture(workRoot)
+    const beforeContent = new Map<string, string | null>(
+      writeItems.map((p) => [p, existsSync(join(workRoot, p)) ? readFileSync(join(workRoot, p), 'utf8') : null]),
+    )
+    afterAll(() => rmSync(workRoot, { recursive: true, force: true }))
+
+    function applySubset(mask: number) {
+      writeItems.forEach((p, i) => {
+        const inSubset = (mask & (1 << i)) !== 0
+        const want = inSubset ? afterContent.get(p)! : beforeContent.get(p)!
+        const abs = join(workRoot, p)
+        if (want === null) {
+          rmSync(abs, { force: true })
+        } else {
+          mkdirSync(dirname(abs), { recursive: true })
+          writeFileSync(abs, want)
+        }
+      })
+    }
+
+    const totalSubsets = 1 << writeItems.length
+
+    it('the unapplied fixture itself exits 0', () => {
+      applySubset(0)
+      const res = runForkInit(parseForkInitArgs(argv), { projectRoot: workRoot })
+      expect(res.exitCode).toBe(0)
+    })
+
+    for (let mask = 0; mask < totalSubsets; mask++) {
+      const bits = mask.toString(2).padStart(writeItems.length, '0')
+      it(
+        `subset ${bits} (of ${writeItems.length} write items) converges to the reference tree`,
+        () => {
+          applySubset(mask)
+          const res = runForkInit(parseForkInitArgs(argv), { projectRoot: workRoot })
+          expect(res.exitCode, res.message).toBe(0)
+          const after = listFiles(workRoot)
+            .sort()
+            .map((p) => ({ path: p, bytes: readFileSync(join(workRoot, p)).toString('base64') }))
+          expect(after).toEqual(referenceSnapshot)
+        },
+        10_000,
+      )
+    }
+  })
+})
+
+// T7/AC-A4: a second identical run reports no changed file, leaves every file's bytes and
+// modification time unchanged, and emits exactly the warnings whose condition still holds —
+// never an install, replace, remove, T81 or T82 warning.
+describe('runForkInit — anchor mode: second identical run (T7)', () => {
+  function runTwice(argv: string[], customize: (root: string) => void = () => {}) {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t7-'))
+    writeFixture(root)
+    customize(root)
+    const first = runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+    pinMtimes(root)
+    const beforeSecond = snapshotTree(root)
+    const second = runForkInit(parseForkInitArgs(argv), { projectRoot: root })
+    const after = snapshotTree(root)
+    rmSync(root, { recursive: true, force: true })
+    return { first, second, beforeSecond, after }
+  }
+
+  it.each(CONVERGENCE_X_CASES)('$label: second run changes nothing; bytes and mtime unchanged', ({ argv }) => {
+    const { first, second, beforeSecond, after } = runTwice(argv)
+    expect(first.exitCode).toBe(0)
+    expect(second.exitCode).toBe(0)
+    expect(second.changedFiles).toEqual([])
+    expect(after).toEqual(beforeSecond)
+  })
+
+  it.each(CONVERGENCE_X_CASES)('$label: the second run warns exactly the warnings whose condition still holds', ({ argv }) => {
+    const { first, second } = runTwice(argv)
+    // none of these ever survive to a second identical run (the engine keeps no state)
+    const transient = (w: string) =>
+      /Tag rule/i.test(w) || w.includes('replaced') || w.includes('removed') || w.includes('A8:') || w.includes('A9:')
+    const firstStillApplies = new Set(first.warnings.filter((w) => !transient(w)))
+    expect(new Set(second.warnings)).toEqual(firstStillApplies)
+    for (const w of second.warnings) expect(transient(w)).toBe(false)
+  })
+
+  it('missing README.en.md (T2): the warning repeats identically', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork'], (r) => rmSync(join(r, 'README.en.md')))
+    const firstA2 = first.warnings.filter((w) => w.includes('A2') && w.includes('README.en.md'))
+    const secondA2 = second.warnings.filter((w) => w.includes('A2') && w.includes('README.en.md'))
+    expect(firstA2.length).toBeGreaterThan(0)
+    expect(secondA2).toEqual(firstA2)
+  })
+
+  // item 10: CONTRIBUTE.md PRESENT but without A5's own form (distinct from T2's "file absent"
+  // case above) -- the exact same "no occurrence of its form" warning on both runs, and a second
+  // run with nothing to converge towards still changes nothing.
+  it('CONTRIBUTE.md exists but has no A5 form: the same warning appears both runs; the second changes nothing', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork'], (r) =>
+      writeFileSync(
+        join(r, 'CONTRIBUTE.md'),
+        'git remote add upstream https://github.com/BrowserLaboratory/wxl-platform.git\nNo issues link here.\n',
+      ),
+    )
+    const firstA5 = first.warnings.filter((w) => w.includes('A5') && w.includes('CONTRIBUTE.md'))
+    const secondA5 = second.warnings.filter((w) => w.includes('A5') && w.includes('CONTRIBUTE.md'))
+    expect(firstA5.length).toBeGreaterThan(0)
+    expect(secondA5).toEqual(firstA5)
+    expect(second.changedFiles).toEqual([])
+  })
+
+  it('GH, an "other" workflow that derives SITE_BASE: the warning repeats identically', () => {
+    const other = CURRENT_TEMPLATE_LF.replace('name: Deploy', 'name: Deploy\n# an extra comment line')
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, '.github/workflows/deploy.yml'), other)
+    })
+    const firstW = first.warnings.filter((w) => w.includes('left untouched'))
+    const secondW = second.warnings.filter((w) => w.includes('left untouched'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('GH, an "other" workflow that does not derive SITE_BASE: the warning repeats identically', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, '.github/workflows/deploy.yml'), 'name: MyCustomDeploy\n')
+    })
+    const firstW = first.warnings.filter((w) => w.includes('SITE_BASE') && w.includes('404'))
+    const secondW = second.warnings.filter((w) => w.includes('SITE_BASE') && w.includes('404'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('CF, an "other" workflow: the warning repeats identically', () => {
+    const { first, second } = runTwice(
+      ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example'],
+      (r) => {
+        mkdirSync(join(r, '.github/workflows'), { recursive: true })
+        writeFileSync(join(r, '.github/workflows/deploy.yml'), 'name: MyCustomDeploy\n')
+      },
+    )
+    const firstW = first.warnings.filter((w) => w.includes('left untouched'))
+    const secondW = second.warnings.filter((w) => w.includes('left untouched'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('no --host, workflow different content (T25): the warning repeats identically', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, '.github/workflows/deploy.yml'), 'name: SomePreexisting\n')
+    })
+    const firstW = first.warnings.filter((w) => w.includes('already exists with different content'))
+    const secondW = second.warnings.filter((w) => w.includes('already exists with different content'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('no --host, template missing (T25): the warning repeats identically', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork'], (r) =>
+      rmSync(join(r, 'scripts/templates/deploy.yml.template')),
+    )
+    const firstW = first.warnings.filter((w) => w.includes('scripts/templates/deploy.yml.template'))
+    const secondW = second.warnings.filter((w) => w.includes('scripts/templates/deploy.yml.template'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('no --host, A9 upstream, workflow not deriving SITE_BASE (T26): the warning repeats identically', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, '.github/workflows/deploy.yml'), 'name: MyCustomDeploy\n')
+    })
+    const firstW = first.warnings.filter((w) => w.includes('SITE_BASE') && w.includes('404'))
+    const secondW = second.warnings.filter((w) => w.includes('SITE_BASE') && w.includes('404'))
+    expect(firstW.length).toBeGreaterThan(0)
+    expect(secondW).toEqual(firstW)
+  })
+
+  it('T81 (custom A8 + --origin) warns on the first run but never on the second', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork', '--origin', 'https://e.example'], (r) =>
+      writeFileSync(join(r, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://custom.example'\n"),
+    )
+    expect(first.warnings.some((w) => w.includes('A8'))).toBe(true)
+    expect(second.warnings.some((w) => w.includes('A8'))).toBe(false)
+  })
+
+  it('T82 (literal A9 + --host) warns on the first run but never on the second', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) =>
+      writeConfigWithBase(r, '/x/'),
+    )
+    expect(first.warnings.some((w) => w.includes('A9'))).toBe(true)
+    expect(second.warnings.some((w) => w.includes('A9'))).toBe(false)
+  })
+
+  it('a known old workflow output, replaced on the first run, warns only once', () => {
+    const { first, second } = runTwice(['--author', 'me', '--repo', 'me/myfork', '--host', 'github-pages'], (r) => {
+      mkdirSync(join(r, '.github/workflows'), { recursive: true })
+      writeFileSync(join(r, '.github/workflows/deploy.yml'), OLD_TEMPLATE_LF)
+    })
+    expect(first.warnings.some((w) => w.includes('replaced'))).toBe(true)
+    expect(second.warnings.some((w) => w.includes('replaced'))).toBe(false)
+  })
+
+  it('CF removing the current-template-output workflow on the first run warns only once', () => {
+    const { first, second } = runTwice(
+      ['--author', 'me', '--repo', 'me/myfork', '--host', 'cloudflare-pages', '--origin', 'https://e.example'],
+      (r) => {
+        mkdirSync(join(r, '.github/workflows'), { recursive: true })
+        writeFileSync(join(r, '.github/workflows/deploy.yml'), CURRENT_TEMPLATE_LF)
+      },
+    )
+    expect(first.warnings.some((w) => w.includes('removed'))).toBe(true)
+    expect(second.warnings.some((w) => w.includes('removed'))).toBe(false)
   })
 })
 
