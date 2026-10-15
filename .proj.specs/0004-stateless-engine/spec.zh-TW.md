@@ -1,15 +1,15 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: cabfbfb97a5d9665433f9c6e77cf395762bdc6a8
+synced_from_sha: 259f9ef468a26f09459a65d2bac01e587c91ee03
 ---
 
 # Spec 0004：不帶狀態的 fork-init 引擎，以及保持綠燈的靶場 CI
 
-狀態：第 2.1 版（第 2 版加上隨測試計畫核准、列在 `traceability.md` 的澄清）。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
+狀態：第 2.2 版（第 2 版加上隨測試計畫核准的澄清；2.2 版另加 seam 0004-S10 與 T85，都列在 `traceability.md`）。第 1 輪對抗式審查沒有發現 P0（`review/round-1.md`），因此第 3 階段的關卡已通過；
 第 2 版套用第 1 輪的裁決（`review/disposition.md`，群組 M1–M10）。本檔由英文版翻譯，以英文版為準。
 本文衍生自 `traceability.md`，其中保存本規格引用的固定清單（模式與「今天」、repository slug 的文法、
 第一次轉換、身分定位點 A1–A9、base 的文法、workflow 狀態、上游 repository slug 的限制與守門清單、
-被覆寫的契約、字元規則、origin 文法、參數檢查順序與訊息）以及 seam 0004-S1 到 S9。第 1 階段的決定：
+被覆寫的契約、字元規則、origin 文法、參數檢查順序與訊息）以及 seam 0004-S1 到 S10。第 1 階段的決定：
 Q1–Q24、E1–E6 與 F1–F3（2026-10-14）。這個 epic 是從 0003-apply-engine 在其第 2 輪
 （`.proj.specs/0003-apply-engine/review/round-2.md`）後拆分出來的：所有依賴設定紀錄的部分都移到後續
 epic。後續 epic 規劃為 0005 create-wxl（重新規格化；0002 保留為拆分紀錄）、0006 設定紀錄與 0007
@@ -344,6 +344,8 @@ workflow）且是部署在網域根目錄；`--base` 會讓靶場的網站冒煙
 - **AC-C3** 新 job 在 quality-gates workflow 裡，觸發條件不變，帶有 T72 所列四個 `include`
   項目，執行那兩個指名的測試檔案，且不新增任何 Rust 工具鏈、Rust cache、install-action 或
   binaryen 步驟。(T72)
+- **AC-C4** SourceViewer 的元件測試結束時，不會留下仍在運作的 CodeMirror 編輯器，因此
+  SourceViewer 測試檔的執行不會因為編輯器的計時器在測試環境拆除後才觸發，而回報 unhandled error。(T85)
 
 ### 第 8 階段
 
@@ -367,7 +369,7 @@ workflow）且是部署在網域根目錄；`--base` 會讓靶場的網站冒煙
 - 測試在 seam 0004-S1 到 S6 斷言可觀察的行為：磁碟上的檔案連同其修改時間、引擎的結果、解析後的
   設定檔與 workflow、守門違規與 pristine 不符。沒有任何東西被 mock：元件測試讀取真正的
   `SITE_ORIGIN`。S7 與 S8 屬於第 8 階段；S9 是第 6 階段針對文件與註解的一項紀錄，內容是
-  `grep -F`、`cmp` 與詞彙表測試。
+  `grep -F`、`cmp` 與詞彙表測試。S10 是以 vitest 執行 SourceViewer 元件測試檔，紀錄在新增它的 ticket 裡。
 - 引擎測試延伸既有的「暫存目錄裡的 fixture」模式；共用 fixture 新增 A9 與 `base: siteBase`、
   A2 與 A5 的形式、兩份首頁，以及短連結模組，而舊版設定檔形狀變成 T18 的 fixture，其樣板則變成
   一個會導出 `SITE_BASE` 的最小 workflow。冪等性（idempotence）指的是第二次執行不改變任何檔案
