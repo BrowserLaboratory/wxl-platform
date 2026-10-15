@@ -567,6 +567,16 @@ it is running on (spec 0004-stateless-engine, Out of Scope).
 is none to read, since `fork:init` decides the host once, at configure time, and nothing on the
 built site records it afterwards.
 
+On a user-site range (`<owner>.github.io`, whose derived short-link origin has no path:
+`scripts/fork-init.ts:1078`), a short link is not always a 404: its path is `/c/NNN` or
+`/zh/c/NNN` (`.vitepress/challenge/shortLink.ts:49-57`), and if the same owner has a repository named
+`c` or `zh` with Pages enabled, GitHub Pages serves that project site under the path, so the link opens
+that site's `/NNN` page (repository `c`) or `/c/NNN` page (repository `zh`) (inferred from GitHub
+Pages' project-site paths, not reproduced; line numbers at `c142833`). Found by
+epic 0004's chain analysis (`.proj.specs/0004-stateless-engine/review/chain-analysis.md`, chain B);
+the user decided on 2026-10-16 to record it here rather than open a ticket, since the build-time host
+constant below closes it too.
+
 **Blocks.** Hiding or warning on the copy-short-link button for a GitHub Pages range. Options: record
 the chosen host as a build-time constant the component can read; detect the host at runtime from the
 page's own origin.
