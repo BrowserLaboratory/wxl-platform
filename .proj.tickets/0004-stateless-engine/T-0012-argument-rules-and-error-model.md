@@ -2,7 +2,7 @@
 id: T-0012
 title: Argument rules and the error model (prefactor)
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -421,3 +421,9 @@ noted here for future investigation and is out of this ticket's scope.
 ### 2026-10-14 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0012.md`. Seven candidates, independently filtered: one kept (Low, P2: the unknown-flag name was echoed unquoted, against spec B1) and fixed in stage 6; nothing blocks landing.
+
+### 2026-10-14 — stage 8 and landing
+
+Stage 8 surface: the CLI on a `git archive HEAD` export of the branch (no browser; the ticket changes no page). `node --experimental-strip-types scripts/fork-init.ts --author "Test Teacher" --repo test-owner/web-range --dry-run` → exit 0 with the dry-run summary; `… --author a --repo o/n --bogus` → stderr `✗ unknown flag: "--bogus"`; `… --repo o/n.git` → stderr `✗ --repo must be in owner/repo form, got: "o/n.git"`, exit 1.
+
+PR BrowserLaboratory/wxl-platform#15, squash-merged by the user as `0534e42` at 2026-10-14T15:55Z with all six checks green.

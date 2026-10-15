@@ -27,6 +27,7 @@ import {
   realpathSync,
   symlinkSync,
   unlinkSync,
+  chmodSync,
 } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
@@ -122,9 +123,22 @@ function writeFixture(root: string) {
     ].join('\n'),
   )
 
-  w('README.md', 'git clone https://github.com/BrowserLaboratory/wxl-platform.git\n')
-  w('CONTRIBUTE.md', 'git remote add upstream https://github.com/BrowserLaboratory/wxl-platform.git\n')
-  // CHANGELOG carries upstream-slug links — NOT in any hardcoded file list; the scan must cover it.
+  // A2 (the quality-gates badge, two occurrences: the image URL and the link) and A3 (the clone
+  // line), in both README files (T60: the shared fixture gains A2 and a README.en.md with A2/A3).
+  const readmeBody =
+    '[![Quality Gates](https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/quality-gates.yml/badge.svg)]' +
+    '(https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/quality-gates.yml)\n' +
+    'git clone https://github.com/BrowserLaboratory/wxl-platform.git\n'
+  w('README.md', readmeBody)
+  w('README.en.md', readmeBody)
+  // A4 (the remote add line) and A5 (the issues link, T60), in CONTRIBUTE.md.
+  w(
+    'CONTRIBUTE.md',
+    'git remote add upstream https://github.com/BrowserLaboratory/wxl-platform.git\n' +
+      'Found a bug? Open a [GitHub Issues](https://github.com/BrowserLaboratory/wxl-platform/issues) entry.\n',
+  )
+  // CHANGELOG carries upstream-slug links, outside any A1–A9 anchor: rebrand mode's tree walk
+  // still rewrites it; anchor mode leaves it byte-identical (T3).
   w(
     'CHANGELOG.md',
     [
@@ -703,7 +717,11 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
 
-  it('rewrites package.json identity and leaves no upstream slug', () => {
+  // Overridden (T60, traceability.md "Overridden contracts"): anchor mode no longer scans the
+  // tree, so it rewrites only the A2–A5 forms — not every occurrence of the upstream slug — and
+  // the config's `socialLinks` line is untouched. Renamed from "rewrites package.json identity and
+  // leaves no upstream slug" (the old title no longer holds: socialLinks keeps the upstream slug).
+  it("rewrites package.json identity and the A2–A5 forms; keeps the config's socialLinks", () => {
     const res = runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
     expect(res.exitCode).toBe(0)
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
@@ -715,23 +733,33 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(pkg.homepage).toBe('https://github.com/me/myfork#readme')
     const readme = readFileSync(join(root, 'README.md'), 'utf8')
     const contrib = readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')
+    // A2 (both occurrences) and A3 in README.md; A4 and A5 in CONTRIBUTE.md; no upstream slug left.
+    expect(readme.match(/me\/myfork/g)).toHaveLength(3)
+    expect(contrib.match(/me\/myfork/g)).toHaveLength(2)
+    expect(readme).not.toContain('BrowserLaboratory/wxl-platform')
+    expect(contrib).not.toContain('BrowserLaboratory/wxl-platform')
+    // the config is untouched outside its base line — socialLinks keeps the upstream slug
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    // the executable config's socialLinks URL is the one that matters most
-    expect(readme + contrib + cfg).not.toContain('BrowserLaboratory/wxl-platform')
-    expect(readme + contrib + cfg).toContain('me/myfork')
+    expect(cfg).toContain("socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],")
   })
 
-  it('rewrites the upstream slug in CHANGELOG.md — scan-driven, not a hardcoded file list', () => {
-    // A-mode must reach every slug-bearing active file, not just README/CONTRIBUTE/config.
+  // Overridden (T60): anchor mode has no file list and no scan, so CHANGELOG.md — which holds no
+  // A1–A9 form — is byte-identical. Renamed from "rewrites the upstream slug in CHANGELOG.md —
+  // scan-driven, not a hardcoded file list" (the old title asserted the opposite).
+  it('leaves CHANGELOG.md byte-identical in anchor mode (no file list, no scan)', () => {
+    pinMtimes(root)
+    const before = readFileSync(join(root, 'CHANGELOG.md'))
+    const beforeMtime = statSync(join(root, 'CHANGELOG.md')).mtimeMs
     runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
-    const cl = readFileSync(join(root, 'CHANGELOG.md'), 'utf8')
-    expect(cl).not.toContain('BrowserLaboratory/wxl-platform')
-    expect(cl).toContain('me/myfork/pull/1')
-    expect(cl).toContain('me/myfork/issues/2')
+    const after = readFileSync(join(root, 'CHANGELOG.md'))
+    expect(after.equals(before)).toBe(true)
+    expect(statSync(join(root, 'CHANGELOG.md')).mtimeMs).toBe(beforeMtime)
   })
 
+  // Overridden (T60): only rebrand mode still walks the tree, so this path-segment-boundary
+  // assertion now exercises B_ARGS; the assertions are unchanged.
   it('does not treat an active .vitepress/dist-* sibling as build output (path-segment boundary)', () => {
-    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
     // the ACTIVE sibling IS processed (slug swapped) ...
     expect(readFileSync(join(root, '.vitepress/dist-notes.md'), 'utf8')).toContain('me/myfork')
     expect(readFileSync(join(root, '.vitepress/dist-notes.md'), 'utf8')).not.toContain('BrowserLaboratory/wxl-platform')
@@ -837,6 +865,853 @@ describe('runForkInit — A mode (identity, base, URLs, deploy)', () => {
     expect(res.residualHits).toEqual([])
     expect(res.sensitiveKeys).toEqual([])
   })
+})
+
+// T1, T2, T11 (doc portion): A2–A5 replace every occurrence of their form, whatever repository
+// slug it held; a form with no occurrence, or a missing file, warns and the run continues; CRLF
+// files are recognised as LF ones and keep their own line endings.
+describe('runForkInit — anchor mode: doc anchors', () => {
+  let root: string
+  const ANCHOR_ARGS = ['--author', 'me', '--repo', 'me/myfork'] // no --base: Notes 1
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-doc-anchors-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it.each([
+    ['upstream', 'BrowserLaboratory/wxl-platform'],
+    ["the range's earlier slug", 'old-owner/old.range_1'],
+    ['already the new slug', 'me/myfork'],
+  ])('A2: both badge occurrences carry the new slug, other bytes unchanged (%s)', (_label, oldSlug) => {
+    const body =
+      `[![Quality Gates](https://github.com/${oldSlug}/actions/workflows/quality-gates.yml/badge.svg)]` +
+      `(https://github.com/${oldSlug}/actions/workflows/quality-gates.yml)\n`
+    writeFileSync(join(root, 'README.md'), body)
+    writeFileSync(join(root, 'README.en.md'), body)
+    pinMtimes(root)
+    const beforeMtime = statSync(join(root, 'README.md')).mtimeMs
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const expected =
+      '[![Quality Gates](https://github.com/me/myfork/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/me/myfork/actions/workflows/quality-gates.yml)\n'
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(expected)
+    expect(readFileSync(join(root, 'README.en.md'), 'utf8')).toBe(expected)
+    if (oldSlug === 'me/myfork') {
+      // already the new slug: no write, mtime unchanged, not in changedFiles
+      expect(statSync(join(root, 'README.md')).mtimeMs).toBe(beforeMtime)
+      expect(res.changedFiles).not.toContain('README.md')
+    } else {
+      expect(res.changedFiles).toContain('README.md')
+    }
+  })
+
+  it('A2: an owner outside the wildcard (underscore, leading dash) is not an occurrence', () => {
+    const body =
+      '[![QG](https://github.com/bad_owner/n/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/bad_owner/n/actions/workflows/quality-gates.yml)\n' +
+      '[![QG](https://github.com/-x/n/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/-x/n/actions/workflows/quality-gates.yml)\n'
+    writeFileSync(join(root, 'README.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(body)
+  })
+
+  it('A3: the clone line carries the new slug at end of line; a dotted name backtracks past its own .git', () => {
+    const line = 'git clone https://github.com/old-owner/old.range.git\n'
+    writeFileSync(join(root, 'README.md'), line)
+    writeFileSync(join(root, 'README.en.md'), line)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe('git clone https://github.com/me/myfork.git\n')
+    expect(readFileSync(join(root, 'README.en.md'), 'utf8')).toBe('git clone https://github.com/me/myfork.git\n')
+  })
+
+  it('A3: trailing text or trailing white space after the form is not an occurrence', () => {
+    const body =
+      'git clone https://github.com/old-owner/old-name.git mydir\n' +
+      'git clone https://github.com/old-owner/old-name.git  \n'
+    writeFileSync(join(root, 'README.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(body)
+  })
+
+  it('A3: the end of the file counts as an end of the line (no trailing newline)', () => {
+    writeFileSync(join(root, 'README.md'), 'git clone https://github.com/old-owner/old-name.git')
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe('git clone https://github.com/me/myfork.git')
+  })
+
+  it('A4: leading indentation (three spaces, a tab, none) before the form is still an occurrence', () => {
+    const body =
+      '   git remote add upstream https://github.com/old-owner/old-name.git\n' +
+      '\tgit remote add upstream https://github.com/old-owner/old-name.git\n' +
+      'git remote add upstream https://github.com/old-owner/old-name.git\n'
+    writeFileSync(join(root, 'CONTRIBUTE.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')).toBe(
+      '   git remote add upstream https://github.com/me/myfork.git\n' +
+        '\tgit remote add upstream https://github.com/me/myfork.git\n' +
+        'git remote add upstream https://github.com/me/myfork.git\n',
+    )
+  })
+
+  it('A5: the Markdown-link form (parentheses included) carries the new slug; a bare URL or an extra path segment does not match', () => {
+    const body =
+      '[GitHub Issues](https://github.com/old-owner/old-name/issues)\n' +
+      'https://github.com/old-owner/old-name/issues\n' +
+      '(https://github.com/old-owner/old-name/issues/12)\n' +
+      '(https://github.com/old-owner/old-name/issues/new)\n'
+    writeFileSync(join(root, 'CONTRIBUTE.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const after = readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')
+    expect(after).toContain('[GitHub Issues](https://github.com/me/myfork/issues)')
+    expect(after).toContain('https://github.com/old-owner/old-name/issues\n')
+    expect(after).toContain('(https://github.com/old-owner/old-name/issues/12)')
+    expect(after).toContain('(https://github.com/old-owner/old-name/issues/new)')
+  })
+
+  it('a file mixing several forms and several old slugs: every occurrence becomes the new slug, every other byte is unchanged (hand-built expectation)', () => {
+    const before =
+      'Prose mentioning BrowserLaboratory/wxl-platform directly.\n' +
+      'See https://github.com/BrowserLaboratory/wxl-platform/pulls for open PRs.\n' +
+      '[![Release](https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/release.yml/badge.svg)]' +
+      '(https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/release.yml)\n' +
+      '[![Quality Gates](https://github.com/old-owner/old.range_1/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/old-owner/old.range_1/actions/workflows/quality-gates.yml)\n' +
+      'git clone https://github.com/me/myfork.git\n' +
+      '中文內容不受影響。\n'
+    writeFileSync(join(root, 'README.md'), before)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const expected =
+      'Prose mentioning BrowserLaboratory/wxl-platform directly.\n' +
+      'See https://github.com/BrowserLaboratory/wxl-platform/pulls for open PRs.\n' +
+      '[![Release](https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/release.yml/badge.svg)]' +
+      '(https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/release.yml)\n' +
+      '[![Quality Gates](https://github.com/me/myfork/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/me/myfork/actions/workflows/quality-gates.yml)\n' +
+      'git clone https://github.com/me/myfork.git\n' +
+      '中文內容不受影響。\n'
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(expected)
+  })
+
+  // item 7(i): only the targeted anchor's own form is removed from its file — the file's OTHER
+  // anchor form is left in place, so this run also proves that anchor, and the unrelated
+  // manifest, are still rewritten in the very same run that warns.
+  it.each([
+    ['A2', 'README.md'],
+    ['A2', 'README.en.md'],
+    ['A3', 'README.md'],
+    ['A3', 'README.en.md'],
+    ['A4', 'CONTRIBUTE.md'],
+    ['A5', 'CONTRIBUTE.md'],
+  ] as const)(
+    "%s: a file present with no occurrence of its form warns with the anchor id and path; the file's other anchor and the manifest are still rewritten",
+    (anchorId, file) => {
+      if (file === 'README.md' || file === 'README.en.md') {
+        // the shared fixture's README body carries A2 (badge, two occurrences) and A3 (the clone
+        // line); keep whichever form is NOT the one under test.
+        const body =
+          anchorId === 'A2'
+            ? 'git clone https://github.com/BrowserLaboratory/wxl-platform.git\n' // A3 only
+            : '[![Quality Gates](https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/quality-gates.yml/badge.svg)]' +
+              '(https://github.com/BrowserLaboratory/wxl-platform/actions/workflows/quality-gates.yml)\n' // A2 only
+        writeFileSync(join(root, file), body)
+      } else {
+        // CONTRIBUTE.md carries A4 (remote-add) and A5 (the issues link); keep the other one.
+        const body =
+          anchorId === 'A4'
+            ? 'Found a bug? Open a [GitHub Issues](https://github.com/BrowserLaboratory/wxl-platform/issues) entry.\n' // A5 only
+            : 'git remote add upstream https://github.com/BrowserLaboratory/wxl-platform.git\n' // A4 only
+        writeFileSync(join(root, file), body)
+      }
+      const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      expect(res.warnings.some((w) => w.includes(anchorId) && w.includes(file))).toBe(true)
+      // the file's OTHER anchor form was still rewritten in this same run
+      const after = readFileSync(join(root, file), 'utf8')
+      expect(after).toContain('me/myfork')
+      expect(after).not.toContain('BrowserLaboratory/wxl-platform')
+      expect(res.changedFiles).toContain(file)
+      // the manifest, unrelated to any doc anchor, is still rewritten in this same run
+      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+      expect(pkg.repository.url).toBe('git+https://github.com/me/myfork.git')
+      expect(res.changedFiles).toContain('package.json')
+    },
+  )
+
+  it.each([
+    ['A2', 'README.md'],
+    ['A2', 'README.en.md'],
+    ['A3', 'README.md'],
+    ['A3', 'README.en.md'],
+    ['A4', 'CONTRIBUTE.md'],
+    ['A5', 'CONTRIBUTE.md'],
+  ] as const)('%s: a missing file warns with the anchor id and path; the run continues', (anchorId, file) => {
+    rmSync(join(root, 'README.md'), { force: true })
+    rmSync(join(root, 'README.en.md'), { force: true })
+    rmSync(join(root, 'CONTRIBUTE.md'), { force: true })
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(res.warnings.some((w) => w.includes(anchorId) && w.includes(file))).toBe(true)
+    // the run continues: the manifest is still written despite the missing doc files
+    expect(res.changedFiles).toContain('package.json')
+  })
+
+  it('a missing README.md produces one warning each for A2 and A3, not for README.en.md', () => {
+    rmSync(join(root, 'README.md'))
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const a2 = res.warnings.filter((w) => w.includes('A2') && w.includes('README.md') && !w.includes('README.en.md'))
+    const a3 = res.warnings.filter((w) => w.includes('A3') && w.includes('README.md') && !w.includes('README.en.md'))
+    expect(a2).toHaveLength(1)
+    expect(a3).toHaveLength(1)
+  })
+
+  it('a doc-anchor warning never mentions github-pages or deploy.yml (Notes 7)', () => {
+    writeFileSync(join(root, 'README.md'), 'no anchors here\n')
+    const res = runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const docWarnings = res.warnings.filter((w) => /^A[2-5]:/.test(w))
+    expect(docWarnings.length).toBeGreaterThan(0)
+    for (const w of docWarnings) {
+      expect(w).not.toContain('github-pages')
+      expect(w).not.toContain('deploy.yml')
+    }
+  })
+
+  it('CRLF: A3 (README) and A4 (CONTRIBUTE) recognise the form before a CRLF line ending; each line keeps its own ending', () => {
+    const body =
+      'git clone https://github.com/old-owner/old-name.git\r\n' +
+      'git remote add upstream https://github.com/old-owner/old-name.git\r\n' +
+      'an LF-only note stays LF\n'
+    writeFileSync(join(root, 'README.md'), body)
+    writeFileSync(join(root, 'CONTRIBUTE.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    // README.md: only A3 is checked there, so the A4-shaped second line is untouched
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(
+      'git clone https://github.com/me/myfork.git\r\n' +
+        'git remote add upstream https://github.com/old-owner/old-name.git\r\n' +
+        'an LF-only note stays LF\n',
+    )
+    // CONTRIBUTE.md: only A4 is checked there, so the A3-shaped first line is untouched
+    expect(readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')).toBe(
+      'git clone https://github.com/old-owner/old-name.git\r\n' +
+        'git remote add upstream https://github.com/me/myfork.git\r\n' +
+        'an LF-only note stays LF\n',
+    )
+  })
+
+  it('CRLF: A2 and A5 (no end-of-line requirement) are recognised the same way in a CRLF file', () => {
+    const readmeBody =
+      '[![QG](https://github.com/old-owner/old-name/actions/workflows/quality-gates.yml/badge.svg)]' +
+      '(https://github.com/old-owner/old-name/actions/workflows/quality-gates.yml)\r\n'
+    const contribBody = '[GitHub Issues](https://github.com/old-owner/old-name/issues)\r\n'
+    writeFileSync(join(root, 'README.md'), readmeBody)
+    writeFileSync(join(root, 'CONTRIBUTE.md'), contribBody)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(
+      '[![QG](https://github.com/me/myfork/actions/workflows/quality-gates.yml/badge.svg)]' +
+        '(https://github.com/me/myfork/actions/workflows/quality-gates.yml)\r\n',
+    )
+    expect(readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')).toBe('[GitHub Issues](https://github.com/me/myfork/issues)\r\n')
+  })
+
+  // item 7(h): A4 gets the same trailing-text / trailing-white-space boundary A3 already had.
+  it('A4: trailing text or trailing white space after the form is not an occurrence', () => {
+    const body =
+      'git remote add upstream https://github.com/old-owner/old-name.git extra\n' +
+      'git remote add upstream https://github.com/old-owner/old-name.git  \n'
+    writeFileSync(join(root, 'CONTRIBUTE.md'), body)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'CONTRIBUTE.md'), 'utf8')).toBe(body)
+  })
+
+  // item 7(h): A3's trailing-text/white-space and end-of-file cases, previously only exercised on
+  // README.md, also hold on README.en.md.
+  it('A3: trailing text/white space and end-of-file cases hold for both README.md and README.en.md', () => {
+    const trailingBody =
+      'git clone https://github.com/old-owner/old-name.git mydir\n' +
+      'git clone https://github.com/old-owner/old-name.git  \n'
+    const eofBody = 'git clone https://github.com/old-owner/old-name.git'
+    writeFileSync(join(root, 'README.md'), trailingBody)
+    writeFileSync(join(root, 'README.en.md'), eofBody)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toBe(trailingBody)
+    expect(readFileSync(join(root, 'README.en.md'), 'utf8')).toBe('git clone https://github.com/me/myfork.git')
+  })
+
+  // item 5: doc-anchor files are read/written byte-preserving (latin1), so an invalid UTF-8 byte
+  // outside any anchor form round-trips unchanged while the anchor form itself is still rewritten.
+  it('round-trips an invalid UTF-8 byte outside any anchor form, byte for byte', () => {
+    const prefix = Buffer.from('Prose with an invalid byte next: ', 'latin1')
+    const invalidByte = Buffer.from([0xff]) // not valid UTF-8 in any context
+    const middle = Buffer.from(' — rest of the line.\n', 'utf8')
+    const anchorLine = Buffer.from('git clone https://github.com/old-owner/old-name.git\n', 'latin1')
+    const before = Buffer.concat([prefix, invalidByte, middle, anchorLine])
+    writeFileSync(join(root, 'README.md'), before)
+    runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })
+    const after = readFileSync(join(root, 'README.md'))
+    const expectedProse = Buffer.concat([prefix, invalidByte, middle])
+    expect(after.subarray(0, expectedProse.length).equals(expectedProse)).toBe(true)
+    expect(after.toString('latin1')).toContain('git clone https://github.com/me/myfork.git\n')
+  })
+
+  // T2 governs only a missing doc-anchor file, not any other read failure: a path that is a
+  // directory (EISDIR) is NOT a checked tree error — it throws, uncaught, before any write in
+  // this run, the same as it did before this ticket's compute-before-write restructuring. Still
+  // proves compute-before-write: the manifest (whose own write is deferred to the write phase)
+  // stays unwritten, byte- and mtime-identical, because the throw happens before any write.
+  it('a doc-anchor path that is a directory makes runForkInit throw before any write (the manifest stays unwritten)', () => {
+    rmSync(join(root, 'README.md'))
+    mkdirSync(join(root, 'README.md'))
+    pinMtimes(root)
+    const pkgBefore = readFileSync(join(root, 'package.json'))
+    const pkgMtimeBefore = statSync(join(root, 'package.json')).mtimeMs
+    expect(() => runForkInit(parseForkInitArgs(ANCHOR_ARGS), { projectRoot: root })).toThrow()
+    expect(readFileSync(join(root, 'package.json'))).toEqual(pkgBefore)
+    expect(statSync(join(root, 'package.json')).mtimeMs).toBe(pkgMtimeBefore)
+    expect(existsSync(join(root, '.github/workflows/deploy.yml'))).toBe(false)
+    for (const f of listFiles(root)) expect(f.endsWith('.fork-init-tmp')).toBe(false)
+  })
+})
+
+// T3, T5: every file outside A1–A9 and the workflow is byte-identical; a code anchor whose value
+// is not being set keeps its lines and need not exist.
+describe('runForkInit — anchor mode: untouched files', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-untouched-'))
+    writeFixture(root)
+    // files outside the shared fixture's own anchor-bearing set, each holding an anchor FORM in a
+    // file that is not one of A1–A9's own files — must not be touched (T3)
+    mkdirSync(join(root, 'docs'), { recursive: true })
+    writeFileSync(
+      join(root, 'docs/README.md'),
+      'git clone https://github.com/BrowserLaboratory/wxl-platform.git\n',
+    )
+    mkdirSync(join(root, 'platform/challenge/x'), { recursive: true })
+    writeFileSync(
+      join(root, 'platform/challenge/x/README.md'),
+      'git clone https://github.com/BrowserLaboratory/wxl-platform.git\n',
+    )
+    writeFileSync(join(root, 'README.md.bak'), readFileSync(join(root, 'README.md')))
+    writeFileSync(
+      join(root, 'CHANGELOG.md'),
+      'Found a bug? Open a [GitHub Issues](https://github.com/BrowserLaboratory/wxl-platform/issues) entry.\nSee https://github.com/BrowserLaboratory/wxl-platform/pull/9\n',
+    )
+    // item 7(c): a binary file (a NUL byte) and a CRLF non-anchor text file, both outside A1–A9
+    // and the workflow — must stay byte- and mtime-identical, same as any other untouched file.
+    mkdirSync(join(root, 'assets'), { recursive: true })
+    writeFileSync(join(root, 'assets/logo.bin'), Buffer.from([0x00, 0x01, 0xff, 0x42]))
+    writeFileSync(join(root, 'NOTES.crlf.md'), 'line one\r\nline two\r\n')
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('every file outside A1–A9 and the workflow is byte-identical; the after path set is the before set plus the installed workflow', () => {
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const after = snapshotTree(root)
+    const untouchedRels = new Set([
+      'package.json',
+      'README.md',
+      'README.en.md',
+      'CONTRIBUTE.md',
+      '.vitepress/config.mts',
+      '.github/workflows/deploy.yml',
+    ])
+    for (const file of before) {
+      if (untouchedRels.has(file.path)) continue
+      const same = after.find((f) => f.path === file.path)
+      expect(same, `${file.path} should still exist`).toEqual(file)
+    }
+    // item 7(c): the after path set is exactly the before set plus the newly installed workflow —
+    // no file appears or disappears for any other reason (e.g. a stray temporary file).
+    const beforePaths = new Set(before.map((f) => f.path))
+    const afterPaths = new Set(after.map((f) => f.path))
+    const expectedPaths = new Set([...beforePaths, '.github/workflows/deploy.yml'])
+    expect(afterPaths).toEqual(expectedPaths)
+    // item 7(c): the binary file and the CRLF text file specifically, byte- and mtime-checked.
+    const binBefore = before.find((f) => f.path === 'assets/logo.bin')!
+    const binAfter = after.find((f) => f.path === 'assets/logo.bin')!
+    expect(binAfter).toEqual(binBefore)
+    const crlfBefore = before.find((f) => f.path === 'NOTES.crlf.md')!
+    const crlfAfter = after.find((f) => f.path === 'NOTES.crlf.md')!
+    expect(crlfAfter).toEqual(crlfBefore)
+    const allowed = new Set(['package.json', 'README.md', 'README.en.md', 'CONTRIBUTE.md', '.github/workflows/deploy.yml'])
+    for (const f of res.changedFiles) expect(allowed.has(f), `unexpected changed file ${f}`).toBe(true)
+    // a successful run on this fixture leaves no temporary file behind (a run that fails partway,
+    // covered separately below, is not this scenario's concern)
+    for (const f of listFiles(root)) expect(f.endsWith('.fork-init-tmp')).toBe(false)
+  })
+
+  it('a code anchor whose value is not being set keeps its lines and need not exist (no --site-name/--origin/--host/--base)', () => {
+    pinMtimes(root)
+    const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    const beforeMtime = statSync(join(root, '.vitepress/config.mts')).mtimeMs
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, '.vitepress/config.mts'), 'utf8')).toBe(cfgBefore)
+    expect(statSync(join(root, '.vitepress/config.mts')).mtimeMs).toBe(beforeMtime)
+    expect(res.warnings.some((w) => /A6|A7|A8|A9/.test(w))).toBe(false)
+  })
+
+  it('A6 (unparsable), A7 (two candidate lines) and A8/A9 (file absent) all stay untouched: no flag sets them in this ticket', () => {
+    // A6: a title that is a variable, not a string literal — unparsable if it were ever set.
+    writeFileSync(
+      join(root, '.vitepress/config.mts'),
+      ['export default {', '  title: siteTitle,', '  themeConfig: {},', '}', ''].join('\n'),
+    )
+    // A7: two candidate `  name: ...` lines inside the hero frontmatter.
+    mkdirSync(join(root, 'platform'), { recursive: true })
+    writeFileSync(
+      join(root, 'platform/index.md'),
+      ['---', 'hero:', '  name: |', '  name: WXL', '---', ''].join('\n'),
+    )
+    // platform/zh-TW/index.md (A7) and the short-link module (A8) are left absent entirely.
+    const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+    const heroBefore = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, '.vitepress/config.mts'), 'utf8')).toBe(cfgBefore)
+    expect(readFileSync(join(root, 'platform/index.md'), 'utf8')).toBe(heroBefore)
+    expect(existsSync(join(root, 'platform/zh-TW/index.md'))).toBe(false)
+    expect(existsSync(join(root, '.vitepress/challenge/shortLink.ts'))).toBe(false)
+  })
+})
+
+// T5 (item 7(d)): a dedicated fixture holding both home pages and the short-link module, across
+// the three A9 config shapes (upstream form + `base: siteBase,`, the legacy `??` line, no base
+// line) — none of A6–A9 is being set in this ticket (no --site-name/--origin/--host/--base), so
+// every one of these files must stay byte- and mtime-identical, with no A6–A9 warning.
+describe('runForkInit — anchor mode: T5 dedicated fixture (home pages, short-link module, A9 config shapes)', () => {
+  function buildFixture(root: string, cfgBody: string) {
+    writeFixture(root)
+    writeFileSync(join(root, '.vitepress/config.mts'), cfgBody)
+    mkdirSync(join(root, 'platform/zh-TW'), { recursive: true })
+    const hero = ['---', 'hero:', '  name: WXL', '---', '', '# Home', ''].join('\n')
+    writeFileSync(join(root, 'platform/index.md'), hero)
+    writeFileSync(join(root, 'platform/zh-TW/index.md'), hero)
+    mkdirSync(join(root, '.vitepress/challenge'), { recursive: true })
+    writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\n")
+  }
+
+  const A9_FORM = [
+    "const siteBase = process.env.SITE_BASE || '/'",
+    '',
+    'export default {',
+    "  title: 'Web eXploitation Laboratory',",
+    '  base: siteBase,',
+    '  themeConfig: {',
+    "    socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],",
+    '  },',
+    '}',
+    '',
+  ].join('\n')
+  const LEGACY_QQ_FORM = [
+    'export default {',
+    "  title: 'Web eXploitation Laboratory',",
+    "  base: process.env.SITE_BASE ?? '/',",
+    '  themeConfig: {',
+    "    socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],",
+    '  },',
+    '}',
+    '',
+  ].join('\n')
+  const NO_BASE_LINE_FORM = [
+    'export default {',
+    "  title: 'Web eXploitation Laboratory',",
+    '  themeConfig: {',
+    "    socialLinks: [{ icon: 'github', link: 'https://github.com/BrowserLaboratory/wxl-platform' }],",
+    '  },',
+    '}',
+    '',
+  ].join('\n')
+
+  it.each([
+    ['the upstream A9 form plus `  base: siteBase,`', A9_FORM],
+    ['the legacy `??` line', LEGACY_QQ_FORM],
+    ['no base line', NO_BASE_LINE_FORM],
+  ] as const)('config (%s), both home pages and the short-link module are byte- and mtime-unchanged; no A6–A9 warning, exitCode 0', (_label, cfgBody) => {
+    const root = mkdtempSync(join(tmpdir(), 'fork-init-t5-dedicated-'))
+    buildFixture(root, cfgBody)
+    pinMtimes(root)
+    const before = snapshotTree(root)
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    const after = snapshotTree(root)
+    expect(res.exitCode).toBe(0)
+    const untouchedRels = [
+      '.vitepress/config.mts',
+      'platform/index.md',
+      'platform/zh-TW/index.md',
+      '.vitepress/challenge/shortLink.ts',
+    ]
+    for (const rel of untouchedRels) {
+      const b = before.find((f) => f.path === rel)!
+      const a = after.find((f) => f.path === rel)!
+      expect(a, rel).toEqual(b)
+    }
+    expect(res.warnings.some((w) => /A6|A7|A8|A9/.test(w))).toBe(false)
+    rmSync(root, { recursive: true, force: true })
+  })
+})
+
+// T4 (re-serialisation and fields outside A1), T11 (CRLF manifest), T14 (--name/--description
+// trimming), T15 (version/license only on first conversion).
+describe('runForkInit — anchor mode: manifest', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-anchor-manifest-'))
+    writeFixture(root)
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const UPSTREAM_REPO = { type: 'git', url: 'git+https://github.com/BrowserLaboratory/wxl-platform.git' }
+
+  it.each([
+    ['four-space indent', (v: unknown) => JSON.stringify(v, null, 4)],
+    ['tab indent', (v: unknown) => JSON.stringify(v, null, '\t')],
+    ['single-line, no trailing newline', (v: unknown) => JSON.stringify(v)],
+  ])('re-serialises the manifest as two-space JSON with a trailing LF newline (%s)', (_label, stringify) => {
+    const raw = { name: 'x', version: '1.0.0', repository: UPSTREAM_REPO }
+    writeManifest(root, stringify(raw))
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const after = readFileSync(join(root, 'package.json'), 'utf8')
+    expect(after.endsWith('\n')).toBe(true)
+    expect(after.endsWith('\n\n')).toBe(false)
+    const lines = after.split('\n')
+    expect(lines[1]).toMatch(/^ {2}"/)
+  })
+
+  it('keeps every field outside A1 unchanged (deep-equal): scripts, dependencies, nested objects, private', () => {
+    const raw = {
+      name: 'x',
+      version: '1.0.0',
+      private: true,
+      scripts: { build: 'vitepress build', test: 'vitest' },
+      dependencies: { vue: '^3.0.0' },
+      nested: { a: { b: ['c', 1, null] } },
+      repository: UPSTREAM_REPO,
+    }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.private).toBe(true)
+    expect(pkg.scripts).toEqual(raw.scripts)
+    expect(pkg.dependencies).toEqual(raw.dependencies)
+    expect(pkg.nested).toEqual(raw.nested)
+  })
+
+  // item 7(g): the raw manifest text itself holds the literal JSON escape `\u00e9` (the six
+  // characters backslash, u, 0, 0, e, 9 — not the literal `é` character), so the comparison
+  // genuinely exercises parse-then-compare, not raw bytes: a correct re-serialisation renders
+  // that escape as the literal character, so the written-out bytes necessarily differ from the
+  // input even though the value itself is unchanged.
+  it('an escaped value is compared after parsing (deep-equal), not by raw bytes', () => {
+    const raw =
+      '{\n' +
+      '  "name": "x",\n' +
+      '  "version": "1.0.0",\n' +
+      '  "note": "caf\\u00e9",\n' +
+      '  "repository": { "type": "git", "url": "git+https://github.com/BrowserLaboratory/wxl-platform.git" }\n' +
+      '}\n'
+    expect(raw).toContain('caf\\u00e9')
+    writeManifest(root, raw)
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const after = readFileSync(join(root, 'package.json'), 'utf8')
+    expect(JSON.parse(after).note).toBe('café')
+    expect(after).not.toBe(raw)
+  })
+
+  it('does not write the manifest when it already matches (standard form, every A1 field already correct)', () => {
+    const raw = {
+      name: 'wxl',
+      version: '2.0.0', // NOT a first-conversion value — must survive untouched
+      author: 'me',
+      license: 'ECL-2.0',
+      repository: { type: 'git', url: 'git+https://github.com/me/myfork.git' },
+      bugs: { url: 'https://github.com/me/myfork/issues' },
+      homepage: 'https://github.com/me/myfork#readme',
+    }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    pinMtimes(root)
+    const before = statSync(join(root, 'package.json')).mtimeMs
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+    expect(res.changedFiles).not.toContain('package.json')
+    expect(statSync(join(root, 'package.json')).mtimeMs).toBe(before)
+  })
+
+  it('CRLF manifest: all-CRLF stays CRLF; a first-line-LF (mixed) or a single-line (no newline) manifest outputs LF', () => {
+    const base = { name: 'x', version: '1.0.0', repository: UPSTREAM_REPO }
+    const allCrlf = JSON.stringify(base, null, 2).replace(/\n/g, '\r\n') + '\r\n'
+    writeManifest(root, allCrlf)
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const afterCrlf = readFileSync(join(root, 'package.json'), 'utf8')
+    expect(afterCrlf).toContain('\r\n')
+    expect(afterCrlf.split('\n').every((l) => l === '' || l.endsWith('\r'))).toBe(true)
+
+    const root2 = mkdtempSync(join(tmpdir(), 'fork-init-manifest-mixed-'))
+    writeFixture(root2)
+    const lines = JSON.stringify(base, null, 2).split('\n')
+    const mixedFirstLf = lines[0] + '\n' + lines.slice(1).join('\r\n') + '\r\n'
+    writeManifest(root2, mixedFirstLf)
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root2 })
+    expect(readFileSync(join(root2, 'package.json'), 'utf8')).not.toContain('\r')
+    rmSync(root2, { recursive: true, force: true })
+
+    const root3 = mkdtempSync(join(tmpdir(), 'fork-init-manifest-nonewline-'))
+    writeFixture(root3)
+    writeManifest(root3, JSON.stringify(base)) // one line, no newline at all
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root3 })
+    expect(readFileSync(join(root3, 'package.json'), 'utf8')).not.toContain('\r')
+    rmSync(root3, { recursive: true, force: true })
+  })
+
+  it.each(['name', 'description'] as const)('--%s: trimmed when non-empty after trim; unchanged when empty after trim or not given', (flag) => {
+    const values = ['  x  ', '　x　']
+    for (const value of values) {
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', `--${flag}`, value]), { projectRoot: root })
+      expect(res.exitCode).toBe(0)
+      expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))[flag]).toBe('x')
+    }
+    // empty after trim, or not given: unchanged from the fixture's original value (re-seed a
+    // fresh root, since the loop above already mutated this describe's shared `root`)
+    const root2 = mkdtempSync(join(tmpdir(), `fork-init-${flag}-blank-`))
+    writeFixture(root2)
+    const before = JSON.parse(readFileSync(join(root2, 'package.json'), 'utf8'))[flag]
+    for (const blank of ['', '   ', undefined]) {
+      const argv = ['--author', 'me', '--repo', 'me/myfork', ...(blank === undefined ? [] : [`--${flag}`, blank])]
+      runForkInit(parseForkInitArgs(argv), { projectRoot: root2 })
+      expect(JSON.parse(readFileSync(join(root2, 'package.json'), 'utf8'))[flag]).toBe(before)
+    }
+    rmSync(root2, { recursive: true, force: true })
+  })
+
+  // item 7(a): --name/--description values containing `"`, `\` and `</script>` round-trip through
+  // JSON (written via JSON.stringify, read back via JSON.parse).
+  it.each(['name', 'description'] as const)('--%s: a value containing ", \\ and </script> round-trips through JSON', (flag) => {
+    const value = 'He said "hi" \\ then </script> tags'
+    const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', `--${flag}`, value]), {
+      projectRoot: root,
+    })
+    expect(res.exitCode).toBe(0)
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg[flag]).toBe(value)
+  })
+
+  it.each([
+    ['object url', { type: 'git', url: 'git+https://github.com/BrowserLaboratory/wxl-platform.git' }],
+    ['object url, no type', { url: 'git+https://github.com/BrowserLaboratory/wxl-platform.git' }],
+  ])('first conversion (%s): version becomes 0.1.0, license becomes ECL-2.0', (_label, repository) => {
+    const raw = { name: 'x', version: '9.9.9', license: 'MIT', repository }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.version).toBe('0.1.0')
+    expect(pkg.license).toBe('ECL-2.0')
+  })
+
+  it.each([
+    ['different case', 'git+https://github.com/browserlaboratory/wxl-platform.git'],
+    ['missing .git', 'git+https://github.com/BrowserLaboratory/wxl-platform'],
+    ['missing git+', 'https://github.com/BrowserLaboratory/wxl-platform.git'],
+    ['trailing space', 'git+https://github.com/BrowserLaboratory/wxl-platform.git '],
+    ["the range's own URL", 'git+https://github.com/old-owner/old-name.git'],
+  ])('not a first conversion (%s): version and license are unchanged', (_label, url) => {
+    const raw = { name: 'x', version: '9.9.9', license: 'MIT', repository: { type: 'git', url } }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.version).toBe('9.9.9')
+    expect(pkg.license).toBe('MIT')
+  })
+
+  // item 7(b): when not a first conversion, version/license that are ABSENT from the manifest
+  // stay absent — they are not introduced by this run.
+  it('not a first conversion: version and license, when absent from the manifest, stay absent', () => {
+    const raw = { name: 'x', repository: { type: 'git', url: 'git+https://github.com/old-owner/old-name.git' } }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.version).toBeUndefined()
+    expect(pkg.license).toBeUndefined()
+  })
+
+  it('not a first conversion when repository is a string equal to the upstream URL, or is null, or is absent', () => {
+    for (const repository of ['git+https://github.com/BrowserLaboratory/wxl-platform.git', null, undefined]) {
+      const root2 = mkdtempSync(join(tmpdir(), 'fork-init-firstconv-'))
+      writeFixture(root2)
+      const raw = JSON.parse(readFileSync(join(root2, 'package.json'), 'utf8'))
+      raw.version = '9.9.9'
+      raw.license = 'MIT'
+      if (repository === undefined) delete raw.repository
+      else raw.repository = repository
+      writeManifest(root2, JSON.stringify(raw, null, 2) + '\n')
+      runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root2 })
+      const pkg = JSON.parse(readFileSync(join(root2, 'package.json'), 'utf8'))
+      expect(pkg.version).toBe('9.9.9')
+      expect(pkg.license).toBe('MIT')
+      rmSync(root2, { recursive: true, force: true })
+    }
+  })
+
+  it('not first conversion: the three URLs and author are still rewritten on every run, following a repo rename', () => {
+    const raw = {
+      name: 'x',
+      version: '0.3.2',
+      license: 'MIT',
+      author: 'old-teacher',
+      repository: { type: 'git', url: 'git+https://github.com/old-owner/old-name.git' },
+      bugs: { url: 'https://github.com/old-owner/old-name/issues' },
+      homepage: 'https://github.com/old-owner/old-name#readme',
+    }
+    writeManifest(root, JSON.stringify(raw, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    expect(pkg.version).toBe('0.3.2')
+    expect(pkg.license).toBe('MIT')
+    expect(pkg.author).toBe('me')
+    expect(pkg.repository.url).toBe('git+https://github.com/me/myfork.git')
+    expect(pkg.bugs.url).toBe('https://github.com/me/myfork/issues')
+    expect(pkg.homepage).toBe('https://github.com/me/myfork#readme')
+  })
+
+  it('a manual version bump after first conversion survives an identical second run', () => {
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root }) // first conversion: version -> 0.1.0
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    pkg.version = '0.2.0'
+    writeManifest(root, JSON.stringify(pkg, null, 2) + '\n')
+    runForkInit(parseForkInitArgs(A_ARGS), { projectRoot: root })
+    expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version).toBe('0.2.0')
+  })
+})
+
+// T55: a write failure (target 0444 in a 0555 directory) is a tree error naming the file and
+// telling the teacher to run the same command again; already-written files stay; a rerun after
+// restoring permissions converges.
+describe('runForkInit — anchor mode: write failure', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'fork-init-write-failure-'))
+    writeFixture(root)
+  })
+  afterEach(() => {
+    // restore permissions before rmSync, or the recursive remove itself fails
+    try {
+      chmodSync(root, 0o755)
+    } catch {
+      /* already restored by the test itself */
+    }
+    try {
+      chmodSync(join(root, 'README.md'), 0o644)
+    } catch {
+      /* file may already be at the restored mode */
+    }
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a write failure returns exitCode 1 naming the file, with "run the same command again"; every file is old or new bytes; no stray temp file; a rerun after chmod converges',
+    () => {
+      // The bytes a fresh, fully successful run on an identical fixture would produce for every
+      // path — computed BEFORE this test's own run is made to fail partway, so the "old or new
+      // bytes, never partial" assertion below compares against an independently known-good tree,
+      // not just "whatever this run happened to leave behind" (item 7(e)).
+      const freshRoot = mkdtempSync(join(tmpdir(), 'fork-init-write-failure-reference-'))
+      writeFixture(freshRoot)
+      runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: freshRoot })
+      const freshBytesByPath = new Map(snapshotTree(freshRoot).map((f) => [f.path, f.bytes]))
+      rmSync(freshRoot, { recursive: true, force: true })
+
+      chmodSync(join(root, 'README.md'), 0o444)
+      chmodSync(root, 0o555)
+
+      const before = snapshotTree(root)
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+
+      // restore permissions immediately so later assertions (and other tests' cleanup) can read/write freely
+      chmodSync(root, 0o755)
+      chmodSync(join(root, 'README.md'), 0o644)
+
+      expect(res.exitCode).toBe(1)
+      expect(res.message).toContain('run the same command again')
+      // no Node message, no absolute path, and no temp-file name leaks into the message (item 3)
+      expect(res.message).not.toContain(root)
+      expect(res.message).not.toContain('.fork-init-tmp')
+      // the message names whichever anchor file the write reached first (order is not assumed —
+      // the root directory's own 0555 blocks every root-level file, not just README.md, see the
+      // ticket's Notes 3); it is a relative path with `/`.
+      const candidates = ['package.json', 'README.md', 'README.en.md', 'CONTRIBUTE.md', '.vitepress/config.mts', '.github/workflows/deploy.yml']
+      const namedFile = candidates.find((f) => res.message.includes(f))
+      expect(namedFile, `message should name one of the anchor files: ${res.message}`).toBeTruthy()
+      expect(res.changedFiles).toEqual([])
+      expect(res.warnings).toEqual([])
+
+      // every file is either still its original bytes, or EXACTLY the bytes a fresh, successful
+      // run produces for that same path — never a partial write (item 7(e))
+      const after = snapshotTree(root)
+      const afterByPath = new Map(after.map((f) => [f.path, f]))
+      for (const file of before) {
+        const nowFile = afterByPath.get(file.path)
+        expect(nowFile, `${file.path} should still exist`).toBeTruthy()
+        const freshBytes = freshBytesByPath.get(file.path)
+        const isOriginal = nowFile!.bytes === file.bytes
+        const isFreshSuccess = freshBytes !== undefined && nowFile!.bytes === freshBytes
+        expect(isOriginal || isFreshSuccess, `${file.path} should be original or fresh-success bytes`).toBe(true)
+      }
+      // the file the message names is untouched (still its original bytes)
+      const namedBefore = before.find((f) => f.path === namedFile)!
+      const namedAfter = afterByPath.get(namedFile!)!
+      expect(namedAfter.bytes).toBe(namedBefore.bytes)
+      // no directory is left holding a temporary file from this scenario (its own 0555 root
+      // blocks the write before a `*.fork-init-tmp` is ever created for a root-level file)
+      for (const f of listFiles(root)) expect(f.endsWith('.fork-init-tmp')).toBe(false)
+
+      // re-run with the same arguments after permissions are restored: converges
+      const second = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
+      expect(second.exitCode).toBe(0)
+
+      const root2 = mkdtempSync(join(tmpdir(), 'fork-init-write-failure-fresh-'))
+      writeFixture(root2)
+      runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root2 })
+      const convergedTree = snapshotTree(root).map((f) => ({ path: f.path, bytes: f.bytes }))
+      const freshTree = snapshotTree(root2).map((f) => ({ path: f.path, bytes: f.bytes }))
+      expect(convergedTree.sort((a, b) => a.path.localeCompare(b.path))).toEqual(
+        freshTree.sort((a, b) => a.path.localeCompare(b.path)),
+      )
+      rmSync(root2, { recursive: true, force: true })
+    },
+  )
+
+  // item 7(e): a subdirectory write (the config, written first in the write phase) succeeds
+  // before a root-directory write (the manifest) fails — proving "files already written stay"
+  // (traceability.md, T55) is observed for a write made before the one that fails, not only for
+  // ones made after it.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a subdirectory write (the config) succeeds before a root write (the manifest) fails; the subdirectory write stays',
+    () => {
+      chmodSync(root, 0o555)
+      const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      const pkgBefore = readFileSync(join(root, 'package.json'))
+
+      const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork', '--base', '/myfork/']), {
+        projectRoot: root,
+      })
+
+      chmodSync(root, 0o755)
+
+      expect(res.exitCode).toBe(1)
+      expect(res.message).toContain('package.json')
+
+      // the subdirectory write (.vitepress is not itself made read-only) succeeded and stays
+      const cfgAfter = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
+      expect(cfgAfter).not.toBe(cfgBefore)
+      expect(cfgAfter).toMatch(/base:\s*['"]\/myfork\/['"]/)
+
+      // the root write that failed left the manifest at its original bytes
+      expect(readFileSync(join(root, 'package.json'))).toEqual(pkgBefore)
+      for (const f of listFiles(root)) expect(f.endsWith('.fork-init-tmp')).toBe(false)
+    },
+  )
 })
 
 describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', () => {
@@ -1015,6 +1890,22 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).not.toContain('wxl-verify')
     expect(readFileSync(join(root, '.vitepress/theme/i18n/index.ts'), 'utf8')).not.toContain('acacmeme')
     expect(second.changedFiles.length).toBe(0)
+  })
+
+  // Regression (T11): the CRLF rule added for anchor mode's manifest must not leak into rebrand
+  // mode, which keeps writing LF regardless of the manifest's own line ending.
+  it('writes the manifest with LF even when it was CRLF (CRLF rule is anchor-mode only)', () => {
+    const raw = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+    const crlf = JSON.stringify(raw, null, 2).replace(/\n/g, '\r\n') + '\r\n'
+    writeManifest(root, crlf)
+    runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+    expect(readFileSync(join(root, 'package.json'), 'utf8')).not.toContain('\r')
+  })
+
+  // Regression (T14): anchor mode trims `--name`; rebrand mode keeps writing it verbatim.
+  it('writes --name verbatim, without trimming (trimming is anchor-mode only)', () => {
+    runForkInit(parseForkInitArgs([...B_ARGS, '--name', '  pkg-x  ']), { projectRoot: root })
+    expect(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name).toBe('  pkg-x  ')
   })
 })
 
