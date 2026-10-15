@@ -36,6 +36,11 @@ vi.mock('vitepress', () => ({
 }))
 
 import MergedNav from '../../../.vitepress/theme/components/MergedNav.vue'
+import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
+
+// T70/AC-C1: built from SITE_ORIGIN with plain string operations, not shortLinkDisplay, so this
+// file tests the component's own output against the real origin.
+const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 
 function makeI18n(locale: 'en' | 'zh-TW') {
   return createI18n({
@@ -446,7 +451,7 @@ describe('MergedNav', () => {
 describe('MergedNav short link', () => {
   it('shows the challenge short link beside the title', () => {
     const wrapper = mountIn('en')
-    expect(wrapper.find('[data-short-link]').text()).toBe('wxl.browserlab.online/c/001')
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/001`)
   })
 
   it('keeps the short link visible while the description panel is collapsed', () => {
@@ -461,7 +466,7 @@ describe('MergedNav short link', () => {
     // otherwise ship `/c/001` into its static HTML.
     mockLocaleIndex.value = 'zh-TW'
     const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n('en')] } })
-    expect(wrapper.find('[data-short-link]').text()).toBe('wxl.browserlab.online/zh/c/001')
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh/c/001`)
   })
 
   it('shows no short link for a challenge that carries no number', () => {

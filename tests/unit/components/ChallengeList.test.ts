@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { ChallengeData } from '../../../platform/shared/challenges.data'
+import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
+
+// T70/AC-C1: built from SITE_ORIGIN with plain string operations, not shortLinkDisplay, so this
+// file tests the component's own output against the real origin.
+const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 
 // The page's own locale, as VitePress resolves it from the page's relativePath.
 // Mutable so a test can put the component on a zh-TW page while the vue-i18n runtime
@@ -118,8 +123,8 @@ describe('ChallengeList short links', () => {
   it('shows each row its own short link', () => {
     const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
     const links = wrapper.findAll('[data-short-link]').map((el) => el.text())
-    expect(links).toContain('wxl.browserlab.online/c/001')
-    expect(links).toContain('wxl.browserlab.online/c/003')
+    expect(links).toContain(`${DISPLAY_ORIGIN}/c/001`)
+    expect(links).toContain(`${DISPLAY_ORIGIN}/c/003`)
   })
 
   it('does not navigate when the copy control is activated', async () => {
@@ -142,7 +147,7 @@ describe('ChallengeList short links', () => {
 
     await row!.find('[data-copy-link]').trigger('click')
 
-    expect(writeText).toHaveBeenCalledWith('https://wxl.browserlab.online/c/001')
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
     expect(onRowClick).not.toHaveBeenCalled()
   })
 })

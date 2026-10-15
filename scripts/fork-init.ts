@@ -163,6 +163,20 @@ function validateOriginValue(raw: string, host: 'github-pages' | 'cloudflare-pag
   return `https://${hostPart.toLowerCase()}${pathPart}`
 }
 
+/** T70/AC-C1: whether `raw` matches the origin grammar (traceability.md, "Origin grammar"),
+ *  ignoring the `--host cloudflare-pages` path restriction (a caller-supplied condition, not part
+ *  of the grammar itself — see `validateOriginValue`). Exported so S6's component tests reuse this
+ *  exact grammar instead of re-implementing it (Note 8, T-0011). */
+export function matchesOriginGrammar(raw: string): boolean {
+  try {
+    validateOriginValue(raw, undefined)
+    return true
+  } catch (e) {
+    if (e instanceof ForkInitArgError) return false
+    throw e
+  }
+}
+
 /** T45: `--repo` is a single `owner/name` slug; the value itself is never trimmed. */
 function validateRepoValue(value: string): void {
   const firstSlash = value.indexOf('/')
@@ -467,7 +481,12 @@ export interface ForkInitResult {
   warnings: string[]
 }
 
-const UPSTREAM_SLUG = 'BrowserLaboratory/wxl-platform'
+// T44/AC-G1: exported so the guard and pristine tests (tests/unit/scripts/upstream-guard.test.ts)
+// build their fixtures from it instead of holding a second copy of the literal, and so the
+// upstream-only `if:`/`env` of T71 can be cross-checked against it (they themselves spell it
+// through `format`, never importing this directly, since a workflow YAML cannot import a TS
+// module).
+export const UPSTREAM_SLUG = 'BrowserLaboratory/wxl-platform'
 
 /**
  * A tree error (traceability.md: `exitCode` 1, nothing written) as a returned result, not a
@@ -529,13 +548,19 @@ function escapeForRegExp(literal: string): string {
  *  CR); trailing white space after the form is NOT an end of line, so it is not matched) — it never
  *  consumes the line ending itself, so CRLF files keep their line endings untouched (T11). An
  *  anchor form may be preceded by anything — approved by the user on 2026-10-14 (recorded in the
- *  T-0013 ticket): there is no left-hand boundary check. */
+ *  T-0013 ticket): there is no left-hand boundary check.
+ *
+ *  The slug sits in a capture group — never relied on by `runForkInit` itself (which only ever
+ *  checks match COUNT via `.match()` and performs a whole-match `.replace()`), but `DOC_ANCHORS`
+ *  (below, which carries every regex this function builds) is exported so S5's pristine check
+ *  (upstream-guard.test.ts) can read back exactly the slug fork-init itself recognised, instead of
+ *  re-deriving it with a second, boundary-unaware regex (Note 8, T-0011). */
 function docAnchorRegex(prefix: string, suffix: string, requireEol: boolean): RegExp {
-  const body = `${escapeForRegExp(prefix)}${OWNER_WILDCARD}/${NAME_WILDCARD}${escapeForRegExp(suffix)}`
+  const body = `${escapeForRegExp(prefix)}(${OWNER_WILDCARD}/${NAME_WILDCARD})${escapeForRegExp(suffix)}`
   return new RegExp(requireEol ? `${body}(?=\\r?\\n|\\r?$)` : body, 'g')
 }
 
-interface DocAnchor {
+export interface DocAnchor {
   id: 'A2' | 'A3' | 'A4' | 'A5'
   file: string
   regex: RegExp
@@ -545,7 +570,9 @@ interface DocAnchor {
 /** A2–A5 (traceability.md, "Identity anchors"): every occurrence of its form, in its file(s),
  *  carries the new repository slug — whatever repository slug it held. Declared once, in file
  *  order, so `runForkInit` below processes each anchor file's anchors together. */
-const DOC_ANCHORS: readonly DocAnchor[] = [
+// Exported so the guard and pristine tests recognise A2-A5 exactly as fork-init itself does
+// (Note 8, T-0011), instead of re-implementing the recognition rule.
+export const DOC_ANCHORS: readonly DocAnchor[] = [
   {
     id: 'A2',
     file: 'README.md',
@@ -676,30 +703,30 @@ const UPSTREAM_URL = `https://github.com/${UPSTREAM_SLUG}`
 
 /** A9's upstream form, exactly (traceability.md, "Identity anchors"). `--host` resets A9 to this
  *  line; the config's required `  base: siteBase,` line is never itself rewritten — only A9 is. */
-const A9_UPSTREAM_LINE = `const siteBase = process.env.SITE_BASE || '/'`
+export const A9_UPSTREAM_LINE = `const siteBase = process.env.SITE_BASE || '/'`
 const BASE_SITEBASE_LINE = '  base: siteBase,'
 // A9 candidate line (traceability.md: `^const siteBase = .+$`), tolerant of a trailing CRLF `\r`
 // the file's own line ending may have left on this line (T11: anchors are recognised in CRLF
 // files as in LF ones).
-const A9_CANDIDATE_RE = /^const siteBase = .+?\r?$/
-const BASE_SITEBASE_RE = /^ {2}base: siteBase,\r?$/
+export const A9_CANDIDATE_RE = /^const siteBase = .+?\r?$/
+export const BASE_SITEBASE_RE = /^ {2}base: siteBase,\r?$/
 
 /** Every known old `.github/workflows/deploy.yml` output, as the LF-normalised file's SHA-256
  *  (traceability.md, "Workflow states"): initially one value, the template at `72327e2`, which the
  *  engine wrote verbatim for every argument combination. T27 (0004-S5, an upstream-only test) pins
  *  the current template's hash separately and fails until a changed template's old hash has moved
  *  into this list. */
-const KNOWN_OLD_DEPLOY_SHA256: readonly string[] = [
+export const KNOWN_OLD_DEPLOY_SHA256: readonly string[] = [
   '0cf52f116082bed48b19462d02b6827123a26cf882a428f841cd6646f73f7276',
 ]
 
 /** CRLF normalised to LF — the comparison traceability.md's "Workflow states" and T25 require for
  *  every deploy-workflow byte comparison and hash in anchor mode. */
-function normalizeLf(s: string): string {
+export function normalizeLf(s: string): string {
   return s.replace(/\r\n/g, '\n')
 }
 
-function sha256Hex(s: string): string {
+export function sha256Hex(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex')
 }
 
@@ -912,13 +939,13 @@ function parseJsStringLiteral(s: string): string | null {
   return result
 }
 
-function isJsStringLiteral(s: string): boolean {
+export function isJsStringLiteral(s: string): boolean {
   return parseJsStringLiteral(s) !== null
 }
 
 /** Decodes a JS string literal already known (by its caller, via `isJsStringLiteral`) to parse —
  *  used only to compare an EXISTING A8 value against the upstream origin and the new one (T81). */
-function evalJsStringLiteral(literal: string): string {
+export function evalJsStringLiteral(literal: string): string {
   const result = parseJsStringLiteral(literal)
   if (result === null) {
     // Unreachable in practice: every caller only reaches this after `isJsStringLiteral` (the same
@@ -950,8 +977,8 @@ function findMatchingLines(lines: readonly string[], re: RegExp): number[] {
 
 // A6 (VitePress config site title, traceability.md "Identity anchors"): candidate lines
 // `^  title: .+,$` (exactly two spaces), CRLF-tolerant; its value is a JS string literal.
-const A6_CANDIDATE_RE = /^ {2}title: .+,\r?$/
-const A6_VALUE_RE = /^ {2}title: (.+?),\r?$/
+export const A6_CANDIDATE_RE = /^ {2}title: .+,\r?$/
+export const A6_VALUE_RE = /^ {2}title: (.+?),\r?$/
 
 /** A6's new line, given the already-JSON-stringified new title literal; keeps the line's own CRLF. */
 function a6LineFor(line: string, newLiteral: string): string {
@@ -961,8 +988,8 @@ function a6LineFor(line: string, newLiteral: string): string {
 // A8 (short-link module, traceability.md "Identity anchors"): candidate lines
 // `^export const SITE_ORIGIN = .+$`; its value is a JS string literal (a trailing `;` makes the
 // value fail to parse, per the stated exception in traceability.md).
-const A8_CANDIDATE_RE = /^export const SITE_ORIGIN = .+\r?$/
-const A8_VALUE_RE = /^export const SITE_ORIGIN = (.+?)\r?$/
+export const A8_CANDIDATE_RE = /^export const SITE_ORIGIN = .+\r?$/
+export const A8_VALUE_RE = /^export const SITE_ORIGIN = (.+?)\r?$/
 
 function a8LineFor(line: string, newLiteral: string): string {
   return `export const SITE_ORIGIN = ${newLiteral}${line.endsWith('\r') ? '\r' : ''}`
@@ -971,7 +998,9 @@ function a8LineFor(line: string, newLiteral: string): string {
 // A7 (home-page hero name, traceability.md "Identity anchors"): candidate lines `^  name: .+$`
 // (exactly two spaces), inside the first `---` frontmatter block, after the column-0 `hero:` line
 // and before the next column-0 key.
-const A7_CANDIDATE_RE = /^ {2}name: .+\r?$/
+// Exported so S5's pristine check (upstream-guard.test.ts) can find A7's candidate lines the same
+// way fork-init itself does, instead of re-implementing the pattern (Note 8, T-0011).
+export const A7_CANDIDATE_RE = /^ {2}name: .+\r?$/
 
 /** The indices of A7's candidate lines in `lines` (traceability.md's scoping rule), or `[]` when
  *  there is no frontmatter, no column-0 `hero:` line inside it, or no candidate under it. The
@@ -979,7 +1008,7 @@ const A7_CANDIDATE_RE = /^ {2}name: .+\r?$/
  *  looks like frontmatter further down the file (after other prose) is not one (T9): unlike a
  *  Markdown parser, this scan never backtracks to "the first `---` anywhere", so a body divider
  *  can never be mistaken for the real frontmatter fence. */
-function findA7Candidates(lines: readonly string[]): number[] {
+export function findA7Candidates(lines: readonly string[]): number[] {
   const stripped = lines.map((l) => l.replace(/\r$/, ''))
   if (stripped[0] !== '---') return []
   const isDashes = (s: string) => s === '---'
@@ -1001,30 +1030,38 @@ function findA7Candidates(lines: readonly string[]): number[] {
   return candidates
 }
 
-/** Whether `line` is one YAML scalar shaped the way A7's existing value must already be in to be
+/** Parses `line` as one YAML scalar shaped the way A7's existing value must already be in to be
  *  replaced (traceability.md: parses as a one-key map whose value is a string, not a block scalar,
  *  with nothing after it on the line — a trailing `# comment` is unparsable, caught here via the
- *  `yaml` package's own comment tracking) (T9). The decoded value itself is never used (A7's new
- *  value always comes from `--site-name`, never from the old line) — only whether `line` has this
- *  shape at all. */
-function isA7ScalarValue(line: string): boolean {
+ *  `yaml` package's own comment tracking) (T9), returning the decoded string value, or `null` when
+ *  `line` does not have this shape. Exported so S5's pristine check (upstream-guard.test.ts)
+ *  compares A7's actual decoded value against the YAML scalar rule the engine uses, instead of
+ *  decoding it with the unrelated JS-string-literal rule A6/A8 use (Note 8, T-0011). */
+export function parseA7ScalarValue(line: string): string | null {
   const content = line.replace(/\r$/, '').trim()
   let doc: ReturnType<typeof parseYamlDocument>
   try {
     doc = parseYamlDocument(content, { logLevel: 'silent' })
   } catch {
-    return false
+    return null
   }
-  if (doc.errors.length > 0) return false
+  if (doc.errors.length > 0) return null
   const map = doc.contents
-  if (!isMap(map) || map.items.length !== 1) return false
+  if (!isMap(map) || map.items.length !== 1) return null
   const pair = map.items[0]
-  if (!isPair(pair) || !isScalar(pair.key) || pair.key.value !== 'name') return false
+  if (!isPair(pair) || !isScalar(pair.key) || pair.key.value !== 'name') return null
   const val = pair.value
-  if (!isScalar(val)) return false
-  if (val.type === 'BLOCK_LITERAL' || val.type === 'BLOCK_FOLDED') return false
-  if (val.comment !== undefined && val.comment !== null) return false
-  return typeof val.value === 'string'
+  if (!isScalar(val)) return null
+  if (val.type === 'BLOCK_LITERAL' || val.type === 'BLOCK_FOLDED') return null
+  if (val.comment !== undefined && val.comment !== null) return null
+  return typeof val.value === 'string' ? val.value : null
+}
+
+/** Whether `line` is one YAML scalar shaped the way A7's existing value must already be in to be
+ *  replaced (T9). The decoded value itself is never used here (A7's new value always comes from
+ *  `--site-name`, never from the old line) — only whether `line` has this shape at all. */
+function isA7ScalarValue(line: string): boolean {
+  return parseA7ScalarValue(line) !== null
 }
 
 /** A7's new line, given the already-JSON-stringified new name literal; keeps the line's own CRLF. */

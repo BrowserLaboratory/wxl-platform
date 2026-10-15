@@ -12,6 +12,11 @@ permissions:
 
 jobs:
   release:
+    # Upstream-only (T-0011): a fork's release tag push must not create a GitHub Release or build
+    # upstream's asset. Spelled through format(), never UPSTREAM_SLUG, since a workflow YAML cannot
+    # import a TS module (traceability.md, "confinement"); pinned by
+    # tests/unit/workflows/upstream-only-jobs.test.ts.
+    if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')
     runs-on: ubuntu-latest
 
     steps:
