@@ -10,10 +10,14 @@
  *                  [--name <pkg-name>] [--description <text>]
  *                  [--rebrand <newshortname>] [--dry-run]
  *
- * Modes (both currently walk the whole tree for identity fields, base and the upstream-slug
- * swap, plus the deploy workflow):
- *   A (default)          identity fields, base, upstream-slug swap, deploy workflow.
- *   B (--rebrand <name>) also renames the four runtime-sensitive keys (deterministic,
+ * Modes:
+ *   A (default)          rewrites only the identity anchors (traceability.md's A1-A5): the
+ *                        manifest (structured), the doc-anchor forms in README.md,
+ *                        README.en.md and CONTRIBUTE.md — wherever they occur, whatever
+ *                        repository slug they held — the base line, and the deploy workflow.
+ *                        No tree walk; every other file is byte-identical.
+ *   B (--rebrand <name>) today's path: walks the whole tree doing the upstream-slug swap and
+ *                        also renames the four runtime-sensitive keys (deterministic,
  *                        structure-aware), plus an HONEST residual inventory of every
  *                        remaining case-insensitive `wxl` (which is NOT auto-renamed — see
  *                        "Why not rename every wxl?" below).
@@ -42,6 +46,11 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
+  statSync,
+  lstatSync,
+  chmodSync,
+  renameSync,
+  unlinkSync,
 } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -321,12 +330,19 @@ const UPSTREAM_SLUG = 'BrowserLaboratory/wxl-platform'
 
 /**
  * A tree error (traceability.md: `exitCode` 1, nothing written) as a returned result, not a
- * throw — only `parseForkInitArgs` throws (`ForkInitArgError`), for argument errors. Today the
- * only checked tree error is the manifest check (A1) below; a filesystem failure elsewhere in the
- * walk (e.g. a permission error) still throws an uncaught exception until T55 wraps it. Every
- * exitCode 1 `ForkInitResult` — every value this function returns — carries empty
+ * throw — only `parseForkInitArgs` throws (`ForkInitArgError`), for argument errors. The manifest
+ * check (A1) below and, in anchor mode, a write failure partway through (T55) both return one of
+ * these. Every exitCode 1 `ForkInitResult` — every value this function returns — carries empty
  * changedFiles/sensitiveKeys/residualFiles/residualHits/warnings arrays: nothing is collected
  * before the error surfaces.
+ *
+ * Every CHECKED tree error — a condition this function itself tests for and deliberately returns
+ * one of these for (the manifest check (A1) above all of them) — is returned before any write
+ * happens in the same run. A write failure, by contrast, can only happen once the write phase has
+ * begun (T55): its own tree error still carries these same empty arrays, but any file that phase
+ * had already written stays on disk (T6's convergence then applies on a re-run) — "nothing
+ * written" describes this function's own bookkeeping, not an undo of earlier writes in the same
+ * run.
  */
 function treeError(message: string): ForkInitResult {
   return {
@@ -345,6 +361,148 @@ function treeError(message: string): ForkInitResult {
  *  replaced wholesale instead of producing spread-indexed keys (T13). */
 function asPlainObject(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+/** T4/T11: the manifest's line ending, decided by its FIRST line break only (a file with no line
+ *  break at all has no first line ending, so it is treated as LF). */
+function firstLineEnding(raw: string): '\r\n' | '\n' {
+  const nl = raw.indexOf('\n')
+  return nl > 0 && raw[nl - 1] === '\r' ? '\r\n' : '\n'
+}
+
+// ─── doc anchors (A2–A5, anchor mode only) ──────────────────────────────────
+
+// traceability.md, "Repository-slug grammar", the wildcard forms used to recognise a doc anchor
+// (distinct from T45's stricter grammar for a --repo VALUE): owner has no leading/trailing `-`;
+// name allows `.`, `_` and `-`.
+const OWNER_WILDCARD = `[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?`
+const NAME_WILDCARD = `[A-Za-z0-9._-]+`
+
+function escapeForRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** A doc-anchor form: `prefix` + any repository slug + `suffix`, built as a global regex so every
+ *  occurrence is found and replaced in one pass. `requireEol` adds the "end of the line" lookahead
+ *  A3/A4 need (traceability.md: before LF or CRLF, or at the end of the file (optionally after a
+ *  CR); trailing white space after the form is NOT an end of line, so it is not matched) — it never
+ *  consumes the line ending itself, so CRLF files keep their line endings untouched (T11). An
+ *  anchor form may be preceded by anything — approved by the user on 2026-10-14 (recorded in the
+ *  T-0013 ticket): there is no left-hand boundary check. */
+function docAnchorRegex(prefix: string, suffix: string, requireEol: boolean): RegExp {
+  const body = `${escapeForRegExp(prefix)}${OWNER_WILDCARD}/${NAME_WILDCARD}${escapeForRegExp(suffix)}`
+  return new RegExp(requireEol ? `${body}(?=\\r?\\n|\\r?$)` : body, 'g')
+}
+
+interface DocAnchor {
+  id: 'A2' | 'A3' | 'A4' | 'A5'
+  file: string
+  regex: RegExp
+  replacement: (repo: string) => string
+}
+
+/** A2–A5 (traceability.md, "Identity anchors"): every occurrence of its form, in its file(s),
+ *  carries the new repository slug — whatever repository slug it held. Declared once, in file
+ *  order, so `runForkInit` below processes each anchor file's anchors together. */
+const DOC_ANCHORS: readonly DocAnchor[] = [
+  {
+    id: 'A2',
+    file: 'README.md',
+    regex: docAnchorRegex('https://github.com/', '/actions/workflows/quality-gates.yml', false),
+    replacement: (repo) => `https://github.com/${repo}/actions/workflows/quality-gates.yml`,
+  },
+  {
+    id: 'A3',
+    file: 'README.md',
+    regex: docAnchorRegex('git clone https://github.com/', '.git', true),
+    replacement: (repo) => `git clone https://github.com/${repo}.git`,
+  },
+  {
+    id: 'A2',
+    file: 'README.en.md',
+    regex: docAnchorRegex('https://github.com/', '/actions/workflows/quality-gates.yml', false),
+    replacement: (repo) => `https://github.com/${repo}/actions/workflows/quality-gates.yml`,
+  },
+  {
+    id: 'A3',
+    file: 'README.en.md',
+    regex: docAnchorRegex('git clone https://github.com/', '.git', true),
+    replacement: (repo) => `git clone https://github.com/${repo}.git`,
+  },
+  {
+    id: 'A4',
+    file: 'CONTRIBUTE.md',
+    regex: docAnchorRegex('git remote add upstream https://github.com/', '.git', true),
+    replacement: (repo) => `git remote add upstream https://github.com/${repo}.git`,
+  },
+  {
+    id: 'A5',
+    file: 'CONTRIBUTE.md',
+    regex: docAnchorRegex('(https://github.com/', '/issues)', false),
+    replacement: (repo) => `(https://github.com/${repo}/issues)`,
+  },
+]
+
+/** Write `content` to `rel` through `<file>.fork-init-tmp` + rename (traceability.md, T55; the
+ *  root `.gitignore` ignores the temporary name). A temp file left over from an earlier,
+ *  interrupted run is removed first — `lstatSync`, not `statSync`, so a symbolic link at that name
+ *  is detected without being followed, and unlinked rather than having its target touched; if that
+ *  `lstatSync` itself throws (no leftover temp file to begin with), this is the ordinary case and
+ *  is swallowed, but if the leftover DOES exist and its `unlinkSync` fails, that failure is NOT
+ *  swallowed — it propagates (becoming an `AnchorWriteError` at the call site) rather than falling
+ *  through to write the fresh content through whatever that leftover name still points at (e.g. a
+ *  symlink). The fresh temp file is then written and renamed over the original, and only THEN does
+ *  the original's permission bits get re-applied to the now-renamed target (best-effort keeps them
+ *  when the target already existed; not observed by any test). If anything fails after the temp
+ *  file is (or may be) written, that temp file is removed, best-effort, before the failure
+ *  propagates to the caller, which turns it into a tree error naming the file. */
+function writeAnchorFile(absPath: string, content: string, encoding: BufferEncoding = 'utf8'): void {
+  mkdirSync(dirname(absPath), { recursive: true })
+  const tmpPath = `${absPath}.fork-init-tmp`
+  let leftoverTmpExists = false
+  try {
+    lstatSync(tmpPath)
+    leftoverTmpExists = true
+  } catch {
+    // no leftover temp file to remove before this run's own write
+  }
+  if (leftoverTmpExists) {
+    // Do NOT catch this: a leftover temp file that cannot be removed must not be written through.
+    unlinkSync(tmpPath)
+  }
+  let mode: number | undefined
+  try {
+    mode = statSync(absPath).mode
+  } catch {
+    mode = undefined
+  }
+  try {
+    writeFileSync(tmpPath, content, encoding)
+    renameSync(tmpPath, absPath)
+    if (mode !== undefined) chmodSync(absPath, mode)
+  } catch (err) {
+    try {
+      unlinkSync(tmpPath)
+    } catch {
+      // best-effort only; the temp file may never have been created, or may already be gone
+    }
+    throw err
+  }
+}
+
+/** Carries the repo-relative path a `writeAnchorFile` failure was for, so the single `try`/`catch`
+ *  around anchor mode's writes (T55) can name it in the returned tree error without every call
+ *  site repeating that plumbing. The message names only the relative path and the error code —
+ *  never Node's own message (which would embed the absolute `projectRoot` path and, inside it, the
+ *  `.fork-init-tmp` temp-file name) — and keeps the original error as `cause` for anyone inspecting
+ *  the exception directly. Rebrand mode's writes never throw this (they call `writeFileSync`
+ *  directly), so an exception there still propagates unwrapped, as today. */
+class AnchorWriteError extends Error {
+  readonly rel: string
+  constructor(rel: string, cause: Error) {
+    super(`failed to write ${rel} (${(cause as NodeJS.ErrnoException).code ?? 'unknown'})`, { cause })
+    this.rel = rel
+  }
 }
 
 // Directories/files never touched by any rewrite.
@@ -402,10 +560,24 @@ export function runForkInit(
   const readIf = (rel: string): string | null =>
     existsSync(abs(rel)) ? readFileSync(abs(rel), 'utf8') : null
 
-  const applyEdit = (rel: string, next: string, prev: string) => {
+  // Rebrand mode writes in place and fails as today; anchor mode writes through
+  // `<file>.fork-init-tmp` + rename (T55), so a write failure partway through is a tree error
+  // (caught by the caller below), never a half-written file. `encoding` defaults to `utf8` (the
+  // manifest and the config are both always-valid-UTF-8 sources); doc-anchor files pass `latin1`
+  // so an invalid UTF-8 byte outside any anchor form round-trips unchanged (T1).
+  const applyEdit = (rel: string, next: string, prev: string, encoding: BufferEncoding = 'utf8') => {
     if (next === prev) return
     changedFiles.push(rel)
-    if (!args.dryRun) writeFileSync(abs(rel), next)
+    if (args.dryRun) return
+    if (args.rebrand) {
+      writeFileSync(abs(rel), next, encoding)
+      return
+    }
+    try {
+      writeAnchorFile(abs(rel), next, encoding)
+    } catch (err) {
+      throw new AnchorWriteError(rel, err as Error)
+    }
   }
 
   // The env-var / JS-identifier seed for the WXL_VERIFY_RUNTIME rename: uppercased, with any
@@ -433,9 +605,9 @@ export function runForkInit(
       }
     }
   }
-  // A + B text transform for one file: sensitive-key rename (B, on original content) ->
-  // upstream-slug swap (A) -> VitePress base (config only). Returns the keys hit so the caller
-  // records them ONLY when it actually commits this content.
+  // Rebrand-mode-only text transform for one file (anchor mode never calls this): sensitive-key
+  // rename (on original content) -> upstream-slug swap -> VitePress base (config only). Returns
+  // the keys hit so the caller records them ONLY when it actually commits this content.
   const transformText = (rel: string, raw: string): { next: string; keysHit: string[] } => {
     let next = raw
     const keysHit: string[] = []
@@ -473,75 +645,189 @@ export function runForkInit(
     return treeError(`A1: ${PKG_REL} must be a JSON object`)
   }
 
-  // ── A-mode: package.json identity (structured) ──
-  {
+  try {
+    // ── A1: package.json identity (structured), both modes ──
     const pkgObj = pkg as Record<string, unknown>
-    pkgObj.version = '0.1.0'
+    const existingRepository = pkgObj.repository
+    // T15 "first conversion" (traceability.md): before any edit, `repository` is an object whose
+    // `url` is EXACTLY upstream's `git+https://...` URL (case-sensitive) — checked on the
+    // original value, before the T13 replacement below turns a non-object `repository` into one.
+    const firstConversion =
+      typeof existingRepository === 'object' &&
+      existingRepository !== null &&
+      !Array.isArray(existingRepository) &&
+      (existingRepository as Record<string, unknown>).url === `git+https://github.com/${UPSTREAM_SLUG}.git`
+
     pkgObj.author = args.author
     // T13: `repository`/`bugs` that is not a plain object is replaced wholesale; a plain object
     // keeps its other keys (only `repository.type`/`url` and `bugs.url` are set).
     pkgObj.repository = { ...asPlainObject(pkgObj.repository), type: 'git', url: `git+https://github.com/${args.repo}.git` }
     pkgObj.bugs = { ...asPlainObject(pkgObj.bugs), url: `https://github.com/${args.repo}/issues` }
     pkgObj.homepage = `https://github.com/${args.repo}#readme`
-    pkgObj.license = 'ECL-2.0'
-    if (args.rebrand) pkgObj.name = args.name ?? args.rebrand
-    else if (args.name) pkgObj.name = args.name
-    if (args.description) pkgObj.description = args.description
-    const pkgNext = JSON.stringify(pkgObj, null, 2) + '\n'
-    applyEdit(PKG_REL, pkgNext, pkgRaw)
-    if (args.rebrand) scanResidual(PKG_REL, pkgNext)
-  }
-
-  // Read the deploy template up front: it decides whether the deploy target is handled by the
-  // dedicated block below. Only skip DEPLOY_REL in the walk when that block will handle it — so
-  // if the template is absent, an existing deploy.yml is still inventoried like any active file
-  // (never silently omitted -> no false "clean").
-  const tmplRaw = readIf(DEPLOY_TEMPLATE_REL)
-
-  // ── A + B on every active text file, computed in memory, written once. ──
-  for (const rel of walkTextFiles(root)) {
-    if (rel === PKG_REL) continue // structured above
-    if (rel === DEPLOY_REL && tmplRaw !== null) continue // handled with the deploy copy below
-    const raw = readIf(rel)
-    if (raw === null) continue
-    const { next, keysHit } = transformText(rel, raw)
-    applyEdit(rel, next, raw)
-    for (const k of keysHit) recordSensitive(k, rel)
-    if (args.rebrand) scanResidual(rel, next)
-  }
-
-  // ── A-mode: copy deploy workflow — transformed like any active file, then inventoried, so a
-  //   `wxl` in the tool-created workflow is never omitted from the honest inventory. Handled
-  //   here (not in the walk) because on a fresh fork the target does not exist yet; never
-  //   clobbers a customized deploy.yml. ──
-  if (tmplRaw) {
-    const { next: deployContent, keysHit } = transformText(DEPLOY_REL, tmplRaw)
-    const existing = readIf(DEPLOY_REL)
-    if (existing === null) {
-      changedFiles.push(DEPLOY_REL)
-      if (!args.dryRun) {
-        mkdirSync(dirname(abs(DEPLOY_REL)), { recursive: true })
-        writeFileSync(abs(DEPLOY_REL), deployContent)
-      }
-      // The workflow deploys on a `v*` tag, but a fresh repo's `github-pages`
-      // environment only authorises the default branch. Without the tag rule the
-      // first release fails inside the deploy job, and nothing in that error
-      // points back at an environment setting the fork owner never saw.
-      warnings.push(
-        `${DEPLOY_REL} deploys on a \`v*\` tag push. GitHub's \`github-pages\` environment authorises only the default branch by default, so add a Tag rule \`v*\` under Settings > Environments > github-pages > "Deployment branches and tags" (keep the existing \`main\` rule — workflow_dispatch needs it) before cutting a release.`,
-      )
-      for (const k of keysHit) recordSensitive(k, DEPLOY_REL)
-      if (args.rebrand) scanResidual(DEPLOY_REL, deployContent)
-    } else {
-      // Already present: never clobber. Warn only if it diverges from our generated content,
-      // and inventory the file that is actually on disk (honest about its real content).
-      if (existing !== deployContent) {
-        warnings.push(
-          `${DEPLOY_REL} already exists with different content — left untouched; merge the deploy workflow manually if needed.`,
-        )
-      }
-      if (args.rebrand) scanResidual(DEPLOY_REL, existing)
+    // T15: rebrand mode resets `version`/`license` unconditionally (today's behaviour); anchor
+    // mode only on first conversion, so a teacher's later manual version bump survives every
+    // subsequent run.
+    if (args.rebrand || firstConversion) {
+      pkgObj.version = '0.1.0'
+      pkgObj.license = 'ECL-2.0'
     }
+    if (args.rebrand) {
+      pkgObj.name = args.name ?? args.rebrand
+      if (args.description) pkgObj.description = args.description
+    } else {
+      // T14: anchor mode trims `--name`/`--description`; empty after trim, or not given, leaves
+      // the manifest's current value alone (rebrand mode keeps today's untrimmed handling above).
+      if (args.name !== undefined) {
+        const trimmedName = args.name.trim()
+        if (trimmedName !== '') pkgObj.name = trimmedName
+      }
+      if (args.description !== undefined) {
+        const trimmedDescription = args.description.trim()
+        if (trimmedDescription !== '') pkgObj.description = trimmedDescription
+      }
+    }
+    const pkgNextLf = JSON.stringify(pkgObj, null, 2) + '\n'
+    // T4/T11: re-serialised in the manifest's own line-ending style — CRLF when its FIRST line
+    // ending is CRLF, LF otherwise (a file with no newline at all has no first line ending, so it
+    // gets LF) — but only in anchor mode; rebrand mode keeps writing LF, as today.
+    const pkgNext = !args.rebrand && firstLineEnding(pkgRaw) === '\r\n' ? pkgNextLf.replace(/\n/g, '\r\n') : pkgNextLf
+    if (args.rebrand) {
+      // Rebrand mode writes immediately, as today. Anchor mode computes this same content but
+      // defers its own write to the end of the A-mode branch below (compute before write).
+      applyEdit(PKG_REL, pkgNext, pkgRaw)
+      scanResidual(PKG_REL, pkgNext)
+    }
+
+    // Read the deploy template up front: it decides whether the deploy target is handled by the
+    // dedicated block below. If the template is absent, an existing deploy.yml in rebrand mode's
+    // walk is still inventoried like any active file (never silently omitted -> no false "clean").
+    const tmplRaw = readIf(DEPLOY_TEMPLATE_REL)
+    // Read any existing deploy.yml here too, alongside the template — before either mode's write
+    // phase begins — so the compute-before-write property (anchor mode's own goal below) also
+    // covers the one read the deploy block further down used to make on its own, after other
+    // files had already been written.
+    const existingDeploy = readIf(DEPLOY_REL)
+
+    if (args.rebrand) {
+      // ── B mode: today's tree-wide swap, kept exactly as before (T51). ──
+      for (const rel of walkTextFiles(root)) {
+        if (rel === PKG_REL) continue // structured above
+        if (rel === DEPLOY_REL && tmplRaw !== null) continue // handled with the deploy copy below
+        const raw = readIf(rel)
+        if (raw === null) continue
+        const { next, keysHit } = transformText(rel, raw)
+        applyEdit(rel, next, raw)
+        for (const k of keysHit) recordSensitive(k, rel)
+        scanResidual(rel, next)
+      }
+    } else {
+      // ── A mode: only the doc anchors (A2–A5, traceability.md) and the config's base line. No
+      //   tree walk — every file outside A1–A9 and the workflow is byte-identical (T3).
+      //
+      //   Every CHECKED read/content computation below happens before anything is written —
+      //   including the manifest, whose own write was deferred above, and the deploy workflow's
+      //   own existing-file read, moved up above this branch — so the write phase that follows is
+      //   the only place a write failure (T55) can still occur. A read failure that is not one of
+      //   this function's own checks (e.g. a doc-anchor path that is a directory) is not caught
+      //   here: it propagates as an uncaught exception, same as it did before this restructuring
+      //   — T2 governs only "the file does not exist", never any other read failure. ──
+      const anchorsByFile = new Map<string, DocAnchor[]>()
+      for (const anchor of DOC_ANCHORS) {
+        if (!anchorsByFile.has(anchor.file)) anchorsByFile.set(anchor.file, [])
+        anchorsByFile.get(anchor.file)!.push(anchor)
+      }
+
+      // ── compute phase ──
+      const docWrites: Array<{ file: string; next: string; raw: string }> = []
+      for (const [file, anchors] of anchorsByFile) {
+        // Read as a Buffer, decoded latin1 (not utf8): a byte-for-byte reversible mapping, so any
+        // invalid UTF-8 outside the anchor forms round-trips unchanged — the forms themselves are
+        // ASCII, which latin1 decodes identically to utf8, so the matching below is unaffected. A
+        // read failure other than "the file does not exist" (e.g. the path is a directory) is NOT
+        // caught here (T2): it throws, uncaught, before any write in this run — same as every
+        // other anchor file's read failure, which this ticket leaves untouched.
+        const raw: string | null = existsSync(abs(file)) ? readFileSync(abs(file)).toString('latin1') : null
+        if (raw === null) {
+          for (const anchor of anchors) warnings.push(`${anchor.id}: ${file} is missing`)
+          continue
+        }
+        let next = raw
+        for (const anchor of anchors) {
+          const matches = next.match(anchor.regex)
+          if (!matches || matches.length === 0) {
+            warnings.push(`${anchor.id}: no occurrence of its form in ${file}`)
+          } else {
+            next = next.replace(anchor.regex, () => anchor.replacement(args.repo))
+          }
+        }
+        docWrites.push({ file, next, raw })
+      }
+
+      // The base line, through today's path (setViteBase): no slug swap, A9 stays T-0014's job
+      // (S1 decision, 2026-10-14 — see the ticket's Notes).
+      const cfgRaw = readIf(CONFIG_REL)
+      const cfgNext = cfgRaw !== null ? setViteBase(cfgRaw, args.base) : null
+
+      // ── write phase: the config (a subdirectory file) first, then the manifest (root) whose
+      //   write was deferred above, then the doc anchors (also root) — so a root-directory write
+      //   failure can still be observed, in a test, to leave an already-written subdirectory file
+      //   in place (traceability.md, T55: "files already written stay"). ──
+      if (cfgRaw !== null) applyEdit(CONFIG_REL, cfgNext!, cfgRaw)
+      applyEdit(PKG_REL, pkgNext, pkgRaw)
+      for (const { file, next, raw } of docWrites) applyEdit(file, next, raw, 'latin1')
+    }
+
+    // ── deploy workflow, without --host (both modes): installed when absent; an existing
+    //   different file is left untouched, with a warning. T-0014 adds --host. ──
+    if (tmplRaw) {
+      const { next: deployContent, keysHit: deployKeysHit } = args.rebrand
+        ? transformText(DEPLOY_REL, tmplRaw)
+        : { next: tmplRaw, keysHit: [] as string[] }
+      const existing = existingDeploy
+      if (existing === null) {
+        changedFiles.push(DEPLOY_REL)
+        if (!args.dryRun) {
+          if (args.rebrand) {
+            mkdirSync(dirname(abs(DEPLOY_REL)), { recursive: true })
+            writeFileSync(abs(DEPLOY_REL), deployContent)
+          } else {
+            try {
+              writeAnchorFile(abs(DEPLOY_REL), deployContent)
+            } catch (err) {
+              throw new AnchorWriteError(DEPLOY_REL, err as Error)
+            }
+          }
+        }
+        // The workflow deploys on a `v*` tag, but a fresh repo's `github-pages`
+        // environment only authorises the default branch. Without the tag rule the
+        // first release fails inside the deploy job, and nothing in that error
+        // points back at an environment setting the fork owner never saw.
+        warnings.push(
+          `${DEPLOY_REL} deploys on a \`v*\` tag push. GitHub's \`github-pages\` environment authorises only the default branch by default, so add a Tag rule \`v*\` under Settings > Environments > github-pages > "Deployment branches and tags" (keep the existing \`main\` rule — workflow_dispatch needs it) before cutting a release.`,
+        )
+        if (args.rebrand) {
+          for (const k of deployKeysHit) recordSensitive(k, DEPLOY_REL)
+          scanResidual(DEPLOY_REL, deployContent)
+        }
+      } else {
+        // Already present: left untouched. Warn only if it diverges from our generated content,
+        // and inventory the file that is actually on disk (honest about its real content).
+        if (existing !== deployContent) {
+          warnings.push(
+            `${DEPLOY_REL} already exists with different content — left untouched; merge the deploy workflow manually if needed.`,
+          )
+        }
+        if (args.rebrand) scanResidual(DEPLOY_REL, existing)
+      }
+    }
+  } catch (err) {
+    // In anchor mode, a write failure partway is a tree error asking the teacher to run the same
+    // command again (T6 then converges); in rebrand mode a write failure still propagates
+    // unwrapped, as today.
+    if (err instanceof AnchorWriteError) {
+      return treeError(`${err.message}; run the same command again`)
+    }
+    throw err
   }
 
   // ── B-mode residual summary ──
