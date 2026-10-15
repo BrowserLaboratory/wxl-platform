@@ -2,7 +2,7 @@
 id: T-0016
 title: Document the new fork path, and verify a configured range end to end
 epic: 0004-stateless-engine
-status: processing
+status: review
 blocked_by: [T-0015, T-0011]
 ---
 
@@ -18,7 +18,7 @@ README and README.en rewrite the fork section, the `fork:init` command row and t
 
 ## Acceptance criteria
 
-- [ ] T73–T75: the two exports of S7 (stage 8, local)
+- [x] T73–T75: the two exports of S7 (stage 8, local)
 - [x] T77: README strings (S9)
 - [x] T78: skill strings and `cmp` (S9)
 - [x] T79: glossary strings and test run (S9)
@@ -724,3 +724,111 @@ disposition) confirms every count is unchanged from the pass recorded earlier in
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0016.md`. Eleven candidates, independently filtered: no exploitable defect. One kept (OQ-018's service-worker scope premise, fixed in the stage 6 and 7 disposition above); the other ten were documentation-versus-behaviour mismatches, fixed there too.
+
+### 2026-10-15 — stage 8: 0004-S7 record
+
+Surface: static files of local `git archive HEAD` exports (no browser, no deployment), the exception spec 0004 records for this stage (OQ-017). Real deployments to the two hosts are the user's manual check before the workshop.
+
+HEAD `b0d18979646c559cdc9f3c09e47a3f2401cd878c` (this branch, after the T77–T80 documents and the T-0011 landing record were committed). Toolchain: `node v24.13.0`, `pnpm 10.28.0`, `rustc 1.94.0 (4a4ef493e 2026-03-02)`, `wasm-pack 0.14.0`; macOS arm64. `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset.
+
+Each export ran this script as `bash s7.sh <repository root> gh <empty work directory>` and `bash s7.sh <repository root> cf <empty work directory>`, one after the other (both use ports 4173 and 5173). Every step logs its exit code and the script stops at the first non-zero one; the CF site name is passed as one argv element and printed with `printf '%s\n'` before `fork:init` runs.
+
+```bash
+#!/bin/bash
+# 0004-S7 stage 8 run for T-0016. Usage: s7.sh <repo> <gh|cf> <workdir>
+set -u
+REPO=$1; KIND=$2; W=$3
+unset GITHUB_REPOSITORY WXL_EXPECT_UPSTREAM
+rm -rf "$W"; mkdir -p "$W"
+LOG="$W.log"; : > "$LOG"
+say(){ echo "$*" | tee -a "$LOG"; }
+step(){ say "### $*"; "$@" >> "$LOG" 2>&1; rc=$?; say "    exit=$rc"; [ $rc -eq 0 ] || { say "ABORT"; exit $rc; }; }
+ports(){ a=$(lsof -tnP -iTCP:4173 -sTCP:LISTEN); b=$(lsof -tnP -iTCP:5173 -sTCP:LISTEN); say "    ports 4173=[${a}] 5173=[${b}]"; [ -z "$a$b" ] || { say "ABORT ports busy"; exit 9; }; }
+say "HEAD $(git -C "$REPO" rev-parse HEAD)"
+say "node $(node --version) pnpm $(pnpm --version) $(rustc --version) $(wasm-pack --version)"
+git -C "$REPO" archive HEAD | tar -x -C "$W"
+cd "$W" || exit 1
+step git init -q
+step git add -A
+step pnpm install
+if [ "$KIND" = gh ]; then
+  NAME='林老師的資安靶場'
+  ARGS=(--author "Test Teacher" --repo test-owner/web-range --host github-pages --site-name "$NAME")
+else
+  NAME='Lin'"'"'s "Web" Range \ $'"'"' $1'
+  ARGS=(--author "Test Teacher" --repo test-owner/web-range --host cloudflare-pages --origin https://web-range.pages.dev --site-name "$NAME")
+fi
+say "    argv:"; printf '      %s\n' "${ARGS[@]}" | tee -a "$LOG"
+step pnpm fork:init "${ARGS[@]}"
+step pnpm wasm:build
+step pnpm challenge:keygen
+step pnpm test --run
+step pnpm build
+say "### read T74"
+node --input-type=module - "$NAME" >> "$LOG" 2>&1 <<'EOF'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { Window } from 'happy-dom'
+const name = process.argv[2]
+const dist = '.vitepress/dist'
+const doc = (p) => { const w = new Window(); w.document.write(readFileSync(join(dist, p), 'utf8')); return w.document }
+for (const p of ['index.html', 'zh-TW/index.html']) {
+  const d = doc(p)
+  const hero = d.querySelector('.VPHero .name')?.textContent?.trim()
+  const title = d.querySelector('title')?.textContent ?? ''
+  const hrefs = [...d.querySelectorAll('link[rel]')].filter((l) => /icon/.test(l.getAttribute('rel'))).map((l) => l.getAttribute('href'))
+  console.log(`${p}: hero=${JSON.stringify(hero)} heroOk=${hero === name} title=${JSON.stringify(title)} titleOk=${title.endsWith(name)} favicons=${JSON.stringify(hrefs)}`)
+}
+for (const p of ['challenges.html', 'zh-TW/challenges.html']) {
+  const links = [...doc(p).querySelectorAll('[data-short-link]')].map((e) => e.textContent.trim())
+  console.log(`${p}: ${links.length} short links ${JSON.stringify(links)}`)
+}
+const hits = []
+const walk = (dir) => { for (const f of readdirSync(dir)) { const p = join(dir, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(html|js)$/.test(f) && readFileSync(p, 'utf8').includes('wxl.browserlab.online')) hits.push(p) } }
+walk(dist)
+console.log(`files containing wxl.browserlab.online: ${hits.length} ${JSON.stringify(hits)}`)
+EOF
+say "    exit=$?"
+tail -8 "$LOG" | grep -E '^(index|zh-TW|challenges|files)' || true
+step pnpm exec playwright install chromium
+ports; step env CI=1 pnpm test:smoke
+ports; step env CI=1 pnpm test:challenges
+ports
+if [ "$KIND" = gh ]; then
+  step env SITE_BASE=/x/ pnpm build
+  say "### read T75"
+  node --input-type=module >> "$LOG" 2>&1 <<'EOF'
+import { readFileSync } from 'node:fs'
+import { Window } from 'happy-dom'
+const w = new Window(); w.document.write(readFileSync('.vitepress/dist/index.html', 'utf8'))
+console.log('T75 favicons=' + JSON.stringify([...w.document.querySelectorAll('link[rel]')].filter((l) => /icon/.test(l.getAttribute('rel'))).map((l) => l.getAttribute('href'))))
+EOF
+  say "    exit=$?"
+fi
+say "DONE"
+```
+
+**GH export** (one run): every command exited 0. `pnpm fork:init` printed the tag-rule notice for the installed `.github/workflows/deploy.yml` (exit 0). `pnpm test --run` → `Tests  4169 passed | 7 skipped (4176)`; `CI=1 pnpm test:smoke` → `18 passed`; `CI=1 pnpm test:challenges` → `4 passed`; ports 4173 and 5173 had no listener before each Playwright command. `.github/workflows/` holds `deploy.yml`, `quality-gates.yml`, `release.yml`.
+
+| Read | Result |
+|---|---|
+| T74 hero and title, `index.html` and `zh-TW/index.html` | `.VPHero .name` = `林老師的資安靶場` in both; `<title>` = `林老師的資安靶場` (ends with the site name) in both |
+| T74 short links | `challenges.html`: 4, `test-owner.github.io/web-range/c/001`, `…/c/002`, `…/c/008`, `…/c/010`; `zh-TW/challenges.html`: 4, `test-owner.github.io/web-range/zh/c/001`, `…/002`, `…/008`, `…/010` (challenges with a short-link number on this HEAD: 001, 002, 008, 010) |
+| T74 upstream hostname | 0 `.html`/`.js` files under `.vitepress/dist` contain `wxl.browserlab.online` |
+| T74 favicons (no `SITE_BASE`) | `/favicon.svg`, `/favicon.png`, `/apple-touch-icon.png` in both home pages |
+| T75 (`SITE_BASE=/x/ pnpm build`, exit 0) | `index.html`: `/x/favicon.svg`, `/x/favicon.png`, `/x/apple-touch-icon.png` |
+
+**CF export, first run**: every command up to `CI=1 pnpm test:smoke` exited 0 (`18 passed`), with the T74 reads below already matching; then `CI=1 pnpm test:challenges` exited 1: `door-is-open.spec.ts` (the run's first spec) timed out after 120000 ms in `page.waitForFunction` waiting for the service worker controller and `__wxlDispatch`; the other three specs passed. To tell a configuration fault from flakiness, the suite was rerun on the same export without changes: run 2 passed (4/4); run 3 failed in a different spec, `staff-only.spec.ts` (`page.evaluate: Error: login failed for j.kerr`), the other three passing; runs 4–6 passed (4/4 each). For comparison the GH export's suite was rerun three more times: all passed (4/4 each). Total: CF 4 of 6 runs passed, GH 4 of 4. The two failures hit different specs and neither involves the site name, so they are recorded as flakiness of the challenge suite rather than of this configuration.
+
+The user decided on 2026-10-15, quoted verbatim: "A" (option A: rerun the complete CF S7 sequence from a fresh export, counting it only if every command exits 0; record the first run's failure, the reruns and the GH comparison; investigate the flakiness in a separate task). A follow-up task to find the root cause was opened outside this ticket.
+
+**CF export, fresh rerun** (new export of the same HEAD): every command exited 0. `pnpm fork:init` argv as printed: `--author`, `Test Teacher`, `--repo`, `test-owner/web-range`, `--host`, `cloudflare-pages`, `--origin`, `https://web-range.pages.dev`, `--site-name`, `Lin's "Web" Range \ $' $1`. `pnpm test --run` → `Tests  4169 passed | 7 skipped (4176)`; `CI=1 pnpm test:smoke` → `18 passed`; `CI=1 pnpm test:challenges` → `4 passed`; ports clear before each Playwright command. `.github/workflows/` holds only `quality-gates.yml`, `release.yml` (no workflow installed).
+
+| Read | Result |
+|---|---|
+| T74 hero and title | `.VPHero .name` = `Lin's "Web" Range \ $' $1` (HTML entities decoded by the parser) in `index.html` and `zh-TW/index.html`; `<title>` the same string, so it ends with the site name |
+| T74 short links | `challenges.html`: 4, `web-range.pages.dev/c/001`, `…/002`, `…/008`, `…/010`; `zh-TW/challenges.html`: 4, `web-range.pages.dev/zh/c/001`, `…/002`, `…/008`, `…/010` |
+| T74 upstream hostname | 0 files |
+| T74 favicons | `/favicon.svg`, `/favicon.png`, `/apple-touch-icon.png` in both home pages |
+
+`pnpm test --run` prints an `ECONNREFUSED` to port 3000 after its summary in every run, including on `main`; it does not change the result or the exit code. The 7 skipped tests are in `upstream-guard.test.ts`: the six real-tree checks that run only upstream, and the `WXL_EXPECT_UPSTREAM` expectation check, which skips when the variable is unset (T69).
