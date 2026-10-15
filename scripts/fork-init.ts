@@ -6,16 +6,21 @@
  *
  * Usage:
  *   pnpm fork:init --author <name> --repo <owner/repo>
- *                  [--base <path> | --base none]
+ *                  [--base <path> | --base none | --host github-pages|cloudflare-pages]
  *                  [--name <pkg-name>] [--description <text>]
  *                  [--rebrand <newshortname>] [--dry-run]
  *
+ *   --host and --base are mutually exclusive: --host decides the workflow and resets A9
+ *   (the base definition) to its upstream form from deployment; --base only applies without
+ *   --host, and writes A9 as a literal.
+ *
  * Modes:
- *   A (default)          rewrites only the identity anchors (traceability.md's A1-A5): the
- *                        manifest (structured), the doc-anchor forms in README.md,
+ *   A (default)          rewrites only the identity anchors (traceability.md's A1-A5 and A9):
+ *                        the manifest (structured), the doc-anchor forms in README.md,
  *                        README.en.md and CONTRIBUTE.md — wherever they occur, whatever
- *                        repository slug they held — the base line, and the deploy workflow.
- *                        No tree walk; every other file is byte-identical.
+ *                        repository slug they held — A9 (the base definition), and the deploy
+ *                        workflow (chosen by --host). No tree walk; every other file is
+ *                        byte-identical.
  *   B (--rebrand <name>) today's path: walks the whole tree doing the upstream-slug swap and
  *                        also renames the four runtime-sensitive keys (deterministic,
  *                        structure-aware), plus an HONEST residual inventory of every
@@ -54,6 +59,8 @@ import {
 } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
+import { parse as parseYaml } from 'yaml'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -64,8 +71,12 @@ export const PROJECT_ROOT = resolve(__dirname, '..')
 export interface ForkInitArgs {
   author: string
   repo: string
-  /** undefined = leave as-is; null = remove (--base none); string = set to this path */
+  /** undefined = A9 untouched; null = --base none, written as A9 `const siteBase = '/'`; string =
+   *  --base <path>, written as A9 `const siteBase = '<path>'` */
   base?: string | null
+  /** present => --host decides the workflow and resets A9 to its upstream form; mutually
+   *  exclusive with `base` (T17) */
+  host?: 'github-pages' | 'cloudflare-pages'
   name?: string
   description?: string
   /** present => rebrand (B) mode */
@@ -88,10 +99,12 @@ export class ForkInitArgError extends Error {
 // `[A-Za-z0-9._-]{1,100}`, not `.` or `..`, and not ending in `.git` (any case).
 const REPO_OWNER_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/
 const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/
-// A safe VitePress base: absolute, slash-separated, only URL-path-safe chars.
-// Rejects quotes and `$` so the value cannot break out of the generated string
-// literal in .vitepress/config.mts (an executable TS module).
-const BASE_RE = /^\/([A-Za-z0-9._~-]+\/)*$/
+// Base grammar (traceability.md, "Base grammar" / T21): `/`, or `/` followed by one or more
+// segments each ending in `/`; a segment is URL-path-safe and is never `.` or `..` — the same
+// grammar `.vitepress/config.mts` checks on the resolved `siteBase` (T31), unified here in one
+// place for `--base`. Rejecting quotes and `$` also keeps the value from breaking out of the A9
+// string literal it is written into (.vitepress/config.mts is an executable TS module).
+const BASE_RE = /^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/
 
 /** T45: `--repo` is a single `owner/name` slug; the value itself is never trimmed. */
 function validateRepoValue(value: string): void {
@@ -203,6 +216,7 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
     author: { type: 'string' },
     repo: { type: 'string' },
     base: { type: 'string' },
+    host: { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },
     rebrand: { type: 'string' },
@@ -243,6 +257,27 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       throw new ForkInitArgError(`--repo must not be empty, got: ${JSON.stringify(repoRaw)}`)
     }
 
+    // T17 (before T16 and every value check, traceability.md "Argument check order"): --host
+    // together with --base is an argument error. Read here, ahead of any value validation, so a
+    // combination of the two flags is rejected before either value is judged on its own.
+    const hostRaw = values.host
+    const baseRaw = values.base
+    if (hostRaw !== undefined && baseRaw !== undefined) {
+      throw new ForkInitArgError(
+        `--host decides the workflow and cannot be combined with --base (which only applies without --host), got --base: ${JSON.stringify(baseRaw)}`,
+      )
+    }
+    // T16: --host must be one of the two known values.
+    let host: 'github-pages' | 'cloudflare-pages' | undefined
+    if (hostRaw !== undefined) {
+      if (hostRaw !== 'github-pages' && hostRaw !== 'cloudflare-pages') {
+        throw new ForkInitArgError(
+          `--host must be "github-pages" or "cloudflare-pages", got: ${JSON.stringify(hostRaw)}`,
+        )
+      }
+      host = hostRaw
+    }
+
     validateRepoValue(repoRaw)
     const authorTrimmed = authorRaw.trim()
     validateCharacterRuleValue(authorTrimmed, '--author', authorRaw)
@@ -267,7 +302,6 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       }
     }
 
-    const baseRaw = values.base
     let base: string | null | undefined
     if (baseRaw === undefined) base = undefined
     else if (baseRaw === 'none') base = null
@@ -284,6 +318,7 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       author: authorTrimmed,
       repo: repoRaw,
       base,
+      host,
       name: values.name,
       description: values.description,
       rebrand: rebrandRaw,
@@ -490,17 +525,19 @@ function writeAnchorFile(absPath: string, content: string, encoding: BufferEncod
   }
 }
 
-/** Carries the repo-relative path a `writeAnchorFile` failure was for, so the single `try`/`catch`
- *  around anchor mode's writes (T55) can name it in the returned tree error without every call
- *  site repeating that plumbing. The message names only the relative path and the error code —
- *  never Node's own message (which would embed the absolute `projectRoot` path and, inside it, the
- *  `.fork-init-tmp` temp-file name) — and keeps the original error as `cause` for anyone inspecting
- *  the exception directly. Rebrand mode's writes never throw this (they call `writeFileSync`
- *  directly), so an exception there still propagates unwrapped, as today. */
+/** Carries the repo-relative path a `writeAnchorFile` or `unlinkSync` failure was for, so the
+ *  single `try`/`catch` around anchor mode's writes (T55) can name it in the returned tree error
+ *  without every call site repeating that plumbing. The message names only the relative path, the
+ *  operation (`write` or `remove`, so a `--host cloudflare-pages` removal failure is not reported
+ *  as a write) and the error code — never Node's own message (which would embed the absolute
+ *  `projectRoot` path and, inside it, the `.fork-init-tmp` temp-file name) — and keeps the original
+ *  error as `cause` for anyone inspecting the exception directly. Rebrand mode's writes never throw
+ *  this (they call `writeFileSync` directly), so an exception there still propagates unwrapped, as
+ *  today. */
 class AnchorWriteError extends Error {
   readonly rel: string
-  constructor(rel: string, cause: Error) {
-    super(`failed to write ${rel} (${(cause as NodeJS.ErrnoException).code ?? 'unknown'})`, { cause })
+  constructor(rel: string, cause: Error, op: 'write' | 'remove' = 'write') {
+    super(`failed to ${op} ${rel} (${(cause as NodeJS.ErrnoException).code ?? 'unknown'})`, { cause })
     this.rel = rel
   }
 }
@@ -526,6 +563,131 @@ const SELF_EXCLUDE = new Set(['scripts/fork-init.ts', 'tests/unit/scripts/fork-i
 const PKG_REL = 'package.json'
 const CONFIG_REL = '.vitepress/config.mts'
 const DEPLOY_TEMPLATE_REL = 'scripts/templates/deploy.yml.template'
+const UPSTREAM_URL = `https://github.com/${UPSTREAM_SLUG}`
+
+// ─── A9 (base definition) and the deploy workflow (--host, spec.en.md "Host, base and
+// origin" and traceability.md "Workflow states") ────────────────────────────────────────────
+
+/** A9's upstream form, exactly (traceability.md, "Identity anchors"). `--host` resets A9 to this
+ *  line; the config's required `  base: siteBase,` line is never itself rewritten — only A9 is. */
+const A9_UPSTREAM_LINE = `const siteBase = process.env.SITE_BASE || '/'`
+const BASE_SITEBASE_LINE = '  base: siteBase,'
+// A9 candidate line (traceability.md: `^const siteBase = .+$`), tolerant of a trailing CRLF `\r`
+// the file's own line ending may have left on this line (T11: anchors are recognised in CRLF
+// files as in LF ones).
+const A9_CANDIDATE_RE = /^const siteBase = .+?\r?$/
+const BASE_SITEBASE_RE = /^ {2}base: siteBase,\r?$/
+
+/** Every known old `.github/workflows/deploy.yml` output, as the LF-normalised file's SHA-256
+ *  (traceability.md, "Workflow states"): initially one value, the template at `72327e2`, which the
+ *  engine wrote verbatim for every argument combination. T27 (0004-S5, an upstream-only test) pins
+ *  the current template's hash separately and fails until a changed template's old hash has moved
+ *  into this list. */
+const KNOWN_OLD_DEPLOY_SHA256: readonly string[] = [
+  '0cf52f116082bed48b19462d02b6827123a26cf882a428f841cd6646f73f7276',
+]
+
+/** CRLF normalised to LF — the comparison traceability.md's "Workflow states" and T25 require for
+ *  every deploy-workflow byte comparison and hash in anchor mode. */
+function normalizeLf(s: string): string {
+  return s.replace(/\r\n/g, '\n')
+}
+
+function sha256Hex(s: string): string {
+  return createHash('sha256').update(s, 'utf8').digest('hex')
+}
+
+interface DeployWorkflowStep {
+  run?: string
+  env?: Record<string, unknown>
+}
+interface DeployWorkflowDoc {
+  jobs?: Record<string, { steps?: DeployWorkflowStep[] }>
+}
+
+/** traceability.md, "Workflow states": the file parses with the `yaml` package and the step whose
+ *  `run` is exactly `pnpm build` has `env.SITE_BASE` exactly
+ *  `${{ steps.pages.outputs.base_path }}/`; a file that does not parse does not derive it.
+ *  `contentLf` is expected already LF-normalised (YAML parses either line ending identically, but
+ *  every caller here already holds the LF-normalised form for the hash/compare above it). */
+function derivesSiteBase(contentLf: string): boolean {
+  let doc: unknown
+  try {
+    doc = parseYaml(contentLf, { logLevel: 'error' })
+  } catch {
+    return false
+  }
+  if (typeof doc !== 'object' || doc === null) return false
+  const jobs = (doc as DeployWorkflowDoc).jobs
+  // A parseable but malformed workflow (a null job, a non-array `steps`, a null step) must be
+  // judged "does not derive SITE_BASE" rather than throw — every layer below is type-guarded
+  // instead of trusting `DeployWorkflowDoc`'s shape.
+  if (typeof jobs !== 'object' || jobs === null || Array.isArray(jobs)) return false
+  for (const job of Object.values(jobs)) {
+    if (typeof job !== 'object' || job === null || Array.isArray(job)) continue
+    const steps = (job as { steps?: unknown }).steps
+    if (!Array.isArray(steps)) continue
+    for (const step of steps) {
+      if (typeof step !== 'object' || step === null || Array.isArray(step)) continue
+      const typedStep = step as DeployWorkflowStep
+      if (typedStep.run === 'pnpm build') {
+        return typedStep.env?.SITE_BASE === '${{ steps.pages.outputs.base_path }}/'
+      }
+    }
+  }
+  return false
+}
+
+/** T18/AC-H2: the message `--host` or `--base` returns when the config does not have exactly one
+ *  A9 line and exactly one `  base: siteBase,` line — naming A9, the file, both exact lines to
+ *  bring over, and upstream's URL. */
+function a9MissingMessage(): string {
+  return (
+    `A9: ${CONFIG_REL} must have exactly one line matching \`const siteBase = ...\` and exactly one ` +
+    `\`${BASE_SITEBASE_LINE.trim()}\` line — bring both over from upstream (${UPSTREAM_URL}): ` +
+    `\`${A9_UPSTREAM_LINE}\` and \`${BASE_SITEBASE_LINE.trim()}\``
+  )
+}
+
+/** T24/AC-H3: the message `--host` returns when its tree's template cannot be used as given. */
+function templateUnusableMessage(reason: string): string {
+  return `${DEPLOY_TEMPLATE_REL} ${reason} — bring the current template over from upstream (${UPSTREAM_URL})`
+}
+
+/** Finds A9's and `base: siteBase`'s candidate lines in a config already split on `\n` (so each
+ *  entry may still carry a trailing `\r` from a CRLF file, T11). Returns every matching line
+ *  index — the caller decides what "not exactly one" means for its own message. */
+function findA9Candidates(lines: readonly string[]): { a9Idx: number[]; baseIdx: number[] } {
+  const a9Idx: number[] = []
+  const baseIdx: number[] = []
+  lines.forEach((line, i) => {
+    if (A9_CANDIDATE_RE.test(line)) a9Idx.push(i)
+    if (BASE_SITEBASE_RE.test(line)) baseIdx.push(i)
+  })
+  return { a9Idx, baseIdx }
+}
+
+/** The exact A9 line (traceability.md's stated exception) for a resolved base-definition target:
+ *  `--base <path>` (a validated T21 value), `--base none` (`null`), or `--host` (resetting to the
+ *  upstream form). Never parses the existing value. */
+function a9LineFor(target: { base: string | null } | { host: true }): string {
+  if ('host' in target) return A9_UPSTREAM_LINE
+  const value = target.base === null ? '/' : target.base
+  return `const siteBase = '${value}'`
+}
+
+type DeployWorkflowState = 'absent' | 'current' | 'old' | 'other'
+
+/** traceability.md, "Workflow states": the existing deploy.yml, classified against the tree's
+ *  current template output (both LF-normalised). `templateLf` is already LF-normalised; `existingRaw`
+ *  is the file's raw (possibly CRLF) bytes, or `null` when it does not exist. */
+function classifyDeployWorkflow(existingRaw: string | null, templateLf: string): DeployWorkflowState {
+  if (existingRaw === null) return 'absent'
+  const existingLf = normalizeLf(existingRaw)
+  if (existingLf === templateLf) return 'current'
+  if (KNOWN_OLD_DEPLOY_SHA256.includes(sha256Hex(existingLf))) return 'old'
+  return 'other'
+}
 
 /**
  * The four runtime-sensitive keys, as EXACT full-token rename rules (structure-aware, so
@@ -606,8 +768,8 @@ export function runForkInit(
     }
   }
   // Rebrand-mode-only text transform for one file (anchor mode never calls this): sensitive-key
-  // rename (on original content) -> upstream-slug swap -> VitePress base (config only). Returns
-  // the keys hit so the caller records them ONLY when it actually commits this content.
+  // rename (on original content) -> upstream-slug swap. Returns the keys hit so the caller
+  // records them ONLY when it actually commits this content.
   const transformText = (rel: string, raw: string): { next: string; keysHit: string[] } => {
     let next = raw
     const keysHit: string[] = []
@@ -618,7 +780,8 @@ export function runForkInit(
       }
     }
     next = next.split(UPSTREAM_SLUG).join(args.repo)
-    if (rel === CONFIG_REL) next = setViteBase(next, args.base)
+    // CONFIG_REL's A9 line is handled separately, below (T-0014): it is an exact-line replacement,
+    // never a text-pattern edit, and needs the same validation (T18) in both modes.
     return { next, keysHit }
   }
 
@@ -691,12 +854,9 @@ export function runForkInit(
     // ending is CRLF, LF otherwise (a file with no newline at all has no first line ending, so it
     // gets LF) — but only in anchor mode; rebrand mode keeps writing LF, as today.
     const pkgNext = !args.rebrand && firstLineEnding(pkgRaw) === '\r\n' ? pkgNextLf.replace(/\n/g, '\r\n') : pkgNextLf
-    if (args.rebrand) {
-      // Rebrand mode writes immediately, as today. Anchor mode computes this same content but
-      // defers its own write to the end of the A-mode branch below (compute before write).
-      applyEdit(PKG_REL, pkgNext, pkgRaw)
-      scanResidual(PKG_REL, pkgNext)
-    }
+    // Rebrand mode's own write of this (as today, immediate) is deferred to below the A9/template
+    // checks (T18/T24), which must see nothing written yet (T54) — see "compute before write"
+    // below. Anchor mode already deferred its own write to the end of the A-mode branch.
 
     // Read the deploy template up front: it decides whether the deploy target is handled by the
     // dedicated block below. If the template is absent, an existing deploy.yml in rebrand mode's
@@ -708,10 +868,89 @@ export function runForkInit(
     // files had already been written.
     const existingDeploy = readIf(DEPLOY_REL)
 
+    // ── A9 (base definition), both modes: read and validated here, before any write in this run
+    //   (T54), whenever --base or --host is given (T18). The read is shared by the A/B mode
+    //   branches below (which only ever apply the already-computed edit) and by the no-`--host`
+    //   T26 check at the end of this function (which needs the ORIGINAL line, before this run's
+    //   own edit, when neither --base nor --host touches it). ──
+    const cfgRawShared = readIf(CONFIG_REL)
+    const cfgLines = cfgRawShared !== null ? cfgRawShared.split('\n') : null
+    const cfgCandidates = cfgLines ? findA9Candidates(cfgLines) : { a9Idx: [] as number[], baseIdx: [] as number[] }
+    const originalA9Line =
+      cfgLines && cfgCandidates.a9Idx.length === 1 ? cfgLines[cfgCandidates.a9Idx[0]].replace(/\r$/, '') : null
+
+    // idx/hadCR/newA9Line, when set, describe the single edit A9 needs — applied, below, to
+    // whichever text (anchor mode's untouched read, or rebrand mode's already slug-swapped text)
+    // ends up being written for CONFIG_REL. Neither A9's own line nor `  base: siteBase,` ever
+    // contains the upstream repository slug or a rebrand key, so this index and content stay valid
+    // whichever of those two texts they are applied to (rebrand's slug/key swap never changes the
+    // line count: none of its `from`/`to` values contain a newline).
+    let a9Idx = -1
+    let a9HadCR = false
+    let newA9Line: string | null = null
+    // Whether A9 ends this run in the upstream form (T26, below): true under --host (which always
+    // resets it there); under --base it is always a literal, never upstream's form; without
+    // either, A9 is untouched, so it ends upstream iff it already started there.
+    const a9EndsUpstream =
+      args.host !== undefined ? true : args.base !== undefined ? false : originalA9Line === A9_UPSTREAM_LINE
+
+    if (args.base !== undefined || args.host !== undefined) {
+      if (cfgLines === null || cfgCandidates.a9Idx.length !== 1 || cfgCandidates.baseIdx.length !== 1) {
+        return treeError(a9MissingMessage())
+      }
+      a9Idx = cfgCandidates.a9Idx[0]
+      a9HadCR = cfgLines[a9Idx].endsWith('\r')
+      newA9Line = args.host !== undefined ? a9LineFor({ host: true }) : a9LineFor({ base: args.base! })
+      if (originalA9Line !== newA9Line) {
+        if (args.host !== undefined && originalA9Line !== A9_UPSTREAM_LINE) {
+          // T82/AC-H2: resetting a literal A9 under --host warns with the old line and the
+          // upstream form it is about to become.
+          warnings.push(
+            `A9: ${CONFIG_REL} line \`${originalA9Line}\` reset to the upstream form \`${A9_UPSTREAM_LINE}\` — ` +
+              `--host decides the base from deployment, not from source.`,
+          )
+        }
+      } else {
+        newA9Line = null // already the target form: no edit, no T82 warning
+      }
+    }
+
+    /** Applies the A9 edit computed above (if any) to `text`, which must have the same line count
+     *  and the same content at `a9Idx` as `cfgRawShared` (true of both anchor mode's untouched read
+     *  and rebrand mode's slug/key-swapped text — see the comment above). */
+    const applyA9Edit = (text: string): string => {
+      if (newA9Line === null) return text
+      const lines = text.split('\n')
+      lines[a9Idx] = newA9Line + (a9HadCR ? '\r' : '')
+      return lines.join('\n')
+    }
+
+    // ── the deploy template, both modes, whenever --host is given (T24/AC-H3): the tree's
+    //   template must exist, must not itself be a known old output, and (GitHub Pages only) must
+    //   derive SITE_BASE — checked here, before any write in this run (T54). ──
+    let templateLf: string | null = null
+    if (args.host !== undefined) {
+      if (tmplRaw === null) return treeError(templateUnusableMessage('is missing'))
+      templateLf = normalizeLf(tmplRaw)
+      if (KNOWN_OLD_DEPLOY_SHA256.includes(sha256Hex(templateLf))) {
+        return treeError(templateUnusableMessage('is an old, already-superseded version'))
+      }
+      if (args.host === 'github-pages' && !derivesSiteBase(templateLf)) {
+        return treeError(templateUnusableMessage('does not derive SITE_BASE (needed for --host github-pages)'))
+      }
+    }
+
     if (args.rebrand) {
-      // ── B mode: today's tree-wide swap, kept exactly as before (T51). ──
+      // Rebrand mode writes the manifest immediately, as today — deferred to here (past the
+      // A9/template checks above) so compute-before-write (T54) holds for them too.
+      applyEdit(PKG_REL, pkgNext, pkgRaw)
+      scanResidual(PKG_REL, pkgNext)
+      // ── B mode: today's tree-wide swap, kept exactly as before (T51), except CONFIG_REL, whose
+      //   A9 line is never a text-pattern edit (handled explicitly, below, with the same A9 logic
+      //   anchor mode uses). ──
       for (const rel of walkTextFiles(root)) {
         if (rel === PKG_REL) continue // structured above
+        if (rel === CONFIG_REL) continue // handled explicitly, below
         if (rel === DEPLOY_REL && tmplRaw !== null) continue // handled with the deploy copy below
         const raw = readIf(rel)
         if (raw === null) continue
@@ -720,8 +959,15 @@ export function runForkInit(
         for (const k of keysHit) recordSensitive(k, rel)
         scanResidual(rel, next)
       }
+      if (cfgRawShared !== null) {
+        const { next: cfgSwapped, keysHit } = transformText(CONFIG_REL, cfgRawShared)
+        const cfgNext = applyA9Edit(cfgSwapped)
+        applyEdit(CONFIG_REL, cfgNext, cfgRawShared)
+        for (const k of keysHit) recordSensitive(k, CONFIG_REL)
+        scanResidual(CONFIG_REL, cfgNext)
+      }
     } else {
-      // ── A mode: only the doc anchors (A2–A5, traceability.md) and the config's base line. No
+      // ── A mode: only the doc anchors (A2–A5, traceability.md) and the config's A9 line. No
       //   tree walk — every file outside A1–A9 and the workflow is byte-identical (T3).
       //
       //   Every CHECKED read/content computation below happens before anything is written —
@@ -763,62 +1009,150 @@ export function runForkInit(
         docWrites.push({ file, next, raw })
       }
 
-      // The base line, through today's path (setViteBase): no slug swap, A9 stays T-0014's job
-      // (S1 decision, 2026-10-14 — see the ticket's Notes).
-      const cfgRaw = readIf(CONFIG_REL)
-      const cfgNext = cfgRaw !== null ? setViteBase(cfgRaw, args.base) : null
+      // The config's A9 line: computed and validated above (shared with rebrand mode and T26).
+      const cfgNext = cfgRawShared !== null ? applyA9Edit(cfgRawShared) : null
 
       // ── write phase: the config (a subdirectory file) first, then the manifest (root) whose
       //   write was deferred above, then the doc anchors (also root) — so a root-directory write
       //   failure can still be observed, in a test, to leave an already-written subdirectory file
       //   in place (traceability.md, T55: "files already written stay"). ──
-      if (cfgRaw !== null) applyEdit(CONFIG_REL, cfgNext!, cfgRaw)
+      if (cfgRawShared !== null) applyEdit(CONFIG_REL, cfgNext!, cfgRawShared)
       applyEdit(PKG_REL, pkgNext, pkgRaw)
       for (const { file, next, raw } of docWrites) applyEdit(file, next, raw, 'latin1')
     }
 
-    // ── deploy workflow, without --host (both modes): installed when absent; an existing
-    //   different file is left untouched, with a warning. T-0014 adds --host. ──
-    if (tmplRaw) {
-      const { next: deployContent, keysHit: deployKeysHit } = args.rebrand
-        ? transformText(DEPLOY_REL, tmplRaw)
-        : { next: tmplRaw, keysHit: [] as string[] }
-      const existing = existingDeploy
-      if (existing === null) {
-        changedFiles.push(DEPLOY_REL)
-        if (!args.dryRun) {
-          if (args.rebrand) {
+    // The tag-rule warning (traceability.md, "Tag-rule warning"): today's warning on installing
+    // the workflow, pushed whenever this run installs it (absent -> installed), in GH and
+    // no-host runs — never on a replace (GH's "old" branch) and never under --host
+    // cloudflare-pages in the non-rebrand branches below, which never install the workflow there.
+    // Rebrand mode's own install, further below, does not branch on --host at all: before T-0015
+    // rejects --rebrand together with --host (T50), it still pushes this warning on an absent
+    // workflow even when --host is cloudflare-pages.
+    const pushTagRuleWarning = () => {
+      warnings.push(
+        `${DEPLOY_REL} deploys on a \`v*\` tag push. GitHub's \`github-pages\` environment authorises only the default branch by default, so add a Tag rule \`v*\` under Settings > Environments > github-pages > "Deployment branches and tags" (keep the existing \`main\` rule — workflow_dispatch needs it) before cutting a release.`,
+      )
+    }
+    // `finalDeployRaw` tracks whatever ends up on disk for DEPLOY_REL after this block (its own
+    // write respecting --dry-run below) — read by the no-`--host` T26 check further down, which
+    // needs the workflow's state AFTER this run, including one just installed this same run.
+    let finalDeployRaw: string | null = existingDeploy
+
+    if (args.rebrand) {
+      // ── rebrand mode (T51): compared "as today" — raw bytes, no LF normalisation, never
+      //   replaced. --host is not rejected together with --rebrand before T-0015: the A9 reset
+      //   and the template checks above still run for either host value, but this install step
+      //   itself does not branch on --host — it installs the template whenever absent regardless
+      //   of GitHub Pages or Cloudflare Pages, which is wrong for Cloudflare Pages and stays
+      //   undefined behaviour until T-0015 rejects the combination. ──
+      if (tmplRaw) {
+        const { next: deployContent, keysHit: deployKeysHit } = transformText(DEPLOY_REL, tmplRaw)
+        if (existingDeploy === null) {
+          changedFiles.push(DEPLOY_REL)
+          if (!args.dryRun) {
             mkdirSync(dirname(abs(DEPLOY_REL)), { recursive: true })
             writeFileSync(abs(DEPLOY_REL), deployContent)
-          } else {
+          }
+          pushTagRuleWarning()
+          for (const k of deployKeysHit) recordSensitive(k, DEPLOY_REL)
+          scanResidual(DEPLOY_REL, deployContent)
+          finalDeployRaw = deployContent
+        } else {
+          if (existingDeploy !== deployContent) {
+            warnings.push(
+              `${DEPLOY_REL} already exists with different content — left untouched; merge the deploy workflow manually if needed.`,
+            )
+          }
+          scanResidual(DEPLOY_REL, existingDeploy)
+        }
+      }
+    } else if (args.host === 'github-pages') {
+      // ── T22/AC-H3: templateLf is non-null and already validated (T24, above). ──
+      const state = classifyDeployWorkflow(existingDeploy, templateLf!)
+      if (state === 'absent') {
+        changedFiles.push(DEPLOY_REL)
+        if (!args.dryRun) {
+          try {
+            writeAnchorFile(abs(DEPLOY_REL), templateLf!)
+          } catch (err) {
+            throw new AnchorWriteError(DEPLOY_REL, err as Error)
+          }
+        }
+        pushTagRuleWarning()
+        finalDeployRaw = templateLf!
+      } else if (state === 'old') {
+        changedFiles.push(DEPLOY_REL)
+        if (!args.dryRun) {
+          try {
+            writeAnchorFile(abs(DEPLOY_REL), templateLf!)
+          } catch (err) {
+            throw new AnchorWriteError(DEPLOY_REL, err as Error)
+          }
+        }
+        warnings.push(`${DEPLOY_REL} was an old template output — replaced with the current template.`)
+        finalDeployRaw = templateLf!
+      } else if (state === 'other') {
+        if (derivesSiteBase(normalizeLf(existingDeploy!))) {
+          warnings.push(`${DEPLOY_REL} left untouched — it does not match the current template, but it derives SITE_BASE.`)
+        } else {
+          warnings.push(
+            `${DEPLOY_REL} does not derive SITE_BASE — pages under a sub-path 404; install the GitHub Pages workflow ` +
+              `with \`pnpm fork:init --host github-pages\` (or set SITE_BASE yourself).`,
+          )
+        }
+      } // 'current': nothing
+    } else if (args.host === 'cloudflare-pages') {
+      // ── T23/AC-H4: no workflow is ever installed; current/old is removed, other is left. ──
+      const state = classifyDeployWorkflow(existingDeploy, templateLf!)
+      if (state === 'current' || state === 'old') {
+        changedFiles.push(DEPLOY_REL)
+        if (!args.dryRun) {
+          try {
+            unlinkSync(abs(DEPLOY_REL))
+          } catch (err) {
+            throw new AnchorWriteError(DEPLOY_REL, err as Error, 'remove')
+          }
+        }
+        warnings.push(`${DEPLOY_REL} removed — Cloudflare Pages ranges get no GitHub Pages workflow.`)
+        finalDeployRaw = null
+      } else if (state === 'other') {
+        warnings.push(`${DEPLOY_REL} left untouched — it does not match the current or a known old template output.`)
+      } // 'absent': nothing
+    } else {
+      // ── T25/AC-H5: no --host — today's behaviour, compared LF-normalised. ──
+      if (tmplRaw === null) {
+        warnings.push(`${DEPLOY_TEMPLATE_REL} is missing — the deploy workflow cannot be installed or verified.`)
+      } else {
+        const templateLfNoHost = normalizeLf(tmplRaw)
+        const state = classifyDeployWorkflow(existingDeploy, templateLfNoHost)
+        if (state === 'absent') {
+          changedFiles.push(DEPLOY_REL)
+          if (!args.dryRun) {
             try {
-              writeAnchorFile(abs(DEPLOY_REL), deployContent)
+              writeAnchorFile(abs(DEPLOY_REL), templateLfNoHost)
             } catch (err) {
               throw new AnchorWriteError(DEPLOY_REL, err as Error)
             }
           }
-        }
-        // The workflow deploys on a `v*` tag, but a fresh repo's `github-pages`
-        // environment only authorises the default branch. Without the tag rule the
-        // first release fails inside the deploy job, and nothing in that error
-        // points back at an environment setting the fork owner never saw.
-        warnings.push(
-          `${DEPLOY_REL} deploys on a \`v*\` tag push. GitHub's \`github-pages\` environment authorises only the default branch by default, so add a Tag rule \`v*\` under Settings > Environments > github-pages > "Deployment branches and tags" (keep the existing \`main\` rule — workflow_dispatch needs it) before cutting a release.`,
-        )
-        if (args.rebrand) {
-          for (const k of deployKeysHit) recordSensitive(k, DEPLOY_REL)
-          scanResidual(DEPLOY_REL, deployContent)
-        }
-      } else {
-        // Already present: left untouched. Warn only if it diverges from our generated content,
-        // and inventory the file that is actually on disk (honest about its real content).
-        if (existing !== deployContent) {
+          pushTagRuleWarning()
+          finalDeployRaw = templateLfNoHost
+        } else if (state === 'old' || state === 'other') {
+          // never replaced without --host (today's behaviour)
           warnings.push(
             `${DEPLOY_REL} already exists with different content — left untouched; merge the deploy workflow manually if needed.`,
           )
-        }
-        if (args.rebrand) scanResidual(DEPLOY_REL, existing)
+        } // 'current': nothing
       }
+    }
+
+    // T26/AC-H5: without --host, when A9 ends this run in the upstream form and the workflow
+    // exists (including one just installed this run) but does not derive SITE_BASE, warn naming
+    // the workflow path, SITE_BASE, 404 and --host github-pages.
+    if (args.host === undefined && a9EndsUpstream && finalDeployRaw !== null && !derivesSiteBase(normalizeLf(finalDeployRaw))) {
+      warnings.push(
+        `${DEPLOY_REL} does not derive SITE_BASE — pages under a sub-path 404; install the GitHub Pages workflow ` +
+          `with \`pnpm fork:init --host github-pages\` (or set SITE_BASE yourself).`,
+      )
     }
   } catch (err) {
     // In anchor mode, a write failure partway is a tree error asking the teacher to run the same
@@ -869,37 +1203,6 @@ export function runForkInit(
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-/** Set, replace, or remove the VitePress `base` declaration. */
-function setViteBase(cfg: string, base: string | null | undefined): string {
-  if (base === undefined) return cfg
-  const lines = cfg.split('\n')
-  const baseIdx = lines.findIndex((l) => /^\s*base:\s*/.test(l))
-  if (base === null) {
-    return baseIdx >= 0 ? lines.filter((_, i) => i !== baseIdx).join('\n') : cfg
-  }
-  if (baseIdx >= 0) {
-    const literalRe = /base:\s*['"][^'"]*['"]/
-    if (literalRe.test(lines[baseIdx])) {
-      // function replacer so any `$` in `base` is never reinterpreted by String.replace
-      lines[baseIdx] = lines[baseIdx].replace(literalRe, () => `base: '${base}'`)
-    } else {
-      // Non-literal base declaration (e.g. the upstream env-conditional form
-      // `base: process.env.SITE_BASE ?? '/'`): collapse the whole line to a
-      // plain literal so the fork's --base actually takes effect and the config
-      // matches the single-literal shape the rest of the tooling expects.
-      const indent = lines[baseIdx].match(/^\s*/)?.[0] ?? '  '
-      lines[baseIdx] = `${indent}base: '${base}',`
-    }
-    return lines.join('\n')
-  }
-  // insert before the first `title:` line, matching its indentation
-  const titleIdx = lines.findIndex((l) => /^\s*title:\s*/.test(l))
-  const anchor = titleIdx >= 0 ? titleIdx : 1
-  const indent = lines[anchor]?.match(/^\s*/)?.[0] ?? '  '
-  lines.splice(anchor, 0, `${indent}base: '${base}',`)
-  return lines.join('\n')
-}
 
 /** True when `childRel` equals an excluded fragment or is a path segment beneath one. */
 function isExcludedPath(childRel: string): boolean {

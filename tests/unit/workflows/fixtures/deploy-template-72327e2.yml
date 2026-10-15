@@ -1,0 +1,114 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WXL fork — GitHub Pages 部署 workflow 範本
+#
+# 用法：fork 後把本檔複製成 .github/workflows/deploy.yml（去掉 .template）：
+#   cp scripts/templates/deploy.yml.template .github/workflows/deploy.yml
+# `pnpm fork:init` 會自動做這件事（既有且內容不同的 deploy.yml 不會被覆蓋）。
+#
+# ⚠️ 部署前必做（否則第一次 tag push 會被擋下）：
+#   本 workflow 由 `v*` tag 觸發，但 GitHub 的 `github-pages` environment 預設
+#   只允許 default branch 部署。請到 repo 的
+#     Settings → Environments → github-pages → Deployment branches and tags
+#   新增一條 Tag 規則 `v*`（保留既有的 `main` 規則，workflow_dispatch 需要它）。
+#   沒設定的話 tag push 會在 deploy job 直接失敗，且錯誤訊息不會指向這裡。
+#
+# ⚠️ base path（第二個最容易踩的雷）：
+#   GitHub Pages「專案站」的網址是 https://<owner>.github.io/<repo>/，
+#   因此必須在 .vitepress/config.mts 設 `base: '/<repo>/'`，否則所有 asset 會 404。
+#   `pnpm fork:init --base /<repo>/` 會把 base 寫成字面值；因此本 workflow
+#   不需要（也刻意不設）上游用的 SITE_BASE 環境變數。
+#   若是使用者/組織站（<owner>.github.io 這個 repo）或自訂網域掛在根目錄，
+#   則用 `--base none`，不要加 base。
+#
+# 建置前置：本專案 build 需 Rust toolchain + wasm-pack + wasm-tools + binaryen
+#   （wasm-opt）。下方步驟已完整安裝，版本與凍結基準
+#   tests/unit/workflows/fixtures/upstream-deploy.yml 一致；缺少 wasm-tools 時
+#   keygen 會降級略過 strip 與 mutate，產物仍可用但未經處理。
+#
+# 所有 action 均以 40 字元 commit SHA 釘版（供應鏈強化）。升級時請同步更新
+# 行尾的版本註解，並比對凍結基準 tests/unit/workflows/fixtures/upstream-deploy.yml；
+# tests/unit/workflows/fork-template-parity.test.ts 會擋住兩者失去同步。
+#
+# 為什麼基準是 fixture 而不是上游的 .github/workflows/deploy.yml：上游站台已改用
+# Cloudflare Pages 部署，那個檔案不再存在。該 fixture 是它被刪除前的逐字副本。
+# 它不會自己前進——升級本範本時必須在同一次變更裡一併更新該 fixture。
+# ─────────────────────────────────────────────────────────────────────────────
+name: Deploy
+
+# 觸發：`v*` release tag push（發版即發佈網站）加上手動 workflow_dispatch
+# （用來在下次發版前先部署一次目前的 main）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# 最小權限 + 官方 Pages 部署所需的 token
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時只跑一個部署，且絕不取消進行中的發佈
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          # taiki-e/install-action 把釘版的預編譯二進位裝進 $CARGO_HOME/bin；
+          # 還原舊的 binary cache 會遮蔽掉它們。
+          cache-bin: "false"
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@213ccc1a076163c093f914550b94feb90fab916d # v2.79.2
+        with:
+          tool: wasm-pack@0.14.0,wasm-tools@1.249.0
+
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (WASM + keygen + VitePress)
+        run: pnpm build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: .vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
