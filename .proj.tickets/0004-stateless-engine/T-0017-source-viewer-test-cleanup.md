@@ -356,3 +356,16 @@ Verification surface: local `vitest` with the `happy-dom` environment on macOS (
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0017.md`. Five candidates, independently filtered: no security defect (test files and spec text only, no attacker, no trust boundary crossed); the real non-security items were handled in the stage 6 and 7 disposition above.
+
+### 2026-10-15 — stage 8: partial 0004-S7 rerun
+
+The user decided on 2026-10-15, quoted verbatim: "A" (option A: 0004-S7 stays as run on T-0016's HEAD, since this ticket changes no file the builds read; on this ticket's HEAD both exports rerun only `pnpm test --run`, the one S7 command its change can affect). Recorded in `traceability.md` revision 2.2.
+
+Run on HEAD `608abcd9d74c8c29f6ccda762c7cb87644664bda` with T-0016's S7 script cut after `pnpm test --run` (the steps before it are that command's prerequisites, run in S7's order: `git init -q`, `git add -A`, `pnpm install`, the export's `pnpm fork:init` arguments as in T-0016's record, `pnpm wasm:build`, `pnpm challenge:keygen`, `pnpm test --run`), GH export then CF export, `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset; surface: local vitest in the exports, macOS.
+
+| Export | Every command | `pnpm test --run` |
+|---|---|---|
+| GH (`--host github-pages --site-name 林老師的資安靶場`) | exit 0 | `Tests  4169 passed \| 7 skipped (4176)`, no `Errors` line |
+| CF (`--host cloudflare-pages --origin https://web-range.pages.dev --site-name 'Lin'"'"'s "Web" Range \ $'"'"' $1'`) | exit 0 | `Tests  4169 passed \| 7 skipped (4176)`, no `Errors` line |
+
+The PR's CI `test` job is the remaining stage 8 evidence; its result is added at landing.
