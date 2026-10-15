@@ -2,7 +2,7 @@
 id: T-0016
 title: Document the new fork path, and verify a configured range end to end
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0015, T-0011]
 ---
 
@@ -832,3 +832,7 @@ The user decided on 2026-10-15, quoted verbatim: "A" (option A: rerun the comple
 | T74 favicons | `/favicon.svg`, `/favicon.png`, `/apple-touch-icon.png` in both home pages |
 
 `pnpm test --run` prints an `ECONNREFUSED` to port 3000 after its summary in every run, including on `main`; it does not change the result or the exit code. The 7 skipped tests are in `upstream-guard.test.ts`: the six real-tree checks that run only upstream, and the `WXL_EXPECT_UPSTREAM` expectation check, which skips when the variable is unset (T69).
+
+### 2026-10-15 — landing
+
+PR BrowserLaboratory/wxl-platform#20, squash-merged as `30474aa`. Its first CI run failed the `test` job although `Test Files 127 passed (127)` and `Tests 4176 passed (4176)`: vitest reported one unhandled error, `TypeError: this.win.requestAnimationFrame is not a function`, from a CodeMirror focus timer that outlived `tests/unit/components/SourceViewer.test.ts`'s environment (GitHub Actions run 38761538310). The same error appears in none of the previous 14 Quality Gates runs; this PR changed documents only. The failed job was rerun and passed; all ten checks then succeeded (`test`, `build`, `prose-audit`, `site-smoke`, `challenge-verify`, four `fork-init-cross-os` jobs, `Cloudflare Pages`). The user chose on 2026-10-15 to fix the cause as ticket T-0017 under this epic (option A).

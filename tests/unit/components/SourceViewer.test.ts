@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { language } from '@codemirror/language'
 import { deleteCharBackward, insertNewlineAndIndent } from '@codemirror/commands'
@@ -43,6 +43,7 @@ async function mountViewer(files: { path: string; content: string }[]) {
     props: { files },
     attachTo: document.body,
   })
+  mountedWrappers.push(wrapper)
   await untilEditorReady(wrapper)
   return wrapper
 }
@@ -60,11 +61,30 @@ function view(wrapper: { vm: unknown }): EditorView | null {
   return (wrapper.vm as { editorView: EditorView | null }).editorView
 }
 
+const mountedWrappers: ReturnType<typeof mount>[] = []
+
 beforeEach(() => {
   localStorage.clear()
   _resetSourceViewerSettingsForTests()
   _resetEditorSettingsForTests()
   document.body.innerHTML = ''
+})
+
+// CodeMirror's focus timer still fires after a test ends; only a destroyed view ignores
+// it, so every editor is destroyed before the environment is torn down.
+afterEach(() => {
+  const views = mountedWrappers.map((wrapper) => view(wrapper))
+  while (mountedWrappers.length > 0) {
+    mountedWrappers.pop()!.unmount()
+  }
+  expect(document.querySelectorAll('.cm-editor').length).toBe(0)
+  // `destroyed` is not part of EditorView's public API — CodeMirror exposes no public way
+  // to ask whether `destroy()` ran — but it is the internal flag `update()` checks to
+  // decide whether to bail out early, which is exactly the thing this assertion needs.
+  for (const v of views) {
+    expect(v).toBeTruthy()
+    expect((v as unknown as { destroyed: boolean }).destroyed).toBe(true)
+  }
 })
 
 describe('SourceViewer — read-only editor with navigation aids', () => {

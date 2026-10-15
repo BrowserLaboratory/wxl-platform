@@ -7,7 +7,13 @@ Revision 2 applies the disposition of round 1 (`review/disposition.md`, groups M
 revision 1 are kept, and rows added in revision 2 start at T81. Revision 2.1 (2026-10-14) adds the
 clarifications the user approved with the test plans: S2 links `node_modules`, S5 gains the
 expectation check, the end of the file is an end of the line, and an A8 value followed by `;` does
-not parse.
+not parse. Revision 2.2 (2026-10-15) adds seam 0004-S10 and row T85, approved by the user
+with ticket T-0017: a flaky unhandled error found while landing T-0016, which changes tests only, so
+stage 3 is not rerun for it. Self-check of the new surface: AC-C4 shares no condition with AC-C1–C3,
+and T85 and AC-C4 both bound the claim to the SourceViewer test file's run. T-0017 becomes the epic's last
+ticket; the user decided on 2026-10-15 (option A) that 0004-S7 stays as run on T-0016's HEAD,
+since T-0017 changes no file the builds read, and that on T-0017's HEAD both exports rerun only
+`pnpm test --run`, the one S7 command its change can affect.
 
 ## Seams (0003's approved seams; S1, S5, S6 and S7 changed with the user's approval, 2026-10-14)
 
@@ -22,6 +28,7 @@ not parse.
 | 0004-S7 | stage 8, local, on the HEAD of the epic's last ticket branch: two exports, each `git archive HEAD` into a temporary directory, then in order `git init && git add -A`, `pnpm install`, the export's `pnpm fork:init` command (below), `pnpm wasm:build`, `pnpm challenge:keygen`, `pnpm test --run`, `pnpm build`, **read T74**, `pnpm exec playwright install chromium`, `CI=1 pnpm test:smoke`, `CI=1 pnpm test:challenges`; the GH export then runs `SITE_BASE=/x/ pnpm build` and **reads T75**. Before each Playwright command, nothing listens on ports 4173 and 5173 (`CI=1` makes a busy port fail instead of being reused) | exit codes; the build output's `index.html`, `zh-TW/index.html`, `challenges.html`, `zh-TW/challenges.html`, and every `.html` and `.js` file, read as text (HTML entities decoded before comparing) |
 | 0004-S8 | stage 8, preview: the Cloudflare Pages preview deployment of the ticket that adds A9 | HTTP status of the three favicon URLs; the `src` of every `<script>` and the `href` of every `<link rel="stylesheet">` and `<link rel="modulepreload">` in `/` and `/zh-TW/`; the `<title>` of `/` and `/zh-TW/` |
 | 0004-S9 | stage 6, recorded in the ticket with each command and its output: `grep -F` of each listed string in the listed file or block (a glossary entry runs from its `**term**:` line to the next such line or `## ` heading; an open question runs from its `## OQ-NNN` heading to the next `---`); `cmp` of the two skills; the glossary test's run | present or absent; equal or not; pass or fail |
+| 0004-S10 | the SourceViewer component test file, `tests/unit/components/SourceViewer.test.ts`, run with vitest | whether each editor a test created is destroyed, and the `.cm-editor` elements left in `document`, after each test; the run's unhandled-error count |
 
 0004-S7's two `fork:init` commands (values shown unquoted; each passed as one argument):
 
@@ -257,6 +264,7 @@ row; T50: every flag it names), and these distinguishing strings: T17 `--base`; 
 | T82 | S1 | anchor | `--host` × A9 was not in upstream form | Warning containing `A9`, the old line and the upstream form | AC-H2 |
 | T83 | S9 | — | Comments named in "Overridden contracts" | Each file contains none of its T83 forbidden strings and every T83 required string | AC-D4 |
 | T84 | S9 | — | Root `.gitignore` | Contains `*.fork-init-tmp` | AC-D4 |
+| T85 | S10 | — | SourceViewer component tests × every editor a test mounts | After each test, every wrapper the file's mount helper created is unmounted, every editor it created is destroyed, and no `.cm-editor` remains in `document`, so a CodeMirror timer that outlives the test reaches only destroyed editors; the file's run reports no unhandled error | AC-C4 |
 
 Listed strings are written as code spans; a string that itself contains a backtick is written in a
 double-backtick span, and `grep -F` searches for its content exactly as shown between the delimiters.

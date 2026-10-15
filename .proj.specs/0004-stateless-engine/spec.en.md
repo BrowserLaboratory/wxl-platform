@@ -1,12 +1,13 @@
 # Spec 0004: a stateless fork-init engine, and range CI that stays green
 
-Status: revision 2.1 (revision 2 plus the clarifications approved with the test plans, listed in
-`traceability.md`). Round 1 of adversarial review found no P0 (`review/round-1.md`), so the stage 3
-gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups M1–M10).
+Status: revision 2.2 (revision 2 plus the clarifications approved with the test plans and, in 2.2,
+seam 0004-S10 with row T85, all listed in `traceability.md`). Round 1 of adversarial review found no
+P0 (`review/round-1.md`), so the stage 3 gate is met; revision 2 applies the round 1 disposition
+(`review/disposition.md`, groups M1–M10).
 Derived from `traceability.md`, which holds the fixed lists this spec refers to (modes and "today",
 repository-slug grammar, first conversion, identity anchors A1–A9, base grammar, workflow states,
 upstream repository-slug confinement with the guard's lists, overridden contracts, character rules, origin
-grammar, argument check order and messages) and the seams 0004-S1 to S9. Stage 1 decisions: Q1–Q24,
+grammar, argument check order and messages) and the seams 0004-S1 to S10. Stage 1 decisions: Q1–Q24,
 E1–E6 and F1–F3 (2026-10-14). This epic was split from 0003-apply-engine after its round 2
 (`.proj.specs/0003-apply-engine/review/round-2.md`): everything that depended on a setup record moved
 to a later epic. Later epics are planned as 0005 create-wxl (re-specified; 0002 stays as the split
@@ -305,6 +306,7 @@ open-questions register change as T79–T80 list. All of these are checked at st
 - **AC-C1** The three component tests build their expectations from the imported `SITE_ORIGIN`, contain no upstream hostname, and check that `SITE_ORIGIN` matches the origin grammar. (T70)
 - **AC-C2** The `release` job and the new job carry exactly the `if:` of T71, and the `test` job and the new job carry exactly its `env`. (T71)
 - **AC-C3** The new job is in the quality-gates workflow with its triggers unchanged and the four `include` entries of T72, runs the two named test files, and adds no Rust toolchain, Rust cache, install-action or binaryen step. (T72)
+- **AC-C4** No SourceViewer component test leaves a CodeMirror editor alive after it ends, so the SourceViewer test file's run reports no unhandled error from an editor timer firing after the test environment is torn down. (T85)
 
 ### Stage 8
 
@@ -324,6 +326,7 @@ open-questions register change as T79–T80 list. All of these are checked at st
   times, the engine's result, the parsed config and workflows, guard violations
   and pristine mismatches. Nothing is mocked: the component tests read the real `SITE_ORIGIN`. S7 and
   S8 are stage 8; S9 is a stage 6 record of `grep -F`, `cmp` and the glossary test for documents and comments.
+  S10 is a vitest run of the SourceViewer component test file, recorded with the ticket that adds it.
 - The engine tests extend the existing fixture-in-a-temporary-directory pattern; the shared fixture
   gains A9 and `base: siteBase`, the A2 and A5 forms, both home pages and the short-link module, while
   the legacy config shapes become fixtures for T18, and its template becomes a minimal workflow that
