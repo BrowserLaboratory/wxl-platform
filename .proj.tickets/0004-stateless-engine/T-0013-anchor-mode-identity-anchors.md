@@ -2,7 +2,7 @@
 id: T-0013
 title: Rewrite only identity anchors in anchor mode
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0012]
 ---
 
@@ -661,3 +661,9 @@ T60, T83, T84) is implemented, tested and green.
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0013.md`. Eleven candidates, independently filtered: none is an exploitable defect introduced by this diff; the true non-security items were fixed in stage 6.
+
+### 2026-10-15 — stage 8 and landing
+
+Stage 8 surface: the CLI on a `git archive HEAD` export of the branch, committed into a scratch git repository (no browser; the ticket changes no page). `node --experimental-strip-types scripts/fork-init.ts --author "Test Teacher" --repo test-owner/web-range` → exit 0, `fork:init done — 5 file(s) changed` (package.json, README.md, README.en.md, CONTRIBUTE.md, .github/workflows/deploy.yml); `git status --porcelain` lists exactly those; README line 7 and line 55 carry `test-owner/web-range`; `grep -c BrowserLaboratory/wxl-platform CHANGELOG.md` → 6 (unchanged).
+
+PR BrowserLaboratory/wxl-platform#16, squash-merged by the user as `41e2bf5` with all checks green.
