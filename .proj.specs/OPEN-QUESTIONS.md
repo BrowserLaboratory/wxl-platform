@@ -159,35 +159,60 @@ S2 test for it.
 **Deferred on:** 2026-10-10
 **Status:** open
 
-**Reason.** A fork deploys to GitHub Pages only if `.github/workflows/deploy.yml` exists, which
-`pnpm fork:init` installs from `scripts/templates/deploy.yml.template`. Turning it off means deleting
-the file. A repository variable read by the workflow would let a teacher switch it in the GitHub
-UI, but that needs its own design and tests.
+**Reason.** A fork deploys to GitHub Pages only when `pnpm fork:init --host github-pages` installs
+`.github/workflows/deploy.yml` from `scripts/templates/deploy.yml.template`; a Cloudflare Pages fork
+(`--host cloudflare-pages`) gets no such workflow, and a run with that value removes one that is
+already there only when it matches the current or a known old template output (an existing,
+differently-shaped file is left in place with a warning instead). Switching a configured range from
+one host to the other today means running `fork:init` again with the other `--host` value. A
+repository variable read by the workflow would let a teacher switch it from the GitHub UI instead,
+but that needs its own design and tests.
 
-**Evidence.** Verified: `scripts/templates/deploy.yml.template` is copied unconditionally by
-`fork:init` unless a different `deploy.yml` already exists (README, "After forking").
+**Evidence.** Verified (epic 0004-stateless-engine), `scripts/fork-init.ts`: under `--host
+github-pages` (`:1554-1588`) the workflow is installed when absent (`:1557-1567`), replaced when it
+matches a known old template output (`:1568-1578`), left untouched with no warning when it matches
+the current template (the `'current'` branch falls through at `:1588`), and left untouched with a
+warning otherwise (`:1579-1588`); under `--host cloudflare-pages` (`:1589-1605`) it is removed when
+it matches the current or a known old template output (`:1590-1601`), and otherwise left untouched
+with a warning (`:1603-1604`). A run without `--host` (with or without `--base`) keeps the behaviour
+from before this epic (`:1606-1631`): the workflow is installed when absent, and never replaced when
+it already exists with different content, whether that content matches a known old output or
+neither.
 
 **Blocks.** Nothing for the current workshop material, which documents both hosts.
 
 **Not blocked.** Cloudflare Pages deployment, which needs no workflow in the repository.
 
-**Revisit when.** Teachers report needing to switch hosts, or the fork workflow is next changed.
+**Revisit when.** Teachers report needing to switch hosts from the GitHub UI alone, or the fork
+workflow is next changed.
 
 ---
 
 ## OQ-005 — Should `fork:init` rewrite the short-link origin?
 
 **Deferred on:** 2026-10-10
-**Status:** open
+**Status:** resolved
 
-**Reason.** Short links copy `SITE_ORIGIN` from `.vitepress/challenge/shortLink.ts`, and a fork must
-change it by hand; `fork:init` does not touch it. An `--origin` flag is the obvious automation, but
-it adds a third identity to keep consistent with `--repo` and `--base`.
+**Reason (state at the original deferral).** Short links copy `SITE_ORIGIN` from
+`.vitepress/challenge/shortLink.ts`, and a fork must change it by hand; `fork:init` does not touch
+it. An `--origin` flag is the obvious automation, but it adds a third identity to keep consistent
+with `--repo` and `--base`.
 
-**Evidence.** Verified: `SITE_ORIGIN` is a literal in `.vitepress/challenge/shortLink.ts` and
-`scripts/fork-init.ts` never mentions it; the README tells forks to edit it by hand.
+**Evidence.** Verified on 2026-10-10: `SITE_ORIGIN` is a literal in
+`.vitepress/challenge/shortLink.ts` and `scripts/fork-init.ts` never mentions it; the README tells
+forks to edit it by hand.
 
-**Blocks.** Nothing; the manual step is documented.
+**Resolved on 2026-10-15 (epic 0004-stateless-engine).** `fork:init` gained `--origin`, which sets
+A8 (spec 0004-stateless-engine, the short-link origin anchor). Verified, `scripts/fork-init.ts`:
+without `--host` and without `--origin`, A8 is left untouched
+(`finalOrigin` stays `undefined`, `:1440-1441`); under `--host github-pages` without `--origin`, A8
+is re-derived from `--repo` on every run (`deriveGithubPagesOrigin`, `:1075-1080`, used at `:1441`),
+and overwriting a value that is neither the new one nor upstream's default warns naming the old and
+the new origin (`:1460-1469`; T36-T37/T81 in
+`.proj.specs/0004-stateless-engine/traceability.md`). Reproduce with
+`pnpm vitest run tests/unit/scripts/fork-init.test.ts -t "re-derives on every run"`.
+
+**Blocks.** Nothing (resolved).
 
 **Not blocked.** Every other part of `fork:init`.
 
@@ -522,3 +547,126 @@ with the consequence falling on the current learner's own data.
 **Not blocked.** Chromium, where the behaviour was observed.
 
 **Revisit when.** The smoke suite gains a Firefox or WebKit project, or a supported browser is added.
+
+---
+
+## OQ-016 — Should the copy-short-link button hide itself on a GitHub Pages range?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** `platform/public/_redirects` is the file that makes a short link resolve, and only
+Cloudflare Pages reads it; GitHub Pages ignores it, so a short link printed from a GitHub Pages
+range's copy-short-link button 404s for whoever opens it. The button itself does not know which host
+it is running on (spec 0004-stateless-engine, Out of Scope).
+
+**Evidence.** Verified by reading: the button and its handler are
+`.vitepress/theme/components/ShortLinkShare.vue`, used by
+`.vitepress/theme/components/ChallengeList.vue:437` and
+`.vitepress/theme/components/MergedNav.vue:137,248`; none of the three read a host setting — there
+is none to read, since `fork:init` decides the host once, at configure time, and nothing on the
+built site records it afterwards.
+
+**Blocks.** Hiding or warning on the copy-short-link button for a GitHub Pages range. Options: record
+the chosen host as a build-time constant the component can read; detect the host at runtime from the
+page's own origin.
+
+**Not blocked.** Cloudflare Pages ranges, where the button already works.
+
+**Revisit when.** A teacher reports a handout short link that 404s, or the fork workflow records the
+chosen host in a place the built site can read.
+
+---
+
+## OQ-017 — Is driving static build output an adequate stage 8 harness for a configured range?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** Workflow stage 8 expects behaviour verified on a preview deployment, with a real page
+driven in a browser (AGENTS.md hard rule 4). A configured range has no preview: it only exists as
+local exports built from `git archive HEAD` into a temporary directory, so epic 0004-stateless-engine's
+stage 8 reads the two exports' static HTML and JS directly instead (0004-S7, spec 0004 "Testing
+Decisions"). This harness is **provisional** for that epic, stated as an explicit override of both
+the workflow's preview-deployment rule and hard rule 4.
+
+**Evidence.** Verified: spec 0004-stateless-engine names the override and says real deployment of a
+configured range to both hosts is the user's manual check before the workshop; 0004-S8 still drives
+the real, upstream preview deployment through HTTP responses for AC-X2.
+
+**Blocks.** Nothing today. A future epic that changes configured-range behaviour again inherits this
+same gap unless it is closed first.
+
+**Not blocked.** The upstream preview, which stage 8 already drives as a real deployment (0004-S8).
+
+**Revisit when.** This project gains a harness that can drive a configured range's build output in a
+real browser without deploying it, or the user decides local static-file reads are the permanent
+answer and this entry is promoted to an ADR.
+
+---
+
+## OQ-018 — Can GitHub Pages ranges under one owner be isolated from each other?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** A GitHub Pages project site is served at `<owner>.github.io/<repo>/`, and every project
+site under the same owner shares that owner's one `<owner>.github.io` origin. A learner's browser
+therefore gives every GitHub Pages range under one owner the same storage: the same IndexedDB and
+localStorage, visible to whichever range's service worker is active, and a site-wide clear run on one
+range clears what another range under the same owner stored too (spec 0004-stateless-engine, trust
+boundary B5; the glossary's site-wide clear, which this entry annotates).
+
+**Evidence.** Verified by reading: the service worker is registered with no explicit `scope` option,
+`navigator.serviceWorker.register(`${import.meta.env.BASE_URL}challenge-sw.js`)`
+(`.vitepress/theme/index.ts:253`), so its scope defaults to the directory of that script URL —
+`BASE_URL` itself. For a GitHub Pages project site, `BASE_URL` is `/<repo>/`, so the service worker's
+own scope is already limited to that project's sub-path; for a GitHub Pages user site
+(`<owner>.github.io`, base `/`), its scope is `/`, which spans every other GitHub Pages project site
+under the same owner too (spec 0004-stateless-engine, trust boundary B5). That scope does not close
+the storage-sharing risk this entry is about: IndexedDB and localStorage are already shared per
+browser origin (scheme + host), independent of any service worker's scope. `security-T-0010.md`
+records the same origin-sharing fact and that the service worker does not check a
+`REGISTER_CHALLENGE` message's sender, and that this ticket made the project-site base automatic, so
+the number of working, same-origin GitHub Pages ranges under one owner may grow, not shrink, compared
+with the hand-edited `--base` this engine replaces.
+
+**Blocks.** Any claim that a GitHub Pages range's storage, or a site-wide clear run on it, is isolated
+from another range under the same owner. Options: a scoped service worker registration path per
+range — already the case for a GitHub Pages project site, whose scope is already `BASE_URL`
+(e.g. `/<repo>/`), but it does not stop storage sharing, since IndexedDB and localStorage are shared
+per origin regardless of service worker scope; a storage key prefix per range (does not stop a
+site-wide clear from reading or removing another range's keys); documenting the sharing and leaving
+isolation to Cloudflare Pages or a custom domain, each of which gets its own origin.
+
+**Not blocked.** A single range on its own origin (a Cloudflare Pages range, a custom domain, or the
+only GitHub Pages range under an owner).
+
+**Revisit when.** A teacher reports storage from one GitHub Pages range appearing in another under
+the same owner, or isolating them is designed.
+
+---
+
+## OQ-019 — Do the release workflow's generated release notes satisfy the project's release-note rule?
+
+**Deferred on:** 2026-10-14
+**Status:** open
+
+**Reason.** `release.yml` creates a GitHub release with `generate_release_notes` set, which asks
+GitHub to compose notes from merged pull requests and contributors. AGENTS.md's Git rule requires
+every release note to come from the `tw-emoji-release-note` skill instead, generated and sanitised
+before `gh release create` runs. The two mechanisms were never reconciled; epic 0004-stateless-engine
+leaves the workflow as it found it (spec 0004, Out of Scope: "handled at the 2026-10-16 release").
+
+**Evidence.** Verified by reading: `.github/workflows/release.yml:83` sets
+`generate_release_notes: true` on the release-creation step; `AGENTS.md:78` (hard rule 5, "Skills
+own their output") requires every release note to come from the `tw-emoji-release-note` skill
+instead, and `docs/agents/language.md:15` requires that note to be in Traditional Chinese.
+
+**Blocks.** Trusting the workflow's own release page as the authoritative release note. Options: turn
+off `generate_release_notes` and rely solely on the skill's note; keep both, with the skill's note as
+the release body and the generated list kept only as a supplementary, clearly labelled section.
+
+**Not blocked.** Every release already following the skill-driven process by hand.
+
+**Revisit when.** The 2026-10-16 release is cut, which this entry says is when this gets decided.
