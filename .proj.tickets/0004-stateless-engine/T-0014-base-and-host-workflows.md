@@ -113,3 +113,30 @@ Claims added at approval: T4 for the A9 file; the parse-test title row of the ov
    - 本票所有新警告與訊息裡的路徑都以 `/` 斷言（T57 屬 T-0012，但新字串也必須遵守）。
    - 這次不需要改 GLOSSARY、README、SKILL；README 與 SKILL 的過渡期矛盾留給 T-0016 處理。
    - 沒有任何一列是在它的 seam 上測不到的；只有 T83 屬 S9，記錄在 stage 6。
+
+### 2026-10-15 — carried over from T-0013 (write order, transitional `--base`, deploy.yml LF normalisation)
+
+Three notes from T-0013's own ticket (`T-0013-anchor-mode-identity-anchors.md`), relevant to this
+ticket's `--base` rewrite and left here so they are not missed when work on this ticket starts:
+
+- **Write order and the transitional `--base` (T-0013's T55, relevant here).** `scripts/fork-init.ts`'s
+  A-mode write phase writes the config before the manifest, specifically so T55's "files already
+  written stay" is observable in a test: a subdirectory write (the config) can be seen to succeed
+  before a root-directory write (the manifest) fails. T-0013's dedicated test for this half of T55
+  ("a subdirectory write (the config) succeeds before a root write (the manifest) fails; the
+  subdirectory write stays") passes `--base /myfork/` — without a `--base` value, `cfgNext` would
+  equal `cfgRaw` (nothing for `setViteBase` to change), `applyEdit` would be a no-op, and there would
+  be no subdirectory write left to observe succeeding. That `--base` is T-0013's own transitional
+  behaviour (its Notes 1, and its Deviations entry quoting the user's approved item 9 verbatim):
+  before this ticket, `--base` only edits the config's existing `base:` line through today's
+  `setViteBase`, never A9. **When this ticket rewrites `--base` to write A9 instead, it must either
+  keep that T-0013 test passing under the new `--base` semantics, or replace it with an equivalent
+  scenario that still demonstrates a successful subdirectory write preceding a failed root write.**
+- **Anchor-mode's `deploy.yml` comparison is still not LF-normalised.** As of T-0013, the deploy
+  block's `existing !== deployContent` check (in `scripts/fork-init.ts`) compares the installed
+  template's raw bytes verbatim, with no LF normalisation applied to either side — T-0013 applies
+  none, by design (recorded in its own 2026-10-15 "compute-before-write…" comment entry, citing
+  traceability.md's "Workflow states" as the reason this comparison logic belongs to this ticket, not
+  T-0013). **T25 above is where that normalisation is added** — the seam row for T25 ("沒帶 `--host`
+  時維持今天的 workflow 行為，但以 LF 正規化比對") already states this; this entry just cross-references
+  it explicitly so T-0013's own note about "no LF normalisation yet" has a named successor here.
