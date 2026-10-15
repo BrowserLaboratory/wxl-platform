@@ -15,6 +15,13 @@ ticket; the user decided on 2026-10-15 (option A) that 0004-S7 stays as run on T
 since T-0017 changes no file the builds read, and that on T-0017's HEAD both exports rerun only
 `pnpm test --run`, the one S7 command its change can affect.
 
+Revision 2.3 (2026-10-16), approved by the user with ticket T-0018 after the epic's chain analysis
+(`review/chain-analysis.md`, N-3): T71 also requires the `release` job's `env`, since B3 says the
+letter-case rename makes the upstream-only tests fail and the release job is where a release is
+published; T52 covers that line through "the `env` of T71". It changes CI configuration only, so
+stage 3 is not rerun for it. Self-check of the new surface: the added `env` condition changes no
+`if:` and shares no condition with AC-C3 or AC-G3.
+
 ## Seams (0003's approved seams; S1, S5, S6 and S7 changed with the user's approval, 2026-10-14)
 
 | Seam | Entry point | Observable output |
@@ -250,7 +257,7 @@ row; T50: every flag it names), and these distinguishing strings: T17 `--base`; 
 | T68 | S5 | — | Pristine check × one field of T67 changed (each field) | Exactly that field id reported | AC-G3 |
 | T69 | S5 | — | Guard, pristine and T27 tests × real tree | Run iff the upstream decision says upstream; pass on upstream's HEAD after this epic; when `WXL_EXPECT_UPSTREAM` is set, fail unless the decision equals (`WXL_EXPECT_UPSTREAM` is `true`) | AC-G3 |
 | T70 | S6 | — | Component tests × the imported `SITE_ORIGIN` | Expectations built from it (display text without `https://`); the tests contain no upstream hostname; one assertion checks it matches the origin grammar | AC-C1 |
-| T71 | S4 | — | The `release` job in `release.yml`, the new cross-OS job in `quality-gates.yml` × `if:`; the `test` job and the new job × `env` | `if:` exactly `github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')`; `env.WXL_EXPECT_UPSTREAM` exactly `${{ github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform') }}` | AC-C2 |
+| T71 | S4 | — | The `release` job in `release.yml`, the new cross-OS job in `quality-gates.yml` × `if:`; the `test` job, the new job and the `release` job × `env` | `if:` exactly `github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')`; `env.WXL_EXPECT_UPSTREAM` exactly `${{ github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform') }}` | AC-C2 |
 | T72 | S4 | — | New cross-OS job × location, matrix and steps | In `quality-gates.yml`, its triggers unchanged; `include` with four entries: windows-latest/24, macos-latest/24, ubuntu-latest/24, ubuntu-latest/22; runs `pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts`; no `dtolnay/rust-toolchain`, `Swatinem/rust-cache`, install-action or binaryen step (the set of jobs using them is unchanged) | AC-C3 |
 | T73 | S7 | — | Each export × every command | Exits 0 | AC-X1 |
 | T74 | S7 | — | Build output × each export, read where S7 says | In both `index.html` files the text of the `.name` element inside `.VPHero` equals the site name and `<title>` ends with it; `challenges.html` and `zh-TW/challenges.html` each hold one `[data-short-link]` per challenge with a short-link number (four at `c0f7edf`), every one's text starting with the origin without `https://`; no `.html` or `.js` file contains `wxl.browserlab.online`; in both `index.html` files the three favicon hrefs equal `/favicon.svg`, `/favicon.png`, `/apple-touch-icon.png` | AC-X1 |

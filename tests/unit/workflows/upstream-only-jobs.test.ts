@@ -10,6 +10,12 @@ import { UPSTREAM_SLUG } from '../../../scripts/fork-init'
 // since a workflow YAML cannot import a TS module; traceability.md, "confinement"). The expected
 // value is built from the two halves of UPSTREAM_SLUG, not its full literal, so this file itself
 // never spells the slug.
+// The `test` job, the new job (fork-init-cross-os) and the `release` job all set
+// `WXL_EXPECT_UPSTREAM` to the same comparison (T71, revision 2.3).
+// `format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')` appears five times across the two
+// workflow files — two `if:` lines (release.yml's `release` job, quality-gates.yml's new job) and
+// three `env:` lines (quality-gates.yml's `test` job and new job, release.yml's `release` job) —
+// listed here so a future rename of the slug has every occurrence to check off against.
 const [UPSTREAM_OWNER, UPSTREAM_NAME] = UPSTREAM_SLUG.split('/')
 const EXPECTED_IF = `github.repository == format('{0}/{1}', '${UPSTREAM_OWNER}', '${UPSTREAM_NAME}')`
 const EXPECTED_ENV = '${{ ' + EXPECTED_IF + ' }}'
@@ -51,6 +57,10 @@ describe('upstream-only jobs (T71)', () => {
 
   it(`quality-gates.yml's ${NEW_JOB_ID} job sets WXL_EXPECT_UPSTREAM to the same comparison`, () => {
     expect(loadQualityGates().jobs[NEW_JOB_ID].env?.WXL_EXPECT_UPSTREAM).toBe(EXPECTED_ENV)
+  })
+
+  it("release.yml's release job sets WXL_EXPECT_UPSTREAM to the same comparison", () => {
+    expect(loadRelease().jobs.release.env?.WXL_EXPECT_UPSTREAM).toBe(EXPECTED_ENV)
   })
 })
 

@@ -4204,10 +4204,10 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     const UPSTREAM_SLUG_IMPORT_RE = /import \{[^}]*\} from '[^']*\/scripts\/fork-init'/
 
     const ifLinesBefore = [...releaseYmlBefore.matchAll(IF_LINE_RE), ...qualityGatesYmlBefore.matchAll(IF_LINE_RE)].map((m) => m[0])
-    const expectUpstreamLinesBefore = [...qualityGatesYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])
+    const expectUpstreamLinesBefore = [...releaseYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE), ...qualityGatesYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])
     const importBefore = guardTestBefore.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]
     expect(ifLinesBefore.length).toBe(2) // positive control: both files actually hold the line
-    expect(expectUpstreamLinesBefore.length).toBe(2)
+    expect(expectUpstreamLinesBefore.length).toBe(3) // release.yml: release; quality-gates.yml: test and the cross-OS job
     expect(importBefore).toBeDefined()
     // Positive control (traceability.md, T52): the SAME release.yml file holds a sensitive-key
     // token the walk DOES rewrite, proving the walk reads this file at all (not skipped whole).
@@ -4224,7 +4224,7 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     expect([...releaseYmlAfter.matchAll(IF_LINE_RE), ...qualityGatesYmlAfter.matchAll(IF_LINE_RE)].map((m) => m[0])).toEqual(
       ifLinesBefore,
     )
-    expect([...qualityGatesYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])).toEqual(expectUpstreamLinesBefore)
+    expect([...releaseYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE), ...qualityGatesYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])).toEqual(expectUpstreamLinesBefore)
     expect(guardTestAfter.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]).toBe(importBefore)
     expect(engineFileAfter).toBe(engineFileBefore)
     // the positive control: the walk DID rewrite the sensitive-key token elsewhere in this file
