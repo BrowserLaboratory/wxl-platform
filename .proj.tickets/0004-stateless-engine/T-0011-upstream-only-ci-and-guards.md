@@ -2,7 +2,7 @@
 id: T-0011
 title: Keep upstream-only CI upstream, and guard upstream's identity
 epic: 0004-stateless-engine
-status: review
+status: done
 blocked_by: [T-0010, T-0015]
 ---
 
@@ -453,3 +453,19 @@ method as checks 1-9):
 ### 2026-10-15 — stage 7 security review
 
 Report: `.proj.specs/0004-stateless-engine/review/security-T-0011.md`. Seventeen candidates, independently filtered: no exploitable defect. Eight real non-security items were fixed in the stage 6 and 7 disposition above; one (a range whose work tree sits inside another repository) is recorded there as a known limit.
+
+### 2026-10-15 — stage 8 and landing
+
+Stage 8 surface: the upstream-guard test file run directly (no browser; the ticket changes no page), on `git archive HEAD` exports of `de47e16`, each committed into a scratch git repository with `node_modules` linked from the checkout. The guard command is `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` with the environment shown.
+
+| Tree | Environment | Exit | Observed |
+|---|---|---|---|
+| upstream, untouched | `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true` | 0 | `Tests  93 passed (93)` |
+| upstream, untouched | `GITHUB_REPOSITORY` unset | 0 | `Tests  92 passed \| 1 skipped (93)` (the expectation check skips) |
+| range: after `fork:init --author "Test Teacher" --repo test-owner/web-range --host github-pages` (6 files changed), committed | `GITHUB_REPOSITORY=test-owner/web-range WXL_EXPECT_UPSTREAM=false` | 0 | `Tests  87 passed \| 6 skipped (93)` (the real-tree checks skip) |
+| the same range | `GITHUB_REPOSITORY` unset | 0 | `Tests  86 passed \| 7 skipped (93)` |
+| upstream after an accidental `fork:init --author "Test Teacher" --repo test-owner/web-range --site-name X` (8 files changed), committed | `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true` | 1 | `Tests  1 failed \| 92 passed (93)`; `real tree (upstream only) > the pristine check finds no mismatch` fails listing `A6`, `A7:platform/index.md` and 13 more field ids |
+
+The cross-OS job ran for the first time on this ticket's PR: `fork-init-cross-os` passed on `windows-latest`/24, `macos-latest`/24, `ubuntu-latest`/24 and `ubuntu-latest`/22, so no engine portability fix was needed.
+
+PR BrowserLaboratory/wxl-platform#19, squash-merged by the user as `ba095c5`; its checks `test`, `build`, `prose-audit`, `site-smoke`, `challenge-verify`, the four `fork-init-cross-os` jobs and `Cloudflare Pages` all succeeded (`gh pr view 19 --json statusCheckRollup`).

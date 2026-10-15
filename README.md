@@ -78,7 +78,7 @@ pnpm dev
 | `pnpm wasm:build` | 建置所有 Rust WASM 模組 |
 | `pnpm wasm:test` | 執行 Rust 單元測試（`cargo test`） |
 | `pnpm wasm:tools` | 嘗試把 `wasm-tools` 裝進 Rust 工具鏈；失敗也不會報錯、一律以 0 結束，請用 `wasm-tools --version` 確認 |
-| `pnpm fork:init` | fork 之後改寫專案身分（作者、GitHub 網址，以及選擇性的 VitePress `base`）。必須帶 `--author` 和 `--repo`；套件名稱只在帶 `--name` 或 `--rebrand` 時才會改，腳本也從不寫入 `SITE_BASE` 環境變數 |
+| `pnpm fork:init` | fork 之後改寫專案身分（作者、GitHub 網址、短連結網址、網站名稱，以及依 `--host` 決定的部署設定）。必須帶 `--author` 和 `--repo`；每次執行都要帶齊參數，`--host` 與 `--base` 互斥；套件名稱只在帶 `--name` 或 `--rebrand` 時才會改 |
 | `pnpm challenge:keygen` | 為每一題產生加密的 WASM 模組 |
 | `pnpm create:challenge` | 依參數建立新題目的骨架；必須帶 `--name <slug>`，不帶參數會印出用法並以 1 結束 |
 | `pnpm challenge:validate` | 檢查每一題的 frontmatter 與檔案結構 |
@@ -160,28 +160,45 @@ pnpm build
 帶必要參數執行 `fork:init`：
 
 ```bash
-pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --base <見下方說明>
+# 部署到 GitHub Pages
+pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host github-pages --site-name "<你的靶場名稱>"
+
+# 部署到 Cloudflare Pages
+pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare-pages --origin https://<你的專案>.pages.dev --site-name "<你的靶場名稱>"
 ```
 
-它會改寫 `package.json`、把上游的 GitHub 網址換成你的、依 `--base` 設定或清除 VitePress 的 `base`，並把 `scripts/templates/deploy.yml.template` 複製成 `.github/workflows/deploy.yml`，這是一份可以直接使用的 GitHub Pages workflow。這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，複製會成功。如果你已經在那裡放了自己的 workflow，腳本不會覆蓋，只會發出警告。
+它會改寫 `package.json` 的身分欄位、把上游的 GitHub 網址換成你的、依 `--site-name` 設定網站標題與兩個首頁的靶場名稱、依 `--origin`（或由 `--host github-pages` 推導）設定短連結網址，並依下表決定要不要從 `scripts/templates/deploy.yml.template` 把 `.github/workflows/deploy.yml` 裝上——這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，安裝會成功；如果你已經放了自己的 workflow，腳本不會覆蓋，只會發出警告。
 
-**`--base` 決定你的網站資源載不載得到。** VitePress 會把 base 路徑寫進每一個資源網址：
+| 既有 `.github/workflows/deploy.yml` | `--host github-pages` | `--host cloudflare-pages` | 不帶 `--host` |
+|---|---|---|---|
+| 不存在 | 安裝目前範本，並提示補 tag 規則 | 不動 | 安裝目前範本，並提示補 tag 規則 |
+| 與目前範本相同 | 不動，不警告 | 刪除，並警告 | 不動，不警告 |
+| 與已知舊範本輸出相同 | 取代為目前範本，並警告它是舊版輸出 | 刪除，並警告 | 保持原樣，警告內容不同、需要手動合併 |
+| 其他（兩者皆非，可能是你自己客製的版本） | 能推導出 `SITE_BASE` 就保持並警告；不能就保持並警告改用 `--host github-pages` | 保持原樣，並警告 | 保持原樣，警告內容不同、需要手動合併 |
 
-- **GitHub Pages 專案網站**（`https://<owner>.github.io/<repo>/`）→ `--base /<repo>/`。這個參數會把路徑直接寫進 `.vitepress/config.mts`。複製過去的 workflow 刻意不設 `SITE_BASE` 環境變數，所以子路徑網站能運作，全靠這行寫死的路徑。
-- **使用者或組織網站、根目錄的自訂網域、Cloudflare Pages** → `--base none`，移除 `base` 宣告，讓 VitePress 從 `/` 提供網站。
+**`fork:init` 不保留任何狀態，每次執行都要帶齊參數**：它不會記得你上一次用了什麼設定，這一次沒帶的參數就當作「這次不改」，而不是「沿用上一次」——但有兩個例外，不管這次帶了什麼都照樣會動：(a) 不帶 `--host` 時，只要 `.github/workflows/deploy.yml` 還不存在就會裝回（見上表）；(b) `--host github-pages` 沒帶 `--origin` 時，短連結網址每次都會依 `--repo` 重新推導並覆寫，覆寫一個不是上游預設值的舊網址時會警告新舊網址。**Cloudflare Pages 靶場每次都要帶 `--host cloudflare-pages`**——如果某一次忘了帶、改用不帶 `--host` 的指令，**不帶 `--host` 執行會重新裝回 GitHub Pages workflow**，而這份 workflow 對一個 Cloudflare Pages 靶場毫無用處；自訂網域的 GitHub Pages 靶場同理每次都要帶 `--origin`，否則下一次沒帶 `--origin` 的 `--host github-pages` 執行會把短連結網址覆寫回推導值。rebrand 模式（`--rebrand`）不能和 `--host`／`--origin`／`--site-name` 一起用，部署設定要另外手動處理，細節見 `wxl-fork-init` skill。
 
-不帶 `--base` 時，上游那行依環境變數決定的 `base: process.env.SITE_BASE ?? '/'` 會保留下來。這個寫法是給本 repo 自己的工具用的，`SITE_BASE` 可能由建置環境提供；在 fork 裡沒有人設定它，所以網站會建在 `/`。部署在根目錄時這是對的，部署成 GitHub Pages 專案網站時則每個資源都會 404。
+`--host` 與 `--base` 互斥：帶 `--host`（不論哪一種）時，`.vitepress/config.mts` 的 base 定義一律回到上游這一行：
 
-> **用 `--base /<repo>/` 之後在本機測試要注意。** 寫死的 base 對每一次建置都有效，包括本機。`pnpm test:smoke` 和 `pnpm challenge:verify` 的 L3 階段會開根目錄相對路徑，對子路徑建置的網站會 404。測試時請暫時清掉 base，或把測試的網址改成子路徑。
+```ts
+const siteBase = process.env.SITE_BASE || '/'
+```
 
-`fork:init` 不會改短連結的網址。請把 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 改成你自己網站的網址，否則你網站複製出去的短連結都會指回這個網站。
+- **GitHub Pages 專案網站**（`https://<owner>.github.io/<repo>/`）→ `--host github-pages`。裝好的 workflow 會在部署時先執行 `configure-pages`，由 GitHub 自己算出這個網站的 base path 再交給建置流程，不管是專案網站、使用者網站還是未來換了自訂網域都一樣，原始碼裡再也沒有任何路徑寫死。沒有帶 `--origin` 時，短連結網址會依 `--repo` 推導成 `https://<owner>.github.io/<repo>`（使用者網站 `<owner>.github.io` 則省略路徑）；用了自訂網域要自己帶 `--origin`。
+- **Cloudflare Pages 靶場** → `--host cloudflare-pages`，必須帶 `--origin https://<你的專案>.pages.dev`（或你的自訂網域，不能帶路徑）；這個指令不會裝 GitHub Pages 的 workflow。
 
-> **短連結只在 Cloudflare Pages 上有效。** 短連結是 `platform/public/_redirects` 裡的規則，Cloudflare Pages 會讀這個檔，GitHub Pages 不會。在 GitHub Pages 的 fork 上，所有頁面都正常，但印在講義上的短連結會連到 404。
+> **短連結只在 Cloudflare Pages 上有效。** 短連結是 `platform/public/_redirects` 裡的規則，只有 Cloudflare Pages 會讀這個檔。在 GitHub Pages 的靶場上，所有頁面都正常，但印在講義上的短連結會連到 404。
+
+不帶 `--host` 時，這一行只依 `--base` 改寫；沒帶 `--base` 就維持原狀，可能還是上游原本那一行，也可能是前一次 `--base` 留下的字面值。`--base /<repo>/` 把這段路徑寫死進 `.vitepress/config.mts`；`--base none` 寫成字面值 `const siteBase = '/'`（不是清掉這一行）。**用 `--base` 的靶場，CI 的 site smoke 與 challenge 測試會失敗**——這兩種測試都從 `/` 出發操作頁面，寫死的子路徑會讓它們 404；改用 `--host github-pages` 把 base 交給部署當下決定，本機與 CI 的每一次建置都停在 `/`，就不會遇到這個問題。
+
+`--site-name` 同時設定網站標題與兩個首頁的靶場名稱，接受大部分符號（包含引號、反斜線與 `$`），但拒絕 `<`、`>`、`&`，長度上限 60 個 Unicode code point（不是位元組或字母數）；部分不可見字元與控制字元（Cc、Cs、Zl、Zp 類別，以及大多數 Cf 類別）也會被拒絕，只有零寬連接符 U+200C／U+200D 例外。
 
 GitHub Pages 的 fork 還有兩個設定在 GitHub 介面上，不在 repo 裡：
 
 1. **Settings → Pages → Source** 要設成 **GitHub Actions**。
 2. **`github-pages` environment** 除了允許 `main` 分支（`workflow_dispatch` 需要它），還要允許從 `v*` tag 部署。沒有這條規則，由 tag 觸發的部署 job 會被拒絕。
+
+**同一個 owner 的 GitHub Pages 靶場共用瀏覽器儲存空間**：同一個 GitHub 帳號底下的每個 GitHub Pages 靶場，學習者的瀏覽器看到的是同一個瀏覽器 origin（scheme 加 host；跟 GLOSSARY.md 另一個標著攻擊紀錄是本機還是匯入來的 origin 詞條只是同名），一個靶場留下的紀錄，另一個靶場也讀得到、也清得掉；詳見 `.proj.specs/OPEN-QUESTIONS.md` 的 OQ-018。
 
 ### 部署到 Cloudflare Pages
 
@@ -200,7 +217,7 @@ GitHub Pages 的 fork 還有兩個設定在 GitHub 介面上，不在 repo 裡�
 
 3. 輸出目錄設成 `.vitepress/dist`。
 4. 環境變數加上 `NODE_VERSION=24`。
-5. 網站放在子路徑時，加上 `SITE_BASE` 並設成那個路徑（部署在根網域時不要設）。
+5. **Cloudflare Pages 靶場部署在網域根目錄**：只要是用 `--host cloudflare-pages` 設定出來的靶場，base 定義已經回到上游那行 `process.env.SITE_BASE || '/'`——Cloudflare Pages 的建置環境本身不會自動設定 `SITE_BASE`，所以這裡不需要加任何環境變數。但如果你先前在 Cloudflare Pages 專案設定裡手動加過 `SITE_BASE`，請現在刪除：留著的話它照樣會蓋掉這行字面值，而 `.vitepress/config.mts` 要求這個值要嘛是 `/`、要嘛是以 `/` 結尾的路徑，少了結尾斜線會讓建置直接丟出錯誤中止。
 
 > **注意**：Cloudflare Pages 預設沒有 Rust 工具鏈。`wasm-pack` 是 Rust 執行檔，不是套件相依，`pnpm install` 不會提供它，所以上面的建置指令會先裝最小的 Rust 工具鏈和 `wasm-pack` 再建置。這裡沒有安裝 `wasm-tools`。`pnpm build` 會執行 `pnpm challenge:keygen`，它的 strip 與 mutate 會用到 `wasm-tools`，但沒有這個工具時只會各印一則警告，建置仍會成功，只是少了這兩個步驟。如果希望正式建置也做 strip 與 mutate，請在安裝那行加上 `cargo install wasm-tools --version 1.249.0 --locked`（與 CI 相同的版本）。
 
