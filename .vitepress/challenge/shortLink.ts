@@ -19,8 +19,9 @@ export const NUMBER_PAD_WIDTH = 3
  *
  * Deliberately not `location.origin`. The link exists to be handed to a class,
  * so a teacher copying it from a local preview has to get the address the class
- * can reach, not `http://localhost:5173`. A fork changes it here, the way it
- * changes `base` in `.vitepress/config.mts`.
+ * can reach, not `http://localhost:5173`. `pnpm fork:init --origin <url>` sets
+ * this; `--host github-pages` without `--origin` derives it, and `--host
+ * cloudflare-pages` requires `--origin`.
  */
 export const SITE_ORIGIN = 'https://wxl.browserlab.online'
 

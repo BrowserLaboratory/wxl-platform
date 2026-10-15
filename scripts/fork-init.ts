@@ -7,6 +7,7 @@
  * Usage:
  *   pnpm fork:init --author <name> --repo <owner/repo>
  *                  [--base <path> | --base none | --host github-pages|cloudflare-pages]
+ *                  [--origin <https://host[/path]>] [--site-name <text>]
  *                  [--name <pkg-name>] [--description <text>]
  *                  [--rebrand <newshortname>] [--dry-run]
  *
@@ -14,13 +15,19 @@
  *   (the base definition) to its upstream form from deployment; --base only applies without
  *   --host, and writes A9 as a literal.
  *
+ *   --origin sets the short-link origin (A8); --host github-pages derives it when --origin is
+ *   not given (required with --host cloudflare-pages). --site-name sets the site title (A6) and
+ *   both home pages' hero name (A7). --rebrand cannot be combined with --host, --origin or
+ *   --site-name (A mode's new flags are rejected in B mode).
+ *
  * Modes:
- *   A (default)          rewrites only the identity anchors (traceability.md's A1-A5 and A9):
+ *   A (default)          rewrites only the identity anchors (traceability.md's A1-A9):
  *                        the manifest (structured), the doc-anchor forms in README.md,
  *                        README.en.md and CONTRIBUTE.md — wherever they occur, whatever
- *                        repository slug they held — A9 (the base definition), and the deploy
- *                        workflow (chosen by --host). No tree walk; every other file is
- *                        byte-identical.
+ *                        repository slug they held — A9 (the base definition), A6/A7 (the site
+ *                        name, from --site-name), A8 (the short-link origin, from --origin or
+ *                        derived), and the deploy workflow (chosen by --host). No tree walk;
+ *                        every other file is byte-identical.
  *   B (--rebrand <name>) today's path: walks the whole tree doing the upstream-slug swap and
  *                        also renames the four runtime-sensitive keys (deterministic,
  *                        structure-aware), plus an HONEST residual inventory of every
@@ -60,7 +67,7 @@ import {
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { parse as parseYaml } from 'yaml'
+import { parse as parseYaml, parseDocument as parseYamlDocument, isScalar, isMap, isPair } from 'yaml'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -77,6 +84,12 @@ export interface ForkInitArgs {
   /** present => --host decides the workflow and resets A9 to its upstream form; mutually
    *  exclusive with `base` (T17) */
   host?: 'github-pages' | 'cloudflare-pages'
+  /** present => --origin <value>, validated against the origin grammar (T32-T34) and normalised
+   *  (hostname lowercased); undefined => A8 is derived (--host github-pages) or left untouched */
+  origin?: string
+  /** present => --site-name <value>, trimmed and validated (character rule plus `<`, `>`, `&`);
+   *  undefined => A6/A7 are left untouched */
+  siteName?: string
   name?: string
   description?: string
   /** present => rebrand (B) mode */
@@ -105,6 +118,50 @@ const REPO_NAME_RE = /^[A-Za-z0-9._-]{1,100}$/
 // place for `--base`. Rejecting quotes and `$` also keeps the value from breaking out of the A9
 // string literal it is written into (.vitepress/config.mts is an executable TS module).
 const BASE_RE = /^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/
+
+// Origin grammar (traceability.md, "Origin grammar" / T32-T34): `https://` + hostname + path.
+// A hostname label and a path segment share the same base alphabet; the label additionally bounds
+// its own length (1-63) and forbids a leading/trailing `-`.
+const ORIGIN_LABEL_RE = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
+const ORIGIN_PATH_SEGMENT_RE = /^[A-Za-z0-9._~-]+$/
+
+/** T32-T34/AC-O1: validates `raw` against the origin grammar and returns it with the hostname
+ *  lowercased (the path's case is untouched). Throws `ForkInitArgError` naming `--origin` and the
+ *  JSON-quoted value for any grammar violation (T33), and separately for a path given together
+ *  with `--host cloudflare-pages` (T34, which needs to know whether the host is Cloudflare —
+ *  passed in by the caller, since this function only knows the origin's own shape). */
+function validateOriginValue(raw: string, host: 'github-pages' | 'cloudflare-pages' | undefined): string {
+  const fail = (reason?: string): never => {
+    throw new ForkInitArgError(
+      `--origin must be https://<hostname>[/path] (no userinfo, port, query, fragment or trailing slash)${
+        reason ? ` (${reason})` : ''
+      }, got: ${JSON.stringify(raw)}`,
+    )
+  }
+  if (!raw.startsWith('https://')) fail()
+  const rest = raw.slice('https://'.length)
+  const slashIdx = rest.indexOf('/')
+  const hostPart = slashIdx === -1 ? rest : rest.slice(0, slashIdx)
+  const pathPart = slashIdx === -1 ? '' : rest.slice(slashIdx) // includes the leading '/', if any
+  if (hostPart === '' || hostPart.length > 253) fail()
+  const labels = hostPart.split('.')
+  if (labels.length < 2) fail()
+  for (const label of labels) {
+    if (!ORIGIN_LABEL_RE.test(label)) fail()
+  }
+  if (/^[0-9]+$/.test(labels[labels.length - 1])) fail('the last label is all digits')
+  if (pathPart !== '') {
+    // pathPart starts with '/', so splitting on '/' always yields a leading '' element.
+    const segments = pathPart.split('/').slice(1)
+    for (const segment of segments) {
+      if (segment === '' || segment === '.' || segment === '..' || !ORIGIN_PATH_SEGMENT_RE.test(segment)) fail()
+    }
+  }
+  if (host === 'cloudflare-pages' && pathPart !== '') {
+    throw new ForkInitArgError(`--origin must have no path when --host is cloudflare-pages, got: ${JSON.stringify(raw)}`)
+  }
+  return `https://${hostPart.toLowerCase()}${pathPart}`
+}
 
 /** T45: `--repo` is a single `owner/name` slug; the value itself is never trimmed. */
 function validateRepoValue(value: string): void {
@@ -137,18 +194,18 @@ function isNoncharacter(codePoint: number): boolean {
  * trimmed value must hold at least one code point other than U+200C/U+200D; Cc, Cs, Zl, Zp, Cf
  * (except U+200C/U+200D) and the noncharacters are rejected.
  */
-function validateCharacterRuleValue(trimmed: string, flag: string, rawForMessage: string): void {
+function validateCharacterRuleValue(trimmed: string, flag: string, rawForMessage: string, maxLength = 100): void {
   // Written as escapes, not the literal invisible characters, so the source stays readable.
   const ZWNJ = '\u200C'
   const ZWJ = '\u200D'
   const codePoints = Array.from(trimmed)
   // `reason` says what was wrong (too long, which character, or only joiners) so the message is
-  // actionable, not just a bare rejection — ready for --site-name later.
+  // actionable, not just a bare rejection.
   const fail = (reason: string): never => {
     throw new ForkInitArgError(`${flag} rejected (${reason}), got: ${JSON.stringify(rawForMessage)}`)
   }
   if (codePoints.length < 1) fail('empty')
-  if (codePoints.length > 100) fail('too long')
+  if (codePoints.length > maxLength) fail('too long')
   let hasOther = false
   for (const ch of codePoints) {
     if (ch !== ZWNJ && ch !== ZWJ) hasOther = true
@@ -162,6 +219,20 @@ function validateCharacterRuleValue(trimmed: string, flag: string, rawForMessage
     }
   }
   if (!hasOther) fail('only joiners')
+}
+
+/** T39-T41/AC-N1/AC-N2: --site-name is trimmed, then validated against the shared character rule
+ *  (1-60 code points), then against the characters that would break the home page's HTML (`<`,
+ *  `>`, `&`), each refused by name. Returns the trimmed value to write. */
+function validateSiteNameValue(raw: string): string {
+  const trimmed = raw.trim()
+  validateCharacterRuleValue(trimmed, '--site-name', raw, 60)
+  for (const ch of Array.from(trimmed)) {
+    if (ch === '<' || ch === '>' || ch === '&') {
+      throw new ForkInitArgError(`--site-name rejected (disallowed character ${JSON.stringify(ch)}), got: ${JSON.stringify(raw)}`)
+    }
+  }
+  return trimmed
 }
 
 /** Extract the flag Node names in an `ERR_PARSE_ARGS_INVALID_OPTION_VALUE` message, stopping at
@@ -217,6 +288,8 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
     repo: { type: 'string' },
     base: { type: 'string' },
     host: { type: 'string' },
+    origin: { type: 'string' },
+    'site-name': { type: 'string' },
     name: { type: 'string' },
     description: { type: 'string' },
     rebrand: { type: 'string' },
@@ -257,11 +330,29 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       throw new ForkInitArgError(`--repo must not be empty, got: ${JSON.stringify(repoRaw)}`)
     }
 
-    // T17 (before T16 and every value check, traceability.md "Argument check order"): --host
-    // together with --base is an argument error. Read here, ahead of any value validation, so a
-    // combination of the two flags is rejected before either value is judged on its own.
     const hostRaw = values.host
     const baseRaw = values.base
+    const rebrandRaw = values.rebrand
+
+    // T50 (before T17/T16/T35, traceability.md "Argument check order"): --rebrand together with
+    // any of --host, --origin, --site-name is an argument error naming --rebrand and every one of
+    // those flags given — checked by presence alone, ahead of every value check (including
+    // --rebrand's own syntax and --host's own value), so an invalid value on either side still
+    // surfaces this message.
+    if (rebrandRaw !== undefined) {
+      const conflicting = [
+        hostRaw !== undefined ? '--host' : null,
+        values.origin !== undefined ? '--origin' : null,
+        values['site-name'] !== undefined ? '--site-name' : null,
+      ].filter((f): f is string => f !== null)
+      if (conflicting.length > 0) {
+        throw new ForkInitArgError(`--rebrand cannot be combined with ${conflicting.join(', ')}`)
+      }
+    }
+
+    // T17 (before T16 and every value check): --host together with --base is an argument error.
+    // Read here, ahead of any value validation, so a combination of the two flags is rejected
+    // before either value is judged on its own.
     if (hostRaw !== undefined && baseRaw !== undefined) {
       throw new ForkInitArgError(
         `--host decides the workflow and cannot be combined with --base (which only applies without --host), got --base: ${JSON.stringify(baseRaw)}`,
@@ -277,12 +368,16 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       }
       host = hostRaw
     }
+    // T35/AC-O2: --host cloudflare-pages needs --origin — the engine cannot derive a Cloudflare
+    // Pages project's own pages.dev subdomain the way it derives a GitHub Pages one.
+    if (host === 'cloudflare-pages' && values.origin === undefined) {
+      throw new ForkInitArgError('--origin is required with --host cloudflare-pages')
+    }
 
     validateRepoValue(repoRaw)
     const authorTrimmed = authorRaw.trim()
     validateCharacterRuleValue(authorTrimmed, '--author', authorRaw)
 
-    const rebrandRaw = values.rebrand
     if (rebrandRaw !== undefined) {
       // --rebrand is substituted verbatim into the sensitive-key replacements, which land in
       // executable TS modules and CI YAML, so it must be a plain identifier — reject
@@ -314,11 +409,22 @@ export function parseForkInitArgs(argv: string[]): ForkInitArgs {
       base = baseRaw
     }
 
+    // --origin (T33, then T34): validated after --base, before --site-name, per the argument check
+    // order (traceability.md).
+    const originRaw = values.origin
+    const origin = originRaw !== undefined ? validateOriginValue(originRaw, host) : undefined
+
+    // --site-name (T40, then T41): validated last, after --origin, per the argument check order.
+    const siteNameRaw = values['site-name']
+    const siteName = siteNameRaw !== undefined ? validateSiteNameValue(siteNameRaw) : undefined
+
     return {
       author: authorTrimmed,
       repo: repoRaw,
       base,
       host,
+      origin,
+      siteName,
       name: values.name,
       description: values.description,
       rebrand: rebrandRaw,
@@ -706,6 +812,236 @@ function sensitiveRenames(lower: string, upper: string): ReadonlyArray<{ key: st
   ]
 }
 
+// ─── A6-A8 (site name, short-link origin): anchor mode only — never reached in rebrand mode,
+// since --rebrand rejects --host/--origin/--site-name (T50) ───────────────────────────────────
+
+const PLATFORM_HOME_RELS = ['platform/index.md', 'platform/zh-TW/index.md'] as const
+const SHORT_LINK_REL = '.vitepress/challenge/shortLink.ts'
+/** The upstream short-link origin (traceability.md, T81): replacing a value that is not this one
+ *  warns; a run that starts from this one never does. */
+const UPSTREAM_SITE_ORIGIN = 'https://wxl.browserlab.online'
+
+/** A single- or double-quoted JS string literal containing only STANDARD ECMAScript escape
+ *  sequences, with nothing after the closing quote (traceability.md, "Identity anchors": "single-
+ *  or double-quoted with standard escapes") — the shape every new A6/A7/A8 value is written as,
+ *  and the shape an existing A6/A8 value must already be in to be replaced (T9). Returns the
+ *  decoded value on success, `null` for anything else — including a quote character that is not
+ *  the literal's own closing quote, an escape outside the nine single-character ones (`' " \ b f
+ *  n r t v`), `\0` followed by a digit (a legacy octal escape, not the standalone NUL this accepts),
+ *  `\xHH`/`\uHHHH` with the wrong number of hex digits, an unterminated or empty `\u{...}`, and a
+ *  `\u{...}` whose value exceeds U+10FFFF. Never throws: every malformed escape — including one
+ *  `String.fromCodePoint` would otherwise reject with an uncaught `RangeError`, and an unterminated
+ *  `\u{` that would otherwise loop forever looking for a `}` that is not there — is caught by this
+ *  function's own bounds/format checks before it ever reaches `String.fromCodePoint`/
+ *  `String.fromCharCode`, so a malformed anchor value always falls through to the ordinary T9 tree
+ *  error instead of crashing or hanging the whole run. A line continuation can never occur: every
+ *  caller matches this against one single line (T9's own candidate-line regexes never span more
+ *  than one). */
+function parseJsStringLiteral(s: string): string | null {
+  if (s.length < 2) return null
+  const quote = s[0]
+  if ((quote !== "'" && quote !== '"') || s[s.length - 1] !== quote) return null
+  const inner = s.slice(1, -1)
+  let result = ''
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]
+    if (ch === quote) return null // the literal's own quote character, unescaped: ends it early
+    if (ch !== '\\') {
+      result += ch
+      continue
+    }
+    i++
+    const esc = inner[i]
+    switch (esc) {
+      case "'":
+      case '"':
+      case '\\':
+        result += esc
+        break
+      case 'b':
+        result += '\b'
+        break
+      case 'f':
+        result += '\f'
+        break
+      case 'n':
+        result += '\n'
+        break
+      case 'r':
+        result += '\r'
+        break
+      case 't':
+        result += '\t'
+        break
+      case 'v':
+        result += '\v'
+        break
+      case '0':
+        if (/[0-9]/.test(inner[i + 1] ?? '')) return null // \0 followed by a digit: a legacy octal escape, not standard
+        result += '\0'
+        break
+      case 'x': {
+        const hex = inner.slice(i + 1, i + 3)
+        if (!/^[0-9A-Fa-f]{2}$/.test(hex)) return null
+        result += String.fromCharCode(parseInt(hex, 16))
+        i += 2
+        break
+      }
+      case 'u': {
+        if (inner[i + 1] === '{') {
+          const end = inner.indexOf('}', i + 2)
+          if (end === -1) return null // unterminated \u{...: no closing } to be found at all
+          const hex = inner.slice(i + 2, end)
+          if (!/^[0-9A-Fa-f]{1,6}$/.test(hex)) return null // empty, or not 1-6 hex digits
+          const codePoint = parseInt(hex, 16)
+          if (codePoint > 0x10ffff) return null
+          result += String.fromCodePoint(codePoint)
+          i = end
+        } else {
+          const hex = inner.slice(i + 1, i + 5)
+          if (!/^[0-9A-Fa-f]{4}$/.test(hex)) return null
+          result += String.fromCharCode(parseInt(hex, 16))
+          i += 4
+        }
+        break
+      }
+      default:
+        return null // not one of the standard escapes above
+    }
+  }
+  return result
+}
+
+function isJsStringLiteral(s: string): boolean {
+  return parseJsStringLiteral(s) !== null
+}
+
+/** Decodes a JS string literal already known (by its caller, via `isJsStringLiteral`) to parse —
+ *  used only to compare an EXISTING A8 value against the upstream origin and the new one (T81). */
+function evalJsStringLiteral(literal: string): string {
+  const result = parseJsStringLiteral(literal)
+  if (result === null) {
+    // Unreachable in practice: every caller only reaches this after `isJsStringLiteral` (the same
+    // parser) has already confirmed `literal` parses.
+    throw new Error(`evalJsStringLiteral: not a valid JS string literal: ${JSON.stringify(literal)}`)
+  }
+  return result
+}
+
+/** Encodes `text` (an arbitrary Unicode string — a trimmed `--site-name`, or a validated
+ *  `--origin`) as the sequence of latin1 "characters" whose codes are its UTF-8 bytes. Splicing
+ *  the result into a file already decoded with `.toString('latin1')`, then writing the whole
+ *  result back with the `latin1` encoding, reproduces the correct UTF-8 bytes for `text` while
+ *  leaving every other byte in the file — including one that is not valid UTF-8 on its own —
+ *  unchanged (T4). */
+function utf8AsLatin1(text: string): string {
+  return Buffer.from(text, 'utf8').toString('latin1')
+}
+
+/** Finds every line index matching `re` — shared by every A6-A8 candidate search below (each
+ *  anchor needs "exactly one", T9). */
+function findMatchingLines(lines: readonly string[], re: RegExp): number[] {
+  const idx: number[] = []
+  lines.forEach((line, i) => {
+    if (re.test(line)) idx.push(i)
+  })
+  return idx
+}
+
+// A6 (VitePress config site title, traceability.md "Identity anchors"): candidate lines
+// `^  title: .+,$` (exactly two spaces), CRLF-tolerant; its value is a JS string literal.
+const A6_CANDIDATE_RE = /^ {2}title: .+,\r?$/
+const A6_VALUE_RE = /^ {2}title: (.+?),\r?$/
+
+/** A6's new line, given the already-JSON-stringified new title literal; keeps the line's own CRLF. */
+function a6LineFor(line: string, newLiteral: string): string {
+  return `  title: ${newLiteral},${line.endsWith('\r') ? '\r' : ''}`
+}
+
+// A8 (short-link module, traceability.md "Identity anchors"): candidate lines
+// `^export const SITE_ORIGIN = .+$`; its value is a JS string literal (a trailing `;` makes the
+// value fail to parse, per the stated exception in traceability.md).
+const A8_CANDIDATE_RE = /^export const SITE_ORIGIN = .+\r?$/
+const A8_VALUE_RE = /^export const SITE_ORIGIN = (.+?)\r?$/
+
+function a8LineFor(line: string, newLiteral: string): string {
+  return `export const SITE_ORIGIN = ${newLiteral}${line.endsWith('\r') ? '\r' : ''}`
+}
+
+// A7 (home-page hero name, traceability.md "Identity anchors"): candidate lines `^  name: .+$`
+// (exactly two spaces), inside the first `---` frontmatter block, after the column-0 `hero:` line
+// and before the next column-0 key.
+const A7_CANDIDATE_RE = /^ {2}name: .+\r?$/
+
+/** The indices of A7's candidate lines in `lines` (traceability.md's scoping rule), or `[]` when
+ *  there is no frontmatter, no column-0 `hero:` line inside it, or no candidate under it. The
+ *  frontmatter block must start at the file's own first line — a `---`/`---` pair that merely
+ *  looks like frontmatter further down the file (after other prose) is not one (T9): unlike a
+ *  Markdown parser, this scan never backtracks to "the first `---` anywhere", so a body divider
+ *  can never be mistaken for the real frontmatter fence. */
+function findA7Candidates(lines: readonly string[]): number[] {
+  const stripped = lines.map((l) => l.replace(/\r$/, ''))
+  if (stripped[0] !== '---') return []
+  const isDashes = (s: string) => s === '---'
+  const fmEnd = stripped.findIndex((s, i) => i > 0 && isDashes(s))
+  if (fmEnd === -1) return []
+  let heroIdx = -1
+  for (let i = 1; i < fmEnd; i++) {
+    if (stripped[i] === 'hero:') {
+      heroIdx = i
+      break
+    }
+  }
+  if (heroIdx === -1) return []
+  const candidates: number[] = []
+  for (let i = heroIdx + 1; i < fmEnd; i++) {
+    if (/^\S/.test(stripped[i])) break // the next column-0 key ends hero's scope
+    if (A7_CANDIDATE_RE.test(lines[i])) candidates.push(i)
+  }
+  return candidates
+}
+
+/** Whether `line` is one YAML scalar shaped the way A7's existing value must already be in to be
+ *  replaced (traceability.md: parses as a one-key map whose value is a string, not a block scalar,
+ *  with nothing after it on the line — a trailing `# comment` is unparsable, caught here via the
+ *  `yaml` package's own comment tracking) (T9). The decoded value itself is never used (A7's new
+ *  value always comes from `--site-name`, never from the old line) — only whether `line` has this
+ *  shape at all. */
+function isA7ScalarValue(line: string): boolean {
+  const content = line.replace(/\r$/, '').trim()
+  let doc: ReturnType<typeof parseYamlDocument>
+  try {
+    doc = parseYamlDocument(content, { logLevel: 'silent' })
+  } catch {
+    return false
+  }
+  if (doc.errors.length > 0) return false
+  const map = doc.contents
+  if (!isMap(map) || map.items.length !== 1) return false
+  const pair = map.items[0]
+  if (!isPair(pair) || !isScalar(pair.key) || pair.key.value !== 'name') return false
+  const val = pair.value
+  if (!isScalar(val)) return false
+  if (val.type === 'BLOCK_LITERAL' || val.type === 'BLOCK_FOLDED') return false
+  if (val.comment !== undefined && val.comment !== null) return false
+  return typeof val.value === 'string'
+}
+
+/** A7's new line, given the already-JSON-stringified new name literal; keeps the line's own CRLF. */
+function a7LineFor(line: string, newLiteral: string): string {
+  return `  name: ${newLiteral}${line.endsWith('\r') ? '\r' : ''}`
+}
+
+/** `https://<owner, lowercased>.github.io[/<name as given>]` (traceability.md, T36-T37): the
+ *  derived short-link origin for `--host github-pages` without `--origin`, omitting the path for
+ *  the user site `<owner>.github.io` (compared case-insensitively). */
+function deriveGithubPagesOrigin(repo: string): string {
+  const [owner, name] = repo.split('/')
+  const ownerLower = owner.toLowerCase()
+  if (name.toLowerCase() === `${ownerLower}.github.io`) return `https://${ownerLower}.github.io`
+  return `https://${ownerLower}.github.io/${name}`
+}
+
 // ─── core ────────────────────────────────────────────────────────────────────
 
 export function runForkInit(
@@ -967,7 +1303,9 @@ export function runForkInit(
         scanResidual(CONFIG_REL, cfgNext)
       }
     } else {
-      // ── A mode: only the doc anchors (A2–A5, traceability.md) and the config's A9 line. No
+      // ── A mode: only the identity anchors (A1–A9, traceability.md) and the workflow — the doc
+      //   anchors (A2–A5), the config's A9 line, A6 (site title) and A7 (home-page hero name) when
+      //   --site-name is given, and A8 (short-link origin) when --origin is given or derived. No
       //   tree walk — every file outside A1–A9 and the workflow is byte-identical (T3).
       //
       //   Every CHECKED read/content computation below happens before anything is written —
@@ -1009,14 +1347,121 @@ export function runForkInit(
         docWrites.push({ file, next, raw })
       }
 
-      // The config's A9 line: computed and validated above (shared with rebrand mode and T26).
-      const cfgNext = cfgRawShared !== null ? applyA9Edit(cfgRawShared) : null
+      // ── A6 (site title), whenever --site-name is given (T39-T43/AC-N1-AC-N3): validated here
+      //   (candidate count, value shape), before any write in this run (T54), using the shared
+      //   utf8 read already in hand for A9 — ASCII-only structure, so utf8's possible replacement
+      //   characters for an invalid byte elsewhere in the file never affect this check. The actual
+      //   new content is built below, from a byte-preserving (latin1) read, so a byte outside this
+      //   line — including one that is not valid UTF-8 on its own — round-trips unchanged (T4);
+      //   only `a6Idx`, the validated line INDEX (identical under either decoding, since neither
+      //   adds nor removes a line), crosses from this check into that later construction. ──
+      let a6Idx: number | null = null
+      if (args.siteName !== undefined) {
+        if (cfgLines === null) return treeError(`A6: ${CONFIG_REL} is missing`)
+        const a6Candidates = findMatchingLines(cfgLines, A6_CANDIDATE_RE)
+        if (a6Candidates.length !== 1) {
+          return treeError(`A6: ${CONFIG_REL} must have exactly one line matching \`  title: ...,\``)
+        }
+        a6Idx = a6Candidates[0]
+        const a6ValueMatch = A6_VALUE_RE.exec(cfgLines[a6Idx])
+        if (!a6ValueMatch || !isJsStringLiteral(a6ValueMatch[1])) {
+          return treeError(`A6: ${CONFIG_REL} existing title does not parse as a JS string literal`)
+        }
+      }
+
+      // ── A7 (home-page hero name), whenever --site-name is given: read byte-preserving (latin1)
+      //   from the start (T4) — unlike config.mts, a home page is never shared with A9/rebrand, so
+      //   there is no separate utf8 read to keep in step with. ──
+      const homeWrites: Array<{ file: string; next: string; raw: string }> = []
+      if (args.siteName !== undefined) {
+        const newNameLiteral = utf8AsLatin1(JSON.stringify(args.siteName))
+        for (const file of PLATFORM_HOME_RELS) {
+          const raw = existsSync(abs(file)) ? readFileSync(abs(file)).toString('latin1') : null
+          if (raw === null) return treeError(`A7: ${file} is missing`)
+          const lines = raw.split('\n')
+          const candidates = findA7Candidates(lines)
+          if (candidates.length !== 1) {
+            return treeError(`A7: ${file} must have exactly one \`  name: ...\` line under \`hero:\``)
+          }
+          const idx = candidates[0]
+          const line = lines[idx]
+          if (!isA7ScalarValue(line)) {
+            return treeError(`A7: ${file} existing hero name does not parse as one YAML scalar`)
+          }
+          const nextLines = lines.slice()
+          nextLines[idx] = a7LineFor(line, newNameLiteral)
+          homeWrites.push({ file, next: nextLines.join('\n'), raw })
+        }
+      }
+
+      // ── A8 (short-link origin): --origin, or derived from --host github-pages without
+      //   --origin (T32-T38/T81/AC-O1-AC-O2). Read byte-preserving (latin1) (T4); the write
+      //   decision compares the WHOLE LINE about to be written against the existing one, not just
+      //   the decoded value (T8: a same-VALUE line in a different quote style is still rewritten
+      //   into the canonical JSON-string-literal form) — the T81 warning, separately, still
+      //   compares the decoded values (an equal value never warns, regardless of quoting). ──
+      const finalOrigin: string | undefined =
+        args.origin !== undefined ? args.origin : args.host === 'github-pages' ? deriveGithubPagesOrigin(args.repo) : undefined
+      let shortLinkNext: string | null = null
+      let shortLinkRaw: string | null = null
+      if (finalOrigin !== undefined) {
+        shortLinkRaw = existsSync(abs(SHORT_LINK_REL)) ? readFileSync(abs(SHORT_LINK_REL)).toString('latin1') : null
+        if (shortLinkRaw === null) return treeError(`A8: ${SHORT_LINK_REL} is missing`)
+        const lines = shortLinkRaw.split('\n')
+        const candidates = findMatchingLines(lines, A8_CANDIDATE_RE)
+        if (candidates.length !== 1) {
+          return treeError(`A8: ${SHORT_LINK_REL} must have exactly one line matching \`export const SITE_ORIGIN = ...\``)
+        }
+        const idx = candidates[0]
+        const line = lines[idx]
+        const valueMatch = A8_VALUE_RE.exec(line)
+        if (!valueMatch || !isJsStringLiteral(valueMatch[1])) {
+          return treeError(`A8: ${SHORT_LINK_REL} existing value does not parse as a JS string literal`)
+        }
+        const newLine = a8LineFor(line, utf8AsLatin1(JSON.stringify(finalOrigin)))
+        if (line !== newLine) {
+          const oldValue = evalJsStringLiteral(valueMatch[1])
+          if (oldValue !== finalOrigin && oldValue !== UPSTREAM_SITE_ORIGIN) {
+            // T81/AC-O2: replacing a short-link origin that is not upstream's warns — the engine
+            // keeps no state, so it cannot otherwise tell a fork's own custom domain from one that
+            // should be silently kept. Compares the DECODED value: a line rewritten only to
+            // normalise its quoting (the same value, differently quoted) never warns.
+            warnings.push(
+              `A8: ${SHORT_LINK_REL} changes from ${JSON.stringify(oldValue)} to ${JSON.stringify(finalOrigin)} — ` +
+                `a custom short-link origin is replaced only when --origin (or a derived GitHub Pages origin) says so.`,
+            )
+          }
+          const nextLines = lines.slice()
+          nextLines[idx] = newLine
+          shortLinkNext = nextLines.join('\n')
+        } // else: already byte-identical to the line that would be written — no write, no warning
+      }
+
+      // The config's final content: read byte-preserving (latin1) (T4) so a byte outside the A6/A9
+      // lines — including one that is not valid UTF-8 on its own — round-trips unchanged; A9's own
+      // edit (`applyA9Edit`, shared with rebrand mode) only ever touches pure-ASCII lines, so
+      // reusing it here on this latin1-decoded text is safe (same line count, same indices as the
+      // utf8-decoded `cfgLines` used for validation above).
+      let cfgNext: string | null = null
+      let cfgRawLatin1: string | null = null
+      if (cfgRawShared !== null) {
+        cfgRawLatin1 = readFileSync(abs(CONFIG_REL)).toString('latin1')
+        let cfgLatin1Lines = cfgRawLatin1.split('\n')
+        if (a6Idx !== null) {
+          cfgLatin1Lines = cfgLatin1Lines.slice()
+          cfgLatin1Lines[a6Idx] = a6LineFor(cfgLatin1Lines[a6Idx], utf8AsLatin1(JSON.stringify(args.siteName!)))
+        }
+        cfgNext = applyA9Edit(cfgLatin1Lines.join('\n'))
+      }
 
       // ── write phase: the config (a subdirectory file) first, then the manifest (root) whose
-      //   write was deferred above, then the doc anchors (also root) — so a root-directory write
-      //   failure can still be observed, in a test, to leave an already-written subdirectory file
-      //   in place (traceability.md, T55: "files already written stay"). ──
-      if (cfgRawShared !== null) applyEdit(CONFIG_REL, cfgNext!, cfgRawShared)
+      //   write was deferred above, then both home pages and the short-link module (also
+      //   subdirectory files), then the doc anchors (root) — so a root-directory write failure can
+      //   still be observed, in a test, to leave an already-written subdirectory file in place
+      //   (traceability.md, T55: "files already written stay"). ──
+      if (cfgRawLatin1 !== null) applyEdit(CONFIG_REL, cfgNext!, cfgRawLatin1, 'latin1')
+      for (const { file, next, raw } of homeWrites) applyEdit(file, next, raw, 'latin1')
+      if (shortLinkNext !== null) applyEdit(SHORT_LINK_REL, shortLinkNext, shortLinkRaw!, 'latin1')
       applyEdit(PKG_REL, pkgNext, pkgRaw)
       for (const { file, next, raw } of docWrites) applyEdit(file, next, raw, 'latin1')
     }
@@ -1025,9 +1470,10 @@ export function runForkInit(
     // the workflow, pushed whenever this run installs it (absent -> installed), in GH and
     // no-host runs — never on a replace (GH's "old" branch) and never under --host
     // cloudflare-pages in the non-rebrand branches below, which never install the workflow there.
-    // Rebrand mode's own install, further below, does not branch on --host at all: before T-0015
-    // rejects --rebrand together with --host (T50), it still pushes this warning on an absent
-    // workflow even when --host is cloudflare-pages.
+    // Rebrand mode's own install, further below, does not branch on --host at all — but T50
+    // rejects --rebrand together with --host, so args.host is always undefined whenever
+    // args.rebrand is set; this warning is pushed on an absent workflow regardless, since rebrand
+    // mode never reaches a Cloudflare-Pages-shaped run in the first place.
     const pushTagRuleWarning = () => {
       warnings.push(
         `${DEPLOY_REL} deploys on a \`v*\` tag push. GitHub's \`github-pages\` environment authorises only the default branch by default, so add a Tag rule \`v*\` under Settings > Environments > github-pages > "Deployment branches and tags" (keep the existing \`main\` rule — workflow_dispatch needs it) before cutting a release.`,
@@ -1040,11 +1486,13 @@ export function runForkInit(
 
     if (args.rebrand) {
       // ── rebrand mode (T51): compared "as today" — raw bytes, no LF normalisation, never
-      //   replaced. --host is not rejected together with --rebrand before T-0015: the A9 reset
-      //   and the template checks above still run for either host value, but this install step
-      //   itself does not branch on --host — it installs the template whenever absent regardless
-      //   of GitHub Pages or Cloudflare Pages, which is wrong for Cloudflare Pages and stays
-      //   undefined behaviour until T-0015 rejects the combination. ──
+      //   replaced. T50 rejects --rebrand together with --host (among --origin and --site-name),
+      //   so args.host is always undefined here; the A9 reset and the template checks above (which
+      //   branch on args.host) are therefore exercised, under rebrand, only via their --base path,
+      //   never their --host one. This install step itself does not branch on --host either — it
+      //   installs the template whenever absent — but since args.host can never be set alongside
+      //   args.rebrand, that absence of a branch is never actually exercised against a Cloudflare
+      //   Pages run. ──
       if (tmplRaw) {
         const { next: deployContent, keysHit: deployKeysHit } = transformText(DEPLOY_REL, tmplRaw)
         if (existingDeploy === null) {
