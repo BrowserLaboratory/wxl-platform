@@ -3,14 +3,15 @@
  *
  * S5 (traceability.md): the guard's classification, the upstream decision, the upstream-pristine
  * check and the expectation check — each tested first on fixture `{ path -> content }` maps, then
- * (T69) on the real tracked tree, gated on the upstream decision itself.
+ * (T69) on the real tracked tree, gated on the upstream decision itself. The upstream decision
+ * also takes whether the tree root has a range.json (0005-create-wxl override of 0004 T66).
  *
  * This file is NOT on the keep list (traceability.md, "Upstream repository-slug confinement"), so
  * it must never spell the upstream repository slug as a literal: every fixture below builds it
  * from the imported `UPSTREAM_SLUG`, `.toLowerCase()` and `.toUpperCase()` (ticket T-0011, Note
  * 11) — otherwise the real-tree guard test below would catch this file flagging itself.
  */
-import { readFileSync, statSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { readFileSync, statSync, lstatSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
@@ -353,20 +354,28 @@ describe('upstream guard — confinement', () => {
 
 // ─── the upstream decision (T65-T66) ────────────────────────────────────────
 
-/** T65-T66/AC-G2: whether the tree currently running is upstream itself. */
-function isUpstreamDecision(githubRepository: string | undefined, manifest: unknown, isWorkTree: boolean): boolean {
+/** T65-T66/AC-G2: whether the tree currently running is upstream itself. `hasRangeJson` is the
+ *  0005-create-wxl override of 0004 T66: a root range.json (create-wxl's setup record) means the
+ *  tree is a created range, never upstream itself, when the decision falls back to the manifest
+ *  and work tree; GITHUB_REPOSITORY, when set, still decides alone and ignores it. */
+function isUpstreamDecision(
+  githubRepository: string | undefined,
+  manifest: unknown,
+  isWorkTree: boolean,
+  hasRangeJson: boolean,
+): boolean {
   if (githubRepository !== undefined && githubRepository !== '') {
     return githubRepository === UPSTREAM_SLUG
   }
   const repository = typeof manifest === 'object' && manifest !== null ? (manifest as Record<string, unknown>).repository : undefined
   const url = typeof repository === 'object' && repository !== null ? (repository as Record<string, unknown>).url : undefined
-  return url === `git+https://github.com/${UPSTREAM_SLUG}.git` && isWorkTree
+  return url === `git+https://github.com/${UPSTREAM_SLUG}.git` && isWorkTree && !hasRangeJson
 }
 
 describe('upstream decision', () => {
   // T65/AC-G2: GITHUB_REPOSITORY set and non-empty decides alone.
   it('is upstream iff GITHUB_REPOSITORY equals the upstream slug exactly', () => {
-    expect(isUpstreamDecision(UPSTREAM_SLUG, { repository: { url: 'anything' } }, false)).toBe(true)
+    expect(isUpstreamDecision(UPSTREAM_SLUG, { repository: { url: 'anything' } }, false, false)).toBe(true)
   })
 
   it.each([
@@ -376,18 +385,18 @@ describe('upstream decision', () => {
     ['trailing whitespace', `${UPSTREAM_SLUG} `],
   ])('is not upstream when GITHUB_REPOSITORY is set to %s, regardless of manifest/work-tree', (_label, value) => {
     expect(
-      isUpstreamDecision(value, { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }, true),
+      isUpstreamDecision(value, { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }, true, false),
     ).toBe(false)
   })
 
   it('a non-upstream GITHUB_REPOSITORY still overrides an upstream manifest + work tree', () => {
     expect(
-      isUpstreamDecision('someone/else', { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }, true),
+      isUpstreamDecision('someone/else', { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }, true, false),
     ).toBe(false)
   })
 
   it('an upstream GITHUB_REPOSITORY overrides a non-upstream manifest and a non-work-tree', () => {
-    expect(isUpstreamDecision(UPSTREAM_SLUG, { repository: { url: 'git+https://github.com/someone/else.git' } }, false)).toBe(true)
+    expect(isUpstreamDecision(UPSTREAM_SLUG, { repository: { url: 'git+https://github.com/someone/else.git' } }, false, false)).toBe(true)
   })
 
   // T66/AC-G2: GITHUB_REPOSITORY unset or empty falls back to manifest + work tree.
@@ -396,8 +405,36 @@ describe('upstream decision', () => {
     ['empty string', ''],
   ])('falls back to the manifest and work tree when GITHUB_REPOSITORY is %s', (_label, value) => {
     const upstreamManifest = { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }
-    expect(isUpstreamDecision(value, upstreamManifest, true)).toBe(true)
-    expect(isUpstreamDecision(value, upstreamManifest, false)).toBe(false)
+    expect(isUpstreamDecision(value, upstreamManifest, true, false)).toBe(true)
+    expect(isUpstreamDecision(value, upstreamManifest, false, false)).toBe(false)
+  })
+
+  // C62/AC-25 (0005-create-wxl override of 0004 T66): without GITHUB_REPOSITORY, a root range.json
+  // turns an otherwise-upstream-shaped tree (upstream manifest url + work tree) into "not
+  // upstream" — the setup record is create-wxl's signal that the tree is a created range, not
+  // upstream itself.
+  it.each([
+    ['unset', undefined, false, true],
+    ['unset', undefined, true, false],
+    ['empty string', '', false, true],
+    ['empty string', '', true, false],
+  ])(
+    'without GITHUB_REPOSITORY (%s, value %j), hasRangeJson=%s → upstream %s',
+    (_label, value, hasRangeJson, expected) => {
+      const upstreamManifest = { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }
+      expect(isUpstreamDecision(value, upstreamManifest, true, hasRangeJson)).toBe(expected)
+    },
+  )
+
+  // C62/AC-25: when GITHUB_REPOSITORY is set and non-empty, range.json never enters the decision —
+  // toggling ONLY hasRangeJson, with the other inputs fixed at the shape where it would otherwise
+  // matter (an upstream manifest, in a work tree), changes nothing.
+  it('with GITHUB_REPOSITORY set, a root range.json never changes the decision', () => {
+    const upstreamManifest = { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }
+    expect(isUpstreamDecision(UPSTREAM_SLUG, upstreamManifest, true, false)).toBe(true)
+    expect(isUpstreamDecision(UPSTREAM_SLUG, upstreamManifest, true, true)).toBe(true)
+    expect(isUpstreamDecision('other/repo', upstreamManifest, true, false)).toBe(false)
+    expect(isUpstreamDecision('other/repo', upstreamManifest, true, true)).toBe(false)
   })
 
   it.each([
@@ -406,7 +443,7 @@ describe('upstream decision', () => {
     ['repository as a string', { repository: `git+https://github.com/${UPSTREAM_SLUG}.git` }],
     ['no repository at all', {}],
   ])('is not upstream, in a work tree, with %s', (_label, manifest) => {
-    expect(isUpstreamDecision(undefined, manifest, true)).toBe(false)
+    expect(isUpstreamDecision(undefined, manifest, true, false)).toBe(false)
   })
 })
 
@@ -746,7 +783,17 @@ function realManifest(): unknown {
   }
 }
 
-const REAL_DECISION = isUpstreamDecision(process.env.GITHUB_REPOSITORY, realManifest(), isGitWorkTree())
+/** Whether `REPO_ROOT` itself has a root range.json (0005-create-wxl override of 0004 T66): this
+ *  repository is upstream and never carries one, but a range created by create-wxl would. */
+function hasRootRangeJson(): boolean {
+  try {
+    return lstatSync(resolve(REPO_ROOT, 'range.json')).isFile()
+  } catch {
+    return false
+  }
+}
+
+const REAL_DECISION = isUpstreamDecision(process.env.GITHUB_REPOSITORY, realManifest(), isGitWorkTree(), hasRootRangeJson())
 
 describe.runIf(REAL_DECISION)('deploy template hash pin (upstream only)', () => {
   it('the current template’s LF-normalised SHA-256 is pinned and not in the engine’s known-old list', () => {

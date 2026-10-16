@@ -3,6 +3,9 @@
  *
  * Deterministic edits to fork this template repo into a new project.
  * The wxl-fork-init skill calls this CLI instead of hand-editing files.
+ * create-wxl (the npm package, 0005-create-wxl) carries a type-stripped copy of this file: it
+ * calls parseForkInitArgs and runForkInit on a range it just created, and also uses
+ * deriveGithubPagesOrigin, ForkInitArgError and UPSTREAM_SLUG.
  *
  * Usage:
  *   pnpm fork:init --author <name> --repo <owner/repo>
@@ -32,7 +35,10 @@
  *                        also renames the four runtime-sensitive keys (deterministic,
  *                        structure-aware), plus an HONEST residual inventory of every
  *                        remaining case-insensitive `wxl` (which is NOT auto-renamed — see
- *                        "Why not rename every wxl?" below).
+ *                        "Why not rename every wxl?" below). Unlike the rest of the walk, a root
+ *                        range.json (create-wxl's setup record) is never rewritten in B mode —
+ *                        it still goes through the residual scan, so it keeps appearing in the
+ *                        inventory when it carries the upstream slug.
  *
  * Why not rename every `wxl`?
  *   In this repo the substring `wxl` spans several unrelated identifier families that a
@@ -695,6 +701,9 @@ const SELF_EXCLUDE = new Set(['scripts/fork-init.ts', 'tests/unit/scripts/fork-i
 // package.json is edited structurally, never via text passes.
 const PKG_REL = 'package.json'
 const CONFIG_REL = '.vitepress/config.mts'
+// create-wxl's setup record (0005-create-wxl override of 0004 T51): the tree root's own
+// range.json is never a text-pattern edit in rebrand mode — see the walk below.
+const RANGE_JSON_REL = 'range.json'
 const DEPLOY_TEMPLATE_REL = 'scripts/templates/deploy.yml.template'
 const UPSTREAM_URL = `https://github.com/${UPSTREAM_SLUG}`
 
@@ -1071,8 +1080,9 @@ function a7LineFor(line: string, newLiteral: string): string {
 
 /** `https://<owner, lowercased>.github.io[/<name as given>]` (traceability.md, T36-T37): the
  *  derived short-link origin for `--host github-pages` without `--origin`, omitting the path for
- *  the user site `<owner>.github.io` (compared case-insensitively). */
-function deriveGithubPagesOrigin(repo: string): string {
+ *  the user site `<owner>.github.io` (compared case-insensitively). `repo` must already have passed
+ *  parseForkInitArgs's `owner/name` check (T45); create-wxl calls it only after a successful parse. */
+export function deriveGithubPagesOrigin(repo: string): string {
   const [owner, name] = repo.split('/')
   const ownerLower = owner.toLowerCase()
   if (name.toLowerCase() === `${ownerLower}.github.io`) return `https://${ownerLower}.github.io`
@@ -1318,15 +1328,24 @@ export function runForkInit(
       // A9/template checks above) so compute-before-write (T54) holds for them too.
       applyEdit(PKG_REL, pkgNext, pkgRaw)
       scanResidual(PKG_REL, pkgNext)
-      // ── B mode: today's tree-wide swap, kept exactly as before (T51), except CONFIG_REL, whose
-      //   A9 line is never a text-pattern edit (handled explicitly, below, with the same A9 logic
-      //   anchor mode uses). ──
+      // ── B mode: today's tree-wide swap, kept exactly as before (0004 T51), except CONFIG_REL,
+      //   whose A9 line is never a text-pattern edit (handled explicitly, below, with the same A9
+      //   logic anchor mode uses), and the tree root's own range.json (0005-create-wxl override of
+      //   0004 T51, C61), which is only scanned, never rewritten, below. ──
       for (const rel of walkTextFiles(root)) {
         if (rel === PKG_REL) continue // structured above
         if (rel === CONFIG_REL) continue // handled explicitly, below
         if (rel === DEPLOY_REL && tmplRaw !== null) continue // handled with the deploy copy below
         const raw = readIf(rel)
         if (raw === null) continue
+        if (rel === RANGE_JSON_REL) {
+          // 0005-create-wxl override (0004 T51, C61): the tree root's own setup record is never
+          // rewritten here — only scanned, so the honest inventory still reports it when it
+          // carries the upstream slug. A nested `sub/range.json` is not this exact root-relative
+          // path, so it falls through to the ordinary swap below, unaffected.
+          scanResidual(rel, raw)
+          continue
+        }
         const { next, keysHit } = transformText(rel, raw)
         applyEdit(rel, next, raw)
         for (const k of keysHit) recordSensitive(k, rel)
