@@ -40,7 +40,7 @@
 - **Node.js** >= 22.6：`challenge:keygen`、`create:challenge`、`challenge:validate`、`challenge:analyze` 透過 `node --experimental-strip-types` 執行，較舊的版本沒有這個功能。其餘 TypeScript 腳本走內建的 `tsx`，沒有版本下限。CI 用 Node 24 建置。
 - **pnpm** >= 10（`npm install -g pnpm`）
 - **Rust** 工具鏈（用 [rustup](https://rustup.rs/) 安裝）
-- **wasm-pack**（`cargo install wasm-pack`）：它不是套件相依，要安裝到 Rust 工具鏈裡
+- **wasm-pack**（`cargo install wasm-pack --version 0.14.0 --locked`）：版本與 CI 相同。它不是套件相依，要安裝到 Rust 工具鏈裡
 - **wasm-tools**（`cargo install wasm-tools --version 1.249.0 --locked`，或 `pnpm wasm:tools`）：版本與 CI 相同。`pnpm challenge:verify` 的 L2 階段要用它對產生的 payload 執行 `wasm-tools validate`。`pnpm challenge:keygen` 的 strip 與 mutate 也會用到，沒有安裝時只會各印一則警告。
 - **Playwright 用的 Chromium**：第一次執行 `pnpm challenge:verify` 或 `pnpm test:smoke` 之前要裝好。`pnpm install` 之後執行一次：
 
@@ -210,7 +210,7 @@ GitHub Pages 的 fork 還有兩個設定在 GitHub 介面上，不在 repo 裡�
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
      && . "$HOME/.cargo/env" \
-     && cargo install wasm-pack \
+     && cargo install wasm-pack --version 0.14.0 --locked \
      && pnpm install \
      && pnpm build
    ```
@@ -219,7 +219,7 @@ GitHub Pages 的 fork 還有兩個設定在 GitHub 介面上，不在 repo 裡�
 4. 環境變數加上 `NODE_VERSION=24`。
 5. **Cloudflare Pages 靶場部署在網域根目錄**：只要是用 `--host cloudflare-pages` 設定出來的靶場，base 定義已經回到上游那行 `process.env.SITE_BASE || '/'`——Cloudflare Pages 的建置環境本身不會自動設定 `SITE_BASE`，所以這裡不需要加任何環境變數。但如果你先前在 Cloudflare Pages 專案設定裡手動加過 `SITE_BASE`，請現在刪除：留著的話它照樣會蓋掉這行字面值，而 `.vitepress/config.mts` 要求這個值要嘛是 `/`、要嘛是以 `/` 結尾的路徑，少了結尾斜線會讓建置直接丟出錯誤中止。
 
-> **注意**：Cloudflare Pages 預設沒有 Rust 工具鏈。`wasm-pack` 是 Rust 執行檔，不是套件相依，`pnpm install` 不會提供它，所以上面的建置指令會先裝最小的 Rust 工具鏈和 `wasm-pack` 再建置。這裡沒有安裝 `wasm-tools`。`pnpm build` 會執行 `pnpm challenge:keygen`，它的 strip 與 mutate 會用到 `wasm-tools`，但沒有這個工具時只會各印一則警告，建置仍會成功，只是少了這兩個步驟。如果希望正式建置也做 strip 與 mutate，請在安裝那行加上 `cargo install wasm-tools --version 1.249.0 --locked`（與 CI 相同的版本）。
+> **注意**：Cloudflare Pages 預設沒有 Rust 工具鏈。`wasm-pack` 是 Rust 執行檔，不是套件相依，`pnpm install` 不會提供它，所以上面的建置指令會先裝最小的 Rust 工具鏈和 `wasm-pack` 再建置。`wasm-pack` 固定為 CI 使用的 0.14.0，並加上 `--locked` 使用 wasm-pack 自己的 lockfile：不加的話 cargo 會重新解析最新的相容相依版本，某個相依的相容版本若全部被撤回（yanked），建置就會失敗（2026-10-16 的 `zip` 2.x 就是如此）。這裡沒有安裝 `wasm-tools`。`pnpm build` 會執行 `pnpm challenge:keygen`，它的 strip 與 mutate 會用到 `wasm-tools`，但沒有這個工具時只會各印一則警告，建置仍會成功，只是少了這兩個步驟。如果希望正式建置也做 strip 與 mutate，請在安裝那行加上 `cargo install wasm-tools --version 1.249.0 --locked`（與 CI 相同的版本）。
 
 ## 授權
 
