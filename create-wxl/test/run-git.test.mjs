@@ -649,26 +649,32 @@ describe('git steps — runner', () => {
   })
 
   it('on win32, finds git.exe through a case-insensitive Path variable', async () => {
-    // A fake `git.exe` written as a `#!/bin/sh` script relies on the kernel's shebang handling,
-    // which real Windows does not have: `spawn()` there would fail with ENOENT/UNKNOWN before the
-    // lookup under test is even exercised. Instead, this copies the REAL git binary this machine
-    // already has (found the same way a teacher's shell would, `findRealGitDir()`) under the
-    // win32 candidate name `git.exe`, so the spawn at the end is of a real, natively executable
-    // binary on every OS, including real Windows; only the case-insensitive `Path` key and the
-    // injected `platform: 'win32'` lookup are what this test is about.
+    // On macOS/Linux, this copies the REAL git binary this machine already has (found by
+    // `findRealGitDir()`) into a scratch folder under the win32 candidate name `git.exe`, which runs
+    // natively there. On real win32, Git for Windows' `cmd\git.exe` launcher locates its installation
+    // relative to its own path, so a copy of it elsewhere exits 1; there this test instead points
+    // `Path` straight at the real `findRealGitDir()` directory, which already holds a working
+    // `git.exe`. Either way, only the case-insensitive `Path` key and the injected `platform: 'win32'`
+    // lookup are what this test is about.
     const binDir = await makeTmpRoot()
     const cwd = await makeTmpRoot()
     try {
       const realGitDir = findRealGitDir()
-      const realGitName = process.platform === 'win32' ? 'git.exe' : 'git'
-      const fakeGit = join(binDir, 'git.exe')
-      await copyFile(join(realGitDir, realGitName), fakeGit)
-      await chmod(fakeGit, 0o755)
+      let pathValue
+
+      if (process.platform === 'win32') {
+        pathValue = realGitDir
+      } else {
+        const fakeGit = join(binDir, 'git.exe')
+        await copyFile(join(realGitDir, 'git'), fakeGit)
+        await chmod(fakeGit, 0o755)
+        pathValue = binDir
+      }
 
       const runGit = createSpawnGitRunner({ platform: 'win32' })
-      const result = await runGit(['--version'], { cwd, env: { Path: binDir } })
+      const result = await runGit(['--version'], { cwd, env: { Path: pathValue } })
 
-      expect(result.code).toBe(0)
+      expect(result.code, result.stderr).toBe(0)
       expect(result.stdout).toContain('git version')
     } finally {
       await rm(binDir, { recursive: true, force: true })
