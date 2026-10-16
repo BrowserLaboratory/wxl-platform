@@ -5,7 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { rm, mkdir, readdir, writeFile, readFile } from 'node:fs/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -54,8 +54,8 @@ describe('step 10 rollback', () => {
       // The first two forward renames (entries 1-2) were moved back: a rename whose destination is
       // under the temporary directory, named after each of the first two forward renames' sources.
       const movedBack = calls.filter((c) => c.method === 'rename' && c.args[1].startsWith(join(tmpRoot, '.create-wxl-')))
-      const movedBackNames = movedBack.map((c) => c.args[1].split('/').pop()).sort()
-      const firstTwoNames = renameSources.slice(0, 2).map((args) => args[1].split('/').pop()).sort()
+      const movedBackNames = movedBack.map((c) => basename(c.args[1])).sort()
+      const firstTwoNames = renameSources.slice(0, 2).map((args) => basename(args[1])).sort()
       expect(movedBackNames).toEqual(firstTwoNames)
     } finally {
       await rm(tmpRoot, { recursive: true, force: true })
@@ -79,8 +79,8 @@ describe('step 10 rollback', () => {
         }
         // a reverse rename (moving an entry back into the temporary directory): fail when it is
         // the 2nd entry's (forwardSources[1]'s) name being moved back.
-        const secondEntryName = forwardSources[1]?.[1]?.split('/').pop()
-        if (secondEntryName && args[1].endsWith('/' + secondEntryName)) {
+        const secondEntryName = forwardSources[1]?.[1] && basename(forwardSources[1][1])
+        if (secondEntryName && basename(args[1]) === secondEntryName) {
           return fsError('EPERM', 'EPERM: operation not permitted (rollback)')
         }
         return null
@@ -94,8 +94,8 @@ describe('step 10 rollback', () => {
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^CW-E11/m)
       expectCwLinesStartWithCode(ioHelper.stderrText)
-      const secondEntryName = forwardSources[1][1].split('/').pop()
-      const firstEntryName = forwardSources[0][1].split('/').pop()
+      const secondEntryName = basename(forwardSources[1][1])
+      const firstEntryName = basename(forwardSources[0][1])
       expect(ioHelper.stderrText).toContain(JSON.stringify(secondEntryName))
 
       // (S-07/P-07) The temporary directory is still present and named: it holds the 1st entry
@@ -190,8 +190,8 @@ describe('step 10 recheck', () => {
       expect(wholeDirRenames).toEqual([])
       // (P-15) a positive per-entry rename for every top-level name that ends up in the target,
       // and the target's full expected listing (not just "contains range.json").
-      const perEntryRenames = calls.filter((c) => c.method === 'rename' && c.args[1].startsWith(target + '/'))
-      const renamedNames = perEntryRenames.map((c) => c.args[1].slice(target.length + 1)).sort()
+      const perEntryRenames = calls.filter((c) => c.method === 'rename' && dirname(c.args[1]) === target)
+      const renamedNames = perEntryRenames.map((c) => basename(c.args[1])).sort()
       const expectedTopLevel = ['.proj.specs', 'CHANGELOG.md', 'README.md', 'package.json', 'range.json', 'src'].sort()
       expect(renamedNames).toEqual(expectedTopLevel)
       expect((await readdir(target)).sort()).toEqual(expectedTopLevel)
@@ -221,7 +221,7 @@ describe('steps 8-9 file-system errors', () => {
         ),
       }),
       'EIO',
-      () => '.proj.specs/OPEN-QUESTIONS.md',
+      () => join('.proj.specs', 'OPEN-QUESTIONS.md'),
     ],
     [
       'range.json write EIO',

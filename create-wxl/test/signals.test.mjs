@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, readdir, mkdir, readFile, writeFile, mkdtemp, rename, lstat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { recordingFs } from './helpers/fs-recorder.mjs'
 import { run } from '../src/run.mjs'
@@ -290,14 +290,14 @@ describe('SIGINT in steps 3-10', () => {
         (c) => c.method === 'rename' && c.args[0].startsWith(join(tmpRoot, '.create-wxl-')),
       )
       expect(forwardRenames.length).toBe(2)
-      const forwardNames = forwardRenames.map((c) => c.args[0].split('/').pop()).sort()
+      const forwardNames = forwardRenames.map((c) => basename(c.args[0])).sort()
       // (P-16) the exact SET of reverse renames (back into the temporary directory) matches the
       // two entries that were actually moved forward -- not merely "the target ended up empty"
       // (which deleting them outright would also satisfy).
       const reverseRenames = calls.filter(
         (c) => c.method === 'rename' && c.args[1].startsWith(join(tmpRoot, '.create-wxl-')),
       )
-      const reverseNames = reverseRenames.map((c) => c.args[1].split('/').pop()).sort()
+      const reverseNames = reverseRenames.map((c) => basename(c.args[1])).sort()
       expect(reverseNames).toEqual(forwardNames)
       expect(await readdir(target)).toEqual([])
       await expectOnlySentinel(tmpRoot, { extraNames: ['range'] })
@@ -323,7 +323,7 @@ describe('SIGINT in steps 3-10', () => {
         if (isForward) {
           forwardCount++
           if (forwardCount === 2) {
-            secondEntryName = args[0].split('/').pop()
+            secondEntryName = basename(args[0])
             const result = await rename(...args)
             deps.signals.emit('SIGINT')
             return result
@@ -331,7 +331,7 @@ describe('SIGINT in steps 3-10', () => {
           return rename(...args)
         }
         // a reverse rename (moving an entry back): fail for the 2nd entry specifically.
-        if (secondEntryName && args[1].endsWith('/' + secondEntryName)) {
+        if (secondEntryName && basename(args[1]) === secondEntryName) {
           const err = new Error('EPERM: operation not permitted (rollback)')
           err.code = 'EPERM'
           throw err
