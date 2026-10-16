@@ -1,2 +1,6 @@
-# Keep template text and recorded upstream checksums stable across checkouts.
+# Keep template text and recorded upstream checksums stable across checkouts; keep upstream's own records out of ranges.
 * text=auto eol=lf
+/.proj.specs/** export-ignore
+/.proj.specs/OPEN-QUESTIONS.md -export-ignore
+/.proj.tickets export-ignore
+/create-wxl export-ignore

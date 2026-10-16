@@ -1,8 +1,9 @@
 // Message tables, one per language, keyed by message id. Every CW-E/CW-W text begins with its
-// code (D3: CW-E/CW-W go to stderr; N-lines go to stdout). Ids implemented here are the ones
-// create-wxl's `--no-setup` happy path (0005's traceability matrix rows C01, C02, C03, C07, C14,
-// C15, C50) needs; later tickets add the remaining CW-E/CW-W/N ids to both tables, keeping the id
-// sets equal (AC-18).
+// code (D3: CW-E/CW-W go to stderr; N-lines go to stdout). Ids implemented here cover the
+// `--no-setup` path's happy path and failures T-0020 and T-0021 need: argument/target/download
+// checks (C01-C16, C50), strict parse and entry rules 1-5 (CW-E08, C17-C21/C55), and pristine
+// rule failures (CW-E10, C24/C27). Later tickets add the remaining CW-E/CW-W/N ids to both
+// tables, keeping the id sets equal (AC-18).
 
 import { jsonValue, posixCommand, formatDirectoryArg } from './text.mjs'
 
@@ -71,6 +72,13 @@ export const en = {
     (detail ? ` (${jsonValue(detail)})` : '') +
     '.',
   'CW-E07': ({ url, detail }) => `CW-E07: downloading ${jsonValue(url)} failed: ${cwE07DetailText('en', detail)}.`,
+  'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
+    parseError !== undefined
+      ? `CW-E08: the archive could not be parsed: ${jsonValue(parseError)}.`
+      : `CW-E08: the archive broke entry rule ${rule}` +
+        (isCommentMarker ? ' (pax comment)' : path !== undefined ? ` (${jsonValue(path)})` : '') +
+        '.',
+  'CW-E10': ({ file, rule }) => `CW-E10: pristine rule ${rule} failed for ${jsonValue(file)}.`,
   'CW-E13': () => `CW-E13: the create-wxl package is broken. Retry with npm create wxl@latest.`,
   'CW-W04': ({ commit }) =>
     `CW-W04: using the override commit ${jsonValue(commit)}; this is not a release and is meant for testing.`,
@@ -90,6 +98,13 @@ export const zhTW = {
     (detail ? `（${jsonValue(detail)}）` : '') +
     '。',
   'CW-E07': ({ url, detail }) => `CW-E07：下載 ${jsonValue(url)} 失敗：${cwE07DetailText('zh-TW', detail)}。`,
+  'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
+    parseError !== undefined
+      ? `CW-E08：壓縮檔無法解析：${jsonValue(parseError)}。`
+      : `CW-E08：壓縮檔違反規則 ${rule}` +
+        (isCommentMarker ? '（pax comment）' : path !== undefined ? `（${jsonValue(path)}）` : '') +
+        '。',
+  'CW-E10': ({ file, rule }) => `CW-E10：原廠靶場處理規則 ${rule} 失敗：${jsonValue(file)}。`,
   'CW-E13': () => `CW-E13：套件已損壞，請改用 npm create wxl@latest 重試。`,
   'CW-W04': ({ commit }) => `CW-W04：改用測試用的 commit ${jsonValue(commit)}，這不是正式版本，僅供測試。`,
   N1: ({ directory }) => `下一步：${posixCommand(['cd', formatDirectoryArg(directory)])}`,

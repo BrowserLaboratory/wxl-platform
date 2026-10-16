@@ -52,3 +52,15 @@ export async function snapshotTree(root) {
 }
 
 export const skipModes = process.platform === 'win32' || (typeof process.getuid === 'function' && process.getuid() === 0)
+
+/** A copy of `snapshotTree`'s result with the root entry's `mtimeMs` dropped: creating and then
+ * removing the run's own temporary directory legitimately touches its PARENT's modification time
+ * even when the parent's own listing ends up unchanged (pristine.test.mjs's CW-E10 cases, which
+ * do call `mkdtemp` before step 9 fails). Comparing two snapshots taken through this still catches
+ * any entry left behind, any content change, or any mode/size/ino difference -- just not the
+ * root's own timestamp, which this file's cases do not claim to pin. */
+export function withoutRootMtime(snapshot) {
+  if (!snapshot['.']) return snapshot
+  const { mtimeMs, ...rest } = snapshot['.']
+  return { ...snapshot, '.': rest }
+}
