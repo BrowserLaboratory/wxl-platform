@@ -121,3 +121,8 @@ Drafted and independently checked by a workflow (two rounds: draft and check, th
 #### User decisions (2026-10-17)
 
 - Q5: UP-I01 is printed on stdout (it is not an error). The tests assert stdout.
+
+### 2026-10-17 — increment plan: user decisions, work paused
+
+The increment plan and its independent check are drafted (approve with corrections; the corrections are applied when work resumes). The user decided the four points the spec leaves open, following the recommendations: (1) the `bin` passing `deps.tmpRoot = os.tmpdir()` (traceability's dependency list, claimed by no ticket) belongs to this ticket, with one test row added to the approved table; (2) `--from` before `upgrade` (for example `--from 3.0.0 upgrade`) is CW-E02, as the grammar draws `--from` after `upgrade` only; (3) a base archive from `--from <commit>` whose `package.json` version is missing or not X.Y.Z is UP-E10, since the 3.0.0 floor cannot be established; (4) until T-0027, a run that has downloaded and built both pristine ranges ends with CW-E14 whose message says the upgrade merge is not implemented yet, after removing both temporary folders. The user then paused the work on 2026-10-17 to prepare the workshop; status stays `todo` until it resumes.
+
