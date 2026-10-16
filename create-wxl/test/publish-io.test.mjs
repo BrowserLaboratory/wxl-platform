@@ -121,7 +121,10 @@ describe('createArchive', () => {
   // archives only that subdirectory's own subtree (git's documented behaviour), silently
   // dropping everything else the repository tracks -- the package folder itself can be
   // `export-ignore`d, which empties the archive entirely.
-  it('archives the whole repository tree, not just the package subdirectory passed as root', async () => {
+  // Real git on Windows CI runners can take several seconds; this test spawns it several times
+  // (makeRepoWithPackageSubdir's init/add/commit/rev-parse, then createArchive's own git archive),
+  // so the default 5000ms test timeout is too tight there.
+  it('archives the whole repository tree, not just the package subdirectory passed as root', { timeout: 30000 }, async () => {
     const repo = await makeRepoWithPackageSubdir()
     try {
       const commit = await repo.commit()

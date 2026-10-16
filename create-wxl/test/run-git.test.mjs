@@ -52,7 +52,10 @@ function expectInOrder(text, from, items) {
 }
 
 describe('git steps — real git', () => {
-  it('C35: success builds one commit on main, isolated from the global template hook and gpg signing', async () => {
+  // Real git on Windows CI runners can take several seconds; each case here spawns it several
+  // times (the fixed run() pipeline plus verifyGit checks), so the default 5000ms test timeout
+  // is too tight there.
+  it('C35: success builds one commit on main, isolated from the global template hook and gpg signing', { timeout: 30000 }, async () => {
     const tmpRoot = await makeTmpRoot()
     const { homeDir, hookMarkerFile } = await makeGitHomeWithHook()
     const xdgConfigHome = await makeTmpRoot()
@@ -114,7 +117,7 @@ describe('git steps — real git', () => {
     }
   })
 
-  it('C70: every runGit call of the "Git steps" fixed list, env with no GIT_* other than the two additions', async () => {
+  it('C70: every runGit call of the "Git steps" fixed list, env with no GIT_* other than the two additions', { timeout: 30000 }, async () => {
     const tmpRoot = await makeTmpRoot()
     const { homeDir } = await makeGitHomeWithHook()
     const xdgConfigHome = await makeTmpRoot()
@@ -177,7 +180,7 @@ describe('git steps — real git', () => {
     }
   })
 
-  it('C59: a global core.excludesFile ignoring lib/ does not keep lib/x.js out of the commit', async () => {
+  it('C59: a global core.excludesFile ignoring lib/ does not keep lib/x.js out of the commit', { timeout: 30000 }, async () => {
     const tmpRoot = await makeTmpRoot()
     const { homeDir } = await makeGitHomeWithExcludes()
     const xdgConfigHome = await makeTmpRoot()
@@ -209,7 +212,7 @@ describe('git steps — real git', () => {
     }
   })
 
-  it('C37: no identity (empty HOME/XDG_CONFIG_HOME) -> CW-W02, no commit, not CW-W03', async () => {
+  it('C37: no identity (empty HOME/XDG_CONFIG_HOME) -> CW-W02, no commit, not CW-W03', { timeout: 30000 }, async () => {
     const tmpRoot = await makeTmpRoot()
     const homeDir = await makeEmptyGitHome()
     const xdgConfigHome = await makeTmpRoot()
