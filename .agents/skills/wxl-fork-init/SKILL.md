@@ -12,7 +12,7 @@ description: Use when forking or template-cloning this repo into a new project. 
 兩種意圖，工作量差很多：
 
 - **A（沿用 WXL 品牌）**：只是拿 template 加自己的題目 → `pnpm fork:init`（不帶 `--rebrand`）。
-- **B（rebrand 全新產品名）**：另加 `--rebrand <newname>`。CLI **只自動改**可證明的完整 token——上游 repository slug 與四個 runtime 敏感鍵——其餘含 `wxl` 者（品牌散字、`wxlsh` 子系統、Title-case、skill/spec 目錄）以誠實的 `file:line` inventory 列出交你人工判斷；**CLI 不會宣稱 rebrand 已完成**，直到 inventory 清空為止。
+- **B（rebrand 全新產品名）**：另加 `--rebrand <newname>`。CLI **只自動改**可證明的完整 token——上游 repository slug 與四個 runtime 敏感鍵——其餘含 `wxl` 者（品牌散字、`wxlsh` 子系統、Title-case、skill/spec 目錄）以誠實的 `file:line` inventory 列出交你人工判斷；**CLI 不會宣稱 rebrand 已完成**，直到 inventory 清空為止（用 create-wxl 建立的靶場例外：根目錄 `range.json` 的上游 slug 會一直留在 inventory 裡，見 Verification）。
 
 何時**不適用**：只是在既有 repo 內開發、或只想改幾個字串——直接編輯即可，不需本 skill。
 
@@ -86,7 +86,7 @@ git grep -n "BrowserLaboratory/wxl-platform" -- README.md README.en.md CONTRIBUT
 git grep -nE "CXPh03n1x|CXPhoenix" -- .
 ```
 
-第一條只在這四個檔案裡找，而且只適用 A 模式（不帶 `--rebrand`）：A 模式下，上游 repository slug 只被改寫這幾個檔案固定的錨點位置，其餘檔案（包含 `CHANGELOG.md`、`.proj.specs/`、`.proj.tickets/`）都不會被動到，所以照樣保留這個 slug 當紀錄或識別字；對整庫跑 `-- .` 會在那些地方正常命中，不代表殘留。`scripts/fork-init.ts` 與它的測試、兩棵 `wxl-fork-init/SKILL.md`（在 `.claude`／`.agents` 目錄下，兩種模式都不會被改寫）則不論哪個模式都保留這個 slug。B（`--rebrand`）模式會整樹替換，`CHANGELOG.md`、`.proj.specs/`、`.proj.tickets/` 的 slug 也會一併換掉；要判斷 B 模式有沒有殘留，請用 CLI 輸出的 **residual inventory**（`file:line`），不要用這條只適用 A 模式的 grep。第二條回傳你自己的身分或零殘留（`package.json.author` 若刻意保留 upstream attribution 則例外）。residual inventory 列出的檔案（品牌散字、Title-case 如 `Wxlsh`、`wxlsh` 子系統、路徑引用如 `scripts/wxl-solver`）需你按家族人工判斷並改名；上游 repository slug 與四個敏感鍵已由 CLI 自動改名，不會出現在這份清單裡。CLI 在 inventory 非空時會明確聲明 rebrand 未完成，不會誤報 clean。`.claude`/`.agents`/`.codex` 為結構性 skill 識別字，刻意不由 CLI 改名（兩種模式皆然）。
+第一條只在這四個檔案裡找，而且只適用 A 模式（不帶 `--rebrand`）：A 模式下，上游 repository slug 只被改寫這幾個檔案固定的錨點位置，其餘檔案（包含 `CHANGELOG.md`、`.proj.specs/`、`.proj.tickets/`）都不會被動到，所以照樣保留這個 slug 當紀錄或識別字；對整庫跑 `-- .` 會在那些地方正常命中，不代表殘留。`scripts/fork-init.ts` 與它的測試、兩棵 `wxl-fork-init/SKILL.md`（在 `.claude`／`.agents` 目錄下，兩種模式都不會被改寫）則不論哪個模式都保留這個 slug。B（`--rebrand`）模式會整樹替換，`CHANGELOG.md`、`.proj.specs/`、`.proj.tickets/` 的 slug 也會一併換掉；要判斷 B 模式有沒有殘留，請用 CLI 輸出的 **residual inventory**（`file:line`），不要用這條只適用 A 模式的 grep。第二條回傳你自己的身分或零殘留（`package.json.author` 若刻意保留 upstream attribution 則例外）。residual inventory 列出的檔案（品牌散字、Title-case 如 `Wxlsh`、`wxlsh` 子系統、路徑引用如 `scripts/wxl-solver`）需你按家族人工判斷並改名；上游 repository slug 與四個敏感鍵已由 CLI 自動改名，不會出現在這份清單裡。根目錄的 `range.json`（create-wxl 建立靶場時寫入的設定紀錄）是例外：兩種模式都不會改寫它，所以它的上游 slug 在 A 模式對整庫跑 `-- .` 時、以及 B 模式的 residual inventory 裡都會出現，屬於預期結果，不代表殘留未處理；這個靶場的 rebrand 因此會一直顯示未完成。**不要手動改掉 `range.json` 的 `upstream.repository`**：升級靠它找回上游的舊版，改掉後升級會停下並要求用 `--from` 指出版本。接手別人的靶場時，先確認 `range.json` 的 `upstream.commit` 是上游某個發布版本的 commit。CLI 在 inventory 非空時會明確聲明 rebrand 未完成，不會誤報 clean。`.claude`/`.agents`/`.codex` 為結構性 skill 識別字，刻意不由 CLI 改名（兩種模式皆然）。
 
 本機能建置＋預覽（用 `--host` 時 base 由部署環境決定，本機預覽固定在 `/`；只有不帶 `--host` 改用 `--base` 時才要自己確認 asset 不 404）：
 

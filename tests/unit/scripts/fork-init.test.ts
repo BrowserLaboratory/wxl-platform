@@ -43,6 +43,7 @@ import {
   ForkInitArgError,
   UPSTREAM_SLUG,
   matchesOriginGrammar,
+  deriveGithubPagesOrigin,
   type ForkInitResult,
 } from '../../../scripts/fork-init'
 
@@ -1751,6 +1752,15 @@ describe('runForkInit — anchor mode: short-link origin (A8)', () => {
     setShortLink("'https://custom.example'")
     const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
     expect(res.warnings.some((w) => w.includes('A8'))).toBe(false)
+  })
+})
+
+// Supports C63 (0005-create-wxl override): deriveGithubPagesOrigin becomes an export, behaviour
+// unchanged — create-wxl's setup summary needs to call it directly.
+describe('deriveGithubPagesOrigin (exported, 0005-create-wxl override)', () => {
+  it('is exported and derives the GitHub Pages origin unchanged', () => {
+    expect(deriveGithubPagesOrigin('alice/alice.github.io')).toBe('https://alice.github.io')
+    expect(deriveGithubPagesOrigin('Alice/r')).toBe('https://alice.github.io/r')
   })
 })
 
@@ -3995,6 +4005,57 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
     expect(res.residualFiles).toContain('.github/workflows/deploy.yml')
     expect(res.message).toMatch(/rebrand NOT complete/)
+  })
+
+  // C61/AC-25 (0005-create-wxl override of 0004 T51): create-wxl's setup record at the tree root
+  // is never rewritten by rebrand mode, but it still goes through the residual scan — the honest
+  // inventory keeps reporting it. The guard only ever matches the exact root path: a nested
+  // `sub/range.json` in the same fixture is untouched by this override and still gets the slug
+  // swap like any other tree-walked file.
+  it('leaves a root range.json byte-identical in rebrand mode, but still inventories it', () => {
+    const rangeJsonContent =
+      JSON.stringify(
+        { upstream: { repository: UPSTREAM_SLUG, version: '3.0.0', commit: '0'.repeat(40) } },
+        null,
+        2,
+      ) + '\n'
+    mkdirSync(join(root, 'sub'), { recursive: true })
+    writeFileSync(join(root, 'range.json'), rangeJsonContent)
+    writeFileSync(join(root, 'sub/range.json'), rangeJsonContent)
+    const res = runForkInit(parseForkInitArgs(B_ARGS), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, 'range.json'), 'utf8')).toBe(rangeJsonContent)
+    expect(res.changedFiles).not.toContain('range.json')
+    expect(res.residualFiles).toContain('range.json')
+    // the hit is surfaced with its real line/text (file:line), in the style of the Wxlsh case below
+    const hit = res.residualHits.find((h) => h.file === 'range.json')
+    expect(hit).toBeDefined()
+    expect(hit!.line).toBe(3) // the `"repository": "<UPSTREAM_SLUG>",` line
+    expect(hit!.text).toContain(UPSTREAM_SLUG)
+    // only the root copy is protected — the same fixture's sub/range.json still gets the slug swap
+    expect(res.changedFiles).toContain('sub/range.json')
+    const subContent = readFileSync(join(root, 'sub/range.json'), 'utf8')
+    expect(subContent).not.toContain(UPSTREAM_SLUG)
+    expect(subContent).toContain('me/myfork')
+  })
+
+  // Pins the same C61 guarantee under --dry-run: a dry run never writes anything, so the root
+  // range.json is trivially byte-identical, but the (read-only) residual scan still runs and still
+  // reports it — this passes immediately, with no production change, since --dry-run already
+  // skips every write in applyEdit (T55-era behaviour), unaffected by this ticket's edit.
+  it('leaves a root range.json byte-identical under --dry-run, and still inventories it', () => {
+    const rangeJsonContent =
+      JSON.stringify(
+        { upstream: { repository: UPSTREAM_SLUG, version: '3.0.0', commit: '0'.repeat(40) } },
+        null,
+        2,
+      ) + '\n'
+    writeFileSync(join(root, 'range.json'), rangeJsonContent)
+    const res = runForkInit(parseForkInitArgs([...B_ARGS, '--dry-run']), { projectRoot: root })
+    expect(res.exitCode).toBe(0)
+    expect(readFileSync(join(root, 'range.json'), 'utf8')).toBe(rangeJsonContent)
+    expect(res.changedFiles).not.toContain('range.json')
+    expect(res.residualFiles).toContain('range.json')
   })
 
   it('does NOT blind-rename the wxlsh subsystem token (only full self-contained tokens change)', () => {
