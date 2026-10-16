@@ -79,3 +79,36 @@ describe('zh-TW N5 and N7 wording', () => {
     expect(text).not.toContain('安裝 wasm-pack 的 Rust')
   })
 })
+
+describe('zh-TW CW-E11/CW-E14 formatting and wording', () => {
+  const strandedArgs = { target: '/t', detail: 'd', stranded: ['a', 'b'], tmpDir: '/t/.create-wxl-x' }
+  const oneStrandedArgs = { target: '/t', detail: 'd', stranded: ['a'], tmpDir: '/t/.create-wxl-x' }
+
+  it('zh-TW CW-E11 has no half-width space right after the full-width period', () => {
+    const text = zhTW['CW-E11'](strandedArgs)
+    expect(text).not.toContain('。 ')
+  })
+
+  it('zh-TW CW-E14 has no half-width space right after the full-width period', () => {
+    const text = zhTW['CW-E14']({ message: 'm', remainingCommands: ['git init'] })
+    expect(text).not.toContain('。 ')
+  })
+
+  it('the en stranded sentence uses "they are" for more than one entry, "it is" for exactly one', () => {
+    const many = en['CW-E11'](strandedArgs)
+    expect(many).toContain('they are')
+    expect(many).not.toContain('it is still')
+    const one = en['CW-E11'](oneStrandedArgs)
+    expect(one).toContain('it is')
+    expect(one).not.toContain('they are')
+  })
+
+  it('zh-TW CW-E11/CW-W05 say 暫存資料夾 (the GLOSSARY.md term), not 暫存目錄 or 最終位置', () => {
+    const e11 = zhTW['CW-E11'](strandedArgs)
+    expect(e11).toContain('暫存資料夾')
+    expect(e11).not.toContain('暫存目錄')
+    expect(e11).not.toContain('最終位置')
+    const w05 = zhTW['CW-W05']({ remainingCommands: ['git init'] })
+    expect(w05).not.toContain('暫存目錄')
+  })
+})

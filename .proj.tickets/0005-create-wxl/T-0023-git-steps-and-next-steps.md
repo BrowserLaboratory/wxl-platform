@@ -2,7 +2,7 @@
 id: T-0023
 title: Git steps and next steps
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0022]
 ---
 
@@ -24,14 +24,14 @@ or a failing git command each print their warning and the commands still to run,
 
 ## Acceptance criteria
 
-- [ ] C35: real git, isolated identity, a global template `post-commit` hook, `commit.gpgsign=true` → on `main`, one commit, `git ls-files` equals the range's files, clean status, hook not run (AC-15)
-- [ ] C36: `runGit` rejects `ENOENT` on G0; G0 reports 2.19.0 → CW-W01, no further `runGit`, exit 0, N2 lists printed G1, G2, G4 (AC-15)
-- [ ] C37: no identity (isolated `HOME`, `XDG_CONFIG_HOME`, system config off) → CW-W02 after G1–G2, no G4, not CW-W03, exit 0, N2 lists the two config commands then G4 (AC-15)
-- [ ] C38: G2 exits 1 → CW-W03, G3 and G4 not run, exit 0, N2 lists printed G2 and G4 (AC-15)
-- [ ] C40: success for each host → the "Next steps" lines for that case, ids in order (AC-17)
-- [ ] C58: `deps.env` with `GIT_DIR=/elsewhere` → no `runGit` call receives `GIT_DIR` (AC-15)
-- [ ] C59: global `core.excludesFile` ignoring `lib/`, archive file under `lib/` → the file is in the commit (AC-15)
-- [ ] C70: every `runGit` env of C35 has no `GIT_*` other than `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1` (AC-15)
+- [x] C35: real git, isolated identity, a global template `post-commit` hook, `commit.gpgsign=true` → on `main`, one commit, `git ls-files` equals the range's files, clean status, hook not run (AC-15)
+- [x] C36: `runGit` rejects `ENOENT` on G0; G0 reports 2.19.0 → CW-W01, no further `runGit`, exit 0, N2 lists printed G1, G2, G4 (AC-15)
+- [x] C37: no identity (isolated `HOME`, `XDG_CONFIG_HOME`, system config off) → CW-W02 after G1–G2, no G4, not CW-W03, exit 0, N2 lists the two config commands then G4 (AC-15)
+- [x] C38: G2 exits 1 → CW-W03, G3 and G4 not run, exit 0, N2 lists printed G2 and G4 (AC-15)
+- [x] C40: success for each host → the "Next steps" lines for that case, ids in order (AC-17)
+- [x] C58: `deps.env` with `GIT_DIR=/elsewhere` → no `runGit` call receives `GIT_DIR` (AC-15)
+- [x] C59: global `core.excludesFile` ignoring `lib/`, archive file under `lib/` → the file is in the commit (AC-15)
+- [x] C70: every `runGit` env of C35 has no `GIT_*` other than `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1` (AC-15)
 
 ## 給使用者（zh-TW）
 
@@ -145,3 +145,11 @@ Recorded, not changed:
 Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0023.md`.
 
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 12 passed (12) / Tests 265 passed (265)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`; the en and zh-TW tables hold the same 44 ids.
+
+### 2026-10-17 — landed
+
+Squash-merged into `main` as `8fb2d34` (PR #29) by GitHub auto-merge (squash) after all ten checks passed. Status set to `done`.
+
+### 2026-10-17 — acceptance criteria ticked
+
+The acceptance criteria were left unticked when this ticket entered stage 6 (found in T-0024's stage 6 review). Ticked now against the red → green log and the stage 6 disposition above: every criterion has passing tests on `main` (`8fb2d34`).

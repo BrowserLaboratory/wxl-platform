@@ -20,6 +20,14 @@ export function printedForms(version) {
   }
 }
 
+/** S-20: `printedForms`' own G1/G2/G4 lines, in Step order (the one array this module's own
+ * `orderedForms` and CW-W05's step-12 window -- run.mjs -- both need; a signal before step 12's
+ * G0 ever ran means none of them have). */
+export function orderedPrintedForms(version) {
+  const forms = printedForms(version)
+  return [forms.init, forms.symbolicRef, forms.add, forms.commit]
+}
+
 /** Runs `run(args)`, turning a rejection into the same shape a resolved call has (`threw: true`
  * instead of a `code`), so every call site classifies both the same way. */
 async function attempt(run, args) {
@@ -59,13 +67,15 @@ function classifyConfigGet(result) {
  * `remainingCommands` are the printed forms (traceability.md "Git steps") still to run, in order;
  * for CW-W02 the two `git config --global` commands come first.
  */
-export async function runGitSteps({ runGit, cwd, env: rawEnv, version }) {
+export async function runGitSteps({ runGit, cwd, env: rawEnv, version, shouldStop }) {
   const env = buildGitEnv(rawEnv)
   const run = (args) => runGit(args, { cwd, env })
   const forms = printedForms(version)
-  const orderedForms = [forms.init, forms.symbolicRef, forms.add, forms.commit]
+  const orderedForms = orderedPrintedForms(version)
+  const isSignaled = shouldStop ?? (() => false)
 
   const versionResult = await attempt(run, ['--version'])
+  if (isSignaled()) return { signal: true, remainingCommands: orderedForms }
   if (versionResult.threw || versionResult.code !== 0 || !isGitVersionOk(parseGitVersion(versionResult.stdout))) {
     return { warningId: 'CW-W01', remainingCommands: orderedForms }
   }
@@ -77,12 +87,21 @@ export async function runGitSteps({ runGit, cwd, env: rawEnv, version }) {
   ]
   for (let i = 0; i < mainArgs.length; i++) {
     const result = await attempt(run, mainArgs[i])
-    if (result.threw || result.code !== 0) {
-      return { warningId: 'CW-W03', command: orderedForms[i], detail: detailOf(result), remainingCommands: orderedForms.slice(i) }
+    // C-13/P-22: a command that already succeeded is not "not run", even when a signal arrives
+    // right after it -- checked first, so CW-W05 never lists a command this run already did.
+    if (!result.threw && result.code === 0) {
+      if (isSignaled()) return { signal: true, remainingCommands: orderedForms.slice(i + 1) }
+      continue
     }
+    // traceability.md "Signals": "a git command that exits non-zero after a signal counts as the
+    // signal, not as CW-W03" -- checked before the failure classification below, so a command this
+    // run's own injected signal made fail is never misreported as a `runGit` failure.
+    if (isSignaled()) return { signal: true, remainingCommands: orderedForms.slice(i) }
+    return { warningId: 'CW-W03', command: orderedForms[i], detail: detailOf(result), remainingCommands: orderedForms.slice(i) }
   }
 
   const nameResult = await attempt(run, ['config', '--get', 'user.name'])
+  if (isSignaled()) return { signal: true, remainingCommands: [forms.commit] }
   const nameClass = classifyConfigGet(nameResult)
   if (nameClass === 'error') {
     return {
@@ -93,6 +112,7 @@ export async function runGitSteps({ runGit, cwd, env: rawEnv, version }) {
     }
   }
   const emailResult = await attempt(run, ['config', '--get', 'user.email'])
+  if (isSignaled()) return { signal: true, remainingCommands: [forms.commit] }
   const emailClass = classifyConfigGet(emailResult)
   if (emailClass === 'error') {
     return {
@@ -118,9 +138,11 @@ export async function runGitSteps({ runGit, cwd, env: rawEnv, version }) {
     '-m',
     `Create range from WXL ${version}`,
   ])
-  if (commitResult.threw || commitResult.code !== 0) {
-    return { warningId: 'CW-W03', command: forms.commit, detail: detailOf(commitResult), remainingCommands: [forms.commit] }
+  // C-13/P-22: G4 already succeeded is not "not run" either -- the range is complete.
+  if (!commitResult.threw && commitResult.code === 0) {
+    if (isSignaled()) return { signal: true, remainingCommands: [] }
+    return { warningId: null }
   }
-
-  return { warningId: null }
+  if (isSignaled()) return { signal: true, remainingCommands: [forms.commit] }
+  return { warningId: 'CW-W03', command: forms.commit, detail: detailOf(commitResult), remainingCommands: [forms.commit] }
 }

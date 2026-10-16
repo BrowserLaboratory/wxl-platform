@@ -650,14 +650,18 @@ describe('a plain (uncompressed) tar body is rejected, not silently accepted (P-
   })
 })
 
-describe('a non-parse error from the archive step is rethrown, not reported as CW-E08', () => {
-  it('a body that is not buffer-coercible rejects run() with the original error', async () => {
+describe('a non-parse error from the archive step is CW-E14, not reported as CW-E08', () => {
+  it('a body that is not buffer-coercible -> CW-E14 with the TypeError message, not CW-E08', async () => {
     const tmpRoot = await makeTmpRoot()
     try {
       const fetchArchive = async () => ({ status: 200, body: null })
       const deps = makeDeps({ env: { LANG: 'en_US' }, cwd: tmpRoot, fetchArchive })
-      const { io } = makeIo()
-      await expect(run(['range', '--no-setup'], io, deps)).rejects.toBeInstanceOf(TypeError)
+      const ioHelper = makeIo()
+      const exitCode = await run(['range', '--no-setup'], ioHelper.io, deps)
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^CW-E14/m)
+      expect(ioHelper.stderrText).toContain('Received null')
+      expect(ioHelper.stderrText).not.toMatch(/^CW-E08/m)
     } finally {
       await rm(tmpRoot, { recursive: true, force: true })
     }

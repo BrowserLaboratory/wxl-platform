@@ -25,22 +25,22 @@ an engine failure after the move is CW-E12 with finishing commands.
 
 ## Acceptance criteria
 
-- [ ] C04: no directory → asks with default `wxl-range` (interactive) / CW-E03 (non-interactive) (AC-3)
-- [ ] C08: all flags, non-interactive, values with spaces → no question; argv exactly the ordered `--flag=value` items, verbatim (AC-5)
-- [ ] C09: a required flag missing per host → CW-E05 naming each; `--host CLOUDFLARE-PAGES` without `--origin` → no CW-E05, engine rejection CW-E06 (AC-5)
-- [ ] C10: interactive, no flags → S1–S5 in order, Enter takes the default, trimmed answers, S3 `2` → `--host=cloudflare-pages` (AC-6)
-- [ ] C11: S2 `bad`, and `--repo bad` as a flag → engine message, second pass with current answers as defaults, corrected S2 accepted, no download before the summary is accepted (AC-6)
-- [ ] C12: non-interactive engine rejection → CW-E06, nothing written (AC-5)
-- [ ] C13: summary `n` → every question again with current answers as defaults (AC-6)
-- [ ] C32: valid answers → `runForkInit` once with `{ projectRoot: target }` and the parsed args; 0004's A1, A6–A8 and the host's workflow (AC-14)
-- [ ] C33: `runForkInit` returns `exitCode` 1, or throws → CW-E12 with message and finishing commands, range and `range.json` stay, no git step, exit 1 (AC-14)
-- [ ] C34: engine warnings printed after the apply (AC-14)
-- [ ] C51: EOF while a question is open → CW-E15, nothing written (AC-6)
-- [ ] C52: S1 empty; S3 `3` then `CLOUDFLARE-PAGES`; summary `maybe` then ` Y `; directory `~/x` → asked again as the row states (AC-6)
-- [ ] C63: summary shows the derived origin for `alice/alice.github.io` and `Alice/r`, and the parsed origin for S4 `https://Example.COM` (AC-6)
-- [ ] C64: interactive, the asked directory is non-empty → CW-E04 text, asked again, a valid answer proceeds (AC-4)
-- [ ] C66: first pass S3 `2`, S4 address; `n`; second pass S3 `1`, S4 `-` → no `--origin`, summary shows the derived address (AC-6)
-- [ ] C68: `n`, S5 `a<b` rejected, then `S8` → `runForkInit` receives exactly the last parse's object (AC-14)
+- [x] C04: no directory → asks with default `wxl-range` (interactive) / CW-E03 (non-interactive) (AC-3)
+- [x] C08: all flags, non-interactive, values with spaces → no question; argv exactly the ordered `--flag=value` items, verbatim (AC-5)
+- [x] C09: a required flag missing per host → CW-E05 naming each; `--host CLOUDFLARE-PAGES` without `--origin` → no CW-E05, engine rejection CW-E06 (AC-5)
+- [x] C10: interactive, no flags → S1–S5 in order, Enter takes the default, trimmed answers, S3 `2` → `--host=cloudflare-pages` (AC-6)
+- [x] C11: S2 `bad`, and `--repo bad` as a flag → engine message, second pass with current answers as defaults, corrected S2 accepted, no download before the summary is accepted (AC-6)
+- [x] C12: non-interactive engine rejection → CW-E06, nothing written (AC-5)
+- [x] C13: summary `n` → every question again with current answers as defaults (AC-6)
+- [x] C32: valid answers → `runForkInit` once with `{ projectRoot: target }` and the parsed args; 0004's A1, A6–A8 and the host's workflow (AC-14)
+- [x] C33: `runForkInit` returns `exitCode` 1, or throws → CW-E12 with message and finishing commands, range and `range.json` stay, no git step, exit 1 (AC-14)
+- [x] C34: engine warnings printed after the apply (AC-14)
+- [x] C51: EOF while a question is open → CW-E15, nothing written (AC-6)
+- [x] C52: S1 empty; S3 `3` then `CLOUDFLARE-PAGES`; summary `maybe` then ` Y `; directory `~/x` → asked again as the row states (AC-6)
+- [x] C63: summary shows the derived origin for `alice/alice.github.io` and `Alice/r`, and the parsed origin for S4 `https://Example.COM` (AC-6)
+- [x] C64: interactive, the asked directory is non-empty → CW-E04 text, asked again, a valid answer proceeds (AC-4)
+- [x] C66: first pass S3 `2`, S4 address; `n`; second pass S3 `1`, S4 `-` → no `--origin`, summary shows the derived address (AC-6)
+- [x] C68: `n`, S5 `a<b` rejected, then `S8` → `runForkInit` receives exactly the last parse's object (AC-14)
 
 ## 給使用者（zh-TW）
 
@@ -168,3 +168,7 @@ Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 10 passed (
 ### 2026-10-17 — landed
 
 Squash-merged into `main` as `ae1c677` (PR #28) by GitHub auto-merge (squash) after all ten checks passed. Status set to `done`.
+
+### 2026-10-17 — acceptance criteria ticked
+
+The acceptance criteria were left unticked when this ticket entered stage 6 (found in T-0024's stage 6 review). Ticked now against the red → green log and the stage 6 disposition above: every criterion has passing tests on `main` (`ae1c677`).
