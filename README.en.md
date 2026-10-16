@@ -182,8 +182,8 @@ To get only the unconfigured files, without a git repository, add `--no-setup`:
 npm create wxl <folder> -- --no-setup
 ```
 
-> This command works once `create-wxl` is published to npm; this README merges before that
-> publish, so running it earlier fetches the not-yet-published placeholder version.
+> `create-wxl` is published on npm from 3.0.0; the command downloads the upstream release that
+> matches the package's version to build the range.
 
 ### After forking: rewrite the project identity
 

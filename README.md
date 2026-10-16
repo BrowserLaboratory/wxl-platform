@@ -180,7 +180,7 @@ npm create wxl <資料夾> -- --author "<你的名字>" --repo <owner>/<repo> --
 npm create wxl <資料夾> -- --no-setup
 ```
 
-> 這個指令要等 `create-wxl` 發布到 npm 之後才能用；這份 README 隨本次變更先合進 main，發布前執行會拿到還沒正式發布的佔位版本。
+> `create-wxl` 從 3.0.0 起發布在 npm 上；指令會下載與套件同一版的上游來建立靶場。
 
 ### fork 之後：改寫專案身分
 
