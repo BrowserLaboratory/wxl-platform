@@ -1,3 +1,5 @@
+import { isAtLeast } from './numeric-version.mjs'
+
 /** The one place the minimum supported Node.js version is written down; `run.mjs`'s CW-E01
  * message and `isNodeVersionOk`'s default both derive from it (S-21: no duplicated literal). */
 export const MINIMUM_NODE_VERSION = '22.6.0'
@@ -11,11 +13,5 @@ export function isNodeVersionOk(version, minimum = MINIMUM_NODE_VERSION.split('.
   const str = String(version)
   if (!NUMERIC_VERSION_RE.test(str)) return false
   const parts = str.split('.').map(Number)
-  for (let i = 0; i < minimum.length; i++) {
-    const a = parts[i] ?? 0
-    const b = minimum[i]
-    if (a > b) return true
-    if (a < b) return false
-  }
-  return true
+  return isAtLeast(parts, minimum)
 }

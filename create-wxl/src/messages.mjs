@@ -1,12 +1,19 @@
 // Message tables, one per language, keyed by message id. Every CW-E/CW-W text begins with its
 // code (D3: CW-E/CW-W go to stderr; N-lines go to stdout). Ids implemented here cover: T-0020 and
 // T-0021's `--no-setup` path (argument/target/download checks, strict parse and entry rules 1-5
-// (CW-E08), and pristine rule failures (CW-E10)); and T-0022's setup questions (the directory
+// (CW-E08), and pristine rule failures (CW-E10)); T-0022's setup questions (the directory
 // question and its `~` reason, S1-S6's prompts, reasons and summary lines, CW-E05, CW-E06,
-// CW-E12, CW-E15). Later tickets (T-0023's git steps, T-0024's remaining failure paths) add the
-// rest of the CW-E/CW-W/N ids to both tables, keeping the id sets equal (AC-18).
+// CW-E12, CW-E15); and T-0023's git steps (CW-W01-W03) and "Next steps" lines (N1-N8). T-0024's
+// remaining failure paths (CW-E09, CW-E11, CW-E14, CW-W05) still need to be added to both tables,
+// keeping the id sets equal (AC-18).
 
 import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg } from './text.mjs'
+import { printedForms } from './git-steps.mjs'
+import { MINIMUM_GIT_VERSION } from './git-version.mjs'
+
+/** CW-W01's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
+ * own default), not a hardcoded "2.20" repeated in both language tables. */
+const MINIMUM_GIT_VERSION_TEXT = MINIMUM_GIT_VERSION.join('.')
 
 const CONDITION_TEXT = {
   en: {
@@ -76,14 +83,15 @@ function cwE05Text(lang, missing) {
  * for copying. `directory` is the user-given string (positional or question answer), never the
  * resolved path. */
 function cwE12FinishingCommands({ directory, argv, version }) {
+  const forms = printedForms(version)
   const lines = [
     posixCommand(['cd', formatDirectoryArg(directory)]),
     posixCommand(['pnpm', 'install']),
     `pnpm fork:init ${argv.map(posixQuoteWord).join(' ')}`,
-    'git init',
-    'git symbolic-ref HEAD refs/heads/main',
-    'git add -A',
-    `git commit -m "Create range from WXL ${version}"`,
+    forms.init,
+    forms.symbolicRef,
+    forms.add,
+    forms.commit,
   ]
   return lines.join('\n')
 }
@@ -133,6 +141,13 @@ export const en = {
   'CW-E12': (args) => cwE12Text('en', args),
   'CW-E13': () => `CW-E13: the create-wxl package is broken. Retry with npm create wxl@latest.`,
   'CW-E15': () => `CW-E15: input ended while a question was open.`,
+  'CW-W01': ({ remainingCommands }) =>
+    `CW-W01: the range is not a git repository yet; git was not found, failed, or is older than ${MINIMUM_GIT_VERSION_TEXT} ` +
+    `(install a newer one from https://git-scm.com/downloads). Run these when ready:\n${remainingCommands.join('\n')}`,
+  'CW-W02': ({ remainingCommands }) =>
+    `CW-W02: no explicit committer identity was found; set one, then finish the commit:\n${remainingCommands.join('\n')}`,
+  'CW-W03': ({ command, detail, remainingCommands }) =>
+    `CW-W03: ${command} failed: ${jsonValue(detail)}. Finish these yourself:\n${remainingCommands.join('\n')}`,
   'CW-W04': ({ commit }) =>
     `CW-W04: using the override commit ${jsonValue(commit)}; this is not a release and is meant for testing.`,
   'Q-DIRECTORY': () => `Directory name (default: wxl-range):`,
@@ -158,6 +173,16 @@ export const en = {
   'ENGINE-REJECTED': ({ message }) =>
     `The engine rejected the answers: ${jsonValue(message)}. Starting over with the current answers.`,
   N1: ({ directory }) => `Next: ${posixCommand(['cd', formatDirectoryArg(directory)])}`,
+  N2: ({ remainingCommands }) => `Next: finish the git steps yourself:\n${remainingCommands.join('\n')}`,
+  N3: ({ owner, name }) => `Next: create an empty GitHub repository ${jsonValue(`${owner}/${name}`)}, without a README.`,
+  N4: ({ owner, name }) =>
+    `Next: ${posixCommand(['git', 'remote', 'add', 'origin', `https://github.com/${owner}/${name}.git`])}, then ${posixCommand(['git', 'push', '-u', 'origin', 'main'])}.`,
+  N5: () =>
+    'Next: on GitHub, set Settings → Pages → Source to GitHub Actions, and allow v* tags in the github-pages environment; then ' +
+    `${posixCommand(['git', 'tag', 'v0.1.0'])} and ${posixCommand(['git', 'push', 'origin', 'v0.1.0'])}.`,
+  N6: () => 'Next: deploying to Cloudflare Pages — follow the README section "Deploying to Cloudflare Pages".',
+  N7: () =>
+    `Next: ${posixCommand(['pnpm', 'install'])} and Rust with wasm-pack are needed only to run the site locally (README "Prerequisites").`,
   N8: () =>
     `Next: ${posixCommand(['pnpm', 'install'])}, then ${posixCommand(['pnpm', 'fork:init'])} as the README describes.`,
 }
@@ -185,6 +210,12 @@ export const zhTW = {
   'CW-E12': (args) => cwE12Text('zh-TW', args),
   'CW-E13': () => `CW-E13：套件已損壞，請改用 npm create wxl@latest 重試。`,
   'CW-E15': () => `CW-E15：問題還開著的時候輸入就結束了。`,
+  'CW-W01': ({ remainingCommands }) =>
+    `CW-W01：靶場還不是 git repository；找不到 git、git 失敗，或版本低於 ${MINIMUM_GIT_VERSION_TEXT}（請到 ` +
+    `https://git-scm.com/downloads 安裝較新版本）。準備好後請執行：\n${remainingCommands.join('\n')}`,
+  'CW-W02': ({ remainingCommands }) => `CW-W02：找不到明確的 committer 身分；請先設定，再完成 commit：\n${remainingCommands.join('\n')}`,
+  'CW-W03': ({ command, detail, remainingCommands }) =>
+    `CW-W03：${command} 失敗：${jsonValue(detail)}。請自行完成剩下的指令：\n${remainingCommands.join('\n')}`,
   'CW-W04': ({ commit }) => `CW-W04：改用測試用的 commit ${jsonValue(commit)}，這不是正式版本，僅供測試。`,
   'Q-DIRECTORY': () => `資料夾名稱（預設：wxl-range）：`,
   'Q-DIRECTORY-TILDE': () => `以 ~ 開頭的答案這裡不會展開，請直接輸入資料夾本身。`,
@@ -207,6 +238,16 @@ export const zhTW = {
   'S6-INVALID': () => `請回答 y、yes、n 或 no（留空視為 yes）。`,
   'ENGINE-REJECTED': ({ message }) => `引擎拒絕了這些答案：${jsonValue(message)}。改用目前的答案重新開始。`,
   N1: ({ directory }) => `下一步：${posixCommand(['cd', formatDirectoryArg(directory)])}`,
+  N2: ({ remainingCommands }) => `下一步：請自行完成剩下的 git 步驟：\n${remainingCommands.join('\n')}`,
+  N3: ({ owner, name }) => `下一步：在 GitHub 上建立一個空的 ${jsonValue(`${owner}/${name}`)} repository，不要加 README。`,
+  N4: ({ owner, name }) =>
+    `下一步：${posixCommand(['git', 'remote', 'add', 'origin', `https://github.com/${owner}/${name}.git`])}，接著 ${posixCommand(['git', 'push', '-u', 'origin', 'main'])}。`,
+  N5: () =>
+    '下一步：在 GitHub 上把 Settings → Pages → Source 設成 GitHub Actions，並允許 github-pages 環境接受 v* tag；接著執行 ' +
+    `${posixCommand(['git', 'tag', 'v0.1.0'])}，再執行 ${posixCommand(['git', 'push', 'origin', 'v0.1.0'])}。`,
+  N6: () => '下一步：部署到 Cloudflare Pages——請依照 README「部署到 Cloudflare Pages」/"Deploying to Cloudflare Pages" 一節操作。',
+  N7: () =>
+    `下一步：只有要在本機執行網站時才需要 ${posixCommand(['pnpm', 'install'])}，以及 Rust 與 wasm-pack（README「環境需求」/"Prerequisites"）。`,
   N8: () => `下一步：${posixCommand(['pnpm', 'install'])}，接著 ${posixCommand(['pnpm', 'fork:init'])}，如 README 所述。`,
 }
 

@@ -1,7 +1,7 @@
 // Shared text helpers: JSON string literals for named values, and POSIX quoting for commands
-// printed for copying (N1, N8, CW-E12, CW-W05 per traceability.md "Error and warning codes"). The
-// full escaping of control characters is pinned by a later ticket (T-0024); this covers the plain
-// values this ticket's rows exercise.
+// printed for copying (N1, N4, N5, N7, N8, CW-E12, CW-W05 per traceability.md "Error and warning
+// codes" and "Next steps"). The full escaping of control characters is pinned by a later ticket
+// (T-0024); this covers the plain values this ticket's rows exercise.
 
 const DEL_AND_C1_RE = /[\u007f-\u009f]/g
 

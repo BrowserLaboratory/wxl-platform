@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { messages, en, zhTW } from '../src/messages.mjs'
+import { jsonValue } from '../src/text.mjs'
 
 /** Strips whitespace and every punctuation/symbol character (ASCII and full-width alike), so two
  * strings that differ only in punctuation compare equal: zh-TW and en text that differ only in
@@ -51,5 +52,30 @@ describe('zh-TW wording (T-0022 review)', () => {
     const fragment = 'npm create wxl <directory> -- <flags>'
     expect(zhE05).toContain(fragment)
     expect(enE05).toContain(fragment)
+  })
+})
+
+describe('N3 prints the repository name as a JSON string literal (traceability.md "Error and warning codes")', () => {
+  it('en and zh-TW both quote owner/name, not the bare value', () => {
+    const literal = jsonValue('alice/r')
+    const enText = en.N3({ owner: 'alice', name: 'r' })
+    const zhText = zhTW.N3({ owner: 'alice', name: 'r' })
+    expect(enText).toContain(literal)
+    expect(zhText).toContain(literal)
+  })
+})
+
+describe('zh-TW N5 and N7 wording', () => {
+  it('N5 keeps "tag" in English and separates the two git commands as two steps, not a parallel list', () => {
+    const text = zhTW.N5()
+    expect(text).toContain('v* tag')
+    expect(text).not.toContain('標籤')
+    expect(text).toContain('執行 git tag v0.1.0，再執行 git push origin v0.1.0')
+  })
+
+  it('N7 says "Rust 與 wasm-pack" are what is needed, not "安裝 wasm-pack 的 Rust"', () => {
+    const text = zhTW.N7()
+    expect(text).toContain('Rust 與 wasm-pack')
+    expect(text).not.toContain('安裝 wasm-pack 的 Rust')
   })
 })
