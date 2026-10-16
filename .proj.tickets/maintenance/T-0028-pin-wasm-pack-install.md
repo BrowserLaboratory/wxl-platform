@@ -2,7 +2,7 @@
 id: T-0028
 title: Pin the documented wasm-pack install to CI's version with --locked
 epic: maintenance
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -78,3 +78,7 @@ Recorded, not changed: the notes' prose version is not tested (above); the at-le
 ### 2026-10-16 — stage 7
 
 Report: `docs/reviews/security-T-0028.md`. Ten candidates, independently filtered: no exploitable defect introduced. Primary-source research found the `zip` 2.x yank was a security yank by its maintainer (three zip-rs GHSAs on `ZipArchive::extract`, a path wasm-pack's `binary-install` does not use), and that wasm-pack 0.14.0's lockfile carries published RustSec advisories in `tar`, `rustls`, `rustls-webpki` and `time`, the same as CI's prebuilt 0.14.0. Kept 0.14.0 for CI parity tonight; moving CI and the documents to 0.15.0 with a `cargo audit` record is a follow-up after the workshop. Hardened within scope: the test also checks `cargo +<toolchain> install` and rejects `--config`. Check after: `pnpm vitest run tests/unit/workflows/toolchain-parity.test.ts` → `12 passed`.
+
+### 2026-10-16 — landed
+
+Squash-merged into `main` as `e432fa6` (PR #25), merged by the user. All ten checks passed (`gh pr checks 25`), including Cloudflare Pages with the dashboard's new build command and `prose-audit` on the changed READMEs. Status set to `done`.

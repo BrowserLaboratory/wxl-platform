@@ -1,0 +1,19 @@
+{
+  "name": "create-wxl",
+  "version": "3.0.0",
+  "description": "Create a Web eXploitation Laboratory range",
+  "type": "module",
+  "files": ["src"],
+  "engines": { "node": ">=22.6.0" },
+  "license": "LicenseRef-LICENSE",
+  "dependencies": {
+    "tar": "7.5.22",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "vitest": "4.1.6"
+  },
+  "scripts": {
+    "test": "vitest run"
+  }
+}
