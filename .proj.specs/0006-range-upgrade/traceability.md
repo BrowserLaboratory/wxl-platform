@@ -10,6 +10,11 @@ Revision 2 (2026-10-16) applies round 1's disposition (`review/disposition.md`, 
 user's decisions D1 and D2. Round 1 found no P0, so the stage 3 gate is met and, by D1, round 2 is not
 run. Row ids U01–U32 keep their meaning where they survive; rows added in revision 2 start at U50.
 
+Revision 2.1 (2026-10-17) changes row U62 only, by the user's decision when approving T-0027's test
+plan (option (a)): 0005's entry rule 3 rejects a path holding a control character while the target
+archive is checked, so such a path never reaches the upgrade report; U62 now verifies that rejection
+on the upgrade path. The report's own escaping of outside values still follows 0005's rule.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -272,7 +277,7 @@ and the files of the fixture commit.
 | U59 | report | an anchor file with b ≢ t; none | UP-A12 | the line present / absent | AC-10 |
 | U60 | write | a tracked file that is a hard link to a file outside the range, written by M5 | hard link | the outside file unchanged (write-then-rename) | AC-7 |
 | U61 | repo | after a completed run and a commit, `upgrade` again | rerun | UP-I01 | AC-4 |
-| U62 | output | a path containing an ANSI escape in T | escaping | printed as an escaped JSON string literal | AC-10 |
+| U62 | output | a path containing an ANSI escape in T | escaping | rejected while T's archive is checked (0005's entry rule 3): CW-E08 with the path as an escaped JSON string literal, exit 1, nothing written (revision 2.1) | AC-10 |
 
 ## Self-check of the surface (revision 2)
 
