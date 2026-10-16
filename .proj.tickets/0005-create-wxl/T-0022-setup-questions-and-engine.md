@@ -2,7 +2,7 @@
 id: T-0022
 title: Setup questions and applying them with the engine
 epic: 0005-create-wxl
-status: todo
+status: review
 blocked_by: [T-0021]
 ---
 
@@ -89,3 +89,78 @@ Drafted by a workflow (one drafting agent, one independent checker that correcte
 
 - D1: stage 8 is the create-wxl vitest run record (0005-S1, in-process); the terminal surface (0005-S4) runs in T-0025.
 - D3: CW-E and CW-W messages go to `stderr`; next-step lines go to `stdout`; tests pin the stream.
+
+### 2026-10-16 — increment plan confirmed
+
+The executor's increment plan was checked by an independent reviewer (approve with corrections). Confirmed with these corrections: engine warnings, engine rejection messages (CW-E06, the line printed before the second pass) and CW-E12's `result.message` or thrown message are printed as JSON string literals, with message ids in both tables; every test that runs setup uses `ENGINE_READY_FIXTURE` from row 5 on, built to pass T-0021's entry rules and P1–P4 (parent directory entries in order, pax `comment` equal to `source.commit`, prefix and `repository.url` from `UPSTREAM_SLUG`); row 9 includes S6 with a minimal "`y` continues"; S6 accepts Enter as continue and compares trimmed, case-insensitively, `n` turning into the second pass only at row 13; S3 answers are trimmed and case-insensitive while flag values pass to the engine unchanged (`--origin` required only for exactly `cloudflare-pages`); row 6 catches only `instanceof deps.engine.ForkInitArgError` and rethrows the rest (CW-E14 is T-0024's C57), while row 19 catches every step 11 error as CW-E12; `deps.engine.ForkInitArgError` is checked to be the real class; new message ids (directory prompt, the `~` reason, S1–S6 prompts, per-question reasons, the origin line, the re-ask line, CW-E05, CW-E06, CW-E12, CW-E15) go into en and zh-TW, read against `GLOSSARY.md`; CW messages go to stderr (D3); `deps.env` is `{ LANG: 'en_US.UTF-8', HOME: <temporary folder> }` with short timeouts; CW-E12's `cd` uses the user's string and G4's V `deps.source.version`, POSIX quoting only as far as `'--site-name=S8 GH'` needs (the rest is C60, T-0024); row 2's check sits in step 3, after step 2's checks; no `checkpoint('step-5')` or `checkpoint('step-11')`; readline is created when a question is asked and closed before `run` returns, an already ended stdin is CW-E15; one pass flag, not two loops, for row 12; tests implement the approved table's Boundary column literally. Step 13 is left alone: with setup it still prints N8 until T-0023's C40.
+
+Decided under "follow the recommendations" (2026-10-16): (A) T-0022 starts after T-0021 landed, on its own branch from `main`; (B) the step 3 directory answer is trimmed like every other answer; (C) in the second pass, Enter on a default that came from a flag passes the flag's raw value to the engine; (D) S4 answered `-` for Cloudflare Pages clears the answer and, S4 being required there, asks again; (E) test files are `setup-questions.test.mjs` and `engine-apply.test.mjs` (`.mjs`, as T-0020), a deviation from the approved table's `.test.ts`, which vitest's include would not collect.
+
+### 2026-10-16 — red → green log
+
+**Process note (reported to the user).** Each test was written and run before its production code. Rows 5–8 were written as one batch against one red (no step 5 at all), and after row 9's red the executor wrote the interactive question machine (`collectInteractiveAnswers`, `askField`, the summary) in one change, because a partial machine could not pass any path. Rows 10, 11, 12, 13, 15, 16, 18 and 20 were then green at once against that machine and are recorded as "no red", as are row 4 (b) and row 19 (b); row 8 had no red of its own outside the batch. The first failures of rows 11, 14 (d) and 16 were mistakes in the tests' own scripts or assertions, fixed in the tests without touching production code; they are not reds. The order is therefore coarser than /tdd's one test, one change, but no red was manufactured by reverting code.
+
+Reproduce a row with `pnpm --dir create-wxl exec vitest run test/<file> -t="<pattern>"`.
+
+| Row | Test file › pattern | Red | Green | Selected |
+|---|---|---|---|---|
+| 1 C04 | `setup-questions.test.mjs` › `step 3: directory question` | `TypeError: The "paths[1]" argument must be of type string. Received undefined` (`resolvePath(deps.cwd, directory)`) | 2 passed | 2 |
+| 2 C04 | same file (whole) | the same `TypeError` | 5 passed | 5 |
+| 3 C52 | same file (whole) | `expected 1 to be +0`: the first answer `~/x` accepted | 6 passed | 6 |
+| 4 C64 | same file (whole) | (a) `expected 1 to be +0`: CW-E04 exits without asking again; (b) no red: existing behaviour | 8 passed | 8 |
+| 5 C08 | › `non-interactive` | `expected "vi.fn()" to be called 1 times, but got 0 times` (`parseForkInitArgs`) | rows 5–8 together: 19 passed | 19 |
+| 6 C12 | › `non-interactive` | `expected +0 to be 1`: `ForkInitArgError` not caught | (batch) | 19 |
+| 7 C09 | › `non-interactive` | the engine received the incomplete argv instead of CW-E05 | (batch) | 19 |
+| 8 C09 | › `non-interactive` | red only within the batch; no code beyond row 7's exact comparison | (batch) | 19 |
+| 9 C10 | › `interactive: first pass` | `expected -1 to be greater than or equal to 0`: no prompt at all | 2 passed | 2 |
+| 10 C52 | › `reprompts on invalid` | no red: row 9's machine | 1 passed | 1 |
+| 11 C11 | › `interactive: second pass` | no red: row 9's machine (first failure was a miscounted test script) | 2 passed | 2 |
+| 12 C11 | › `interactive: second pass` | no red: as row 11 | (with row 11) | 2 |
+| 13 C13 | › `interactive: summary n` | no red: row 9's machine | 2 passed | 2 |
+| 14 C51 | › `interactive: EOF` | (a), (c) `QuestionEofError: input ended while a question was open` escaped `run` (only step 5 caught it); (d) first failure was a typo in the test | 4 passed | 4 |
+| 15 C63 | › `interactive: summary origin` | no red: row 9's machine | 3 passed | 3 |
+| 16 C66 | › `clear with -` | no red: row 9's machine (first failure was the test's assertion) | 1 passed | 1 |
+| 17 C32 | `engine-apply.test.mjs` › `step 11: apply` | `expected "vi.fn()" to be called 1 times, but got 0 times` (`runForkInit`) | 2 passed | 2 |
+| 18 C68 | › `last parse` | no red: row 17 passes the last accepted parse | 1 passed | 1 |
+| 19 C33 | › `step 11: CW-E12` | (a) G4 printed with POSIX single quotes, not the Fixed list's `git commit -m "Create range from WXL 3.0.0"`; (b) no red | 2 passed | 2 |
+| 20 C34 | › `step 11: warnings` | no red: row 17's warnings loop | 1 passed | 1 |
+
+Checks: `pnpm --dir create-wxl test` → `Test Files 9 passed (9) / Tests 221 passed (221)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`. The en and zh-TW tables hold the same 35 ids. No existing test body changed.
+
+### 2026-10-16 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0005-S1 | `setup-questions.test.mjs` (34), `engine-apply.test.mjs` (6) | not measured: no coverage provider is installed in create-wxl | C04, C08–C13, C32–C34, C51, C52, C63, C64, C66, C68 | decision D (S4 `-` for Cloudflare Pages asks again) is implemented but no approved row tests it; CW-E14 for a non-`ForkInitArgError` (C57), signals during questions or step 11 (C56), DEL/C1 escaping and `./` prefixes (C60) are T-0024; next steps with setup (N8 still printed until T-0023's C40) |
+
+**Stage 8 verification surface (D1).** create-wxl vitest runs, in-process; no terminal run of the questions until T-0025 (0005-S4).
+
+### 2026-10-17 — stages 6 and 7 disposition
+
+One review workflow on the staged change: Standards (18 findings, S-01–S-18, none high), Spec (27, P-01–P-27, none high), security candidates (6, C-01–C-06) with an independent false-positive filter (no candidate met the threshold). Findings and their full evidence were kept with the run; ids below are that run's.
+
+Fixed (pre-authorisation 2 and "follow the recommendations"), each behaviour fix with a test written and run first:
+
+- S-02, P-01, C-01, C-02: engine warnings are printed as JSON string literals, after `runForkInit` returns (red: the literal was not in the output after the call). This was a correction of the confirmed increment plan the first implementation missed.
+- S-01, P-19: zh-TW CW-E12 says 靶場, not 範圍; S-03: zh-TW repository prompt and summary line differ from en beyond punctuation; S-04: zh-TW uses 部署目標 for the host throughout, options shaped as in en; S-05: zh-TW CW-E05 says 參數, not 旗標 (GLOSSARY _Avoid_); S-06: the origin prompt reads naturally and CW-E05 shows the same command fragment in both languages, without backticks. Pinned by a new `messages.test.mjs`.
+- S-13, P-17, C-06: a `~` answer in step 4's ask-again loop no longer re-prints the previous answer's CW-E04 (red: CW-E04 twice).
+- P-18, C-05: input lines are queued, so lines arriving between questions (type-ahead, a pasted block) are not lost (red: the second question timed out).
+- P-26: decision D now has a test (S4 `-` for Cloudflare Pages in the second pass asks again); no red: the code already did it.
+- Tests raised to the approved Boundary column (S-09, S-11, P-02–P-15), all green without production changes: a merged event log orders prompts, checkpoints, downloads and engine calls; `fetchArchive` is 0 at every question and called only after the accepting S6; prompt and reason counts; snapshots for "nothing written"; CW-E06 carries the engine message in every case; CW-E05 names exactly the missing flags; A6–A8 read with the engine's own helpers; C33's two paths, finishing command order and `range.json` bytes.
+- S-10, P-16: test helpers follow the Notes: `deps.env` is `{ LANG: 'en_US.UTF-8', HOME: <temporary folder> }`, `runGit` rejects with `ENOENT`, non-interactive stdin is ended, short timeouts, the fixture's A9 line imported from the engine. T-0020 and T-0021 test bodies unchanged and green.
+- Additions to the approved table, recorded here: the `~`-after-rejection case, the queued-lines case, decision D's case, the zh-TW wording checks.
+- Cleanup: one `askDirectory` (S-12); message ids follow the spec (`S1`–`S6`, `S1-EMPTY`, `S6-ORIGIN`, …; S-16, P-20); stale comments (S-15, P-24); imports, `it.each` and table order (S-17); test names describe behaviour, not review ids.
+
+Recorded, not changed:
+
+- S-08, P-25: the TDD granularity is recorded in the red → green log's process note (rows 5–8 in one batch; the question machine in one change after row 9).
+- S-14: one field table for the setup questions would be a refactor beyond this ticket: technical debt.
+- S-18: the T-0021 landing record and the 0006 deadline notes are committed separately from T-0022.
+- P-21 (prompts do not show the current default), P-22 (CW-E12 does not print the engine's warnings), P-27 (a last line without a newline before EOF counts as an answer): the spec is silent; unchanged.
+- P-23: with setup, step 13 still prints N8 until T-0023's C40.
+- C-03: control characters in the user's directory or answers inside printed commands are T-0024's C60.
+- C-04: the step 4 → step 10 window now includes the time spent answering; step 10's re-check is T-0024's C53/C54, to consider a row "target replaced by a symlink while answering" when T-0024 starts.
+
+Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0022.md`.
+
+Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 10 passed (10) / Tests 230 passed (230)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`; the en and zh-TW tables hold the same 35 ids.

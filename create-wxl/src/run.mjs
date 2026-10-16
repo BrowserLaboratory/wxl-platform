@@ -1,6 +1,7 @@
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { createHash } from 'node:crypto'
 import { messages } from './messages.mjs'
+import { jsonValue } from './text.mjs'
 import { selectLanguage } from './language.mjs'
 import { parseArchive, ArchiveParseError } from './archive.mjs'
 import { checkEntryRules, ArchiveRuleError } from './archive-rules.mjs'
@@ -8,6 +9,7 @@ import { parseArgvStrict, ArgvError, SETUP_FLAG_NAMES } from './argv.mjs'
 import { checkTarget, extractEntries, moveIntoPlace } from './fsops.mjs'
 import { applyChangelog, applyOpenQuestions, applyPackageJson, writeRangeJson, PristineError } from './pristine.mjs'
 import { isNodeVersionOk, MINIMUM_NODE_VERSION } from './node-version.mjs'
+import { makeQuestioner, QuestionEofError, buildEngineArgv, missingRequiredFlags, collectInteractiveAnswers } from './questions.mjs'
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/
 const COMMIT_RE = /^[0-9a-f]{40}$/
@@ -33,11 +35,13 @@ async function validateSourceRecord(deps) {
 }
 
 /**
- * create-wxl's one exported seam (0005-S1): the `--no-setup` happy path through the Step order
- * table's steps 1-4, 6-10 and 13. Step 7's strict parse and entry rules 1-5 (CW-E08) and step 9's
- * pristine-rule failures (CW-E10, with the run's own temporary directory removed) are T-0021's.
- * Setup (steps 5, 11, 12), signals, and the remaining failure-path messages (CW-E09, CW-E11,
- * CW-E14) belong to T-0024 and are not implemented here.
+ * create-wxl's one exported seam (0005-S1): the Step order table's steps 1-11 and 13. Step 7's
+ * strict parse and entry rules 1-5 (CW-E08) and step 9's pristine-rule failures (CW-E10, with the
+ * run's own temporary directory removed) are T-0021's. T-0022 adds step 3's interactive directory
+ * question and its step-4 re-ask, step 5's setup questions (interactive and non-interactive) and
+ * step 11's engine apply (CW-E12, warnings). Step 12 (git steps, CW-W01-W03) is T-0023's. Signals
+ * and the remaining failure-path messages (CW-E09, CW-E11, CW-E14) belong to T-0024 and are not
+ * implemented here.
  */
 export async function run(argv, io, deps) {
   // CW-E01 and CW-E02 use the environment language rule only (traceability.md "Language"): they
@@ -86,16 +90,92 @@ export async function run(argv, io, deps) {
   // From here on, a valid `--lang` (now that argv has parsed) selects the table.
   const t2 = messages[selectLanguage(deps, parsed.lang)]
 
+  const questioner = makeQuestioner(io, deps)
+  try {
+    return await runSteps(parsed, io, deps, t2, questioner, { hasOverride, overrideRaw })
+  } catch (err) {
+    if (err instanceof QuestionEofError) {
+      io.stderr.write(t2['CW-E15']() + '\n')
+      return 1
+    }
+    throw err
+  } finally {
+    questioner.close()
+  }
+}
+
+/** Step 3/4's directory question (S-12): asks once, re-asking on its own (printing the `~` reason,
+ * traceability.md "Step order" row 3) until it has an answer that does not begin with `~`. Never
+ * touches `checkTarget`, so the step-4 re-ask loop that calls this only prints CW-E04 for a
+ * rejection `checkTarget` itself returned, never for a stale one left over from a `~` answer
+ * (S-13/P-17/C-06). */
+async function askDirectory(io, t2, questioner) {
+  while (true) {
+    io.stdout.write(t2['Q-DIRECTORY']() + '\n')
+    const raw = await questioner.ask()
+    const answer = raw.trim() === '' ? 'wxl-range' : raw.trim()
+    if (answer.startsWith('~')) {
+      io.stdout.write(t2['Q-DIRECTORY-TILDE']() + '\n')
+      continue
+    }
+    return answer
+  }
+}
+
+async function runSteps(parsed, io, deps, t2, questioner, { hasOverride, overrideRaw }) {
   deps.checkpoint('step-3')
-  const directory = parsed.directory
-  const target = resolvePath(deps.cwd, directory)
+  let directory = parsed.directory
+  let askedDirectory = false
+  if (directory === undefined) {
+    if (io.interactive) {
+      askedDirectory = true
+      directory = await askDirectory(io, t2, questioner)
+    } else {
+      io.stderr.write(t2['CW-E03']() + '\n')
+      return 1
+    }
+  }
+  let target = resolvePath(deps.cwd, directory)
 
   deps.checkpoint('step-4')
 
-  const rejection = await checkTarget(deps, target)
+  const printCwE04 = (rejectionToPrint) =>
+    io.stderr.write(t2['CW-E04']({ path: target, conditionId: rejectionToPrint.id, detail: rejectionToPrint.detail }) + '\n')
+
+  let rejection = await checkTarget(deps, target)
+  while (rejection && askedDirectory) {
+    printCwE04(rejection)
+    directory = await askDirectory(io, t2, questioner)
+    target = resolvePath(deps.cwd, directory)
+    rejection = await checkTarget(deps, target)
+  }
   if (rejection) {
-    io.stderr.write(t2['CW-E04']({ path: target, conditionId: rejection.id, detail: rejection.detail }) + '\n')
+    printCwE04(rejection)
     return 1
+  }
+
+  let setupArgs = null
+  let setupArgv = null
+  if (!parsed.noSetup) {
+    if (!io.interactive) {
+      const missing = missingRequiredFlags(parsed.flags)
+      if (missing.length > 0) {
+        io.stderr.write(t2['CW-E05']({ missing }) + '\n')
+        return 1
+      }
+      setupArgv = buildEngineArgv(parsed.flags)
+      try {
+        setupArgs = deps.engine.parseForkInitArgs(setupArgv)
+      } catch (err) {
+        if (err instanceof deps.engine.ForkInitArgError) {
+          io.stderr.write(t2['CW-E06']({ message: err.message }) + '\n')
+          return 1
+        }
+        throw err
+      }
+    } else {
+      ;({ parsedArgs: setupArgs, argv: setupArgv } = await collectInteractiveAnswers(io, deps, t2, parsed.flags, questioner))
+    }
   }
 
   const commit = hasOverride ? overrideRaw : deps.source.commit
@@ -182,6 +262,27 @@ export async function run(argv, io, deps) {
 
   deps.checkpoint('step-10')
   await moveIntoPlace(deps, tmpDir, target)
+
+  if (!parsed.noSetup) {
+    // S-12: both CW-E12 call sites (the thrown-error and the non-zero-exitCode path) otherwise
+    // repeat the same `{ directory, argv: setupArgv, version: deps.source.version }`.
+    const printCwE12 = (message) =>
+      io.stderr.write(t2['CW-E12']({ message, directory, argv: setupArgv, version: deps.source.version }) + '\n')
+    let result
+    try {
+      result = deps.engine.runForkInit(setupArgs, { projectRoot: target })
+    } catch (err) {
+      printCwE12(err?.message ?? String(err))
+      return 1
+    }
+    if (result.exitCode !== 0) {
+      printCwE12(result.message)
+      return 1
+    }
+    for (const warning of result.warnings) {
+      io.stdout.write(jsonValue(warning) + '\n')
+    }
+  }
 
   deps.checkpoint('step-13')
   io.stdout.write(t2['N1']({ directory }) + '\n')
