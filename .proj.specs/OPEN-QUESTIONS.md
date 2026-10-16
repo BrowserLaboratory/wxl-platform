@@ -680,3 +680,95 @@ the release body and the generated list kept only as a supplementary, clearly la
 **Not blocked.** Every release already following the skill-driven process by hand.
 
 **Revisit when.** The 2026-10-16 release is cut, which this entry says is when this gets decided.
+
+---
+
+## OQ-020 — When do the settings half of the setup record and the setup page land?
+
+**Deferred on:** 2026-10-16
+**Status:** open
+
+**Reason.** Epic 0005 (create-wxl) writes `range.json`'s `upstream` half only (R2): the repository,
+version and commit a range was created from. The settings a teacher answered at setup time
+(author, repository, host, origin, site name) are not recorded there yet, so a later upgrade has
+no stored record of them to reapply. 0004's own Out of Scope section numbered this differently;
+this entry supersedes that numbering. The upgrade itself is epic 0006, which `range.json`'s
+upstream half makes possible; the settings half of the setup record is epic 0007; the setup page
+(a browser UI replacing or complementing create-wxl's terminal questions) is epic 0008.
+
+**Evidence.** Verified by reading: `.proj.specs/0005-create-wxl/traceability.md:22` (decision R2,
+"`range.json` holds only `upstream` (repository, version, commit); create-wxl writes it; fork:init
+never does") and `:212` (P4's `range.json` schema, which has no settings fields); GLOSSARY.md's
+setup record entry ("老師的設定值還沒有記進去").
+
+**Blocks.** Any claim that `pnpm range:upgrade` (or an equivalent) can reapply a teacher's settings
+automatically, or that a setup page exists. Options: epic 0007 extends `range.json`'s schema with
+the settings half once the upgrade (0006) itself has landed; epic 0008 designs the setup page
+against whichever schema 0007 settles on.
+
+**Not blocked.** The upstream half of `range.json` (0005) and any upgrade logic that only needs the
+upstream half (0006).
+
+**Revisit when.** Epic 0006 lands and the settings half (0007) or the setup page (0008) is
+scheduled.
+
+---
+
+## OQ-021 — Do `npm create wxl -- <flags>` and `pnpm range:upgrade` work through the registry on the npm and pnpm versions teachers use?
+
+**Deferred on:** 2026-10-16
+**Status:** open
+
+**Reason.** create-wxl's own test suite (0005-S1–S3) calls `run()`, `prepareDist` and `checkPublish`
+directly (and, for the `bin`, as a subprocess run from a locally-built package directory); stage 8's
+terminal runs (0005-S4) run `npx --yes <tarball>` against a tarball `npm pack` built locally. Neither
+level ever runs `npm create wxl` or `pnpm create wxl` through the real npm/pnpm registry resolution,
+and neither exercises every npm/pnpm version combination a teacher might have installed, nor
+`pnpm range:upgrade` (which does not exist until epic 0006). Decision D4 reserves the package name
+with a placeholder `create-wxl@0.0.0`, but the registry's own behaviour under real-world npm/pnpm
+versions is unverified until the user actually publishes and a teacher runs the command for real.
+
+**Evidence.** Verified by reading: `.proj.specs/0005-create-wxl/traceability.md:27` (decision D4)
+and `:350` (X9: `checkPublish` checks only the package name's maintainers, not that the registry
+serves the tarball correctly to every client); the ticket's Notes record that publishing to npm is
+left to the user, outside this ticket's scope.
+
+**Blocks.** Any claim that `npm create wxl` or `pnpm range:upgrade` is known to work on a teacher's
+own machine before the user has published the package and tried it there.
+
+**Not blocked.** create-wxl's own unit and stage-8 tests, which exercise the packed tarball
+locally.
+
+**Revisit when.** The user publishes `create-wxl` to npm and a teacher (or the user) runs
+`npm create wxl` / `pnpm create wxl` against the published package on their own machine.
+
+---
+
+## OQ-022 — Is a terminal run of the packed package adequate stage 8 for create-wxl?
+
+**Deferred on:** 2026-10-16
+**Status:** open
+
+**Reason.** Stage 8 (workflow.md) normally verifies behaviour on the ticket's preview deployment,
+in a browser (hard rule 4). create-wxl has no browser surface of its own: it is a terminal command
+that creates a range, which is itself a static site verified the usual, browser-based way once it
+exists. Epic 0005 and epic 0006 (the upgrade) both verify create-wxl's own CLI behaviour through a
+terminal run of the packed package (`npm pack` then `npx <tarball>`), and verify the resulting
+range's site results by reading the built files (`.vitepress/dist/`) rather than opening a browser
+— a non-browser harness, overriding workflow.md's stage 8 and hard rule 4 for these two epics only
+(traceability.md "Overridden contracts").
+
+**Evidence.** Verified by reading: `.proj.specs/0005-create-wxl/traceability.md:372-379`
+("Overridden contracts": "create-wxl's behaviour runs in a terminal and is verified there
+(0005-S4); the built range's title and origin are read from built files (OQ-022)") and `:381-394`
+("Stage 8 inputs": 0005-S4's six runs, 0 and I–IV, all terminal commands and file reads).
+
+**Blocks.** Any claim that create-wxl's own CLI behaviour has been verified in a browser, or that a
+terminal-and-file-reads harness is adequate for the ranges create-wxl's downstream epics eventually
+expose through a browser UI (e.g. epic 0008's setup page).
+
+**Not blocked.** The ranges create-wxl produces, which are still verified in the browser once built
+and deployed, the same as any other range.
+
+**Revisit when.** Epic 0006 (the upgrade) or epic 0008 (the setup page) adds a browser-facing
+surface of create-wxl's own, at which point that surface needs the usual browser-based stage 8.

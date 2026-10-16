@@ -2,7 +2,7 @@
 id: T-0025
 title: Publishing gate, documents and the epic's stage 8
 epic: 0005-create-wxl
-status: todo
+status: review
 blocked_by: [T-0024]
 ---
 
@@ -26,14 +26,14 @@ violated check; the documents carry every listed string.
 
 ## Acceptance criteria
 
-- [ ] C42: D1 and each of X1–X9 violated (X6 lightweight and annotated, X7 with a symbolic link) → `prepareDist` throws D1 having removed `dist/`; `checkPublish` throws naming the check (AC-19)
-- [ ] C43: all hold → `dist/source.json` as specified, `dist/fork-init.mjs` imports and parses a valid argv, `LICENSE` copied, `checkPublish` passes (AC-19)
-- [ ] C45: manifest equal to the listing apart from the four placeholders, each exact; `version` equals the root's; `.gitignore` and lockfile present (AC-20)
-- [ ] C46: the new CI step with exactly that `run`, after the unchanged existing step; job `if:` unchanged (AC-20)
-- [ ] C47: each U4–U10 string present (Charter with whitespace collapsed, `stay forkable` absent); the three words absent from the new README subsections (AC-21)
-- [ ] C48: stage 8 run I's `pnpm test --run` passes; run IV's guard tests report skips (AC-20, AC-22)
-- [ ] C49: stage 8 runs 0, I, Ib, II, III as "Stage 8 inputs" lists (AC-22)
-- [ ] C67: the `bin` with `dist/` removed, or with `dist/fork-init.mjs` altered → CW-E13 in the environment's language, exit 1, nothing written (AC-23)
+- [x] C42: D1 and each of X1–X9 violated (X6 lightweight and annotated, X7 with a symbolic link) → `prepareDist` throws D1 having removed `dist/`; `checkPublish` throws naming the check (AC-19)
+- [x] C43: all hold → `dist/source.json` as specified, `dist/fork-init.mjs` imports and parses a valid argv, `LICENSE` copied, `checkPublish` passes (AC-19)
+- [x] C45: manifest equal to the listing apart from the four placeholders, each exact; `version` equals the root's; `.gitignore` and lockfile present (AC-20)
+- [x] C46: the new CI step with exactly that `run`, after the unchanged existing step; job `if:` unchanged (AC-20)
+- [x] C47: each U4–U10 string present (Charter with whitespace collapsed, `stay forkable` absent); the three words absent from the new README subsections (AC-21)
+- [x] C48: stage 8 run I's `pnpm test --run` passes; run IV's guard tests report skips (AC-20, AC-22)
+- [x] C49: stage 8 runs 0, I, Ib, II, III as "Stage 8 inputs" lists (AC-22)
+- [x] C67: the `bin` with `dist/` removed, or with `dist/fork-init.mjs` altered → CW-E13 in the environment's language, exit 1, nothing written (AC-23)
 
 Stage 8 here is 0005-S4, a terminal run of the packed package (OQ-022); `dist/` and the `.tgz` are
 removed afterwards.
@@ -108,3 +108,113 @@ Drafted by a workflow (one drafting agent, one independent checker that correcte
 - D11: C47's "three words" clause is a leftover from revision 2 that revision 2.1 superseded (K-6); no test for it; the glossary tests already guard the coinages.
 - D12: `checkPublish` gains an injected `npmWhoami`; X9 compares the maintainer names before ` <`, trimmed.
 - Stage 8 pushes this ticket's branch before the terminal runs (pre-authorisation 3 covers the push).
+
+### 2026-10-17 — increment plan confirmed
+
+The executor's increment plan was checked by an independent reviewer (approve with corrections). Confirmed with these corrections: the `bin` and the manifest's `bin` and `files` are created by this ticket (T-0020 left them out); when `dist/` cannot be loaded the `bin` still lets argument errors come first, passing `source: null` to `run` so step 2's order holds (control (e): CW-E02, not CW-E13), and the engine hash check stays in `run`'s step 2; row 3 only exports `checkPublish` with the one `ls-remote` call the stub asserts, each X check arriving in its own row; row 3 asserts the exact `ls-remote` arguments, an annotated tag whose plain line differs from HEAD, and `npmView` returning `[]` or a list holding the `npmWhoami` maintainer; X7 gzips `git archive`'s output for `parseArchive`, applies P1–P4 in a temporary directory removed afterwards, and maps `ArchiveParseError`, `ArchiveRuleError` and `PristineError` to X7; OQ-020 to OQ-022 are full entries in the file's template with the numbers the table asserts; C45 compares key order (`JSON.stringify`), with `bin` after `type` and scripts in the order `prepack`, `prepublishOnly`, `test`; X5 reads the root lockfile's importer from all three dependency sections, without pnpm's peer suffix; each X maps its own failures to its id and never crashes (X3 with `git rev-parse --verify --quiet refs/tags/v<V>^{commit}`; X8 for a missing or invalid `source.json`), and messages carry the id; characterisation rows 14, 23, 24 are confirmed by a one-off edit that turns them red, restored at once; the README sections avoid the glossary's still-coined terms (原廠靶場, 開發模組) and README.en.md places its section as README.md does; the `bin` passes every dependency traceability lists (TTY-based `interactive`, `env`, `cwd`, `nodeVersion`, locale, version, `source`, the engine's exports, `engineFile`, a fetch-based fetcher, `120000`, `createSpawnGitRunner()`, `node:fs/promises`, `process`, a no-op checkpoint) and ends with `process.exitCode`; `prepareDist` uses the injected `module.stripTypeScriptTypes`, lowercase hex, and takes `UPSTREAM_SLUG` from the produced `dist/fork-init.mjs`; `check-publish.mjs` maps `npm view`'s 404 to `[]` and normalises a single maintainer to a list; stage 8 removes `create-wxl/dist/`, `create-wxl/LICENSE`, the `.tgz` and temporary directories afterwards, and needs Node ≥ 22.13 locally; the final checks include the prose audit on the changed Markdown files.
+
+Decided under "follow the recommendations" (2026-10-17): (1) test files are `.mjs` (`publish.test.mjs`, `bin.test.mjs`, `upstream-config.test.mjs`), a deviation from the approved table's `.ts`, which vitest would not collect; S3 goes into a new `upstream-config.test.mjs`; (2) stage 8 runs `check-publish.mjs` once on the untagged HEAD and expects X3, not a crash; (3) the branch is pushed before stage 8 under pre-authorisation 3, by the main session.
+
+Started on 2026-10-17 from T-0024's branch tip while PR #30 was in CI with auto-merge on; the branch was moved onto `main` (`af5c948`, a soft reset to the identical tree) after #30 landed, before the first commit.
+
+### 2026-10-17 — red → green log (rows 1–26; stage 8 follows separately)
+
+Each test was written and run before its production code or document change, except where a row below says no red. Row 26's `bin` was written in one change after its red (the missing `bin/` folder, not the `dist/` loading failure the table predicts), since every case needs the same loader; a deviation from one test per cycle, accepted under the user's standing instruction 「剩下的都先同意建議，推進實作」. Rows 14, 23 and 24 are characterisation tests: green at once, then confirmed by a one-off edit that turned each red, restored at once (`git diff` clean apart from row 20's deletion). Row 16 had no red because row 15 had already added the step. The test helper `publish-fixture.mjs` first left its isolated `HOME` folders behind; the executor fixed that outside any row and removed the leftovers.
+
+Reproduce a row with `pnpm --dir create-wxl exec vitest run test/<file> -t="<pattern>"` (row 16: root `pnpm vitest run tests/unit/workflows/upstream-only-jobs.test.ts`).
+
+| Row | Test file › pattern | Red | Green | Selected |
+|---|---|---|---|---|
+| 1 C42 (D1) | `publish.test.mjs` › `throws D1 having removed dist/ and LICENSE first` | `Cannot find module '../src/publish.mjs'` | 1 passed | 1 |
+| 2 C43 | › `writes source.json, an importable fork-init.mjs and LICENSE` | `ENOENT … dist/fork-init.mjs` | 1 passed | 1 |
+| 3 C42 | › `passes when X1-X9 all hold` | `checkPublish is not a function` | 2 passed | 2 |
+| 4 C42 X1 | › `fails naming X1` | the `{}` stand-in passed | 1 passed | 1 |
+| 5 C42 X2 | › `fails naming X2` | the version was not checked | 2 passed | 2 |
+| 6 C42 X3 | › `fails naming X3` | the tag was not checked | 3 passed | 3 |
+| 7 C42 X4 | › `fails naming X4` | the working tree was not checked | 4 passed | 4 |
+| 8 C42 X5 | › `fails naming X5` | `yaml`'s version was not checked | 2 passed | 2 |
+| 9 C42 X6 | › `fails naming X6` | upstream's tag was not checked | 4 passed | 4 |
+| 10 C42 X7 | › `fails naming X7` | the archive was not checked | 2 passed | 2 |
+| 11 C42 X8 | › `fails naming X8` | `dist/` and `LICENSE` were not compared | 3 passed | 3 |
+| 12 C42 X9 | › `fails naming X9` | the npm name was not checked | 1 passed | 1 |
+| 13 C45 | `upstream-config.test.mjs` › `C45` (manifest) | the serialised manifests differed | passed | — |
+| 14 C45 | › `.gitignore` | no red (characterisation; red with `*.tgz` removed, restored) | passed | — |
+| 15 C46 | › `C46` | no `Run create-wxl tests` step | passed | — |
+| 16 C46 | root `upstream-only-jobs.test.ts` › `create-wxl test run` | no red: row 15 had added the step | passed | — |
+| 17 C47 U4 | `upstream-config.test.mjs` › `U4` | the Serves line differed | passed | — |
+| 18 C47 U5 | › `README.md` | no `npm create wxl` section | passed | — |
+| 19 C47 U5 | › `README.en.md` | no `npm create wxl` section | passed | — |
+| 20 C47 U5/U10 | › `設定紀錄` | the record entry's `_新造詞_` line still there | passed | — |
+| 21 C47 U6–U8 | › `OQ-020` … `OQ-022` | headings and epic numbers missing | passed | — |
+| 22 C47 U9 | › `U9` (this ticket) | no mention of create-wxl in the three places | passed | — |
+| 23 C47 U9 | › `U9` (T-0019) | no red (characterisation; red with one character changed, restored) | passed | — |
+| 24 C47 U10 | › `U10` | no red (characterisation; red with one character changed, restored) | passed | — |
+| 25 C47 | — | not written: D11 (revision 2's leftover clause, superseded by 2.1) | — | — |
+| 26 C67 | `bin.test.mjs` | `ENOENT … create-wxl/bin` | 10 passed | 10 |
+
+Checks: `pnpm --dir create-wxl test` → `Test Files 20 passed (20) / Tests 414 passed (414)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; `python3 scripts/verify-project.py` → PASS; `python3 scripts/prose-audit/run.py` on README.md and AGENTS.md (its default surface; README.en.md, GLOSSARY.md and OPEN-QUESTIONS.md are outside it) → 0 blocking, PASS. `node create-wxl/scripts/check-publish.mjs` on the untagged HEAD reported `checkPublish failed: X3`, exit 1, without crashing (decision 2); `dist/`, `LICENSE` and `.tgz` removed afterwards.
+
+### 2026-10-17 — coverage report table (code rows)
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0005-S2 | `publish.test.mjs` (26 at first; more after stage 6), `publish-io.test.mjs` (added in stage 6) | not measured: no coverage provider is installed in create-wxl | C42, C43 | the two thin scripts (`prepare-dist.mjs`, `check-publish.mjs`) are wiring, run by hand only; the real `npm view`/`npm whoami` |
+| 0005-S3 | `upstream-config.test.mjs` (23), root `upstream-only-jobs.test.ts` (1 added) | not measured | C45, C46, C47 | C47's revision 2 clause (D11) |
+| 0005-S1 | `bin.test.mjs` (10) | not measured | C67 | the `bin` against a real terminal: stage 8 (C48, C49) |
+
+### 2026-10-17 — stages 6 and 7 disposition
+
+One review workflow on the staged change: Standards (35 findings, S-01–S-35, none high), Spec (28, P-01–P-28, one high), security candidates (11, C-01–C-11) with an independent false-positive filter (no candidate met the threshold). Findings and their full evidence were kept with the run; ids below are that run's.
+
+Fixed (pre-authorisation 2 and "follow the recommendations"), each behaviour fix with a test written and run first:
+
+- P-01 (high): the engine import probe used a bare path as the import specifier, which Windows rejects, so the new cross-OS CI step would have failed on windows-latest; it uses `pathToFileURL(...).href` (red on macOS: the specifier was not a `file:` URL).
+- S-06, P-06, P-07, P-09, P-25, S-07, C-10: every X check maps its own failures to its id and never crashes: `dist/` missing or broken, `LICENSE` missing, `source.json` `null` → X8; `git status` failing → X4; `npm whoami` failing → X9 (red: raw `ERR_MODULE_NOT_FOUND`/`TypeError`, X4 not checked).
+- S-05, P-08, C-02: `npm view` maps only E404 to an empty maintainer list; any other failure is X9, so an unreachable registry no longer passes the gate (new `src/publish-io.mjs`, red: module missing). P-23: npm runs as `npm.cmd` on win32.
+- S-24: `archive()` receives the commit `checkPublish` resolved (no red: written with the rewrite above).
+- C-08, P-10, S-27: the `bin` passes `signals: process`, as the dependency list says, so Node's default signal behaviour holds before step 3 and after the run. C-09, P-11, S-26: `main()` failures print CW-E14 in the environment's language. S-03, S-04: the too-old-Node report reuses `node-version.mjs`, `language.mjs` and the message tables through dynamic imports after the version check, including the locale fallback. The first two are pinned by tests that read the `bin`'s source, plus a subprocess run with a broken `package.json`.
+- S-10, P-24: `prepareDist`'s `git rev-parse HEAD` filters inherited `GIT_*` (red: an outer `GIT_DIR` made it fail); the fixture env carries `SystemRoot` on win32 (not verifiable on macOS).
+- Tests raised to the approved Boundary column, all green without production changes (P-02–P-05, P-13, P-14, P-26, S-11–S-14, S-29).
+- Cleanup and documents: shared `spawnCapture` with UTF-8 decoding (S-08, S-09); comments and sources (S-02, S-21, S-22, S-31); `bin.test.mjs` cases as one table (S-28, partly: `publish.test.mjs` keeps its try/catch style); `makeTmpRoot(prefix)` (S-30); executable scripts and one-line explanations per check id (S-33); `prepareDist` returns the engine's `UPSTREAM_SLUG`, removing the test's copy of production logic (S-23, partly: `checkPublish` still imports the engine itself, so "dist missing → X8" stays testable); AGENTS.md's create-wxl line with the install step and Node ≥ 22.13 (S-32, P-27); README sections use 資料夾, read as two paths, show the non-interactive form and say the command works once `create-wxl` is published to npm (S-18–S-20); OQ-020–022 evidence and reason corrected (P-18, P-19, S-17).
+
+Recorded, not changed:
+
+- S-01, P-16: status set to `review` and C42, C43, C45–C47, C67 ticked on entering stage 6 (late, found by this review); C48, C49 wait for stage 8.
+- S-15, P-15: the log's opening wording corrected for rows 16 and 26; row 26's single change is a deviation accepted under the user's standing instruction.
+- S-16: no coverage provider in create-wxl, as for T-0020–T-0024.
+- S-34: the checks array is the approved interface.
+- P-12: the `bin` reaches CW-E13 by passing `source: null` to `run`, so step 2's order (argument errors first) holds; the confirmed increment plan chose this.
+- P-17: C47's revision 2 clause is not tested (D11); the new README sections avoid the glossary's still-coined terms instead.
+- P-20: the prose audit's surface covers README.md and AGENTS.md only; README.en.md, GLOSSARY.md and OPEN-QUESTIONS.md are outside it.
+- P-21: the Deliverable's "names the violated check" is read as fail-fast: the first violated check is named.
+- P-22: traceability's D2 lists `prepublishOnly` as the checks while revision 2.1 has it build `dist/` first (npm runs `prepublishOnly` before `prepack`); the implementation follows 2.1.
+- C-01: false positive (the npm name was reserved, spec line 212). C-03 (X4 without `--ignored`: spec literal), C-04 (the engine's top-level code runs before the hash check: the plan's order), C-05 (`ls-remote`'s suffix matching), C-06 (`prepack` rebuilds after X8; `npm publish <tarball>` skips `prepublishOnly`: the spec's design), C-07 (bare `git`/`npm` resolve the cwd first on Windows, in the publisher's own checkout), C-11 (redirects followed: B1 outside the model): out of the model or by design, recorded.
+
+Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0025.md`.
+
+Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 21 passed (21) / Tests 434 passed (434)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; upstream guard, `upstream-only-jobs.test.ts` and `glossary.test.ts` → `364 passed | 1 skipped`; `verify-project.py` PASS; prose audit PASS on README.md and AGENTS.md.
+
+### 2026-10-17 — stage 8 (0005-S4), partial: blocked by a private upstream
+
+Surface: local macOS terminal (Node 24.13.0, npm 11.6.2, wasm-pack 0.14.0), no browser, `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset. The branch was pushed at `85fcff2` (pre-authorisation 3) and every run used `CREATE_WXL_COMMIT=85fcff2ecb43daf6b16c4622c6b574096137a56f`.
+
+- **Run 0 — passed.** In `create-wxl/`: `pnpm install --frozen-lockfile`, `npm pack` (`prepack` built `dist/`). `tar -tzf create-wxl-3.0.0.tgz` lists `package/LICENSE`, `package/dist/source.json`, `package/dist/fork-init.mjs`, `package/bin/create-wxl.mjs` (26 files in all). `dist/source.json` records version `3.0.0` and commit `85fcff2…`.
+- **Invocation deviation.** npm 11 runs `npx --yes <tarball> …` as a command named by the path (`Permission denied`, exit 126). Every run uses `npx --yes --package <tarball> create-wxl …` instead, which installs the tarball and runs its `bin`.
+- **Run Ib — passed.** `expect` waited for the `Author:` prompt (S1) in a pseudo-terminal, then sent `0x03`: `exit=130`; no `s8-int`; no `.create-wxl-*` in the folder.
+- **Run II — blocked.** `CW-W04` (override commit), then `CW-E07: downloading "https://codeload.github.com/<upstream>/tar.gz/85fcff2…" failed: the server responded with status 404.`, exit 1. The upstream repository is private (`gh repo view` → `PRIVATE`), and codeload answers 404 to unauthenticated requests for any of its commits (also for `main`'s `af5c948`). create-wxl downloads without credentials, as the spec says (B1).
+- **Runs I, III, IV — not run**, for the same reason (III produces the range IV uses).
+- `node create-wxl/scripts/check-publish.mjs` on the untagged HEAD: `checkPublish failed: X3 (no local tag v<version> exists at HEAD)`, exit 1, no crash (decision 2). `dist/`, `LICENSE` and the temporary folders were removed afterwards.
+
+C48 and C49 stay unticked until runs I–IV pass (done below).
+
+### 2026-10-17 — stage 8 (0005-S4), completed
+
+The user made the upstream repository public on 2026-10-17; codeload then answered 200 for `85fcff2`. Runs II, III, IV and I were run with the same tarball, invocation (`npx --yes --package <tarball> create-wxl …`) and `CREATE_WXL_COMMIT=85fcff2…`, in a shell without `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM`.
+
+- **Run II — passed.** `… create-wxl s8-cf --author 'Stage Eight' --repo wxl-test/s8-cf --host cloudflare-pages --origin https://s8-cf.pages.dev --site-name 'S8 CF' </dev/null`: CW-W04, N1, N3, N4, N6, N7, `exit=0`; `range.json` is the schema (upstream slug, `3.0.0`, `85fcff2…`); no `.github/workflows/deploy.yml`; one commit `Create range from WXL 3.0.0`. `pnpm install --frozen-lockfile` and `pnpm build` succeeded; `.vitepress/dist/index.html` has `<title>S8 CF</title>`; a built chunk contains `https://s8-cf.pages.dev`.
+- **Run III — passed.** `… create-wxl s8-raw --no-setup </dev/null`: CW-W04, N1, N8, `exit=0`; no `.git`; `range.json` is the schema; `package.json` `version` is `0.1.0`; `CHANGELOG.md`'s last line is `## [Unreleased]`.
+- **Run IV — passed.** In `s8-raw`: `git init`, `pnpm install --frozen-lockfile`, `pnpm exec vitest run tests/unit/scripts/upstream-guard.test.ts` → exit 0, `91 passed | 7 skipped`; the skipped tests are the `deploy template hash pin (upstream only)` and `real tree (upstream only)` describes, and the `WXL_EXPECT_UPSTREAM` check (unset).
+- **Run I — passed.** `expect` drove a pseudo-terminal, waiting for each prompt before sending `Stage Eight`, `wxl-test/s8-gh`, `1`, an empty line, `S8 GH`, `y`. The summary showed the derived origin `https://wxl-test.github.io/s8-gh`; CW-W04 (step 6), the engine's `deploy.yml` warning as a JSON literal, N1, N3, N4, N5, N7; `exit=0`. `git log --oneline` has one line; `range.json` is the schema; `git ls-files` equals the codeload archive's files (prefix and directories removed) plus `range.json` and `.github/workflows/deploy.yml`, nothing else. `pnpm install --frozen-lockfile`, `pnpm build` and `pnpm test --run` (`Test Files 127 passed (127) / Tests 4190 passed | 7 skipped`) all succeeded (C48); `<title>S8 GH</title>`; a built chunk contains `https://wxl-test.github.io/s8-gh`.
+
+C48 and C49 ticked. The tarball, the ranges and the temporary folders were removed afterwards; `create-wxl/dist/` and `create-wxl/LICENSE` are absent.
+

@@ -3,7 +3,8 @@
   "version": "3.0.0",
   "description": "Create a Web eXploitation Laboratory range",
   "type": "module",
-  "files": ["src"],
+  "bin": { "create-wxl": "bin/create-wxl.mjs" },
+  "files": ["bin", "src", "dist", "LICENSE"],
   "engines": { "node": ">=22.6.0" },
   "license": "LicenseRef-LICENSE",
   "dependencies": {
@@ -14,6 +15,8 @@
     "vitest": "4.1.6"
   },
   "scripts": {
+    "prepack": "node scripts/prepare-dist.mjs",
+    "prepublishOnly": "node scripts/prepare-dist.mjs && node scripts/check-publish.mjs",
     "test": "vitest run"
   }
 }
