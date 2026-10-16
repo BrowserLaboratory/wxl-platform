@@ -42,23 +42,21 @@ export async function checkTarget(deps, target) {
   return null
 }
 
-function stripFirstComponent(path) {
-  const idx = path.indexOf('/')
-  return idx === -1 ? '' : path.slice(idx + 1)
-}
-
-/** Step 8: writes the parsed entries (without the archive's first path component) into `tmpDir`.
- * Entry-rule validation (rules 1-5: path traversal, `.git`, link/device types, collisions) is not
- * done here — it is T-0021's (S-20); this only trusts a well-formed, already-downloaded archive.
- * Files use flag `wx` (fails on collision); directories without `recursive`. Mode is 0755 when the
+/** Step 8: writes the entries `archive-rules.mjs`'s `checkEntryRules` already validated into
+ * `tmpDir`. Writes from the SAME validated data it checked rules 1-5 against -- `entry.rest`
+ * (the header path with the first component already stripped off) and `entry.kind`
+ * (`'file'`/`'dir'`, from the raw typeflag) -- rather than re-deriving a path or type from `tar`'s
+ * own `entry.path`/`entry.type` (review finding C-01: the two used to disagree about which
+ * component to drop, and about how a `tar`-reclassified type maps to file-system writes). Files
+ * use flag `wx` (fails on collision); directories without `recursive`. Mode is 0755 when the
  * entry has any execute bit, else 0644, each masked by the process umask through the normal
  * `open`/`mkdir` syscalls (no manual umask arithmetic needed). */
 export async function extractEntries(deps, entries, tmpDir) {
   for (const entry of entries) {
-    const rel = stripFirstComponent(entry.path)
-    if (rel === '') continue // the prefix directory entry itself
+    if (entry.rest === '') continue // the prefix directory entry itself
+    const rel = entry.rest.endsWith('/') ? entry.rest.slice(0, -1) : entry.rest
     const full = join(tmpDir, rel)
-    if (entry.type === 'Directory') {
+    if (entry.kind === 'dir') {
       await deps.fs.mkdir(full, { mode: 0o755 })
     } else {
       const executable = (entry.mode & 0o111) !== 0

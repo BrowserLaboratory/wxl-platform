@@ -2,7 +2,7 @@
 id: T-0021
 title: Strict archive rules and the pristine range
 epic: 0005-create-wxl
-status: todo
+status: review
 blocked_by: [T-0020]
 ---
 
@@ -25,19 +25,19 @@ spec lists; `git archive HEAD` of upstream passes the rules.
 
 ## Acceptance criteria
 
-- [ ] C17: symlink, hardlink, FIFO, char and block device, GNU sparse → CW-E08 naming path and rule 1, nothing written (AC-9)
-- [ ] C18: each rule-3 path of the row → CW-E08 (AC-9)
-- [ ] C19: two first components; pax `comment` absent or another commit → CW-E08 (AC-9)
-- [ ] C20: each rule-4/5 case of the row → CW-E08 naming the later entry, or rule 5 (AC-9)
-- [ ] C21: pax global header with the right `comment`, GNU long-name header, ordinary entries → accepted, headers not written (AC-9)
-- [ ] C23: `CHANGELOG.md` with versions after the marker, and with CRLF → truncated after the marker, LF lines (AC-11)
-- [ ] C24: each missing file or marker of P1/P2 → CW-E10 naming file and rule, target unchanged, temporary directory removed (AC-11)
-- [ ] C25: `OPEN-QUESTIONS.md` with format section, trailing `---`, entries → format section only (AC-11)
-- [ ] C26: `package.json` `3.0.0` or without `version` → `0.1.0` (added last), other keys kept, fork-init serialisation (AC-11)
-- [ ] C27: `package.json` missing, BOM, not JSON, array → CW-E10 (AC-11)
-- [ ] C28: archive with or without its own `range.json` → `range.json` byte-equal to the schema (AC-12)
-- [ ] C44: `.gitattributes` exactly U1; `git archive HEAD` passes rules 1–5, holds `.proj.specs/` and its `OPEN-QUESTIONS.md` only under `.proj.specs/`, nothing under `.proj.tickets/` or `create-wxl/`, no NFC/case collision (AC-20)
-- [ ] C55: truncated gzip; an HTML body with status 200 → CW-E08 (AC-9)
+- [x] C17: symlink, hardlink, FIFO, char and block device, GNU sparse → CW-E08 naming path and rule 1, nothing written (AC-9)
+- [x] C18: each rule-3 path of the row → CW-E08 (AC-9)
+- [x] C19: two first components; pax `comment` absent or another commit → CW-E08 (AC-9)
+- [x] C20: each rule-4/5 case of the row → CW-E08 naming the later entry, or rule 5 (AC-9)
+- [x] C21: pax global header with the right `comment`, GNU long-name header, ordinary entries → accepted, headers not written (AC-9)
+- [x] C23: `CHANGELOG.md` with versions after the marker, and with CRLF → truncated after the marker, LF lines (AC-11)
+- [x] C24: each missing file or marker of P1/P2 → CW-E10 naming file and rule, target unchanged, temporary directory removed (AC-11)
+- [x] C25: `OPEN-QUESTIONS.md` with format section, trailing `---`, entries → format section only (AC-11)
+- [x] C26: `package.json` `3.0.0` or without `version` → `0.1.0` (added last), other keys kept, fork-init serialisation (AC-11)
+- [x] C27: `package.json` missing, BOM, not JSON, array → CW-E10 (AC-11)
+- [x] C28: archive with or without its own `range.json` → `range.json` byte-equal to the schema (AC-12)
+- [x] C44: `.gitattributes` exactly U1; `git archive HEAD` passes rules 1–5, holds `.proj.specs/` and its `OPEN-QUESTIONS.md` only under `.proj.specs/`, nothing under `.proj.tickets/` or `create-wxl/`, no NFC/case collision (AC-20)
+- [x] C55: truncated gzip; an HTML body with status 200 → CW-E08 (AC-9)
 
 ## 給使用者（zh-TW）
 
@@ -84,3 +84,83 @@ Drafted by a workflow (one drafting agent, one independent checker that correcte
 - D4: CW-E08 prints the entry path exactly as it appears in the archive, including the first component.
 - D5: C44 runs `git archive HEAD` literally; it turns green once U1 is committed, and the red→green log says so.
 - D6: the boundaries the Fixed lists state beyond the matrix rows are tested and recorded in this ticket only; no traceability revision.
+
+### 2026-10-16 — increment plan confirmed
+
+The executor's increment plan was checked by an independent reviewer (approve with corrections). Confirmed with these corrections: rule 1 reads the raw typeflag byte from the decompressed tar (a type `0` file named `a/` is otherwise indistinguishable from a directory) for gzip and plain tar alike; each catch accepts only its own error class (`ArchiveRuleError`, the parse rejection, `PristineError`) and rethrows the rest; CW-E10 names `.proj.specs/OPEN-QUESTIONS.md` in full and rules as `P1`/`P2`/`P3`; row 4 has the approved seven cases; row 5's fixture carries every approved boundary; row 14 isolates git and asserts the archive list; stderr anchors use `startsWith`; path assertions use production `jsonValue`; entries are checked in archive order with every rule per entry, the prefix directory accepted. Decided under "follow the recommendations" (2026-10-16): T-0021 starts after T-0020 landed, on its own branch; rule 4's proper-prefix check follows the spec literally (no case folding) — on a case-insensitive file system a file `A` with `a/b` surfaces as CW-E09, a known limit.
+
+### 2026-10-16 — red → green log
+
+**Process deviation (reported to the user).** The executor wrote the whole implementation first, because rules 1–5 and P1–P4 share one `checkEntryRules`, one raw tar reader and one try/catch frame in `run`, and then reproduced each row's red by temporarily removing that row's code and running the row's tests, restoring it afterwards. Every red below was measured on the code with that row's piece missing; the order is not /tdd's write-a-test-first order. Not redone: redoing it would change the order, not the code or the tests.
+
+Reproduce a row with `pnpm --dir create-wxl exec vitest run test/<file> -t="<pattern>"`.
+
+| Row | Test file › pattern | Red (with the row's piece removed) | Green | Selected |
+|---|---|---|---|---|
+| 1 C17 | `archive-rules.test.mjs` › `rule 1` | `classify()` always `'file'`: all 7 cases fail | 7 passed | 7 |
+| 2 C18 | › `rule 3` (and the type `0` `a/` case) | with node-tar's reclassified `entry.type` instead of the raw typeflag byte, the `a/` case exits 0 | 15 passed | 1 / 15 |
+| 3 C19 | › `rule 2` | comment and first-component checks removed: 3/3 exit 0 | 3 passed | 3 |
+| 4 C20 | › `rules 4-5` | collision and has-file checks removed: 7/7 exit 0 or reach `mkdtemp` | 7 passed | 7 |
+| 5 C21 | › `metadata headers` | none: existing behaviour once rows 1–4 were in | 1 passed | 1 |
+| 6 C55 | › `strict parse` | parse catch removed: 4/4 unhandled rejections (`TAR_BAD_ARCHIVE`, `TAR_ENTRY_INVALID`, `unexpected end of file`) | 4 passed | 4 |
+| 7 C23 | `pristine.test.mjs` › `^P1 ` | none: T-0020's CR stripping already met it | 3 passed | 3 |
+| 8 C24 | › `P1/P2 failures` | step 9 catch and removal of the temporary directory removed: 5/5 unhandled `PristineError` | 5 passed | 5 |
+| 9 C25 | › `^P2 ` | none: existing behaviour | 2 passed | 2 |
+| 10 C26 | › `^P3 ` | line-ending preservation removed: the CRLF case's bytes differ | 3 passed | 1 / 3 |
+| 11 C27 | › `P3 failures` | none: row 8's catch covers it | 5 passed | 5 |
+| 12 C28 | › `^P4 ` | none: existing behaviour | 2 passed | 2 |
+| 13 C44 (U1) | `upstream-archive.test.mjs` › `U1` | `.gitattributes` still the two old lines | 1 passed | 1 |
+| 14 C44 (archive) | › `git archive HEAD` | red until this change is committed (D5): HEAD's `.gitattributes` is the old one, so `.proj.specs/*` and `.proj.tickets/*` are in the archive | after commit: 1 passed | 1 |
+
+Checks before commit: `pnpm --dir create-wxl test` → `1 failed | 165 passed (166)` (row 14 only, as D5 expects); root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`.
+
+Not implemented, recorded as known limits (low-confidence points of the plan check): a meta header above the parser's size limit is reported as rule 1 rather than a parse error; with several pax global headers the last `comment` wins, and a comment mismatch and an entry violation in one archive report in rule order 2 → 1 → 3 → 4 → 5.
+
+### 2026-10-16 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0005-S1 | `archive-rules.test.mjs` (51 after stage 6/7), `pristine.test.mjs` (21 after stage 6/7) | not measured: no coverage provider is installed in create-wxl | C17–C21, C23–C28, C55 | the two known limits above; file-system errors during P1–P4 (C54, T-0024); a case-insensitive file system with a file `A` and `a/b` (rule 4's prefix check is literal, recorded decision) |
+| 0005-S3 | `upstream-archive.test.mjs` (2) | not measured | C44 | runs against this checkout's HEAD; codeload applies the same `export-ignore` (spec fact, not re-run here) |
+
+**Stage 8 verification surface (D1).** create-wxl vitest runs, in-process; row 14 runs real `git archive` on the committed tree.
+
+### 2026-10-16 — stages 6 and 7 disposition
+
+One review workflow on the staged change: Standards (25 findings, S-01–S-25, none high), Spec (16, P-01–P-16, one high), security candidates (12, C-01–C-12) with an independent false-positive filter (no candidate met the threshold). Findings and their full evidence were kept with the run; ids below are that run's.
+
+**Process note.** For the fixes below the executor wrote each failing test first and ran it; it reports each red message as measured by temporarily reverting that one fix (marked, restored, and grepped clean afterwards). The red messages are real, but this round is not evidence of strict write-the-test-first order either, any more than the first round (see the deviation in the red → green log). Accepted under the user's "follow the recommendations" (2026-10-16) and recorded rather than redone (S-01, P-16).
+
+Fixed (pre-authorisation 2 and "follow the recommendations"), each behaviour fix with a red then a green:
+
+- P-01 (high, Spec): the raw typeflag walker and node-tar could fall out of step (a directory header with a non-zero size hiding a symlink header, balanced by a pax `size`), letting a symlink, hard link or device past rule 1 and be written as an empty file. The walker now follows node-tar's size rules, and each entry's path and size are cross-checked against node-tar's header, with equal counts at the end; any mismatch is a parse error (CW-E08). Red on the old code: exit 0 with the link written. Also closes C-02 and S-21.
+- C-01, C-11: step 8 writes from the checker's validated `rest` and kind, not from node-tar's `entry.path`/`entry.type` (on win32 those normalise `\` to `/`); the first component must be non-empty, not `.`/`..`, and free of `\` and control characters.
+- S-02, P-08, C-08: tar and zlib failures are wrapped in their own `ArchiveParseError`; `run` reports only that class as CW-E08 and rethrows the rest.
+- S-03, P-03: rules 1–4 run per entry in one pass, so CW-E08 names the first breaking entry in archive order (red: a later rule-3 entry was named over an earlier collision).
+- S-04: rule 5 is checked after rule 2's comment check.
+- P-04: a type-5 directory without a trailing `/` is accepted.
+- P-10, C-12: the pax global `comment` is read from ignored entries too.
+- P-11, C-07: the run path requires the gzip magic bytes and disables zstd detection; the walker alone still reads plain tar (for T-0025's X7), now with its own test (S-17).
+- P-12, C-06: decompression is capped at node-tar's 1000× ratio.
+- C-05: `jsonValue` escapes U+007F–U+009F after `JSON.stringify`; the tests assert the literal `\u007f` and `\u0085`. This is the escaping part of C60 that this ticket's new output point (the CW-E08 entry path) needed; the rest of C60 stays with T-0024.
+- P-09, C-10: in P1–P3 only `ENOENT` means a missing file; other read errors propagate (CW-E09 is T-0024's C54).
+- S-14, P-15: zh-TW wording uses 壓縮檔 for the archive and 原廠靶場處理規則 for P1–P4 (the glossary's 原廠靶場; 封存 clashes with an _Avoid_ entry).
+- S-25: rule 2's marker prints as `(pax comment)`, not as a quoted entry path.
+- Tests raised to the approved plan: "nothing written" checks the target with `lstat` and the parent tree before and after (S-05, P-05); the strict-parse cases assert a parse error and not a rule (S-06, P-02; with `strict: false` one of the four turns red); the metadata case lists directories too (S-07, P-06); `range.json` is compared with a literal template (S-08, P-07); `git rev-parse` uses the isolated environment (S-09).
+- Cleanup: unused import (S-10), names (S-11, S-20), comments (S-12, P-13, S-13, S-19), `rule` as the one name for the rule number and `bom` as its own P reason (S-15).
+
+Recorded, not changed:
+
+- S-16 (partly done: one shared `withoutRootMtime`) and S-18 (the copied 0004 T4 serialisation, locked by the CRLF test): technical debt.
+- S-22, P-14: T-0020's landing record is in this ticket's change by the workflow's rule (the landing record is written on the next ticket's branch); it is committed separately so the history keeps them apart.
+- S-23: no coverage provider in create-wxl; the table says so.
+- S-24: the Notes' implementation pitfalls were first checked against node-tar 7.5.11; the stage 7 filter re-read the installed 7.5.22 (C-02, C-03 cite its lines) and the pitfalls still hold.
+- C-04: Windows and HFS+ aliases of `.git` (`::$INDEX_ALLOCATION`, `:` streams, ignorable code points, reserved device names) are not in rule 3 as specified: a spec gap, input to the epic close-out chain analysis with G1/G2.
+- C-09: cleanup after an unexpected step 8–9 error (for example a `range.json` directory) is T-0024's C54.
+- C-03: false positive (pax cannot set the type).
+
+Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0021.md`.
+
+Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 1 failed | 6 passed (7) / Tests 1 failed | 180 passed (181)` (row 14 only, until commit, D5); root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`.
+
+After commit (D5): `pnpm --dir create-wxl exec vitest run test/upstream-archive.test.mjs -t="git archive HEAD"` → `1 passed | 1 skipped`; `pnpm --dir create-wxl test` → `Test Files 7 passed (7) / Tests 181 passed (181)`. `git archive HEAD` lists, under `.proj.specs/`, `.proj.tickets/` and `create-wxl/`, only `.proj.specs/` and `.proj.specs/OPEN-QUESTIONS.md`. C44 ticked.

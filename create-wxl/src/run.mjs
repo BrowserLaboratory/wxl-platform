@@ -2,10 +2,11 @@ import { dirname, join, resolve as resolvePath } from 'node:path'
 import { createHash } from 'node:crypto'
 import { messages } from './messages.mjs'
 import { selectLanguage } from './language.mjs'
-import { parseArchive } from './archive.mjs'
+import { parseArchive, ArchiveParseError } from './archive.mjs'
+import { checkEntryRules, ArchiveRuleError } from './archive-rules.mjs'
 import { parseArgvStrict, ArgvError, SETUP_FLAG_NAMES } from './argv.mjs'
 import { checkTarget, extractEntries, moveIntoPlace } from './fsops.mjs'
-import { applyChangelog, applyOpenQuestions, applyPackageJson, writeRangeJson } from './pristine.mjs'
+import { applyChangelog, applyOpenQuestions, applyPackageJson, writeRangeJson, PristineError } from './pristine.mjs'
 import { isNodeVersionOk, MINIMUM_NODE_VERSION } from './node-version.mjs'
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/
@@ -33,9 +34,10 @@ async function validateSourceRecord(deps) {
 
 /**
  * create-wxl's one exported seam (0005-S1): the `--no-setup` happy path through the Step order
- * table's steps 1-4, 6-10 and 13. Setup (steps 5, 11, 12), strict archive entry-rule validation,
- * signals and most failure-path messages belong to later tickets (T-0021-T-0024) and are not
- * implemented here.
+ * table's steps 1-4, 6-10 and 13. Step 7's strict parse and entry rules 1-5 (CW-E08) and step 9's
+ * pristine-rule failures (CW-E10, with the run's own temporary directory removed) are T-0021's.
+ * Setup (steps 5, 11, 12), signals, and the remaining failure-path messages (CW-E09, CW-E11,
+ * CW-E14) belong to T-0024 and are not implemented here.
  */
 export async function run(argv, io, deps) {
   // CW-E01 and CW-E02 use the environment language rule only (traceability.md "Language"): they
@@ -134,21 +136,49 @@ export async function run(argv, io, deps) {
   }
 
   deps.checkpoint('step-7')
-  const { entries } = await parseArchive(body)
+  let parsedArchive
+  try {
+    parsedArchive = await parseArchive(body)
+  } catch (err) {
+    if (err instanceof ArchiveParseError) {
+      io.stderr.write(t2['CW-E08']({ parseError: err.message }) + '\n')
+      return 1
+    }
+    throw err
+  }
+  let validatedEntries
+  try {
+    validatedEntries = checkEntryRules(parsedArchive, { commit })
+  } catch (err) {
+    if (err instanceof ArchiveRuleError) {
+      io.stderr.write(t2['CW-E08']({ rule: err.rule, path: err.path, isCommentMarker: err.isCommentMarker }) + '\n')
+      return 1
+    }
+    throw err
+  }
 
   deps.checkpoint('step-8')
   const tmpDir = await deps.fs.mkdtemp(join(dirname(target), '.create-wxl-'))
-  await extractEntries(deps, entries, tmpDir)
+  await extractEntries(deps, validatedEntries, tmpDir)
 
   deps.checkpoint('step-9')
-  await applyChangelog(deps.fs, tmpDir)
-  await applyOpenQuestions(deps.fs, tmpDir)
-  await applyPackageJson(deps.fs, tmpDir)
-  await writeRangeJson(deps.fs, tmpDir, {
-    repository: deps.source.repository,
-    version: deps.source.version,
-    commit,
-  })
+  try {
+    await applyChangelog(deps.fs, tmpDir)
+    await applyOpenQuestions(deps.fs, tmpDir)
+    await applyPackageJson(deps.fs, tmpDir)
+    await writeRangeJson(deps.fs, tmpDir, {
+      repository: deps.source.repository,
+      version: deps.source.version,
+      commit,
+    })
+  } catch (err) {
+    if (err instanceof PristineError) {
+      io.stderr.write(t2['CW-E10']({ file: err.file, rule: err.rule }) + '\n')
+      await deps.fs.rm(tmpDir, { recursive: true, force: true })
+      return 1
+    }
+    throw err
+  }
 
   deps.checkpoint('step-10')
   await moveIntoPlace(deps, tmpDir, target)

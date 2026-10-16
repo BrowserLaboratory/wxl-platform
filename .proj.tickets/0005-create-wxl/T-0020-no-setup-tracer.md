@@ -2,7 +2,7 @@
 id: T-0020
 title: create-wxl --no-setup creates a pristine range end to end
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0019]
 ---
 
@@ -133,3 +133,7 @@ Deferred by claim, recorded here: the entry rules and keeping entries inside the
 Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0020.md`.
 
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 4 passed (4) / Tests 107 passed (107)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4191 passed | 1 skipped`.
+
+### 2026-10-16 — landed
+
+Squash-merged into `main` as `8898ec5` (PR #26) under pre-authorisation 4 after all ten checks passed (`gh pr checks 26`; Cloudflare Pages preview deployed). Status set to `done`.
