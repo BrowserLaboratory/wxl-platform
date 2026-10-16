@@ -2,7 +2,7 @@
 id: T-0022
 title: Setup questions and applying them with the engine
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0021]
 ---
 
@@ -164,3 +164,7 @@ Recorded, not changed:
 Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0022.md`.
 
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 10 passed (10) / Tests 230 passed (230)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`; the en and zh-TW tables hold the same 35 ids.
+
+### 2026-10-17 — landed
+
+Squash-merged into `main` as `ae1c677` (PR #28) by GitHub auto-merge (squash) after all ten checks passed. Status set to `done`.

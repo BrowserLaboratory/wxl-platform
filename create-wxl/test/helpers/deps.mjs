@@ -9,6 +9,7 @@ import { vi } from 'vitest'
 import * as engineModule from '../../../scripts/fork-init.ts'
 import { makeFetchArchive } from './archive.mjs'
 import { PRISTINE_FIXTURE } from './fixtures.mjs'
+import { makeGitStub } from './git-stub.mjs'
 
 export const ENGINE_FILE = fileURLToPath(new URL('../../../scripts/fork-init.ts', import.meta.url))
 const ENGINE_BYTES = readFileSync(ENGINE_FILE)
@@ -70,15 +71,11 @@ export function makeDeps(overrides = {}) {
     // Resolves to a fresh, valid pristine archive by default (the approved plan's Notes); tests
     // of a rejection path assert `not.toHaveBeenCalled()` rather than relying on this throwing.
     fetchArchive: makeFetchArchive(PRISTINE_FIXTURE, { commit: FIXED_COMMIT }),
-    // T-0022 ticket Notes (5): rejects with a `code: 'ENOENT'` error, matching what T-0023's git
-    // step will see when `git` is not on `PATH` (CW-W01), not a generic "must not be called".
-    // `--no-setup` and step-11-only runs never call this at all (asserted with
-    // `not.toHaveBeenCalled()`), so the rejection reason is otherwise never observed.
-    runGit: vi.fn(async () => {
-      const err = new Error('runGit must not be called before T-0023 implements the git steps')
-      err.code = 'ENOENT'
-      throw err
-    }),
+    // T-0023's step 12 now runs for every setup that reaches it; the default answers every git
+    // command as a success (`makeGitStub`'s all-success stub), still wrapped in a `vi.fn` so a
+    // test that asserts `not.toHaveBeenCalled()` (e.g. a `--no-setup` or step-11-only run) keeps
+    // working. A test that wants a git warning overrides `runGit` itself.
+    runGit: vi.fn(makeGitStub().runGit),
     downloadTimeoutMs: 1000,
     fs: realFs(),
     signals: new EventEmitter(),

@@ -2,7 +2,7 @@
 id: T-0023
 title: Git steps and next steps
 epic: 0005-create-wxl
-status: todo
+status: review
 blocked_by: [T-0022]
 ---
 
@@ -74,3 +74,74 @@ Drafted by a workflow (one drafting agent, one independent checker that correcte
 - D3: CW-E and CW-W messages go to `stderr`; next-step lines go to `stdout`; tests pin the stream.
 - D7: when G1 half succeeds, CW-W03 and N2 list the commands from the failing `git symbolic-ref` on.
 - D8: add one test that the runner never executes a `git` planted in the target directory (relative `PATH` entries ignored), outside the claimed rows.
+
+### 2026-10-17 — increment plan confirmed
+
+The executor's increment plan was checked by an independent reviewer (approve with corrections). Confirmed with these corrections: each row does only what its own test forces, so the approved reds stay real — row 1 (C35) adds `.git`, `--template=`, `--force` and `-c commit.gpgsign=false` only, without filtering `GIT_*` and without touching step 13's output for a setup run; row 2 (C70) adds G0, both G3 calls, `--no-verify`, `core.hooksPath=`, `user.useConfigOnly=true`, `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1`, asserting all seven args, each cwd and the env; row 3 (C58) adds the `GIT_*` filter; row 7 checks G3's exit code only, row 8 its empty output, row 9 narrows CW-W02 to exactly exit 1 with every other non-zero or rejection CW-W03; every row asserts the approved Boundary column literally and pins the stream (CW-W on stderr, N lines on stdout, D3); reds are recorded as they actually appear; the runner spawns with only the given env, without a shell, resolves git only from absolute PATH directories (`git.exe` on Windows) and rejects with `code: 'ENOENT'` when none is found; G0 output that cannot be parsed, and a synchronous throw, count as CW-W01; CW-W03 prints git's stderr and error messages as JSON string literals; CW-W01 includes `https://git-scm.com/downloads`; before implementing, T-0020's tracer assertion that N2–N7 do not appear is read to see whether adding those messages affects it (a body change needs approval); fixtures import `UPSTREAM_SLUG`.
+
+Decided under "follow the recommendations" (2026-10-16): (1) D7 — `git init --template=` succeeds and `git symbolic-ref` fails — gets its own test: CW-W03 naming `git symbolic-ref HEAD refs/heads/main`, N2 listing it, then G2 and G4; (2) the runner also skips a PATH entry that resolves to the target directory or the cwd, besides relative entries ("never from the target directory"); (3) the D8 test exercises the runner directly, since `run` only sees an injected `runGit`; (4) an `ENOENT` rejection from G1–G4 is CW-W03, only G0's is CW-W01; (5) the `GIT_` prefix filter compares names exactly, as the spec says; Windows' case-insensitive environment names are a recorded known limit; (6) test files are `.mjs`.
+
+Started on 2026-10-17 from T-0022's branch tip while PR #28 was in CI with auto-merge on, so the ticket order holds in content; the branch was moved onto `main` (`ae1c677`, a soft reset to the identical tree) after #28 landed, before the first commit.
+
+### 2026-10-17 — red → green log
+
+**Process deviation (reported to the user).** At row 6 the executor wrote G3's identity check, G4's failure classification and CW-W02/CW-W03 together with G0's CW-W01, which would have consumed the approved reds of rows 7–9. It noticed before running those rows, reverted `git-steps.mjs` to the row-6 state (G0 → CW-W01 only, other G1–G4 failures swallowed), wrote rows 7, 8 and 9's tests, ran them for the reds below, and then added each row's logic. The reds are real against the row-6 code, but that code was restored by hand from a version written ahead; the final code equals the version written ahead. Accepted under "follow the recommendations" and recorded, not redone.
+
+Reproduce a row with `pnpm --dir create-wxl exec vitest run test/<file> -t="<pattern>"`.
+
+| Row | Test file › pattern | Red | Green | Selected |
+|---|---|---|---|---|
+| 1 C35 | `run-git.test.mjs` › `C35` | `Error: ENOENT: no such file or directory, lstat '…/d/.git'` | 1 passed | 1 |
+| 2 C70 | › `C70` | `expected [ …(4) ] to have a length of 7 but got 4` | 1 passed | 1 |
+| 3 C58 | › `C58` | `GIT_DIR: '/elsewhere'` still in the call's env | 1 passed | 1 |
+| 4 C59 | › `C59` | no red: `--force` came in at row 1 and `-c core.excludesFile=` with row 2's argument assertions, so C59 was green at once | 1 passed | 1 |
+| 5 C40 | `run-next-steps.test.mjs` › `prints the ids` | `expected -1 to be greater than 338` (no N3) | 2 passed | 2 |
+| 6 C36 | `run-git.test.mjs` › `C36` | `expected '' to match /^CW-W01/m` | 7 passed | 7 |
+| 7 C37 | › `C37: no identity` | `expected '' to match /^CW-W02/m` | 1 passed | 1 |
+| 8 C37 | › `C37 \(empty output\)` | `expected '' to match /^CW-W02/m` (exit 0 with empty output went on to commit) | 2 passed | 2 |
+| 9 C38 | › `C38` | ①② `expected '' to match /^CW-W03/m`; ③ `expected 'CW-W02: …' to match /^CW-W03/m` (any non-zero G3 was CW-W02) | 3 passed | 3 |
+| D7 (decision 1) | › `D7` | no red: row 9's classification covers a failing `symbolic-ref` | 1 passed | 1 |
+| D8 (decision 3) | › `D8` | no red: the runner's PATH rules (absolute directories only, the target skipped) were built with row 1's real runner, without a red of their own (a deviation of the same kind as row 6's); stage 6 added a relative-entry case and confirmed it turns red with the `isAbsolute` check removed | 1 passed | 1 |
+
+Checks: `pnpm --dir create-wxl test` → `Test Files 12 passed (12) / Tests 251 passed (251)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; the en and zh-TW tables hold the same 44 ids. No existing test body changed. CW-W03 names a failing G3 by its literal call (`git config --get user.name`), unquoted: the spec's POSIX quoting applies to N1, N2, N8, CW-E12 and CW-W05 only.
+
+### 2026-10-17 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0005-S1 | `run-git.test.mjs` (19), `run-next-steps.test.mjs` (2) | not measured: no coverage provider is installed in create-wxl | C35–C38, C40, C58, C59, C70; decisions D7, D8 | signals during steps 12–13 (CW-W05), control-character escaping in N lines (C60) and the `bin`'s use of the real runner are T-0024/T-0025; Windows PATH resolution (`git.exe`) runs only on macOS until T-0025's cross-OS CI; environment names are compared case-sensitively (decision 5, known limit) |
+
+**Stage 8 verification surface (D1).** create-wxl vitest runs, in-process; rows 1–4 and D8 run real git in isolated temporary folders.
+
+### 2026-10-17 — stages 6 and 7 disposition
+
+One review workflow on the staged change: Standards (25 findings, S-01–S-25, none high), Spec (20, P-01–P-20, none high), security candidates (9, C-01–C-09) with an independent false-positive filter (no candidate met the threshold). Findings and their full evidence were kept with the run; ids below are that run's.
+
+Fixed (pre-authorisation 2 and "follow the recommendations"), each behaviour fix with a test written and run first:
+
+- C-01, P-03, C-05: the runner skips every PATH entry whose real path is the target or lies under it (for example `<target>/node_modules/.bin`), comparing real paths (red: the fake git under the target ran). Decision 2's "the cwd" is the call's cwd, which is the target; the process cwd is not excluded separately (S-16, P-02: this record corrected accordingly).
+- P-01: D8 gains a relative-entry case; no red against the code, and a one-off removal of the `isAbsolute` check turned it red (restored at once).
+- C-06: on win32 the runner finds the path variable case-insensitively (`Path`) and looks for `git.exe`; the platform is injectable (red: `spawn git ENOENT`).
+- C-08: a PATH candidate must be a regular file (red: a directory named `git` was chosen, `EACCES`).
+- S-17, P-19: git's stdout and stderr are decoded as UTF-8 across chunks (red: `��` for 中).
+- P-13: tests for unparsable G0 output, a synchronous throw from `runGit`, and the runner's ENOENT when no PATH directory has git; no red: existing behaviour.
+- S-24, P-16: `checkpoint('step-12')` runs only when setup runs (red: a `--no-setup` run reached it).
+- C-09, P-15, S-19: N3 prints the repository as a JSON string literal, as the spec's rule for answers outside copied commands says; N4 is a copied command and keeps POSIX quoting, although the spec's list of copied commands names N1, N2, N8, CW-E12 and CW-W05 only (reading recorded here).
+- S-21: zh-TW N5 and N7 wording.
+- Tests raised to the approved Boundary column (S-01–S-08, P-04–P-11, P-14, P-20), all green without production changes: `makeDeps`'s default `runGit` is now an all-success stub, as the Notes required (T-0020–T-0022 bodies unchanged and green); `jsonValue` instead of `JSON.stringify`; printed forms in CW-W01 and none of `--template`, `--force`, `-c ` in N2; `.git` a directory and `git ls-files` holding the range after CW-W02; N2's order before N3; C40 built from the `en` lines in order with an empty stderr; two stub cases for G3 (name missing with email erroring is CW-W03; whitespace-only output is missing). P-11: the literal env of C70/C58 includes `LANG: 'en_US.UTF-8'`, because `makeDeps` merges it into `deps.env`; the approved table's literal omitted it.
+- S-14, S-15, P-12: test gitconfig paths use forward slashes; tests that plant a `#!/bin/sh` fake git skip on win32, and `findRealGitDir` looks for `git.exe` there.
+- Cleanup: the printed git forms have one source shared with CW-E12 (S-09); CW-W01 takes the minimum version from the code (S-10); one numeric version comparison (S-11); `gitResult` passed whole (S-12); stale comments (S-13); one gitconfig builder (S-22); shared argv and in-order helper in the tests (S-23); quote style (S-25).
+
+Recorded, not changed:
+
+- P-18: row 6's red is recorded as one message for the batch; the four cases' individual messages were not kept.
+- S-20: N2 prints the "Printed form" column of the git steps as is, without re-quoting.
+- C-02: `.git` aliases on NTFS and HFS+ are T-0021's rule 3 spec gap, input to the epic close-out chain analysis; G1 and G2 make it reachable.
+- C-03: G4's `-c core.hooksPath=` with an empty value may resolve hook paths to the file-system root (the filter's reading of git's source, not run): the spec's G4 literal, a spec gap for the chain analysis.
+- C-04: G1 and G2 run the teacher's global hooks, fsmonitor and filter drivers, as B7's "Does not protect" says; this ticket's Deliverable says "no hook run", which holds for template hooks and for G4 only.
+- C-07: `GIT_` names compared case-sensitively (decision 5).
+- Test helper `real-git.mjs`'s `verifyGit` still concatenates chunks without UTF-8 decoding; it reads ASCII git output only.
+
+Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0023.md`.
+
+Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 12 passed (12) / Tests 265 passed (265)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`; the en and zh-TW tables hold the same 44 ids.

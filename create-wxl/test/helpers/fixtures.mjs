@@ -156,3 +156,20 @@ export const ENGINE_READY_FIXTURE_NO_A9 = ENGINE_READY_FIXTURE.map((entry) =>
 export const ENGINE_READY_FIXTURE_NO_README = ENGINE_READY_FIXTURE.filter(
   (entry) => !['README.md', 'README.en.md', 'CONTRIBUTE.md'].includes(entry.path),
 )
+
+// ─── git-steps fixture (T-0023): the engine-ready fixture plus a `.gitignore` ignoring `*.log`
+// and a `keep.log` file (C35: G2's `--force` must still bring it into the commit).
+
+export const GIT_FIXTURE = [
+  ...ENGINE_READY_FIXTURE,
+  { path: '.gitignore', type: 'file', mode: 0o644, content: '*.log\n' },
+  { path: 'keep.log', type: 'file', mode: 0o644, content: 'kept despite .gitignore\n' },
+]
+
+/** C59: the same fixture with an extra `lib/x.js`, for a global `core.excludesFile` ignoring
+ * `lib/` to try to keep out. */
+export const GIT_FIXTURE_WITH_LIB = [
+  ...GIT_FIXTURE,
+  { path: 'lib/', type: 'dir', mode: 0o755 },
+  { path: 'lib/x.js', type: 'file', mode: 0o644, content: 'export const x = 1\n' },
+]

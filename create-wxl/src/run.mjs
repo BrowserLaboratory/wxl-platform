@@ -10,6 +10,8 @@ import { checkTarget, extractEntries, moveIntoPlace } from './fsops.mjs'
 import { applyChangelog, applyOpenQuestions, applyPackageJson, writeRangeJson, PristineError } from './pristine.mjs'
 import { isNodeVersionOk, MINIMUM_NODE_VERSION } from './node-version.mjs'
 import { makeQuestioner, QuestionEofError, buildEngineArgv, missingRequiredFlags, collectInteractiveAnswers } from './questions.mjs'
+import { runGitSteps } from './git-steps.mjs'
+import { buildNextSteps } from './next-steps.mjs'
 
 const VERSION_RE = /^\d+\.\d+\.\d+$/
 const COMMIT_RE = /^[0-9a-f]{40}$/
@@ -35,13 +37,13 @@ async function validateSourceRecord(deps) {
 }
 
 /**
- * create-wxl's one exported seam (0005-S1): the Step order table's steps 1-11 and 13. Step 7's
+ * create-wxl's one exported seam (0005-S1): the Step order table's steps 1-13. Step 7's
  * strict parse and entry rules 1-5 (CW-E08) and step 9's pristine-rule failures (CW-E10, with the
  * run's own temporary directory removed) are T-0021's. T-0022 adds step 3's interactive directory
  * question and its step-4 re-ask, step 5's setup questions (interactive and non-interactive) and
- * step 11's engine apply (CW-E12, warnings). Step 12 (git steps, CW-W01-W03) is T-0023's. Signals
- * and the remaining failure-path messages (CW-E09, CW-E11, CW-E14) belong to T-0024 and are not
- * implemented here.
+ * step 11's engine apply (CW-E12, warnings). T-0023 adds step 12 (git steps, CW-W01-W03) and step
+ * 13's "Next steps" lines. Signals and the remaining failure-path messages (CW-E09, CW-E11,
+ * CW-E14) belong to T-0024 and are not implemented here.
  */
 export async function run(argv, io, deps) {
   // CW-E01 and CW-E02 use the environment language rule only (traceability.md "Language"): they
@@ -284,8 +286,25 @@ async function runSteps(parsed, io, deps, t2, questioner, { hasOverride, overrid
     }
   }
 
+  let gitResult = { warningId: null }
+  if (!parsed.noSetup) {
+    deps.checkpoint('step-12')
+    gitResult = await runGitSteps({ runGit: deps.runGit, cwd: target, env: deps.env, version: deps.source.version })
+  }
+  if (gitResult.warningId) {
+    io.stderr.write(t2[gitResult.warningId](gitResult) + '\n')
+  }
+
   deps.checkpoint('step-13')
-  io.stdout.write(t2['N1']({ directory }) + '\n')
-  io.stdout.write(t2['N8']() + '\n')
+  const nextSteps = buildNextSteps({
+    t: t2,
+    directory,
+    noSetup: parsed.noSetup,
+    parsedArgs: setupArgs,
+    gitResult,
+  })
+  for (const line of nextSteps) {
+    io.stdout.write(line + '\n')
+  }
   return 0
 }
