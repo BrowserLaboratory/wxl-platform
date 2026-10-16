@@ -31,8 +31,8 @@ violated check; the documents carry every listed string.
 - [x] C45: manifest equal to the listing apart from the four placeholders, each exact; `version` equals the root's; `.gitignore` and lockfile present (AC-20)
 - [x] C46: the new CI step with exactly that `run`, after the unchanged existing step; job `if:` unchanged (AC-20)
 - [x] C47: each U4–U10 string present (Charter with whitespace collapsed, `stay forkable` absent); the three words absent from the new README subsections (AC-21)
-- [ ] C48: stage 8 run I's `pnpm test --run` passes; run IV's guard tests report skips (AC-20, AC-22)
-- [ ] C49: stage 8 runs 0, I, Ib, II, III as "Stage 8 inputs" lists (AC-22)
+- [x] C48: stage 8 run I's `pnpm test --run` passes; run IV's guard tests report skips (AC-20, AC-22)
+- [x] C49: stage 8 runs 0, I, Ib, II, III as "Stage 8 inputs" lists (AC-22)
 - [x] C67: the `bin` with `dist/` removed, or with `dist/fork-init.mjs` altered → CW-E13 in the environment's language, exit 1, nothing written (AC-23)
 
 Stage 8 here is 0005-S4, a terminal run of the packed package (OQ-022); `dist/` and the `.tgz` are
@@ -193,4 +193,28 @@ Recorded, not changed:
 Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0025.md`.
 
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 21 passed (21) / Tests 434 passed (434)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; upstream guard, `upstream-only-jobs.test.ts` and `glossary.test.ts` → `364 passed | 1 skipped`; `verify-project.py` PASS; prose audit PASS on README.md and AGENTS.md.
+
+### 2026-10-17 — stage 8 (0005-S4), partial: blocked by a private upstream
+
+Surface: local macOS terminal (Node 24.13.0, npm 11.6.2, wasm-pack 0.14.0), no browser, `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset. The branch was pushed at `85fcff2` (pre-authorisation 3) and every run used `CREATE_WXL_COMMIT=85fcff2ecb43daf6b16c4622c6b574096137a56f`.
+
+- **Run 0 — passed.** In `create-wxl/`: `pnpm install --frozen-lockfile`, `npm pack` (`prepack` built `dist/`). `tar -tzf create-wxl-3.0.0.tgz` lists `package/LICENSE`, `package/dist/source.json`, `package/dist/fork-init.mjs`, `package/bin/create-wxl.mjs` (26 files in all). `dist/source.json` records version `3.0.0` and commit `85fcff2…`.
+- **Invocation deviation.** npm 11 runs `npx --yes <tarball> …` as a command named by the path (`Permission denied`, exit 126). Every run uses `npx --yes --package <tarball> create-wxl …` instead, which installs the tarball and runs its `bin`.
+- **Run Ib — passed.** `expect` waited for the `Author:` prompt (S1) in a pseudo-terminal, then sent `0x03`: `exit=130`; no `s8-int`; no `.create-wxl-*` in the folder.
+- **Run II — blocked.** `CW-W04` (override commit), then `CW-E07: downloading "https://codeload.github.com/<upstream>/tar.gz/85fcff2…" failed: the server responded with status 404.`, exit 1. The upstream repository is private (`gh repo view` → `PRIVATE`), and codeload answers 404 to unauthenticated requests for any of its commits (also for `main`'s `af5c948`). create-wxl downloads without credentials, as the spec says (B1).
+- **Runs I, III, IV — not run**, for the same reason (III produces the range IV uses).
+- `node create-wxl/scripts/check-publish.mjs` on the untagged HEAD: `checkPublish failed: X3 (no local tag v<version> exists at HEAD)`, exit 1, no crash (decision 2). `dist/`, `LICENSE` and the temporary folders were removed afterwards.
+
+C48 and C49 stay unticked until runs I–IV pass (done below).
+
+### 2026-10-17 — stage 8 (0005-S4), completed
+
+The user made the upstream repository public on 2026-10-17; codeload then answered 200 for `85fcff2`. Runs II, III, IV and I were run with the same tarball, invocation (`npx --yes --package <tarball> create-wxl …`) and `CREATE_WXL_COMMIT=85fcff2…`, in a shell without `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM`.
+
+- **Run II — passed.** `… create-wxl s8-cf --author 'Stage Eight' --repo wxl-test/s8-cf --host cloudflare-pages --origin https://s8-cf.pages.dev --site-name 'S8 CF' </dev/null`: CW-W04, N1, N3, N4, N6, N7, `exit=0`; `range.json` is the schema (upstream slug, `3.0.0`, `85fcff2…`); no `.github/workflows/deploy.yml`; one commit `Create range from WXL 3.0.0`. `pnpm install --frozen-lockfile` and `pnpm build` succeeded; `.vitepress/dist/index.html` has `<title>S8 CF</title>`; a built chunk contains `https://s8-cf.pages.dev`.
+- **Run III — passed.** `… create-wxl s8-raw --no-setup </dev/null`: CW-W04, N1, N8, `exit=0`; no `.git`; `range.json` is the schema; `package.json` `version` is `0.1.0`; `CHANGELOG.md`'s last line is `## [Unreleased]`.
+- **Run IV — passed.** In `s8-raw`: `git init`, `pnpm install --frozen-lockfile`, `pnpm exec vitest run tests/unit/scripts/upstream-guard.test.ts` → exit 0, `91 passed | 7 skipped`; the skipped tests are the `deploy template hash pin (upstream only)` and `real tree (upstream only)` describes, and the `WXL_EXPECT_UPSTREAM` check (unset).
+- **Run I — passed.** `expect` drove a pseudo-terminal, waiting for each prompt before sending `Stage Eight`, `wxl-test/s8-gh`, `1`, an empty line, `S8 GH`, `y`. The summary showed the derived origin `https://wxl-test.github.io/s8-gh`; CW-W04 (step 6), the engine's `deploy.yml` warning as a JSON literal, N1, N3, N4, N5, N7; `exit=0`. `git log --oneline` has one line; `range.json` is the schema; `git ls-files` equals the codeload archive's files (prefix and directories removed) plus `range.json` and `.github/workflows/deploy.yml`, nothing else. `pnpm install --frozen-lockfile`, `pnpm build` and `pnpm test --run` (`Test Files 127 passed (127) / Tests 4190 passed | 7 skipped`) all succeeded (C48); `<title>S8 GH</title>`; a built chunk contains `https://wxl-test.github.io/s8-gh`.
+
+C48 and C49 ticked. The tarball, the ranges and the temporary folders were removed afterwards; `create-wxl/dist/` and `create-wxl/LICENSE` are absent.
 
