@@ -31,3 +31,10 @@ A tagged 3.0.0 release whose CHANGELOG, GitHub Release and READMEs describe what
 - [ ] R4: `npm view create-wxl version` prints `3.0.0`
 
 ## Comments
+
+### 2026-10-17 — publish blocked by X7, fixed
+
+PR #33 landed as `e6f67b7`; `v3.0.0` was tagged there and pushed, and the release workflow created the GitHub Release. The user's `npm publish` then stopped at `checkPublish failed: X7`: nothing reached npm. Root cause, a real defect from T-0025: `check-publish.mjs` passes the package folder (`create-wxl/`) as `createArchive`'s `root`, and `git archive` run from a subdirectory archives only that subtree; `create-wxl/` is `export-ignore`d, so the archive held one entry. The unit tests stub `archive()`, and stage 8 stopped at X3 on an untagged HEAD, so neither reached X7 on a real archive.
+
+Fix, test first: `publish-io.test.mjs` builds a real repository with a top-level file and a `pkg/` subfolder and calls `createArchive({ root: <repo>/pkg })` (red: `expected [ …(2) ] to include 'pkg-<commit>/top-level.txt'`, only the subfolder's entries); `createArchive` now resolves the top level with `git rev-parse --show-toplevel` (through `buildGitEnv`) and archives from there (green). A one-off check from the package folder for `e6f67b7` lists 2257 entries, which pass entry rules 1–5 and P1–P3. `pnpm --dir create-wxl test` → `Tests 435 passed (435)`; root `pnpm test --run` → `Tests 4196 passed | 1 skipped`.
+
