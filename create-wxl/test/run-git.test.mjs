@@ -2,7 +2,7 @@
 // steps" lines are run-next-steps.test.mjs's.
 
 import { describe, it, expect } from 'vitest'
-import { rm, readdir, lstat, writeFile, chmod, mkdir, mkdtemp } from 'node:fs/promises'
+import { rm, readdir, lstat, writeFile, chmod, mkdir, mkdtemp, copyFile } from 'node:fs/promises'
 import { accessSync, constants as fsConstants } from 'node:fs'
 import { join, delimiter, isAbsolute, relative } from 'node:path'
 import { run } from '../src/run.mjs'
@@ -649,18 +649,33 @@ describe('git steps — runner', () => {
   })
 
   it('on win32, finds git.exe through a case-insensitive Path variable', async () => {
+    // On macOS/Linux, this copies the REAL git binary this machine already has (found by
+    // `findRealGitDir()`) into a scratch folder under the win32 candidate name `git.exe`, which runs
+    // natively there. On real win32, Git for Windows' `cmd\git.exe` launcher locates its installation
+    // relative to its own path, so a copy of it elsewhere exits 1; there this test instead points
+    // `Path` straight at the real `findRealGitDir()` directory, which already holds a working
+    // `git.exe`. Either way, only the case-insensitive `Path` key and the injected `platform: 'win32'`
+    // lookup are what this test is about.
     const binDir = await makeTmpRoot()
     const cwd = await makeTmpRoot()
     try {
-      const fakeGit = join(binDir, 'git.exe')
-      await writeFile(fakeGit, `#!/bin/sh\necho "git version 9.9.9"\n`)
-      await chmod(fakeGit, 0o755)
+      const realGitDir = findRealGitDir()
+      let pathValue
+
+      if (process.platform === 'win32') {
+        pathValue = realGitDir
+      } else {
+        const fakeGit = join(binDir, 'git.exe')
+        await copyFile(join(realGitDir, 'git'), fakeGit)
+        await chmod(fakeGit, 0o755)
+        pathValue = binDir
+      }
 
       const runGit = createSpawnGitRunner({ platform: 'win32' })
-      const result = await runGit(['--version'], { cwd, env: { Path: binDir } })
+      const result = await runGit(['--version'], { cwd, env: { Path: pathValue } })
 
-      expect(result.code).toBe(0)
-      expect(result.stdout).toContain('git version 9.9.9')
+      expect(result.code, result.stderr).toBe(0)
+      expect(result.stdout).toContain('git version')
     } finally {
       await rm(binDir, { recursive: true, force: true })
       await rm(cwd, { recursive: true, force: true })
