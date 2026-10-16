@@ -96,10 +96,20 @@ export function createNpmWhoami({ root, platform = process.platform } = {}) {
 }
 
 /** S-24: `archive({ commit, name })` takes the values `checkPublish` already resolved, instead of
- * re-deriving them with a second `git rev-parse HEAD` and a second engine import. */
+ * re-deriving them with a second `git rev-parse HEAD` and a second engine import.
+ *
+ * `git archive` run with `cwd: root` set to the package subdirectory archives only that
+ * subdirectory's own subtree (git's documented behaviour) -- the X7 defect this fixes: when the
+ * package folder is itself `export-ignore`d, the archive comes back empty. `git archive` always
+ * archives relative to the repository's top level regardless of `cwd`, so resolving it first
+ * (through `buildGitEnv`, the same isolation `gitRevParseHead` already requires) and running the
+ * archive there gets the whole tree every time, independent of which subdirectory `root` names. */
 export function createArchive({ root } = {}) {
   return async function archive({ commit, name }) {
-    return spawnCaptureBytes('git', ['archive', `--prefix=${name}-${commit}/`, commit], { cwd: root, env: process.env })
+    const topLevel = await spawnCapture('git', ['rev-parse', '--show-toplevel'], { cwd: root, env: buildGitEnv(process.env) })
+    if (topLevel.code !== 0) throw new Error(`git rev-parse --show-toplevel failed: ${topLevel.stderr}`)
+    const cwd = topLevel.stdout.trim()
+    return spawnCaptureBytes('git', ['archive', `--prefix=${name}-${commit}/`, commit], { cwd, env: process.env })
   }
 }
 

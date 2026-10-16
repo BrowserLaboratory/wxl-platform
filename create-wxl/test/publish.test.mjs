@@ -40,8 +40,11 @@ function runNode(args, { cwd } = {}) {
   })
 }
 
+// Real git on Windows CI runners can take several seconds; every test below builds its fixture
+// with several real git spawns (makePublishFixture/buildRelease), so the default 5000ms test
+// timeout is too tight there.
 describe('prepareDist', () => {
-  it('throws D1 having removed dist/ and LICENSE first', async () => {
+  it('throws D1 having removed dist/ and LICENSE first', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       await mkdir(join(fixture.createWxlDir, 'dist'), { recursive: true })
@@ -67,7 +70,7 @@ describe('prepareDist', () => {
     }
   })
 
-  it('writes source.json, an importable fork-init.mjs and LICENSE, clearing stale dist first', async () => {
+  it('writes source.json, an importable fork-init.mjs and LICENSE, clearing stale dist first', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       await mkdir(join(fixture.createWxlDir, 'dist'), { recursive: true })
@@ -127,7 +130,7 @@ describe('prepareDist', () => {
   })
 
   // S-10/P-24: an outer GIT_DIR must not leak into prepareDist's own `git rev-parse HEAD`.
-  it('resolves the fixture\'s own HEAD even when the outer process has a stray GIT_DIR set', async () => {
+  it('resolves the fixture\'s own HEAD even when the outer process has a stray GIT_DIR set', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     const previousGitDir = process.env.GIT_DIR
     try {
@@ -147,7 +150,7 @@ describe('prepareDist', () => {
 
   // S-23: callers (buildRelease, check-publish.mjs) can read UPSTREAM_SLUG off prepareDist's own
   // return value instead of importing the freshly-written engine a second time themselves.
-  it('resolves with the engine\'s own UPSTREAM_SLUG', async () => {
+  it('resolves with the engine\'s own UPSTREAM_SLUG', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const result = await prepareDist({ root: fixture.createWxlDir, module: realModule })
@@ -160,7 +163,7 @@ describe('prepareDist', () => {
 })
 
 describe('checkPublish', () => {
-  it.each(['lightweight', 'annotated'])('passes when X1-X9 all hold (%s tag)', async (tagKind) => {
+  it.each(['lightweight', 'annotated'])('passes when X1-X9 all hold (%s tag)', { timeout: 30000 }, async (tagKind) => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: tagKind })
@@ -202,7 +205,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X1 when stripTypeScriptTypes is missing', async () => {
+  it('fails naming X1 when stripTypeScriptTypes is missing', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -235,7 +238,7 @@ describe('checkPublish', () => {
   it.each([
     ['create-wxl ahead of root', { createWxl: '3.0.1', root: '3.0.0' }],
     ['both a pre-release', { createWxl: '3.0.0-rc.1', root: '3.0.0-rc.1' }],
-  ])('fails naming X2 (%s)', async (_label, versions) => {
+  ])('fails naming X2 (%s)', { timeout: 30000 }, async (_label, versions) => {
     const fixture = await makePublishFixture()
     try {
       const mutate = async (f) => {
@@ -279,7 +282,7 @@ describe('checkPublish', () => {
     ['no tag', undefined],
     ['lightweight tag on HEAD~1', 'lightweight'],
     ['annotated tag on HEAD~1', 'annotated'],
-  ])('fails naming X3 (%s)', async (_label, tagKind) => {
+  ])('fails naming X3 (%s)', { timeout: 30000 }, async (_label, tagKind) => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: tagKind ?? 'none', at: tagKind ? 'HEAD~1' : 'HEAD', extraCommit: true })
@@ -330,7 +333,7 @@ describe('checkPublish', () => {
         await runFixtureGit(f, ['add', 'CHANGELOG.md'])
       },
     ],
-  ])('fails naming X4 (%s)', async (_label, dirty) => {
+  ])('fails naming X4 (%s)', { timeout: 30000 }, async (_label, dirty) => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -364,7 +367,7 @@ describe('checkPublish', () => {
   it.each([
     ['a range operator', (patch) => `^${patch}`],
     ['exact but not equal to the lockfile', (patch) => patch.replace(/\d+$/, (n) => String(Number(n) + 1))],
-  ])('fails naming X5 (%s)', async (_label, deriveBadVersion) => {
+  ])('fails naming X5 (%s)', { timeout: 30000 }, async (_label, deriveBadVersion) => {
     const fixture = await makePublishFixture()
     try {
       const mutate = async (f) => {
@@ -428,7 +431,7 @@ describe('checkPublish', () => {
       (tagName, _head, tagObjectSha) =>
         `${tagObjectSha}\trefs/tags/${tagName}\ndeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\trefs/tags/${tagName}^{}\n`,
     ],
-  ])('fails naming X6 (%s)', async (_label, tagKind, lsRemoteFor) => {
+  ])('fails naming X6 (%s)', { timeout: 30000 }, async (_label, tagKind, lsRemoteFor) => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: tagKind })
@@ -457,7 +460,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X7 (a symbolic link entry, with the P1-P4 files otherwise present)', async () => {
+  it('fails naming X7 (a symbolic link entry, with the P1-P4 files otherwise present)', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -521,7 +524,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X7 (the real archive is missing the P1 marker)', async () => {
+  it('fails naming X7 (the real archive is missing the P1 marker)', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const mutate = async (f) => {
@@ -579,7 +582,7 @@ describe('checkPublish', () => {
         await writeFile(licensePath, (await readFile(licensePath, 'utf8')) + 'x')
       },
     ],
-  ])('fails naming X8 (%s)', async (_label, tamper) => {
+  ])('fails naming X8 (%s)', { timeout: 30000 }, async (_label, tamper) => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -610,7 +613,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X9 when the npm name is already maintained by someone else', async () => {
+  it('fails naming X9 when the npm name is already maintained by someone else', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -641,7 +644,7 @@ describe('checkPublish', () => {
 
   // Stage 6/7 fix assignment section A (S-06/P-06/P-07/P-09/P-25/S-07/C-10): every X maps its own
   // failures to its id and never crashes.
-  it('fails naming X8 when dist/ is missing entirely (the engine cannot be imported)', async () => {
+  it('fails naming X8 when dist/ is missing entirely (the engine cannot be imported)', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -672,7 +675,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X8 when the package LICENSE is missing', async () => {
+  it('fails naming X8 when the package LICENSE is missing', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -703,7 +706,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X8 when dist/source.json parses to null', async () => {
+  it('fails naming X8 when dist/source.json parses to null', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -734,7 +737,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X4 when git status itself exits non-zero', async () => {
+  it('fails naming X4 when git status itself exits non-zero', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -769,7 +772,7 @@ describe('checkPublish', () => {
     }
   })
 
-  it('fails naming X9 when npmWhoami itself fails', async () => {
+  it('fails naming X9 when npmWhoami itself fails', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -802,7 +805,7 @@ describe('checkPublish', () => {
 
   // S-05/P-08/C-02: npmView failing for a reason OTHER than "unpublished" (a network error, a
   // registry 5xx) must fail X9, not be silently treated as an empty maintainer list.
-  it('fails naming X9 when npmView itself fails (not E404)', async () => {
+  it('fails naming X9 when npmView itself fails (not E404)', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })
@@ -835,7 +838,7 @@ describe('checkPublish', () => {
 
   // S-24: `archive` takes the commit and name `checkPublish` already resolved, instead of
   // re-deriving them with its own `git rev-parse HEAD` and engine import.
-  it('calls archive() with the already-resolved commit and name, not a second derivation', async () => {
+  it('calls archive() with the already-resolved commit and name, not a second derivation', { timeout: 30000 }, async () => {
     const fixture = await makePublishFixture()
     try {
       const release = await buildRelease(fixture, { tag: 'lightweight' })

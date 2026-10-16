@@ -4,7 +4,90 @@
 // `src/` so the script itself stays a thin wiring layer with no logic of its own.
 
 import { describe, it, expect } from 'vitest'
-import { parseNpmViewMaintainers, npmCommand } from '../src/publish-io.mjs'
+import { spawn } from 'node:child_process'
+import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import * as tar from 'tar'
+import { parseNpmViewMaintainers, npmCommand, createArchive } from '../src/publish-io.mjs'
+import { makeTmpRoot } from './helpers/tmp.mjs'
+
+function spawnGit(args, { cwd, env }) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('git', args, { cwd, env, shell: false })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('close', (code) => resolvePromise({ code, stdout, stderr }))
+  })
+}
+
+async function git(dir, env, args) {
+  const result = await spawnGit(args, { cwd: dir, env })
+  if (result.code !== 0) throw new Error(`git ${args.join(' ')} (in ${dir}) failed: ${result.stderr || result.stdout}`)
+  return result.stdout
+}
+
+/** Lists a tar buffer's entry paths (`tar.list`'s `onReadEntry`, fed the buffer directly instead
+ * of a file -- `git archive`'s output never touches disk here). */
+function listTarPaths(buffer) {
+  return new Promise((resolvePromise, reject) => {
+    const paths = []
+    const parser = tar.list({ onReadEntry: (entry) => paths.push(entry.path) })
+    parser.on('end', () => resolvePromise(paths))
+    parser.on('error', reject)
+    parser.end(buffer)
+  })
+}
+
+/** A temporary git repository with a top-level file and its own subfolder `pkg/` (holding a
+ * second file), committed on `main` -- isolated `HOME`/`XDG_CONFIG_HOME`/`GIT_CONFIG_NOSYSTEM=1`
+ * so the real `$HOME`'s own git config can never leak in, and the commit itself passes
+ * `-c user.name=.../-c user.email=.../-c commit.gpgsign=false` so no real identity or signing key
+ * is required. */
+async function makeRepoWithPackageSubdir() {
+  const repoDir = await makeTmpRoot('create-wxl-archive-root-')
+  const home = await makeTmpRoot('create-wxl-archive-home-')
+  const env = { HOME: home, XDG_CONFIG_HOME: home, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' }
+
+  const pkgDir = join(repoDir, 'pkg')
+  await mkdir(pkgDir, { recursive: true })
+  await writeFile(join(repoDir, 'top-level.txt'), 'top-level\n')
+  await writeFile(join(pkgDir, 'sub.txt'), 'sub\n')
+
+  await git(repoDir, env, ['init', '-q', '-b', 'main'])
+  await git(repoDir, env, ['add', '-A'])
+  await git(repoDir, env, [
+    '-c',
+    'user.name=WXL Test',
+    '-c',
+    'user.email=test@example.invalid',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '-q',
+    '-m',
+    'initial',
+  ])
+
+  return {
+    repoDir,
+    pkgDir,
+    async commit() {
+      const out = await git(repoDir, env, ['rev-parse', 'HEAD'])
+      return out.trim()
+    },
+    async cleanup() {
+      await rm(repoDir, { recursive: true, force: true })
+      await rm(home, { recursive: true, force: true })
+    },
+  }
+}
 
 describe('parseNpmViewMaintainers', () => {
   it('returns [] on an E404 (the name is unpublished)', () => {
@@ -30,6 +113,31 @@ describe('parseNpmViewMaintainers', () => {
   it('returns [] for empty output', () => {
     const result = { code: 0, stdout: '', stderr: '' }
     expect(parseNpmViewMaintainers(result)).toEqual([])
+  })
+})
+
+describe('createArchive', () => {
+  // X7's real defect: `git archive` run with `cwd: root` set to the package subdirectory
+  // archives only that subdirectory's own subtree (git's documented behaviour), silently
+  // dropping everything else the repository tracks -- the package folder itself can be
+  // `export-ignore`d, which empties the archive entirely.
+  // Real git on Windows CI runners can take several seconds; this test spawns it several times
+  // (makeRepoWithPackageSubdir's init/add/commit/rev-parse, then createArchive's own git archive),
+  // so the default 5000ms test timeout is too tight there.
+  it('archives the whole repository tree, not just the package subdirectory passed as root', { timeout: 30000 }, async () => {
+    const repo = await makeRepoWithPackageSubdir()
+    try {
+      const commit = await repo.commit()
+      const archive = createArchive({ root: repo.pkgDir })
+      const buffer = await archive({ commit, name: 'pkg' })
+      const paths = await listTarPaths(buffer)
+
+      const prefix = `pkg-${commit}/`
+      expect(paths).toContain(`${prefix}top-level.txt`)
+      expect(paths).toContain(`${prefix}pkg/sub.txt`)
+    } finally {
+      await repo.cleanup()
+    }
   })
 })
 
