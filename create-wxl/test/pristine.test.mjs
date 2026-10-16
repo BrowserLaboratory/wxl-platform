@@ -109,16 +109,15 @@ describe('P1/P2 failures', () => {
   })
 
   // P-09/C-10: only `ENOENT` means "the file is missing" (a pristine-rule failure, CW-E10); any
-  // other read error (`EACCES` here) is not this ticket's to report (CW-E09 is T-0024's), so it
-  // must be rethrown rather than misreported as "missing".
-  it('CHANGELOG.md unreadable with EACCES -> rethrown, not reported as CW-E10 "missing"', async () => {
+  // other read error (`EACCES` here) is CW-E09 (T-0024), not CW-E10 "missing".
+  it('CHANGELOG.md unreadable with EACCES -> CW-E09, not reported as CW-E10 "missing"', async () => {
     const tmpRoot = await makeTmpRoot()
     try {
       const body = buildArchive(buildFixture(), { comment: FIXED_COMMIT, repoName: REPO_NAME, commit: FIXED_COMMIT })
       const { fs } = recordingFs({
         readFile: async (path, ...rest) => {
           if (String(path).endsWith('CHANGELOG.md')) {
-            const err = new Error('permission denied')
+            const err = new Error('EACCES: permission denied')
             err.code = 'EACCES'
             throw err
           }
@@ -127,8 +126,12 @@ describe('P1/P2 failures', () => {
       })
       const fetchArchive = async () => ({ status: 200, body })
       const deps = makeDeps({ env: { LANG: 'en_US' }, cwd: tmpRoot, fs, fetchArchive })
-      const { io } = makeIo()
-      await expect(run(['range', '--no-setup'], io, deps)).rejects.toMatchObject({ code: 'EACCES' })
+      const ioHelper = makeIo()
+      const exitCode = await run(['range', '--no-setup'], ioHelper.io, deps)
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^CW-E09/m)
+      expect(ioHelper.stderrText).toContain('EACCES')
+      expect(ioHelper.stderrText).not.toMatch(/^CW-E10/m)
     } finally {
       await rm(tmpRoot, { recursive: true, force: true })
     }

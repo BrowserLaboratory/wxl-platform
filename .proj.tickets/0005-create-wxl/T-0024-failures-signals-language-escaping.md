@@ -2,7 +2,7 @@
 id: T-0024
 title: Failures, signals, language and escaping
 epic: 0005-create-wxl
-status: todo
+status: review
 blocked_by: [T-0023]
 ---
 
@@ -25,16 +25,16 @@ both tables; outside values are printed escaped, and copyable commands are quote
 
 ## Acceptance criteria
 
-- [ ] C30: `fs.rename` fails on the 3rd entry → CW-E11, entries 1–2 moved back, target empty, temporary directory removed (AC-10)
-- [ ] C31: `SIGINT` at steps 4, 6, 8, 9 and during the 2nd move of step 10 → exit 130, target as before, temporary directory removed or never created (AC-13)
-- [ ] C41: each language case of the row → zh-TW / zh-TW / en / zh-TW / en / CW-E02 in en; both tables have the same ids, texts differ outside commands, paths and codes (AC-18)
-- [ ] C53: another process creates a file or non-empty directory at the target before step 10 → CW-E04, temporary directory removed, their target untouched; an empty directory → accepted (AC-10)
-- [ ] C54: `mkdtemp`, an entry write, the `range.json` write, or a `package.json` read fails → CW-E09, target unchanged, temporary directory removed (AC-10)
-- [ ] C56: `SIGTERM` at step 9, `SIGHUP` at step 12, `SIGINT` at step 11 and at a question, a second `SIGINT` during cleanup → as the row states (AC-13)
-- [ ] C57: `parseForkInitArgs` throws a plain `Error`; `fs.readdir` throws at step 4 → CW-E14, nothing written, exit 1 (AC-13)
-- [ ] C60: each escaping case of the row → JSON literals with `\u001b`, `\n`, `\u007f`; `cd ./-x`; `cd 'my range'`; N1 withheld for a control character (AC-24)
-- [ ] C65: rename fails on the 3rd entry and again moving back the 2nd → CW-E11 naming the 2nd entry and the kept temporary directory, exit 1 (AC-10)
-- [ ] C69: a full interactive run with a recording `fs` → every path written, renamed or removed is under the target or the run's temporary directory (AC-10)
+- [x] C30: `fs.rename` fails on the 3rd entry → CW-E11, entries 1–2 moved back, target empty, temporary directory removed (AC-10)
+- [x] C31: `SIGINT` at steps 4, 6, 8, 9 and during the 2nd move of step 10 → exit 130, target as before, temporary directory removed or never created (AC-13)
+- [x] C41: each language case of the row → zh-TW / zh-TW / en / zh-TW / en / CW-E02 in en; both tables have the same ids, texts differ outside commands, paths and codes (AC-18)
+- [x] C53: another process creates a file or non-empty directory at the target before step 10 → CW-E04, temporary directory removed, their target untouched; an empty directory → accepted (AC-10)
+- [x] C54: `mkdtemp`, an entry write, the `range.json` write, or a `package.json` read fails → CW-E09, target unchanged, temporary directory removed (AC-10)
+- [x] C56: `SIGTERM` at step 9, `SIGHUP` at step 12, `SIGINT` at step 11 and at a question, a second `SIGINT` during cleanup → as the row states (AC-13)
+- [x] C57: `parseForkInitArgs` throws a plain `Error`; `fs.readdir` throws at step 4 → CW-E14, nothing written, exit 1 (AC-13)
+- [x] C60: each escaping case of the row → JSON literals with `\u001b`, `\n`, `\u007f`; `cd ./-x`; `cd 'my range'`; N1 withheld for a control character (AC-24)
+- [x] C65: rename fails on the 3rd entry and again moving back the 2nd → CW-E11 naming the 2nd entry and the kept temporary directory, exit 1 (AC-10)
+- [x] C69: a full interactive run with a recording `fs` → every path written, renamed or removed is under the target or the run's temporary directory (AC-10)
 
 ## 給使用者（zh-TW）
 
@@ -84,3 +84,97 @@ Drafted by a workflow (one drafting agent, one independent checker that correcte
 - D3: CW-E and CW-W messages go to `stderr`; next-step lines go to `stdout`; tests pin the stream.
 - D9: C41 may import the message-table module directly.
 - D10: C60 escapes a newline as `\n` (the matrix value; JSON short escape), other C0 as `\uXXXX`.
+
+### 2026-10-17 — increment plan confirmed
+
+The executor's increment plan was checked by an independent reviewer (approve with corrections). Confirmed with these corrections: a signal guard is created in `run()`, passed down, and its listeners removed in `finally`; a signal while a question is pending rejects the pending `ask()`, and readline's `SIGINT` goes to the same handler; CW-E14 is handled where `SignalAbort` is, inside `runSteps`, by window, so steps 8–10 clean up (the outer catch only covers steps 1–2); the step 8–9 catch leaves `SignalAbort` alone, takes only file-system errors carrying a string `code` as CW-E09 and the rest as CW-E14; CW-E09's path comes from one fs wrapper for all four cases (the parent directory for `mkdtemp`); each row adds only the message ids it uses (CW-E11 at R1, CW-E09 at R4, CW-W05 at R8, CW-E14 at R13), R5 registers SIGINT and the 3–10 window only, R7 (a) brings SIGTERM and SIGHUP, and rows that turn green early are recorded as no red; R10 returns `{ signal: true, remainingCommands }` and the printed forms are exported once; rollback tries every entry and collects `strandedEntries`; `moveIntoPlace` takes a `shouldStop` callback checked after each rename, shared by failure and signal rollback; R14 has nine cases and overrides `LANG` explicitly where the case needs it unset; R15's id comparison calls each message with representative arguments, and a shared "every line with a CW code starts with it" helper runs in this ticket's new tests; R18 wraps `mkdtemp` to get its result; every row asserts the approved Boundary column (R1 target still present; R2 CW-E11 and exit 1; R3 resolved path, `['child']`, no `.create-wxl-*`, the complete range for (c); R4 the second file entry; R5 no `mkdtemp` or write at steps 4 and 6; R7 (b) temporary directory removed; R8, R9 `range.json` present; R16 no raw ESC, newline or U+009B, and no C0 except LF, DEL or C1 in stdout and stderr). `DEFAULT_ORDER` in `checkpoints.mjs` is not changed; R16 (c) follows C60's own matrix and changes no existing test.
+
+Decided under "follow the recommendations" (2026-10-17): (1) copyable commands containing a control character are not printed, each with a test added to R17; (2) `checkpoint('step-5')` and `checkpoint('step-11')` are called only when setup runs; (3) CW-E14 in steps 11–13 lists the remaining commands as CW-W05 does, exit 1; (4) R12 adds a signal while a question is pending; (5) `jsonValue` writes every C0 other than a line feed as `\uXXXX`, including `\t`, `\r`, `\b`, `\f`, and a line feed as `\n`, per D10 (wording corrected in stage 6); (6) a signal during step 8's extraction or step 9's P1–P4 stops before the next file-system operation, and a signal during step 6's download aborts the fetch. The additions in (1), (4), (5) and (6) are recorded as additions to the approved test plan table.
+
+Started on 2026-10-17 from T-0023's branch tip while PR #29 was in CI with auto-merge on; the branch was moved onto `main` (`8fb2d34`, a soft reset to the identical tree) after #29 landed, before the first commit.
+
+### 2026-10-17 — red → green log
+
+**Process notes (reported to the user).** Each test was written and run before its production code. Two rows had no red of their own because the change for an earlier row already did their part: R2 (C65), since R1's rewrite of `moveIntoPlace` rolled back every entry and collected the stranded ones in one change; and decision 1's CW-E12 case, since R17's N1 change introduced the shared control-character check. R9's red was re-confirmed after correcting the test's fixture. R11 (b)'s and R18's first failures were mistakes in the tests' own assertions, fixed in the tests; they are not reds.
+
+**Existing tests overridden (decided by the main session under the user's standing instruction of 2026-10-16, 「剩下的都先同意建議，推進實作」, "approve the recommendations for the rest and push the implementation on"; reported to the user on 2026-10-17, who may still reverse it).** Two T-0020/T-0021 tests asserted that `run()` rejects, as placeholders for this ticket's codes; they now assert the codes: `pristine.test.mjs` "CHANGELOG.md unreadable with EACCES" → CW-E09 with `EACCES`, not CW-E10 (the injected error's message now reads `EACCES: permission denied`, like a real fs error); `archive-rules.test.mjs` "a body that is not buffer-coercible" → CW-E14 with the `TypeError` message, not CW-E08.
+
+Reproduce a row with `pnpm --dir create-wxl exec vitest run test/<file> -t="<pattern>"`.
+
+| Row | Test file › pattern | Red | Green | Selected |
+|---|---|---|---|---|
+| R1 C30 | `failures.test.mjs` › `C30` | the `EPERM` from `rename` escaped `run` (no rollback) | 1 passed | 1 |
+| R2 C65 | › `C65` | no red: R1's rollback already tried every entry and kept the stranded one | 1 passed | 1 |
+| R3 C53 | › `C53` | (a)(b) CW-E11 instead of CW-E04, exit 0 instead of 1 (no re-check) | 3 passed | 3 |
+| R4 C54 | › `C54` | all four errors escaped `run` (`mkdtemp`, `extractEntries`, `range.json`, `package.json`) | 4 passed | 4 |
+| R13 C57 | › `C57` | `Error: kaboom` / `Error: boom` escaped `run` | 2 passed | 2 |
+| R5 C31 | `signals.test.mjs` › `C31` | `expected 0 to be 130` (no listener) | 4 passed | 4 |
+| R6 C31 | › `2nd move` | `expected +0 to be 130` | 1 passed | 1 |
+| R7 C56 | › `C56` | (a) `expected +0 to be 130` (SIGTERM not registered); (b) no red: the guard keeps the first signal only | 2 passed | 2 |
+| R8 C56 | › `step 11` | `expected 1 to be 130` (no `step-11` checkpoint) | 1 passed | 1 |
+| R9 C56 | › `step 12` | `expected +0 to be 130` | 1 passed | 1 |
+| R10 C56 | › `SIGHUP during G2` | `expected +0 to be 130` (G2's non-zero taken as CW-W03) | 1 passed | 1 |
+| R11 C56 | › `step 13` | (a) `expected +0 to be 130`; (b) a write callback error escaped as an unhandled `'error'` event | 2 passed | 2 |
+| R12 C56 + decision 4 | › `SIGINT at a question` | both cases timed out after 5000 ms (readline kept waiting) | 2 passed | 2 |
+| R14 C41 | `language.test.mjs` | no red: the language rules and CW-E01/CW-E02 already held | 12 passed (with R15) | 12 |
+| R15 C41 | `language.test.mjs` › `message tables` | no red once the new ids were in both tables | (with R14) | 12 |
+| R16 C60 | `escaping.test.mjs` | (a), (b) no red: `jsonValue` and T-0021's tests already escaped ESC, newline and C1; (c) `expected '…' to contain '\u007f'` (CW-E02 named `CREATE_WXL_COMMIT` without its value) | file: 11 passed at the time | — |
+| decision 5 | › `escapes` | `expected '"a\tb"' to be '"a\u0009b"'` (a line feed was briefly moved to `\u000a` too, then restored to D10's `\n` in stage 6) | passed | — |
+| R17 C60 + decision 1 | › `copyable commands`, `CW-E12`, `decision 3` | N1 with ESC printed raw; CW-E12 no red (shared check); CW-E12 and CW-W05 `pnpm fork:init` with an answer holding ESC printed raw (engine validation bypassed in the test: the real engine rejects such values at step 5 with CW-E06); CW-W05 at step 11 with an ESC directory no red | all passed | — |
+| R18 C69 | `write-scope.test.mjs` | no red, as the plan expected | 1 passed | 1 |
+| decision 6 | `signals.test.mjs` › `step 8 extraction`, `step 9`, `step 6 download` | `expected 5 to be 1`; `expected 9 to be 6`; `expected 1 to be 130` (the download waited for the timeout) | 3 passed | 3 |
+| guard listeners | › `no listener behind` | no red: `run()` removes the guard's listeners in `finally` | 2 passed | 2 |
+
+Checks: `pnpm --dir create-wxl test` → `Test Files 17 passed (17) / Tests 322 passed (322)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`. N2 carries fixed strings and a validated version only, so the control-character rule has no input to test there.
+
+### 2026-10-17 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0005-S1 | `failures.test.mjs` (11), `signals.test.mjs` (20), `language.test.mjs` (12), `escaping.test.mjs` (13), `write-scope.test.mjs` (1) | not measured: no coverage provider is installed in create-wxl | C30, C31, C41, C53, C54, C56, C57, C60, C65, C69; decisions 1, 3–6 | the real `bin` wiring of signals, stdin and `process.env` (T-0025, 0005-S4); Windows behaviour until T-0025's cross-OS CI; the `pnpm fork:init` withholding is reachable only past the engine's own validation (defence in depth) |
+
+**Stage 8 verification surface (D1).** create-wxl vitest runs, in-process; signals are emitted on an injected emitter, not delivered by a terminal, until T-0025.
+
+### 2026-10-17 — stages 6 and 7 disposition
+
+One review workflow on the staged change: Standards (36 findings, S-01–S-36, none high), Spec (24, P-01–P-24, one high), security candidates (14, C-01–C-14) with an independent false-positive filter (no candidate met the threshold). Findings and their full evidence were kept with the run; ids below are that run's.
+
+**Correction.** P-01 (high), S-02, C-11: a line feed inside a value had been written `\u000a` on the main session's instruction, against the user-approved D10 (`\n`, the matrix value) and the approved Boundary. Restored to D10 test-first (red: `expected '"a\u000ab"' to be '"a\nb"'`); decision 5 now reads: every C0 except a line feed, plus DEL and C1, is `\uXXXX`; a line feed is `\n`. Test titles citing a wrong decision number corrected (S-15).
+
+Fixed (pre-authorisation 2 and "follow the recommendations"), each behaviour fix with a test written and run first:
+
+- P-02, C-01: a signal during step 9's last write, at the `step-10` checkpoint or during the whole-directory rename starts no further file-system operation and leaves the target as it was (red: exit 1 with the range in place).
+- P-03, S-23, C-02: a signal whose rollback strands entries keeps the temporary folder and prints CW-E11 naming each stranded entry and the folder, exit 130 (red: nothing printed and the folder removed).
+- P-14, C-04: a failing whole-directory rename, and a `chmod` or `rmdir` failure after it, are CW-E11, the range moved back where possible (red: CW-E14).
+- P-04, S-04, C-07: CW-E14 in steps 11–13 lists the window's remaining commands, as decision 3 says (red: no commands listed).
+- P-13: `checkpoint('step-5')` runs with setup (red: a signal there was not seen).
+- P-17, C-14: a signal already received wins over a failure found afterwards in steps 4 and 6 (red: exit 1 with CW-E04 / CW-E07).
+- P-18: an unexpected error in steps 1–2 is CW-E14 in the environment's language (red: an unhandled `TypeError`).
+- C-13, P-22: CW-W05 no longer lists a git command that had completed (red: `git init` and `git commit` listed after succeeding).
+- C-12: Node's `ERR_*` errors are CW-E14, not CW-E09.
+- C-09, S-35: lone surrogates are `\uXXXX`; non-string values are converted with `String()` before escaping.
+- S-30: the `'error'` listeners `run()` adds to the output streams are removed once the run ends.
+- S-24, S-25, S-26: zh-TW CW-E11/CW-E14 spacing, the en stranded sentence for one or several entries, and 暫存資料夾 throughout.
+- Tests raised to the approved Boundary column, all green without production changes (S-05–S-11, P-05–P-12, P-15, P-16, P-19, S-32): C41's sixth case; literal escapes and no raw control character in any output; C54's error codes and paths; C65's kept folder and its contents; C31 with the recording fs; C69 against `mkdtemp`'s real result; N1's full line; every CW message starting with its code, checked in this ticket's run tests by a shared helper.
+- Cleanup (S-13, S-14, S-16–S-22, S-27, S-28, S-31): comments, one `isRaised()` and `shouldStop` name, `extractEntries` returning `{ stopped }`, shared cleanup and control-character helpers, the chosen language passed down, `reportPath` in one helper. During S-28 the executor found and fixed test wrappers that called themselves recursively.
+
+Additions to the approved test plan table (S-34), all in this ticket's test files: decision 1's withheld commands (N1, CW-E12, CW-W05, `pnpm fork:init`); decision 4's signal while a question is pending; decision 5's escapes; decision 6's signals during step 6, 8 and 9; the stage 6 cases above (step 5 and step 10 signals, stranded rollback under a signal, whole-directory move failures, CW-E14 with remaining commands and in steps 1–2, CW-W05 after completed git commands, `ERR_*` errors, lone surrogates, listener removal).
+
+Recorded, not changed:
+
+- S-01: the acceptance criteria are ticked now; T-0022's and T-0023's, left unticked, are ticked in their own tickets in a separate records commit.
+- S-03: the two existing-test overrides cite the user's standing instruction above.
+- S-33: red → green states are recorded in this ticket, not as separate commits, as in T-0019–T-0023.
+- P-20, S-31: readline's `SIGINT` is forwarded to the signal guard in `questions.mjs`, where readline lives; T-0025's `bin` must not forward it again.
+- P-21: in step 13, CW-W05 says nothing is left even after a git warning, whose N2 lines already list the git commands.
+- P-23: the log and coverage table above reflect the final tests. P-24: T-0023's landing record is committed separately.
+- C-03: when the `cd` command is withheld the other finishing commands are still printed, as the rule withholds only commands holding a control character.
+- C-05: the target replaced by a symbolic link between the re-check and the moves: another process writing the target is outside B4's model.
+- C-06: a cleanup that itself fails inside the failure path ends as a rejection: needs an outside process changing permissions, outside the model.
+- C-08: bidirectional and zero-width characters are printed as they are: the spec's rule covers C0, DEL and C1.
+- C-10: false positive (printing `CREATE_WXL_COMMIT`'s value is the C60 matrix's requirement).
+- S-36: N4 is not in the spec's list of copied commands and its values are validated by the engine: not withheld.
+
+Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0024.md`.
+
+Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 17 passed (17) / Tests 355 passed (355)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; the en and zh-TW tables hold the same ids, each rendering starting with its code.

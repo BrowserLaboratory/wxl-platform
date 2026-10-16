@@ -1,13 +1,11 @@
 // Message tables, one per language, keyed by message id. Every CW-E/CW-W text begins with its
-// code (D3: CW-E/CW-W go to stderr; N-lines go to stdout). Ids implemented here cover: T-0020 and
-// T-0021's `--no-setup` path (argument/target/download checks, strict parse and entry rules 1-5
-// (CW-E08), and pristine rule failures (CW-E10)); T-0022's setup questions (the directory
-// question and its `~` reason, S1-S6's prompts, reasons and summary lines, CW-E05, CW-E06,
-// CW-E12, CW-E15); and T-0023's git steps (CW-W01-W03) and "Next steps" lines (N1-N8). T-0024's
-// remaining failure paths (CW-E09, CW-E11, CW-E14, CW-W05) still need to be added to both tables,
-// keeping the id sets equal (AC-18).
+// code (D3: CW-E/CW-W go to stderr; N-lines go to stdout). Both tables carry the same id set
+// (AC-18): argument/target/download checks, strict parse and entry rules 1-5 (CW-E08), pristine
+// rule failures (CW-E10), setup questions (S1-S6's prompts, reasons and summary lines, CW-E05,
+// CW-E06, CW-E12, CW-E15), git steps (CW-W01-W03), "Next steps" lines (N1-N8), and the failure
+// and signal paths (CW-E09, CW-E11, CW-E14, CW-W05).
 
-import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg } from './text.mjs'
+import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar } from './text.mjs'
 import { printedForms } from './git-steps.mjs'
 import { MINIMUM_GIT_VERSION } from './git-version.mjs'
 
@@ -45,14 +43,22 @@ const CW_E02_REASON_TEXT = {
     'missing-value': (value) => `${jsonValue(value)} is missing its value.`,
     repeated: (value) => `${jsonValue(value)} was given more than once.`,
     'conflicts-with-no-setup': (value) => `${jsonValue(value)} cannot be combined with --no-setup.`,
-    'bad-env': (value) => `the environment variable ${jsonValue(value)} must be 40 lowercase hexadecimal characters.`,
+    // C60's own matrix pins both: the variable's name AND its value (escaped), not the name
+    // alone (badValue is the raw override string; undefined when a caller has none to show).
+    'bad-env': (value, badValue) =>
+      `the environment variable ${jsonValue(value)} must be 40 lowercase hexadecimal characters` +
+      (badValue !== undefined ? `, not ${jsonValue(badValue)}` : '') +
+      '.',
   },
   'zh-TW': {
     unknown: (value) => `${jsonValue(value)} 不是合法的參數。`,
     'missing-value': (value) => `${jsonValue(value)} 缺少對應的值。`,
     repeated: (value) => `${jsonValue(value)} 出現超過一次。`,
     'conflicts-with-no-setup': (value) => `${jsonValue(value)} 不能與 --no-setup 一起使用。`,
-    'bad-env': (value) => `環境變數 ${jsonValue(value)} 必須是 40 位小寫十六進位字元。`,
+    'bad-env': (value, badValue) =>
+      `環境變數 ${jsonValue(value)} 必須是 40 位小寫十六進位字元` +
+      (badValue !== undefined ? `，而不是 ${jsonValue(badValue)}` : '') +
+      '。',
   },
 }
 
@@ -77,23 +83,49 @@ function cwE05Text(lang, missing) {
   )
 }
 
+/** traceability.md "Error and warning codes": "When a value to be placed in such a command
+ * contains a C0, DEL or C1 character, the command is not printed; the message says the value
+ * contains control characters and shows it escaped." One wording, shared by every withheld line
+ * (N1's `cd`, CW-E12/CW-W05's `cd` and `pnpm fork:init`). */
+function controlCharNotice(lang, value) {
+  return lang === 'zh-TW'
+    ? `（這個值含控制字元，不印出指令：${jsonValue(value)}）`
+    : `(this value contains control characters, so the command is not printed: ${jsonValue(value)})`
+}
+
+/** The `cd <directory>` line all of N1/CW-E12/CW-W05 print, or the withheld notice. One function
+ * so N1 (below) and CW-E12's finishing commands agree. */
+function cdLineOrNotice(lang, directory) {
+  if (!hasControlChar(directory)) return posixCommand(['cd', formatDirectoryArg(directory)])
+  return controlCharNotice(lang, directory)
+}
+
+/** The `pnpm fork:init <argv>` line, or the withheld notice naming the first offending argv item
+ * (decision 1): `argv`'s own items are user-given answers/flag values, the same kind of outside
+ * value `directory` is, so the same rule applies to them. */
+function forkInitLineOrNotice(lang, argv) {
+  const offending = argv.find(hasControlChar)
+  if (offending === undefined) return `pnpm fork:init ${argv.map(posixQuoteWord).join(' ')}`
+  return controlCharNotice(lang, offending)
+}
+
 /** CW-E12's finishing commands (traceability.md "Error and warning codes"): `cd <directory>`
  * (the user's own string, per C60's `cd ./-x`), `pnpm install`, `pnpm fork:init` with the same
  * argv items, then G1, G2 and G4's printed forms (traceability.md "Git steps"), each POSIX-quoted
  * for copying. `directory` is the user-given string (positional or question answer), never the
- * resolved path. */
-function cwE12FinishingCommands({ directory, argv, version }) {
+ * resolved path. `lang` is required (S-21): the caller already knows which table it is building
+ * this for, so this never silently falls back to en. */
+export function cwE12FinishingCommandsList({ directory, argv, version, lang }) {
   const forms = printedForms(version)
-  const lines = [
-    posixCommand(['cd', formatDirectoryArg(directory)]),
+  return [
+    cdLineOrNotice(lang, directory),
     posixCommand(['pnpm', 'install']),
-    `pnpm fork:init ${argv.map(posixQuoteWord).join(' ')}`,
+    forkInitLineOrNotice(lang, argv),
     forms.init,
     forms.symbolicRef,
     forms.add,
     forms.commit,
   ]
-  return lines.join('\n')
 }
 
 function cwE12Text(lang, { message, directory, argv, version }) {
@@ -102,7 +134,26 @@ function cwE12Text(lang, { message, directory, argv, version }) {
     lang === 'zh-TW'
       ? '靶場與 range.json 都留著；用這些指令完成設定：'
       : 'The range and range.json stay; finish setup with these commands:'
-  return `${header} ${intro}\n${cwE12FinishingCommands({ directory, argv, version })}`
+  return `${header} ${intro}\n${cwE12FinishingCommandsList({ directory, argv, version, lang }).join('\n')}`
+}
+
+/** CW-E11's text (traceability.md "Error and warning codes"): the target, the error, and -- when
+ * rollback itself could not move an entry back -- that entry's name and the kept temporary
+ * directory's path (Notes: "CW-E11 names each such entry and the temporary directory's path is
+ * kept and named"). */
+function cwE11Text(lang, { target, detail, stranded = [], tmpDir }) {
+  const header =
+    lang === 'zh-TW'
+      ? `CW-E11：搬移 ${jsonValue(target)} 到位失敗：${jsonValue(detail)}。`
+      : `CW-E11: moving ${jsonValue(target)} into place failed: ${jsonValue(detail)}.`
+  if (stranded.length === 0) return header
+  const names = stranded.map(jsonValue).join(', ')
+  if (lang === 'zh-TW') {
+    return `${header}${names} 無法搬回暫存資料夾，仍留在目標內；暫存資料夾 ${jsonValue(tmpDir)} 因此保留。`
+  }
+  // S-25: the subject is plural when more than one entry is stranded.
+  const subject = stranded.length === 1 ? 'it is' : 'they are'
+  return `${header} ${names} could not be moved back; ${subject} still in the target, and the temporary directory ${jsonValue(tmpDir)} was kept.`
 }
 
 /** CW-E07's `detail` is structured ({ kind: 'timeout' } / { kind: 'status', status } / { kind:
@@ -121,8 +172,8 @@ function cwE07DetailText(lang, detail) {
 export const en = {
   'CW-E01': ({ running, minimum }) =>
     `CW-E01: the running Node.js ${jsonValue(running)} is older than the minimum ${jsonValue(minimum)}; install a newer Node.js from https://nodejs.org/.`,
-  'CW-E02': ({ value, usage, reason = 'unknown' }) =>
-    `CW-E02: ${CW_E02_REASON_TEXT.en[reason](value)}` + (usage ? ' Usage: create-wxl <directory>' : ''),
+  'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
+    `CW-E02: ${CW_E02_REASON_TEXT.en[reason](value, badValue)}` + (usage ? ' Usage: create-wxl <directory>' : ''),
   'CW-E03': () => `CW-E03: no directory was given. Usage: create-wxl <directory>`,
   'CW-E04': ({ path, conditionId, detail }) =>
     `CW-E04: the target ${jsonValue(path)} cannot be used: ${CONDITION_TEXT.en[conditionId]}` +
@@ -137,9 +188,14 @@ export const en = {
       : `CW-E08: the archive broke entry rule ${rule}` +
         (isCommentMarker ? ' (pax comment)' : path !== undefined ? ` (${jsonValue(path)})` : '') +
         '.',
+  'CW-E09': ({ path, detail }) => `CW-E09: a file-system error at ${jsonValue(path)}: ${jsonValue(detail)}.`,
   'CW-E10': ({ file, rule }) => `CW-E10: pristine rule ${rule} failed for ${jsonValue(file)}.`,
+  'CW-E11': (args) => cwE11Text('en', args),
   'CW-E12': (args) => cwE12Text('en', args),
   'CW-E13': () => `CW-E13: the create-wxl package is broken. Retry with npm create wxl@latest.`,
+  'CW-E14': ({ message, remainingCommands }) =>
+    `CW-E14: an unexpected error happened: ${jsonValue(message)}.` +
+    (remainingCommands ? ` Run these when ready:\n${remainingCommands.join('\n')}` : ''),
   'CW-E15': () => `CW-E15: input ended while a question was open.`,
   'CW-W01': ({ remainingCommands }) =>
     `CW-W01: the range is not a git repository yet; git was not found, failed, or is older than ${MINIMUM_GIT_VERSION_TEXT} ` +
@@ -150,6 +206,10 @@ export const en = {
     `CW-W03: ${command} failed: ${jsonValue(detail)}. Finish these yourself:\n${remainingCommands.join('\n')}`,
   'CW-W04': ({ commit }) =>
     `CW-W04: using the override commit ${jsonValue(commit)}; this is not a release and is meant for testing.`,
+  'CW-W05': ({ remainingCommands }) =>
+    remainingCommands.length > 0
+      ? `CW-W05: a signal stopped the run; the range stays, run these when ready:\n${remainingCommands.join('\n')}`
+      : `CW-W05: a signal stopped the run; the range is already complete, nothing is left to run.`,
   'Q-DIRECTORY': () => `Directory name (default: wxl-range):`,
   'Q-DIRECTORY-TILDE': () => `A directory beginning with ~ is not expanded here; type the directory itself.`,
   S1: () => `Author:`,
@@ -172,7 +232,7 @@ export const en = {
   'S6-INVALID': () => `Please answer y, yes, n or no (empty counts as yes).`,
   'ENGINE-REJECTED': ({ message }) =>
     `The engine rejected the answers: ${jsonValue(message)}. Starting over with the current answers.`,
-  N1: ({ directory }) => `Next: ${posixCommand(['cd', formatDirectoryArg(directory)])}`,
+  N1: ({ directory }) => `Next: ${cdLineOrNotice('en', directory)}`,
   N2: ({ remainingCommands }) => `Next: finish the git steps yourself:\n${remainingCommands.join('\n')}`,
   N3: ({ owner, name }) => `Next: create an empty GitHub repository ${jsonValue(`${owner}/${name}`)}, without a README.`,
   N4: ({ owner, name }) =>
@@ -190,8 +250,8 @@ export const en = {
 export const zhTW = {
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
-  'CW-E02': ({ value, usage, reason = 'unknown' }) =>
-    `CW-E02：${CW_E02_REASON_TEXT['zh-TW'][reason](value)}` + (usage ? '用法：create-wxl <directory>' : ''),
+  'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
+    `CW-E02：${CW_E02_REASON_TEXT['zh-TW'][reason](value, badValue)}` + (usage ? '用法：create-wxl <directory>' : ''),
   'CW-E03': () => `CW-E03：未提供目標資料夾。用法：create-wxl <directory>`,
   'CW-E04': ({ path, conditionId, detail }) =>
     `CW-E04：目標 ${jsonValue(path)} 無法使用：${CONDITION_TEXT['zh-TW'][conditionId]}` +
@@ -206,9 +266,14 @@ export const zhTW = {
       : `CW-E08：壓縮檔違反規則 ${rule}` +
         (isCommentMarker ? '（pax comment）' : path !== undefined ? `（${jsonValue(path)}）` : '') +
         '。',
+  'CW-E09': ({ path, detail }) => `CW-E09：${jsonValue(path)} 發生檔案系統錯誤：${jsonValue(detail)}。`,
   'CW-E10': ({ file, rule }) => `CW-E10：原廠靶場處理規則 ${rule} 失敗：${jsonValue(file)}。`,
+  'CW-E11': (args) => cwE11Text('zh-TW', args),
   'CW-E12': (args) => cwE12Text('zh-TW', args),
   'CW-E13': () => `CW-E13：套件已損壞，請改用 npm create wxl@latest 重試。`,
+  'CW-E14': ({ message, remainingCommands }) =>
+    `CW-E14：發生未預期的錯誤：${jsonValue(message)}。` +
+    (remainingCommands ? `準備好後請執行：\n${remainingCommands.join('\n')}` : ''),
   'CW-E15': () => `CW-E15：問題還開著的時候輸入就結束了。`,
   'CW-W01': ({ remainingCommands }) =>
     `CW-W01：靶場還不是 git repository；找不到 git、git 失敗，或版本低於 ${MINIMUM_GIT_VERSION_TEXT}（請到 ` +
@@ -217,6 +282,10 @@ export const zhTW = {
   'CW-W03': ({ command, detail, remainingCommands }) =>
     `CW-W03：${command} 失敗：${jsonValue(detail)}。請自行完成剩下的指令：\n${remainingCommands.join('\n')}`,
   'CW-W04': ({ commit }) => `CW-W04：改用測試用的 commit ${jsonValue(commit)}，這不是正式版本，僅供測試。`,
+  'CW-W05': ({ remainingCommands }) =>
+    remainingCommands.length > 0
+      ? `CW-W05：收到訊號而停止；靶場仍保留，準備好後請執行：\n${remainingCommands.join('\n')}`
+      : `CW-W05：收到訊號而停止；靶場已經完成，沒有剩下的指令。`,
   'Q-DIRECTORY': () => `資料夾名稱（預設：wxl-range）：`,
   'Q-DIRECTORY-TILDE': () => `以 ~ 開頭的答案這裡不會展開，請直接輸入資料夾本身。`,
   S1: () => `作者：`,
@@ -237,7 +306,7 @@ export const zhTW = {
   S6: () => `要套用這些設定嗎？[Y/n]`,
   'S6-INVALID': () => `請回答 y、yes、n 或 no（留空視為 yes）。`,
   'ENGINE-REJECTED': ({ message }) => `引擎拒絕了這些答案：${jsonValue(message)}。改用目前的答案重新開始。`,
-  N1: ({ directory }) => `下一步：${posixCommand(['cd', formatDirectoryArg(directory)])}`,
+  N1: ({ directory }) => `下一步：${cdLineOrNotice('zh-TW', directory)}`,
   N2: ({ remainingCommands }) => `下一步：請自行完成剩下的 git 步驟：\n${remainingCommands.join('\n')}`,
   N3: ({ owner, name }) => `下一步：在 GitHub 上建立一個空的 ${jsonValue(`${owner}/${name}`)} repository，不要加 README。`,
   N4: ({ owner, name }) =>

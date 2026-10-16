@@ -4,6 +4,7 @@
 // sentinel `run.mjs` turns into CW-E15; and the summary's yes/no/second-pass classification (S6).
 
 import { createInterface } from 'node:readline'
+import { SignalAbort } from './signals.mjs'
 
 export class QuestionEofError extends Error {
   constructor() {
@@ -29,7 +30,7 @@ export class QuestionEofError extends Error {
  * no question open is queued; `ask()` takes the queue's head first, only waiting when the queue is
  * empty.
  */
-export function makeQuestioner(io, deps) {
+export function makeQuestioner(io, deps, guard) {
   let rl = null
   let closedByUs = false
   let ended = false
@@ -39,10 +40,17 @@ export function makeQuestioner(io, deps) {
   function ensureRl() {
     if (rl) return
     rl = createInterface({ input: io.stdin })
+    // traceability.md "Signals": "the bin ... forwards a readline interface's own SIGINT event to
+    // the same handler, so Ctrl-C at a question ends the run instead of pausing it". `readline`
+    // itself only emits this on a real TTY; `deps.signals.emit('SIGINT')` (the bin, or a test) is
+    // the one path this module relies on, but forwarding `rl`'s own event keeps that promise
+    // explicit here, not just in the bin.
+    rl.on('SIGINT', () => deps.signals.emit('SIGINT'))
     rl.on('line', (line) => {
       if (pending) {
         const { resolve } = pending
         pending = null
+        guard?.clearWait() // S-17: settled by a line, not a signal -- the pending slot is done
         resolve(line)
       } else {
         queue.push(line)
@@ -53,6 +61,7 @@ export function makeQuestioner(io, deps) {
       if (pending) {
         const { reject } = pending
         pending = null
+        guard?.clearWait() // S-17: settled by EOF, not a signal
         if (!closedByUs) reject(new QuestionEofError())
       }
     })
@@ -60,16 +69,26 @@ export function makeQuestioner(io, deps) {
 
   function ask() {
     deps.checkpoint('question')
+    // A signal already raised by the time this question starts (T-0024's checkpoint-driven
+    // tests): reject immediately, never waiting on `io.stdin` at all.
+    if (guard?.raised()) return Promise.reject(new SignalAbort(guard.raised()))
     ensureRl()
     if (queue.length > 0) return Promise.resolve(queue.shift())
     if (ended || io.stdin.readableEnded) return Promise.reject(new QuestionEofError())
     return new Promise((resolve, reject) => {
       pending = { resolve, reject }
+      // A signal arriving while this question is already pending (decision 4): the guard calls
+      // this the moment it is raised, rejecting the same way EOF does above.
+      guard?.waitForSignal((err) => {
+        pending = null
+        reject(err)
+      })
     })
   }
 
   function close() {
     closedByUs = true
+    guard?.clearWait()
     if (rl) rl.close()
   }
 
