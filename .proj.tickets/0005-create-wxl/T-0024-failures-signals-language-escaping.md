@@ -2,7 +2,7 @@
 id: T-0024
 title: Failures, signals, language and escaping
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0023]
 ---
 
@@ -178,3 +178,7 @@ Recorded, not changed:
 Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0024.md`.
 
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 17 passed (17) / Tests 355 passed (355)`; root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; the en and zh-TW tables hold the same ids, each rendering starting with its code.
+
+### 2026-10-17 — landed
+
+Squash-merged into `main` as `af5c948` (PR #30) by GitHub auto-merge (squash) after all ten checks passed. Status set to `done`.
