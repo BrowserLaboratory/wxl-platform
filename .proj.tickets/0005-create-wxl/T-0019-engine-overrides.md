@@ -2,7 +2,7 @@
 id: T-0019
 title: Engine overrides for ranges that carry range.json
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -116,3 +116,7 @@ Checks after the fixes: `pnpm vitest run tests/unit/scripts/fork-init.test.ts te
 ### 2026-10-16 — stage 7
 
 Report: `.proj.specs/0005-create-wxl/review/security-T-0019.md`. Ten candidates, independently filtered: no exploitable defect. Hardened within scope (pre-authorisation 2): the upstream decision's `hasRootRangeJson()` uses `lstat` (consistent with 0006 J1); both skills add that a range taken over from someone else should have its `upstream.commit` checked against an upstream release; `deriveGithubPagesOrigin`'s comment states its precondition. Checks after: `pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts tests/unit/site/glossary.test.ts` → `2247 passed | 1 skipped`; `cmp` of the two skills → identical. Recorded, not changed: the skills say the CLI prints `file:line`, while `main()` prints file names only (pre-existing wording).
+
+### 2026-10-16 — landed
+
+Squash-merged into `main` as `de397ca` (PR #24), merged by the user. The Cloudflare Pages check first failed for a reason outside this change (`cargo install wasm-pack` resolving wasm-pack 0.15.0, whose `zip` 2.x dependency is yanked); the user changed the dashboard's build command to `cargo install wasm-pack --version 0.14.0 --locked`, and the repository's documents follow in T-0028. After a retry with that command the Cloudflare Pages check passed (`gh pr checks 24`: `Cloudflare Pages pass`), along with the nine GitHub Actions checks. Status set to `done`.

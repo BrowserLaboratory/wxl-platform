@@ -153,3 +153,49 @@ describe('workflow toolchain parity', () => {
     ])
   })
 })
+
+// The READMEs and the fork-init skills teach the wasm-pack install by hand
+// (local prerequisites and the Cloudflare Pages build command). A bare
+// `cargo install wasm-pack` resolves the newest wasm-pack and its newest
+// compatible dependencies, which broke on 2026-10-16 when every `zip` 2.x
+// release a dependency needs was yanked (T-0028). Pinning CI's version with
+// `--locked` uses wasm-pack's own lockfile, so the documented command installs
+// the same version CI does (CI uses a prebuilt binary, the documents build it).
+const REPO_ROOT = resolve(__dirname, '../../..')
+const DOCUMENTED_INSTALLS = [
+  'README.md',
+  'README.en.md',
+  '.claude/skills/wxl-fork-init/SKILL.md',
+  '.agents/skills/wxl-fork-init/SKILL.md',
+]
+
+/** Every shell command in `text` that installs wasm-pack through cargo, with
+ *  backslash line continuations joined and flags in any order. */
+function cargoWasmPackInstalls(text: string): string[] {
+  const joined = text.replace(/\\\r?\n\s*/g, ' ')
+  return joined.match(/\bcargo\s+(?:\+\S+\s+)?(?:b?install)\b[^\n`]*?\bwasm-pack\b[^\n`]*/g) ?? []
+}
+
+describe('documented wasm-pack install parity', () => {
+  const wasmPackTool = EXPECTED_TOOL_LIST.split(',').find((tool) => tool.startsWith('wasm-pack@'))
+  const wasmPackVersion = wasmPackTool?.slice('wasm-pack@'.length)
+
+  it('reads the wasm-pack version from the CI tool list', () => {
+    expect(wasmPackVersion, 'EXPECTED_TOOL_LIST has no wasm-pack entry').toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it.each(DOCUMENTED_INSTALLS)(
+    '%s pins every cargo install of wasm-pack to the CI version with --locked',
+    (file) => {
+      const installs = cargoWasmPackInstalls(readFileSync(resolve(REPO_ROOT, file), 'utf8'))
+      expect(installs.length, `${file} no longer documents the wasm-pack install`).toBeGreaterThan(0)
+      for (const install of installs) {
+        const words = install.split(/\s+/)
+        expect(words, `${file}: ${install}`).toContain('--locked')
+        expect(install, `${file}: ${install}`).toMatch(new RegExp(`--version[ =]${wasmPackVersion?.replace(/\./g, '\\.')}(\\s|$)`))
+        expect(install, `${file}: ${install} installs from another source`).not.toMatch(/--(?:git|registry|index|path|config)\b/)
+        expect(words.find((word) => !word.startsWith('+') && word !== 'cargo'), `${file}: ${install} uses another installer`).toBe('install')
+      }
+    },
+  )
+})

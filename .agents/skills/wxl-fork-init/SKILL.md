@@ -20,7 +20,7 @@ description: Use when forking or template-cloning this repo into a new project. 
 
 ### 前置需求
 
-新環境要能 `pnpm build`：Node.js ≥ 22.6、pnpm（corepack）、Rust toolchain（rustup）、wasm-pack（`cargo install wasm-pack`）。binaryen（`wasm-opt`）與 wasm-tools 為選用：缺席時 keygen 只印警告並沿用未最佳化／未 strip 的產物，建置仍會成功。
+新環境要能 `pnpm build`：Node.js ≥ 22.6、pnpm（corepack）、Rust toolchain（rustup）、wasm-pack（`cargo install wasm-pack --version 0.14.0 --locked`，與 CI 相同版本）。binaryen（`wasm-opt`）與 wasm-tools 為選用：缺席時 keygen 只印警告並沿用未最佳化／未 strip 的產物，建置仍會成功。
 
 ## Workflow
 
