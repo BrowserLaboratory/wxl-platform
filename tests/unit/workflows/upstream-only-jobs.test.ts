@@ -91,6 +91,13 @@ describe(`${NEW_JOB_ID} (T72)`, () => {
     expect(runSteps).toContain('pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts')
   })
 
+  // T-0025/U3: create-wxl's own tests get a pinned CI step too, after the existing one.
+  it('has a step pinning the create-wxl test run', () => {
+    const steps = job().steps ?? []
+    const runSteps = steps.filter((s) => s.run !== undefined).map((s) => s.run)
+    expect(runSteps).toContain('pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test')
+  })
+
   it('installs no Rust toolchain, rust-cache, install-action or binaryen step', () => {
     const steps = job().steps ?? []
     const usesList = steps.map((s) => s.uses).filter((u): u is string => u !== undefined)

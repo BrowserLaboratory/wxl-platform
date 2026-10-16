@@ -13,7 +13,7 @@
 
 **Web eXploitation Laboratory（WXL）** 是 CTF 風格的 web 資安練習平台。每一題都完全在瀏覽器裡執行：WebAssembly 模擬出真實的後端環境，所以不必架設任何伺服器就能部署和使用。
 
-它的目標是讓老師不用架伺服器就能備課，也讓學生回家可以繼續練習。fork 這個 repo、執行 `pnpm fork:init`，就能把自己的靶場發布到 Cloudflare Pages 或 GitHub Pages。這個 repo 附有四道示範題，線上網站在 <https://wxl.browserlab.online>。
+它的目標是讓老師不用架伺服器就能備課，也讓學生回家可以繼續練習。fork 這個 repo、執行 `pnpm fork:init`，或執行 `npm create wxl`，就能把自己的靶場發布到 Cloudflare Pages 或 GitHub Pages。這個 repo 附有四道示範題，線上網站在 <https://wxl.browserlab.online>。
 
 ### 主要功能
 
@@ -154,6 +154,33 @@ pnpm install
 # 2. 完整建置（WASM + keygen + VitePress）
 pnpm build
 ```
+
+### 用 `npm create wxl` 建立靶場
+
+不想 fork 整個 repo，也可以用這個指令直接建立一個全新的靶場資料夾（需要 Node.js >= 22.6）：
+
+```bash
+npm create wxl <資料夾>
+# 或
+pnpm create wxl <資料夾>
+```
+
+互動模式會依序詢問作者、GitHub repository、部署主機、網站網址、網站名稱，套用設定之後會自動執行
+`git init` 並建立第一個 commit；靶場裡會多一個 `range.json`，記下它是從哪一版上游建立的設定紀錄。
+
+不想互動回答，也可以直接帶齊參數：
+
+```bash
+npm create wxl <資料夾> -- --author "<你的名字>" --repo <owner>/<repo> --host github-pages
+```
+
+只想要還沒套用任何設定的檔案、不建立 git repository，可以加 `--no-setup`：
+
+```bash
+npm create wxl <資料夾> -- --no-setup
+```
+
+> 這個指令要等 `create-wxl` 發布到 npm 之後才能用；這份 README 隨本次變更先合進 main，發布前執行會拿到還沒正式發布的佔位版本。
 
 ### fork 之後：改寫專案身分
 

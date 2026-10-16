@@ -292,7 +292,8 @@ jobs:
     # OS/Node combination a teacher may run `pnpm fork:init` on — Windows, macOS and Ubuntu, and
     # both LTS Node lines — but only upstream itself pays for the matrix. Spelled through format(),
     # never UPSTREAM_SLUG (a workflow YAML cannot import a TS module); pinned by
-    # tests/unit/workflows/upstream-only-jobs.test.ts.
+    # tests/unit/workflows/upstream-only-jobs.test.ts. T-0025 adds create-wxl's own test run to
+    # this same job (pnpm --dir create-wxl test), pinned by create-wxl/test/upstream-config.test.mjs.
     if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')
     strategy:
       fail-fast: false
@@ -328,3 +329,6 @@ jobs:
 
       - name: Run fork-init and upstream-guard tests
         run: pnpm vitest run tests/unit/scripts/fork-init.test.ts tests/unit/scripts/upstream-guard.test.ts
+
+      - name: Run create-wxl tests
+        run: pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test

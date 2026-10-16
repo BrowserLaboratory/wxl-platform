@@ -13,7 +13,7 @@
 
 **Web eXploitation Laboratory (WXL)** is a CTF-style web exploitation training platform. Every challenge runs entirely in the browser: WebAssembly simulates a realistic backend environment so the platform can be deployed and used without any server infrastructure.
 
-It is built so that a teacher can prepare a class without running a server and a student can keep practising at home. Fork it, run `pnpm fork:init`, and publish your own range on Cloudflare Pages or GitHub Pages. This repository carries four demonstration challenges; the live site is <https://wxl.browserlab.online>.
+It is built so that a teacher can prepare a class without running a server and a student can keep practising at home. Fork it, run `pnpm fork:init`, or run `npm create wxl`, and publish your own range on Cloudflare Pages or GitHub Pages. This repository carries four demonstration challenges; the live site is <https://wxl.browserlab.online>.
 
 ### Core features
 
@@ -154,6 +154,36 @@ pnpm install
 # 2. Full build (WASM + keygen + VitePress)
 pnpm build
 ```
+
+### Create a range with `npm create wxl`
+
+You don't have to fork the whole repository — this command creates a brand-new range directory
+directly (needs Node.js >= 22.6):
+
+```bash
+npm create wxl <folder>
+# or
+pnpm create wxl <folder>
+```
+
+Interactive mode asks, in order, for the author, GitHub repository, host, site address and
+site name; once applied it runs `git init` and creates the first commit. The new range gains
+a `range.json`, a setup record of which upstream version it was created from.
+
+Without the interactive questions, pass every flag directly:
+
+```bash
+npm create wxl <folder> -- --author "<Your Name>" --repo <owner>/<repo> --host github-pages
+```
+
+To get only the unconfigured files, without a git repository, add `--no-setup`:
+
+```bash
+npm create wxl <folder> -- --no-setup
+```
+
+> This command works once `create-wxl` is published to npm; this README merges before that
+> publish, so running it earlier fetches the not-yet-published placeholder version.
 
 ### After forking: rewrite the project identity
 

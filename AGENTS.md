@@ -19,10 +19,11 @@ backend runs inside the learner's own browser tab, with no server.
 
 - **For:** a range that makes it easy for a teacher to prepare a class and for a student to
   practise at home; served at `wxl.browserlab.online`.
-- **Serves:** teachers who fork it into a range of their own, and their students.
+- **Serves:** teachers who start a range of their own from it, and their students.
 - **Must:** run entirely in the browser; keep each learner's work on the learner's own machine;
-  stay forkable, so `pnpm fork:init` and a static host (Cloudflare Pages or GitHub Pages) are
-  all a teacher needs.
+  stay easy to start and to upgrade: `npm create wxl` (or a fork with `pnpm fork:init`) and a
+  static host (Cloudflare Pages or GitHub Pages) are all a teacher needs, and a range can take in
+  later upstream releases.
 - **Does not:** grow a challenge bank. It keeps a few demonstration challenges, and adds one only
   to exercise a new platform feature.
 
@@ -99,6 +100,7 @@ tests/challenges/<slug>.spec.ts   a challenge's exploit spec (Playwright)
 .vitepress/                       site config, theme, workers
 chall-wasm/                       Rust crates compiled to the challenge runtimes' WASM
 scripts/                          challenge, redirect and fork tooling
+create-wxl/                       the `create-wxl` npm package: `npm create wxl` / `pnpm create wxl`
 .proj.specs/                      specs, traceability, review rounds, OPEN-QUESTIONS.md
 .proj.tickets/                    tickets; status lives in frontmatter
 .proj.handoffs/                   session handoffs; local only, gitignored
@@ -117,6 +119,9 @@ review and every deferral. `.proj.handoffs/` is not: a handoff expires, so it st
 - `pnpm build` needs the Rust toolchain and `wasm-pack`; `pnpm wasm:build` alone rebuilds the runtimes.
 - `pnpm test` runs vitest; `pnpm test:smoke` and `pnpm test:challenges` run Playwright against a built site.
 - `pnpm challenge:verify <slug>` is a challenge's release-blocking gate (L1–L3); add `--blind` for L4.
+- `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test` runs the
+  `create-wxl` package's own tests; it has its own lockfile, so the root `pnpm install` does not
+  reach it. The publish tests need Node >= 22.13 (`module.stripTypeScriptTypes`).
 - `python3 scripts/verify-project.py` checks the agent configuration (Python 3.11+), not product behaviour.
 
 Environment pitfalls that cost time: [docs/agents/platform-notes.md](docs/agents/platform-notes.md).
