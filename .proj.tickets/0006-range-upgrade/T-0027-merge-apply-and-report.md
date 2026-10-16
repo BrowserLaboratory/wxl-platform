@@ -61,3 +61,7 @@ with `git clean -fd` then `git checkout -- .`.
 0006 的核心：三方合併 base、老師的靶場與 target。上游改了而老師沒改的就更新；兩邊都改的文字檔用 `--diff3` 標出衝突；拿不準時保留老師的版本並列入注意清單。不 commit，結束碼 0，報告列出計數、注意項目與下一步；`git clean -fd` 加 `git checkout -- .` 可完整還原。第 8 階段用兩個推上去的 commit 實際升級一次。23:59 前沒落地就改 pending。
 
 ## Comments
+
+### 2026-10-16 — deadline withdrawn
+
+At 23:39 on 2026-10-16 the user withdrew the 23:59 pending deadline (decision R1, Q2 option A) for this epic: T-0026 and T-0027 are not set to `pending` and are implemented after T-0025, in order. The workshop of 2026-10-17 still uses the fork + `pnpm fork:init` path.

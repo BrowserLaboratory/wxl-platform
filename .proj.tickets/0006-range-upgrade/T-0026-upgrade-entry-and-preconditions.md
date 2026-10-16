@@ -56,3 +56,7 @@ builds both pristine ranges, and removes its temporary directories.
 0006 升級的入口：在靶場裡執行 `create-wxl upgrade`，先檢查 git、工作目錄是否乾淨、從 `range.json` 或 `--from` 找出 base，擋下不用升級、降版、3.0.0 以前的情況，再下載 base 與 target 兩份原廠靶場。這張還不做合併。若 23:59 前沒落地，改為 pending、研習後以 3.0.x 發布。
 
 ## Comments
+
+### 2026-10-16 — deadline withdrawn
+
+At 23:39 on 2026-10-16 the user withdrew the 23:59 pending deadline (decision R1, Q2 option A) for this epic: T-0026 and T-0027 are not set to `pending` and are implemented after T-0025, in order. The workshop of 2026-10-17 still uses the fork + `pnpm fork:init` path.

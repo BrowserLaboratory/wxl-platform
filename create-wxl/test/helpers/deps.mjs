@@ -1,7 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdtempSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import * as fsp from 'node:fs/promises'
 import { vi } from 'vitest'
 import * as engineModule from '../../../scripts/fork-init.ts'
@@ -14,6 +16,12 @@ export const ENGINE_SHA256 = createHash('sha256').update(ENGINE_BYTES).digest('h
 
 export const FIXED_COMMIT = '0123456789abcdef0123456789abcdef01234567'
 export const PACKAGE_VERSION = '3.0.0'
+
+// T-0022 ticket Notes (7): `deps.env`'s default is a fixed `{ LANG, HOME }`, not `{}`, so a test
+// that does not override `env` still runs as if HOME were a harmless, unrelated directory (never
+// read by any production code today -- `questions.mjs`' `~` handling never expands it -- but
+// pinned here so a later ticket that does read it cannot silently inherit the real `$HOME`).
+const DEFAULT_HOME = mkdtempSync(join(tmpdir(), 'create-wxl-test-home-'))
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && !(value instanceof EventEmitter)
@@ -38,7 +46,7 @@ function realFs() {
 
 export function makeDeps(overrides = {}) {
   const base = {
-    env: {},
+    env: { LANG: 'en_US.UTF-8', HOME: DEFAULT_HOME },
     // No default: every test must pass its own `cwd` (S-33) so a run never touches the real
     // working directory by accident; `path.resolve` throws loudly if one is missing.
     cwd: undefined,
@@ -62,8 +70,14 @@ export function makeDeps(overrides = {}) {
     // Resolves to a fresh, valid pristine archive by default (the approved plan's Notes); tests
     // of a rejection path assert `not.toHaveBeenCalled()` rather than relying on this throwing.
     fetchArchive: makeFetchArchive(PRISTINE_FIXTURE, { commit: FIXED_COMMIT }),
+    // T-0022 ticket Notes (5): rejects with a `code: 'ENOENT'` error, matching what T-0023's git
+    // step will see when `git` is not on `PATH` (CW-W01), not a generic "must not be called".
+    // `--no-setup` and step-11-only runs never call this at all (asserted with
+    // `not.toHaveBeenCalled()`), so the rejection reason is otherwise never observed.
     runGit: vi.fn(async () => {
-      throw new Error('runGit must not be called by a --no-setup run')
+      const err = new Error('runGit must not be called before T-0023 implements the git steps')
+      err.code = 'ENOENT'
+      throw err
     }),
     downloadTimeoutMs: 1000,
     fs: realFs(),

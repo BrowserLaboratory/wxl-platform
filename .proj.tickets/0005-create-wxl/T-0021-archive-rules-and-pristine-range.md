@@ -2,7 +2,7 @@
 id: T-0021
 title: Strict archive rules and the pristine range
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0020]
 ---
 
@@ -164,3 +164,7 @@ Stage 7 report: `.proj.specs/0005-create-wxl/review/security-T-0021.md`.
 Checks after the fixes: `pnpm --dir create-wxl test` → `Test Files 1 failed | 6 passed (7) / Tests 1 failed | 180 passed (181)` (row 14 only, until commit, D5); root `pnpm test --run` → `Test Files 127 passed (127) / Tests 4196 passed | 1 skipped`; after staging, `pnpm vitest run tests/unit/scripts/upstream-guard.test.ts` → `97 passed | 1 skipped`.
 
 After commit (D5): `pnpm --dir create-wxl exec vitest run test/upstream-archive.test.mjs -t="git archive HEAD"` → `1 passed | 1 skipped`; `pnpm --dir create-wxl test` → `Test Files 7 passed (7) / Tests 181 passed (181)`. `git archive HEAD` lists, under `.proj.specs/`, `.proj.tickets/` and `create-wxl/`, only `.proj.specs/` and `.proj.specs/OPEN-QUESTIONS.md`. C44 ticked.
+
+### 2026-10-16 — landed
+
+Squash-merged into `main` as `6fbb1c2` (PR #27) under pre-authorisation 4 after all ten checks passed (Cloudflare Pages preview deployed). Status set to `done`.
