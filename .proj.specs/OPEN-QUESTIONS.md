@@ -586,6 +586,21 @@ page's own origin.
 **Revisit when.** A teacher reports a handout short link that 404s, or the fork workflow records the
 chosen host in a place the built site can read.
 
+**Decided on 2026-10-20 (spec 0007-gh-pages-range-fixes); closes when 0007 lands.** A teacher did
+report it, at the 2026-10-17 workshop. The button neither hides nor records the host. The site
+configuration reads `CF_PAGES` at build time (`1` only on Cloudflare Pages' own build), and the
+control shows and copies the short link in that case and the challenge page's URL otherwise. A
+GitHub Pages range's button therefore no longer hands out an address that depends on redirect rules
+the host ignores, and the user-site case above closes too, since no `/c/` or `/zh/c/` path is
+handed out there. The page URL still fails to open the range in these cases:
+- a `SITE_ORIGIN` that does not name the range's real address, which spec 0007 lists under B4;
+- a renamed challenge, under Q10 and Further Notes;
+- a learner redirected to a missing Traditional Chinese page (OQ-023), under B4.
+
+Mode rule, link forms and rows M01–M04, L01–L21:
+`.proj.specs/0007-gh-pages-range-fixes/traceability.md`. At 0007's close-out, set the status to
+resolved and record the verifying evidence here.
+
 ---
 
 ## OQ-017 — Is driving static build output an adequate stage 8 harness for a configured range?
@@ -612,6 +627,15 @@ same gap unless it is closed first.
 **Revisit when.** This project gains a harness that can drive a configured range's build output in a
 real browser without deploying it, or the user decides local static-file reads are the permanent
 answer and this entry is promoted to an ADR.
+
+**A third override, on 2026-10-21 (spec 0007-gh-pages-range-fixes, D9).** Page mode cannot appear on
+a Cloudflare Pages preview, which sets `CF_PAGES=1`. So 0007's stage 8 drives the preview for short
+links (V01), and verifies page URLs two other ways. One is a local `pnpm build` without `CF_PAGES`,
+served by `pnpm docs:preview` and driven in a real browser (V02). The other is a real, temporary
+GitHub Pages range (V04, V05). Hard rule 4 is not overridden: challenge pages are checked with their
+Browser panel open. V02 is the kind of harness "Revisit when" asks for, for upstream's own build: a
+real browser driving build output that was never deployed. It does not yet drive a configured
+range's export, so this entry stays open.
 
 ---
 
@@ -712,6 +736,14 @@ upstream half (0006).
 **Revisit when.** Epic 0006 lands and the settings half (0007) or the setup page (0008) is
 scheduled.
 
+**Renumbered on 2026-10-20.** The 2026-10-18 stage 1 interview
+(`.proj.research/2026-10-18-dev-image-gh-pages-grill.md`, Q1) deferred both epics. Three epics
+come first, in order: 0007 is the GitHub Pages range fixes (`.proj.specs/0007-gh-pages-range-fixes/`),
+followed by starting without Rust, then the container development environment. Those two take the
+next numbers when their specs are written. The settings half and the setup page no longer hold 0007
+and 0008: each takes the next free number when it is scheduled. Where this entry says 0007 or 0008
+above, read "the settings-half epic" and "the setup-page epic".
+
 ---
 
 ## OQ-021 — Do `npm create wxl -- <flags>` and `pnpm range:upgrade` work through the registry on the npm and pnpm versions teachers use?
@@ -772,3 +804,37 @@ and deployed, the same as any other range.
 
 **Revisit when.** Epic 0006 (the upgrade) or epic 0008 (the setup page) adds a browser-facing
 surface of create-wxl's own, at which point that surface needs the usual browser-based stage 8.
+
+---
+
+## OQ-023 — Should the language redirect send a learner to a Traditional Chinese page that does not exist?
+
+**Deferred on:** 2026-10-21
+**Status:** open
+
+**Reason.** Found in stage 3 of epic 0007 (round 1, finding C-1). The user decided on 2026-10-21
+(D6 in `.proj.specs/0007-gh-pages-range-fixes/traceability.md`) to record it here rather than fix it
+in 0007: it is a defect of the language redirect, independent of the deployment host, and short
+links reach it today too.
+
+**Evidence.** Verified by reading:
+- `.vitepress/theme/i18n/index.ts`: `DEFAULT_VISITING_LOCALE` is `zh-TW`, and
+  `redirectTargetForStoredLocale` sends a learner whose stored preference is missing or `zh-TW` from
+  an unprefixed path to its `/zh-TW/` counterpart, without checking that the page exists.
+- `.vitepress/theme/index.ts` runs that redirect on the client.
+- `pnpm create:challenge` scaffolds only `platform/challenge/<slug>/`, with no Traditional Chinese
+  brief (`scripts/create-challenge.ts`).
+
+Inferred, not reproduced: a learner with no stored preference who opens an English page URL, or a
+short link that redirects to one, lands on the site's 404 page for such a challenge.
+
+**Blocks.** Any claim that an English page URL or short link always opens its challenge for a
+first-time visitor. Options: redirect only when the target page exists; never redirect challenge
+pages; scaffold a Traditional Chinese brief with every new challenge.
+
+**Not blocked.** Epic 0007, which states the limit (B4, Further Notes) and verifies English URLs in a
+browser profile whose stored language is English (V04).
+
+**Revisit when.** A teacher reports a learner reaching a 404 from a copied English link, or an epic
+changes the language redirect or the challenge scaffold.
+
