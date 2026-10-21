@@ -51,7 +51,7 @@ vi.mock('../../../.vitepress/theme/components/DescriptionModal.vue', () => ({
 }))
 vi.mock('../../../.vitepress/theme/components/MergedNav.vue', () => ({
   default: defineComponent({
-    props: ['title', 'difficulty', 'category', 'runtimeReady', 'runtimeError', 'noteCount', 'descriptionCollapsed', 'completed'],
+    props: ['title', 'difficulty', 'category', 'runtimeReady', 'runtimeError', 'noteCount', 'descriptionCollapsed', 'completed', 'number', 'slug'],
     emits: ['open-notes', 'toggle-description'],
     template: '<nav data-merged-nav :data-title="title" :data-collapsed="descriptionCollapsed" :data-completed="completed" />',
   }),
@@ -197,6 +197,18 @@ describe('ChallengeLayout (VitePress layout)', () => {
     const { default: BrowserPanel } = await import('../../../.vitepress/theme/components/BrowserPanel.vue')
     const bp = wrapper.findComponent(BrowserPanel)
     expect(bp.props('slug')).toBe('sqli-demo')
+  })
+
+  // N07's unit half: off Cloudflare Pages the nav's copy control builds the page URL from this
+  // slug, so it has to be the same one the page's tools are keyed by.
+  it('passes MergedNav the slug it derives from the page, the one BrowserPanel receives', async () => {
+    const wrapper = mount(ChallengeLayout, {
+      global: { stubs: { Content: true } },
+    })
+    const { default: MergedNav } = await import('../../../.vitepress/theme/components/MergedNav.vue')
+    const { default: BrowserPanel } = await import('../../../.vitepress/theme/components/BrowserPanel.vue')
+    expect(wrapper.findComponent(MergedNav).props('slug')).toBe('sqli-demo')
+    expect(wrapper.findComponent(BrowserPanel).props('slug')).toBe('sqli-demo')
   })
 
   // This used to assert `a[href="/challenges/"]` — against the stub above,

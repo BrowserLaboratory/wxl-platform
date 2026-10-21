@@ -434,7 +434,7 @@ function toggleSortDir(): void {
           it by hand is the path a reader takes when the clipboard is refused.
         -->
         <div class="flex items-center w-full">
-          <ShortLinkShare :number="c.number" :locale="pageLocale" />
+          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" />
         </div>
       </a>
     </div>

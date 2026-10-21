@@ -46,3 +46,13 @@ its minimum, and the URL text is never narrower than 6ch.
 - 網址文字至少保留 6 個字元寬。複製失敗訊息出現時、題目已完成時，以及 1024 寬時都要成立。
 
 ## Comments
+
+### 2026-10-22 — handed over from T-0036
+
+T-0037 must handle the `short_link.copy_failed` layout in both nav rows, not only the mobile one.
+T-0036 measured it (its Comments, "fixes after stage 6–8", rounds 2 and 3): on the 32 px mobile row
+with the brief collapsed it takes 5–12 lines, runs up to 88 px above the shell's top and has English
+`yourself` cut; in the desktop place (row 1, a fixed `h-[40px]`), from 768 to 1024 wide, it wraps to
+2–4 lines in English and 2–3 in Traditional Chinese and runs 4–28 px above the nav's top edge. The spec
+lets the mobile row grow; for the desktop row it says nothing, so T-0037 decides the layout there within
+S01, S10 and D14.

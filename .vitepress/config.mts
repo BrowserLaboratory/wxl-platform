@@ -67,6 +67,13 @@ export default defineConfig({
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
       __VUE_OPTIONS_API__: 'true',
       __INTLIFY_PROD_DEVTOOLS__: 'false',
+      // The link mode (.vitepress/theme/linkMode.ts). Cloudflare Pages' own Git build sets
+      // CF_PAGES=1, and only that exact value gives short links. Every other build copies
+      // the challenge page's URL, including a Cloudflare Direct Upload or Workers build and
+      // a build served by another host that reads `_redirects`. Fixed here, at build time,
+      // so the HTML as served and the hydrated page agree and nothing set at run time
+      // switches it. The site base does not depend on it.
+      __WXL_SHORT_LINKS__: process.env.CF_PAGES === '1' ? 'true' : 'false',
     },
   },
 

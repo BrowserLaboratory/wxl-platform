@@ -1,21 +1,32 @@
 /**
  * shortLink.ts
  *
- * A challenge's number and the short link built from it.
+ * A challenge's number, and the links the copy control gives: the short link
+ * built from the number, or the challenge page's URL built from its slug.
  *
  * Shared by the build scripts and the site, so nothing here may import a Node
- * built-in: `scripts/challenge-numbers.ts` re-exports the number helpers for
- * the tree walk, and the theme imports the link helpers for the page.
+ * built-in, or read the build's link-mode constant: `scripts/challenge-numbers.ts`
+ * re-exports the number helpers for the tree walk, and the theme imports the
+ * link helpers for the page.
  *
- * There is one canonical spelling per challenge — zero-padded, and the same
- * string whether it is printed on a handout, shown on screen, or copied.
+ * The build decides the link mode, not the host it is served from. Cloudflare
+ * Pages' own Git build (`CF_PAGES=1`) gives the short link, zero-padded, which
+ * is also what a handout prints. Every other build gives the challenge page's
+ * URL: a GitHub Pages build, a Cloudflare Direct Upload or Workers build, and a
+ * build served by any other host, including one that reads `_redirects`.
+ * In either mode a challenge has one canonical link: what is copied is that
+ * URL, and what is shown is the same URL without its scheme.
  */
 
 /** Minimum width of the decimal spelling used in URLs and on screen. */
 export const NUMBER_PAD_WIDTH = 3
 
 /**
- * The public origin the short links belong to.
+ * The range's public address: the origin of every copied link, in both link
+ * modes, the short link of a `CF_PAGES=1` build and the challenge page's URL of
+ * every other build. For a GitHub Pages project site it ends in `/<repo>`, the
+ * same path as the site base, so a page URL appends the page's path to it with
+ * no base added.
  *
  * Deliberately not `location.origin`. The link exists to be handed to a class,
  * so a teacher copying it from a local preview has to get the address the class
@@ -63,5 +74,43 @@ export function shortLinkUrl(n: number, locale: ShortLinkLocale, origin: string 
  * has to be in what gets pasted — hence the two spellings.
  */
 export function shortLinkDisplay(n: number, locale: ShortLinkLocale, origin: string = SITE_ORIGIN): string {
-  return `${origin.replace(/^[a-z]+:\/\//, '')}${shortLinkPath(n, locale)}`
+  return `${origin.replace(SCHEME, '')}${shortLinkPath(n, locale)}`
+}
+
+/** The leading `<scheme>://` that the displayed text leaves out. */
+const SCHEME = /^[a-z]+:\/\//
+
+/** The slug grammar `create:challenge` enforces; a page URL is only built from a slug inside it. */
+const SLUG_GRAMMAR = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+
+/** `short` copies the short link; `page` copies the challenge page's URL. Fixed once per build. */
+export type LinkMode = 'short' | 'page'
+
+/** What the copy control shows and copies: the copied URL, and the same without its scheme. */
+export interface ChallengeLink {
+  url: string
+  display: string
+}
+
+/**
+ * The link the copy control gives for a mode, or null when there is none to give.
+ *
+ * Takes the mode as an argument rather than reading the build's constant: the build scripts
+ * import this module under Node, where that constant does not exist. The origin is appended
+ * to as given, not normalised.
+ */
+export function challengeLink(
+  mode: LinkMode,
+  n: number | undefined,
+  slug: string | undefined,
+  locale: ShortLinkLocale,
+  origin: string = SITE_ORIGIN,
+): ChallengeLink | null {
+  if (!isChallengeNumber(n)) return null
+  if (mode === 'short') {
+    return { url: shortLinkUrl(n, locale, origin), display: shortLinkDisplay(n, locale, origin) }
+  }
+  if (slug === undefined || !SLUG_GRAMMAR.test(slug)) return null
+  const url = `${origin}${locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/${slug}/`
+  return { url, display: url.replace(SCHEME, '') }
 }
