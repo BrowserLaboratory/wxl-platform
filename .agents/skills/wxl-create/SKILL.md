@@ -98,8 +98,13 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
   pnpm create:challenge --name "<slug>" --backend "<backend>" --difficulty "<difficulty>" --flag "<flag>" --title "<title>"
   ```
 
-  Omit `--flag` to let the script auto-generate. On exit code 1 (collision), show the error and ask (plain-text block) to choose a different name or cancel; on `1`, re-ask the slug and re-run; on `2`, stop.
-- **Verification**: Exit code 0; the challenge directory exists under `platform/challenge/<slug>/`.
+  Omit `--flag` to let the script auto-generate. Then branch on the exit status:
+
+  - **Exit status 0**: continue to Step 3.
+  - **Exit status 1**: nothing was written; the error names an existing slug or an invalid argument. Show the error and ask, in a plain-text block, for the reply `change` or `cancel`. On `change`, re-ask the parameter the error names (the slug when the challenge already exists) and re-run; on `cancel`, stop. Exit status 1 is the only status that re-asks a parameter.
+  - **Exit status 2**: the challenge was created, but `platform/public/_redirects` was not regenerated. Show the user the message from stderr, which says that committing the challenge regenerates the file, then continue to Step 3 with the same slug. Keep `platform/challenge/<slug>/`.
+  - **Exit status 3**: the scaffold was written with its number, but keygen failed. Show the user the message from stderr, which holds keygen's output, and stop. Tell the user to fix the cause, run `pnpm challenge:keygen <slug>`, and then resume this skill at Step 3 with the same slug; as with exit status 2, committing the challenge regenerates `platform/public/_redirects`. Keep `platform/challenge/<slug>/`.
+- **Verification**: Exit status 0, or exit status 2 with its message shown to the user; `platform/challenge/<slug>/` exists.
 
 ### Step 3: Generate vulnerable application code
 
