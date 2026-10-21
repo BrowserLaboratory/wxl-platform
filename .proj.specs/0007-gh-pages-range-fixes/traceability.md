@@ -235,7 +235,10 @@ renamed, deleted or changed in type. With no `HEAD`, every staged path counts as
 
 **Commit forms.** The hook tells which index it runs on from `GIT_INDEX_FILE`. The index is the
 repository's own when the variable is unset, or names the same file as `git rev-parse --git-path
-index`, or that path followed by `.lock`. Paths are compared after resolving them to absolute paths.
+index` run with `GIT_INDEX_FILE` removed from its environment, or that path followed by `.lock`.
+Inside the hook, `git rev-parse --git-path index` answers with `GIT_INDEX_FILE` itself, so asking it
+with the variable set would count every index as the hook's own. Paths are compared after resolving
+them to absolute paths.
 On its own index the outcomes below apply. On any other index file, when the run triggers, the hook
 refuses: exit 1, W8, and nothing changed.
 
@@ -265,7 +268,7 @@ leave (B3), and E1's repair step fixes it.
 - Before generating, the hook refuses an orphan brief (O4, W6).
 - The hook generates over the staged snapshot with the index slugs. It writes and stages `_redirects` only after validation passed and generation succeeded.
 - The hook names its own repository's top level as the generator's root. A run never writes another repository's files.
-- The hook keeps the working tree's `_redirects` bytes from before its write, and puts them back on every exit where the index's `_redirects` did not change.
+- The hook keeps the working tree's `_redirects` bytes from before its write, and puts them back on every exit other than O2 where the index's `_redirects` did not change, unless an O5 interrupted the hook once its `git add` of `_redirects` had started. After O2 the working tree's `_redirects` equals the staged one (D3); after such an O5 it holds the old bytes or the staged one, as O5 allows.
 - Once the hook has an entry of its own, every exit restores it, including a failed git command and SIGINT, SIGTERM or SIGHUP. The entry is dropped only after the restore completed. While restoring, the hook ignores INT, TERM and HUP. When the restore fails, the entry stays (O7). So does it when the index file named by `GIT_INDEX_FILE` no longer exists, as after git removed its `index.lock` on an interrupted `git commit -a`: the hook never restores into a missing index.
 - A file with both staged and unstaged changes comes back with its unstaged content, byte for byte.
 

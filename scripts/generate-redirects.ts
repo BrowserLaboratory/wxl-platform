@@ -5,18 +5,37 @@
  *
  * Usage:
  *   pnpm redirects:generate           # rewrite platform/public/_redirects
+ *   node --experimental-strip-types scripts/generate-redirects.ts --staged --root <top level>
+ *                                     # print the staged snapshot's file (the pre-commit hook)
  *
  * The file used to be hand-edited. Nothing then kept it in step with the
  * challenge tree, and its contents are a public commitment — the paths in it
  * are printed on handouts. Generating it makes the tree the single source, and
  * `tests/unit/site/redirects-generated.test.ts` fails when the committed file
  * and the tree disagree.
+ *
+ * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every
+ * commit that carries a change at a watched path: `platform/challenge/`,
+ * `platform/zh-TW/challenge/` or `platform/public/_redirects` itself. The hook
+ * validates only the `platform/challenge/` paths its `ACMRD` filter selects; a
+ * type change, the Traditional Chinese tree and this file only trigger
+ * regeneration. Afterwards the working tree's file equals the staged one (D3),
+ * whatever unstaged edit it held. The hook has
+ * already put the staged snapshot in the working tree under `platform/`, but
+ * ignored directories stay on disk, so the pages are restricted to the index
+ * slugs: per locale tree, the slugs whose `<tree>/<slug>/index.md` is in git's
+ * index. A page counts only when its own tree lists its slug, so an ignored or
+ * untracked directory is never included, in either tree. The output goes to
+ * stdout; the hook writes and stages it only once generation succeeded.
  */
 
 import { writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execFileSync } from 'node:child_process'
+import { parseArgs } from 'node:util'
 import {
+  CHALLENGE_TREES,
   collectChallengeNumbers,
   checkChallengeNumbers,
   padChallengeNumber,
@@ -67,18 +86,25 @@ interface NumericRule {
 
 export interface GenerateOptions {
   /**
-   * Which challenge slugs to include. Defaults to all of them.
+   * Which pages to include, asked once per page with its slug and the locale
+   * tree it sits in (`root` or `zh-TW`). Defaults to all of them.
    *
-   * The escape hatch exists for one caller: the guard test that compares the
-   * committed file with freshly generated content. Other test files scaffold a
-   * throwaway challenge into the real `platform/challenge/` tree to exercise the
-   * keygen CLI, and vitest runs test files in parallel — so the guard can
-   * observe a directory that exists for a few hundred milliseconds and belongs
-   * to nobody. Bounding it to what git tracks removes that race without
-   * weakening the assertion: an unregenerated file is still caught the moment
-   * the new challenge is staged, which is before it can be committed or built.
+   * Two callers restrict it, both to what git tracks:
+   *
+   * - The guard test that compares the committed file with freshly generated
+   *   content passes a slug-only predicate: a slug whose `index.md` git tracks
+   *   in either tree. Other test files scaffold a throwaway challenge into the
+   *   real `platform/challenge/` tree to exercise the keygen CLI, and vitest
+   *   runs test files in parallel — so the guard can observe a directory that
+   *   exists for a few hundred milliseconds and belongs to nobody. Bounding it
+   *   to what git tracks removes that race without weakening the assertion: an
+   *   unregenerated file is still caught the moment the new challenge is
+   *   staged, which is before it can be committed or built.
+   * - The pre-commit hook (`--staged`) passes the index slugs, per tree: a page
+   *   counts only when its own tree's `<slug>/index.md` is in the index. On a
+   *   clean checkout, as in CI, both give the same file.
    */
-  includeSlug?: (slug: string) => boolean
+  includeSlug?: (slug: string, locale: string) => boolean
 }
 
 /**
@@ -92,7 +118,7 @@ export interface GenerateOptions {
  */
 function numericRules(root: string, options: GenerateOptions = {}): NumericRule[] {
   const include = options.includeSlug ?? (() => true)
-  const entries = collectChallengeNumbers(root).filter((e) => include(e.slug))
+  const entries = collectChallengeNumbers(root).filter((e) => include(e.slug, e.locale))
 
   const failures = checkChallengeNumbers(entries).filter((c) => !c.passed)
   if (failures.length > 0) {
@@ -157,6 +183,28 @@ export function writeRedirects(root: string, options: GenerateOptions = {}): str
   return target
 }
 
+/**
+ * The index slugs of `root`'s repository: per locale tree, the slugs whose
+ * `<tree>/<slug>/index.md` is in git's index. git is run in `root` with the
+ * caller's environment, so inside a hook it reads the index git handed it.
+ */
+export function indexSlugs(root: string): Map<string, Set<string>> {
+  const trees = CHALLENGE_TREES.map((t) => ({ locale: t.locale, prefix: `${t.segments.join('/')}/` }))
+  const out = execFileSync('git', ['ls-files', '-z', '--', ...trees.map((t) => t.prefix)], {
+    cwd: root,
+    encoding: 'utf8',
+  })
+  const slugs = new Map(trees.map((t) => [t.locale, new Set<string>()]))
+  for (const path of out.split('\0')) {
+    for (const tree of trees) {
+      if (!path.startsWith(tree.prefix)) continue
+      const rest = path.slice(tree.prefix.length).split('/')
+      if (rest.length === 2 && rest[1] === 'index.md') slugs.get(tree.locale)?.add(rest[0])
+    }
+  }
+  return slugs
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const __filename_ = fileURLToPath(import.meta.url)
@@ -165,14 +213,22 @@ const isDirectRun = process.argv[1] && (
   process.argv[1].endsWith('generate-redirects.js')
 )
 if (isDirectRun) {
-  const root = resolve(dirname(__filename_), '..')
-  if (!existsSync(join(root, 'platform', 'public'))) {
-    console.error(`platform/public not found under ${root}`)
-    process.exit(1)
-  }
+  const { values } = parseArgs({ options: { staged: { type: 'boolean' }, root: { type: 'string' } } })
+  const root = values.root !== undefined ? resolve(values.root) : resolve(dirname(__filename_), '..')
   try {
-    const target = writeRedirects(root)
-    console.log(`✓ Wrote ${target}`)
+    if (values.staged) {
+      const slugs = indexSlugs(root)
+      process.stdout.write(
+        generateRedirects(root, { includeSlug: (slug, locale) => slugs.get(locale)?.has(slug) ?? false }),
+      )
+    } else {
+      if (!existsSync(join(root, 'platform', 'public'))) {
+        console.error(`platform/public not found under ${root}`)
+        process.exit(1)
+      }
+      const target = writeRedirects(root)
+      console.log(`✓ Wrote ${target}`)
+    }
   } catch (err) {
     console.error((err as Error).message)
     process.exit(1)
