@@ -15,20 +15,30 @@
  * committed bytes instead, which do not come from the oracle.
  */
 
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { generateRedirects } from '../scripts/generate-redirects'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
+  HOOK,
   REDIRECTS,
+  blockingGenerator,
+  buildFirstCommitFixture,
   buildFixture,
   challengeIndex,
   commit,
   cloneFixture,
   expectedRedirects,
   git,
+  gitChildBlocker,
   gitRun,
+  gitWrapper,
+  killStrayGroups,
+  lockingGenerator,
+  markerDir,
   read,
+  readBlockingRecord,
   readRecord,
   realRepoState,
   recordScript,
@@ -37,12 +47,15 @@ import {
   runHook,
   snapshot,
   stagedRedirects,
+  startGroup,
   stashList,
+  waitForFile,
   withoutPaths,
   write,
   writeBrief,
   writeChallenge,
   type Fixture,
+  type GroupRun,
   type RealState,
   type Run,
   type Snapshot,
@@ -80,8 +93,13 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  // H29: the pre-existing entry is still listed with its commit id.
-  expect(stashList(repo).some((l) => l.startsWith(`${repo.preexisting} `))).toBe(true)
+  // A case that failed before its group's done() leaves no blocked process behind.
+  killStrayGroups()
+  // H29: the pre-existing entry is still listed with its commit id. The
+  // first-commit fixture (H27, H28) has none.
+  if (repo.preexisting !== null) {
+    expect(stashList(repo).some((l) => l.startsWith(`${repo.preexisting} `))).toBe(true)
+  }
   // H30: the real repository's _redirects, index and stash list are unchanged.
   expect(realRepoState()).toEqual(real)
   removeRepo(repo)
@@ -247,6 +265,21 @@ describe('pre-commit.sh: trigger (H06)', () => {
   }, TIMEOUT)
 })
 
+/** H02, H14: the outcome, with the hook run directly by the given bash (H45 runs it with `/bin/bash`). */
+function expectH02H14(bash: string): void {
+  const log = validatorLog()
+  writeBrief(repo, 'test-chall', 1)
+  git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
+  const expected = expectedRedirects(repo)
+  const before = snapshot(repo)
+
+  const run = runHook(repo, {}, bash)
+
+  expectO2(run, before, snapshot(repo), expected)
+  expect(rulesOf(expected)).toContain('/zh/c/001 /zh-TW/challenge/test-chall/')
+  expect(readRecord(log)).toEqual([])
+}
+
 describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
   it('H01: a new challenge gains its /c/NNN rule, with no W3', () => {
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
@@ -276,17 +309,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
   }, TIMEOUT)
 
   it('H02, H14: only a Traditional Chinese brief gains its /zh/c/NNN rule, and the validator never runs', () => {
-    const log = validatorLog()
-    writeBrief(repo, 'test-chall', 1)
-    git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
-    const expected = expectedRedirects(repo)
-    const before = snapshot(repo)
-
-    const run = runHook(repo)
-
-    expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toContain('/zh/c/001 /zh-TW/challenge/test-chall/')
-    expect(readRecord(log)).toEqual([])
+    expectH02H14('bash')
   }, TIMEOUT)
 
   it('H03: deleting a challenge in both trees loses both its rules', () => {
@@ -441,22 +464,27 @@ function stageDoorChange(): void {
   git(repo, ['add', DOOR_APP])
 }
 
+/** H07: the outcome, through `git commit` with the given environment (H45 puts `/bin` first on `PATH`). */
+function expectH07(env: NodeJS.ProcessEnv): void {
+  const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
+  write(repo, REDIRECTS, `${head}/c/999  /challenge/hand-made/  302\n`)
+  git(repo, ['add', REDIRECTS])
+  const expected = expectedRedirects(repo)
+  expect(expected).toBe(head)
+  const before = snapshot(repo)
+
+  const run = commit(repo, ['-q', '-m', 'hand edit'], env)
+
+  expectO2(run, before, snapshot(repo), expected)
+  expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+  expect(rulesOf(expected).some((r) => r.startsWith('/c/999 '))).toBe(false)
+  expect(run.stderr).toMatch(W3)
+  expect(git(repo, ['rev-parse', 'HEAD^{tree}'])).toBe(git(repo, ['rev-parse', 'HEAD~1^{tree}']))
+}
+
 describe('pre-commit.sh: W3, W4 and unstaged work', () => {
   it('H07: only a hand-edited _redirects, through git commit: replaced, W3, and a commit that changes nothing', () => {
-    const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
-    write(repo, REDIRECTS, `${head}/c/999  /challenge/hand-made/  302\n`)
-    git(repo, ['add', REDIRECTS])
-    const expected = expectedRedirects(repo)
-    expect(expected).toBe(head)
-    const before = snapshot(repo)
-
-    const run = commit(repo, ['-q', '-m', 'hand edit'])
-
-    expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
-    expect(rulesOf(expected).some((r) => r.startsWith('/c/999 '))).toBe(false)
-    expect(run.stderr).toMatch(W3)
-    expect(git(repo, ['rev-parse', 'HEAD^{tree}'])).toBe(git(repo, ['rev-parse', 'HEAD~1^{tree}']))
+    expectH07({})
   }, TIMEOUT)
 
   it('H11: a hand-edited staged _redirects with a challenge change is replaced, with W3, and unstaged files are kept', () => {
@@ -1088,5 +1116,608 @@ describe('pre-commit.sh: the restore writes nothing outside platform/ (B2)', () 
     expect(run.stderr).toContain(`${src}/app.py`)
     expect(run.stderr).toContain(`${src}/flag.txt`)
     expectNoW3W4(run)
+  }, TIMEOUT)
+})
+
+// ─── Interruption, git failures and a failed restore (AC-23) ────────────────
+
+const NOTES = 'platform/notes/名 稱.txt'
+const BINARY = 'platform/notes/blob.bin'
+const UNTRACKED = 'platform/notes/untracked.txt'
+
+/**
+ * The teacher's work in the failure cases: a staged challenge change, unstaged
+ * edits to other.txt, to a tracked file whose name holds a space and non-ASCII
+ * characters and to a tracked binary file, an untracked file, and an unstaged
+ * hand edit of `_redirects`. All text is LF. With `overlap`, the staged change
+ * is a hunk of door's app.py that its unstaged change overlaps (H19).
+ */
+function addFailureWork(overlap: boolean): void {
+  write(repo, NOTES, 'notes\n')
+  write(repo, BINARY, Buffer.from([0, 1, 2, 255, 0, 10, 13]))
+  if (overlap) write(repo, DOOR_APP, 'line 1\nline 2\nline 3\n')
+  git(repo, ['add', 'platform/notes', DOOR_APP])
+  git(repo, ['commit', '-q', '--no-verify', '-m', 'notes'])
+  if (overlap) {
+    write(repo, DOOR_APP, 'line 1\nline 2, staged\nline 3\n')
+    git(repo, ['add', DOOR_APP])
+    write(repo, DOOR_APP, 'line 1\nline 2, unstaged\nline 3\n')
+  } else {
+    stageDoorChange()
+  }
+  write(repo, 'platform/public/other.txt', 'other, unstaged\n')
+  write(repo, NOTES, 'notes, unstaged\n')
+  write(repo, BINARY, Buffer.from([0, 1, 2, 255, 0, 10, 13, 7]))
+  write(repo, UNTRACKED, 'untracked notes\n')
+  write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a hand edit\n`)
+}
+
+/** A failed run: a non-zero code, or termination by the signal sent (git treats both as a failed hook). */
+function expectFailed(run: Run | GroupRun, signal?: NodeJS.Signals): void {
+  if (run.status === null) {
+    expect((run as GroupRun).signal, run.stderr).toBe(signal)
+  } else {
+    expect(run.status, run.stderr).not.toBe(0)
+  }
+}
+
+/** O5, exact: a failed run, and index, every byte (`_redirects` included), untracked files and the stash list as before. */
+function expectO5(run: Run | GroupRun, before: Snapshot, after: Snapshot, signal?: NodeJS.Signals): void {
+  expectFailed(run, signal)
+  expectNothingChanged(before, after)
+}
+
+function ids(s: Snapshot): string[] {
+  return s.stash.map((l) => l.split(' ')[0])
+}
+
+describe('pre-commit.sh: interruption (H25)', () => {
+  it.each(['SIGINT', 'SIGTERM', 'SIGHUP'] as const)('H25: %s to the hook’s process group while the generator blocks ends in O5, and the overlapping file keeps its unstaged bytes', async (signal) => {
+    addFailureWork(true)
+    const marks = markerDir(repo)
+    const marker = join(marks, 'generator')
+    const record = join(marks, 'record.json')
+    blockingGenerator(repo, { marker, record })
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK])
+    await waitForFile(marker)
+    group.kill(signal)
+    const run = await group.done()
+
+    expect(run.leftover).toBe(false)
+    // The hook ends with 128 + the signal's number, under bash 3.2 as under bash 5.
+    expect(run.status, run.stderr).toBe({ SIGHUP: 129, SIGINT: 130, SIGTERM: 143 }[signal])
+    // While the stub blocked, the hook had an entry of its own above the teacher's.
+    expect(readBlockingRecord(record).stash.slice(1)).toEqual(ids(before))
+    expect(readBlockingRecord(record).stash).toHaveLength(ids(before).length + 1)
+    expectO5(run, before, snapshot(repo), signal)
+    expect(read(repo, DOOR_APP)).toBe('line 1\nline 2, unstaged\nline 3\n')
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: signals while restoring (AC-23 constraint)', () => {
+  it('ignores SIGINT, SIGTERM and SIGHUP while it restores, and drops its entry only after the restore completed', async () => {
+    addFailureWork(true)
+    const marker = join(markerDir(repo), 'generator')
+    blockingGenerator(repo, { marker })
+    const wrapper = gitWrapper(repo, 'restore --source=', 'block-ignoring', true)
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], wrapper.env)
+    await waitForFile(marker)
+    group.kill('SIGTERM')
+    await waitForFile(wrapper.blocked)
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) group.kill(signal)
+    wrapper.release()
+    const run = await group.done()
+
+    expect(wrapper.matched()).toBe(true)
+    expect(run.leftover).toBe(false)
+    expectO5(run, before, snapshot(repo), 'SIGTERM')
+    expect(read(repo, DOOR_APP)).toBe('line 1\nline 2, unstaged\nline 3\n')
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: interruption before the _redirects git add (H25 boundary)', () => {
+  it('SIGINT after the hook wrote _redirects and before its git add ran ends in O5, with _redirects back to its old bytes', async () => {
+    addFailureWork(false)
+    const wrapper = gitWrapper(repo, `add -- ${REDIRECTS}`, 'block')
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], wrapper.env)
+    await waitForFile(wrapper.blocked)
+    // The hook has written the expected file by now.
+    expect(read(repo, REDIRECTS)).toBe(expectedRedirects(repo))
+    group.kill('SIGINT')
+    const run = await group.done()
+
+    expect(wrapper.matched()).toBe(true)
+    expect(run.leftover).toBe(false)
+    expectO5(run, before, snapshot(repo), 'SIGINT')
+  }, TIMEOUT)
+})
+
+/** The bytes of a blob, as git stores it, or null when `rev` names none. */
+function blobBytes(rev: string): Buffer | null {
+  const r = spawnSync('git', ['show', rev], { cwd: repo.dir, env: repo.env })
+  return r.status === 0 ? r.stdout : null
+}
+
+/** The tracked files a stash entry holds (its index commit to its working-tree commit), NUL-separated so names stay unquoted. */
+function entryTracked(id: string): string[] {
+  return git(repo, ['diff', '-z', '--name-only', `${id}^2`, id]).split('\0').filter(Boolean)
+}
+
+/** The untracked files a stash entry holds (its third parent); none when it has no third parent. */
+function entryUntracked(id: string): string[] {
+  if (gitRun(repo, ['rev-parse', '-q', '--verify', `${id}^3`]).status !== 0) return []
+  return git(repo, ['ls-tree', '-r', '-z', '--name-only', `${id}^3`]).split('\0').filter(Boolean)
+}
+
+/** W9: the hook's entry id and `git stash apply`. Returns the printed id. */
+function expectW9(run: Run | GroupRun): string {
+  expect(run.stderr).toContain('git stash apply')
+  const m = run.stderr.match(/git stash apply ([0-9a-f]{40})/)
+  expect(m, run.stderr).not.toBeNull()
+  return m![1]
+}
+
+/**
+ * O7: a failed run with W9; the stash list is the one from before plus exactly
+ * the printed entry; index and `_redirects` as before; each tracked file the
+ * entry holds has the bytes of the entry's index commit, and each untracked
+ * file it holds is absent: not yet back. Returns the entry's id.
+ */
+function expectO7(run: Run | GroupRun, before: Snapshot, after: Snapshot, signal?: NodeJS.Signals): string {
+  expectFailed(run, signal)
+  const id = expectW9(run)
+  expect(ids(after)).toEqual([id, ...ids(before)])
+  expect(after.index).toEqual(before.index)
+  expect(after.files.get(REDIRECTS)).toBe(before.files.get(REDIRECTS))
+  const tracked = entryTracked(id)
+  expect(tracked.length).toBeGreaterThan(0)
+  for (const path of tracked) expect(readFileSync(join(repo.dir, path))).toEqual(blobBytes(`${id}^2:${path}`))
+  const untracked = entryUntracked(id)
+  for (const path of untracked) expect(existsSync(join(repo.dir, path))).toBe(false)
+  return id
+}
+
+/**
+ * Run the `git restore` commands W9 prints after a missing index or a changed
+ * index, as a teacher would paste them into a shell, in `cwd` (the top level
+ * unless given).
+ */
+function runPrintedRestore(run: Run | GroupRun, cwd = repo.dir): void {
+  const m = run.stderr.match(/, run: (git restore .*)$/m)
+  expect(m, run.stderr).not.toBeNull()
+  const r = spawnSync('sh', ['-c', m![1]], { cwd, env: repo.env, encoding: 'utf8' })
+  expect(r.status, r.stderr).toBe(0)
+}
+
+/** Every file, the untracked list and the index as before the run. */
+function expectAllBack(before: Snapshot): void {
+  const after = snapshot(repo)
+  expect(after.files).toEqual(before.files)
+  expect(after.untracked).toEqual(before.untracked)
+  expect(after.index).toEqual(before.index)
+}
+
+/** After `git stash apply <id>`: everything as before the run. */
+function expectApplied(id: string, before: Snapshot): void {
+  git(repo, ['stash', 'apply', '--quiet', id])
+  expectAllBack(before)
+}
+
+describe('pre-commit.sh: a failed restore (H26)', () => {
+  it('H26: a generator stub that leaves .git/index.lock makes git add and the restore fail: O7 with W9, and git stash apply of the printed id brings the files back once the lock is gone', () => {
+    addFailureWork(false)
+    lockingGenerator(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    const lock = join(repo.dir, '.git/index.lock')
+    expect(existsSync(lock)).toBe(true)
+    const id = expectO7(run, before, snapshot(repo))
+    expect(entryTracked(id).sort())
+      .toEqual([BINARY, NOTES, 'platform/public/other.txt'].sort())
+    expect(entryUntracked(id)).toEqual([UNTRACKED])
+    unlinkSync(lock)
+    expectApplied(id, before)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a git failure before the stash (H46)', () => {
+  it('H46: an empty .git/index.lock before a direct run makes the stash push fail: O5 before any change, and the lock keeps its bytes', () => {
+    addFailureWork(false)
+    const lock = join(repo.dir, '.git/index.lock')
+    write(repo, '.git/index.lock', '')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO5(run, before, snapshot(repo))
+    expect(readFileSync(lock)).toEqual(Buffer.alloc(0))
+    unlinkSync(lock)
+  }, TIMEOUT)
+})
+
+const REST = `platform/ :(exclude)${REDIRECTS}`
+/** The hook's stash push, as the git wrapper matches it. */
+const PUSH = `-c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m pre-commit: stash unstaged changes -- ${REST}`
+
+describe('pre-commit.sh: a git command that fails where set -e cannot see it (O5)', () => {
+  it.each([
+    ['the stash push, which saved its entry and then exits 1', PUSH, 'run-then-fail'],
+    ['the stash push, which fails before saving anything (the teacher’s entry stays on top of refs/stash)', PUSH, 'fail'],
+    ['the untracked-directory listing (W4)', 'ls-files -z --others --exclude-standard --directory --no-empty-directory -- platform/challenge/ platform/zh-TW/challenge/', 'fail'],
+    ['the deleted-paths listing', `diff -z --name-only --diff-filter=D -- ${REST}`, 'fail'],
+    ['the raw-copy listing of modified files', `diff -z --name-only --diff-filter=MT -- ${REST}`, 'fail'],
+    ['the raw-copy listing of untracked files', `ls-files -z --others --exclude-standard -- ${REST}`, 'fail'],
+    ['the check for unstaged files under platform/', `diff --quiet -- ${REST}`, 'fail'],
+    ['refs/stash read before the push', 'rev-parse -q --verify refs/stash', 'fail'],
+    ['the validator’s ACMRD list', 'diff --cached --name-only -z --diff-filter=ACMRD -- platform/challenge/', 'fail'],
+    ['the English index slugs’ git ls-files', 'ls-files -z -- platform/challenge/', 'fail'],
+    ['the Traditional Chinese index slugs’ git ls-files', 'ls-files -z -- platform/zh-TW/challenge/', 'fail'],
+  ] as const)('%s: O5, exact', (_name, args, mode) => {
+    addFailureWork(false)
+    // A challenge file in the validator's list, so the ACMRD listing has a path to give.
+    const wrapper = gitWrapper(repo, args, mode)
+    const before = snapshot(repo)
+
+    const run = runHook(repo, wrapper.env)
+
+    expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expectO5(run, before, snapshot(repo))
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a signal while the stash push runs (O5)', () => {
+  it('SIGINT to the process group once the push saved its entry, before the hook recorded it: the hook still restores and drops it, O5, exact', async () => {
+    addFailureWork(false)
+    const wrapper = gitWrapper(repo, PUSH, 'run-then-block')
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], wrapper.env)
+    await waitForFile(wrapper.blocked)
+    // The push has saved its entry and taken the untracked file out of the working tree.
+    expect(stashList(repo)).toHaveLength(before.stash.length + 1)
+    expect(existsSync(join(repo.dir, UNTRACKED))).toBe(false)
+    group.kill('SIGINT')
+    const run = await group.done()
+
+    expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(run.leftover).toBe(false)
+    expect(run.status, run.stderr).toBe(130)
+    expectO5(run, before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('SIGTERM to the hook alone just before git runs the push: git completes it, then the hook restores and drops the entry, O5, exact', async () => {
+    addFailureWork(false)
+    const wrapper = gitWrapper(repo, PUSH, 'block')
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], wrapper.env)
+    await waitForFile(wrapper.blocked)
+    group.killLeader('SIGTERM')
+    wrapper.release()
+    const run = await group.done()
+
+    expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(run.leftover).toBe(false)
+    expect(run.status, run.stderr).toBe(143)
+    expectO5(run, before, snapshot(repo))
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a stash push that stops after it stored its entry and changed the index (O7, W9)', () => {
+  it.each([
+    ['apply --index -R', 'its git add has staged the unstaged and untracked files'],
+    ['checkout --no-overlay', 'its git apply -R has put the index back to HEAD'],
+  ] as const)('SIGINT while git’s own `git %s` blocks (%s): the hook puts the files back, keeps its entry, and W9’s printed command puts the index back', async (child) => {
+    addFailureWork(false)
+    const blocker = gitChildBlocker(repo, child)
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], blocker.env)
+    await waitForFile(blocker.blocked)
+    // git stored the entry before it changed the index.
+    expect(stashList(repo)).toHaveLength(before.stash.length + 1)
+    expect(snapshot(repo).index).not.toEqual(before.index)
+    group.kill('SIGINT')
+    const run = await group.done()
+
+    expect(blocker.matched(), 'blocker never matched').toBe(true)
+    expect(run.leftover).toBe(false)
+    expect(run.status, run.stderr).toBe(130)
+    const id = expectW9(run)
+    const after = snapshot(repo)
+    expect(ids(after)).toEqual([id, ...ids(before)])
+    expect(after.files).toEqual(before.files)
+    expect(after.index).not.toEqual(before.index)
+    // The command's pathspecs start at the top level, so it works in a subdirectory.
+    runPrintedRestore(run, join(repo.dir, 'platform/challenge/door'))
+    expectAllBack(before)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: never restores into a missing index (AC-23 constraint, H47)', () => {
+  it.each([
+    ['git stash apply', null],
+    ['the git restore commands W9 prints, run at the top level', ''],
+    ['the git restore commands W9 prints, run in platform/challenge/door/', 'platform/challenge/door'],
+  ] as const)('when the index GIT_INDEX_FILE names is gone at SIGINT, the hook keeps its entry (O7 with W9), writes no index there, and %s brings the files back', async (_remedy, cwd) => {
+    addFailureWork(false)
+    const lock = join(repo.dir, '.git/index.lock')
+    copyFileSync(join(repo.dir, '.git/index'), lock)
+    const marker = join(markerDir(repo), 'generator')
+    blockingGenerator(repo, { marker, removeIndexFile: true })
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'bash', [HOOK], { GIT_INDEX_FILE: lock })
+    await waitForFile(marker)
+    expect(existsSync(lock)).toBe(false)
+    group.kill('SIGINT')
+    const run = await group.done()
+
+    expect(run.leftover).toBe(false)
+    expect(existsSync(lock)).toBe(false)
+    const id = expectO7(run, before, snapshot(repo), 'SIGINT')
+    expect(entryUntracked(id)).toEqual([UNTRACKED])
+    if (cwd === null) {
+      expectApplied(id, before)
+    } else {
+      // The entry holds tracked changes the working tree lacks, as after an
+      // interrupted `git commit -p`; the printed commands bring them back too,
+      // from any directory of the repository.
+      runPrintedRestore(run, join(repo.dir, cwd))
+      expectAllBack(before)
+    }
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: SIGINT to an interrupted git commit -a (H47)', () => {
+  it('H47: ends in O5 or O7; HEAD and .git/index as before, no index.lock left, and every earlier byte in the working tree or in the entry W9 names, and W9’s printed commands put every file back', async () => {
+    addFailureWork(false)
+    const marks = markerDir(repo)
+    const marker = join(marks, 'generator')
+    const record = join(marks, 'record.json')
+    blockingGenerator(repo, { marker, record })
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+
+    const group = startGroup(repo, 'git', ['commit', '-a', '-q', '-m', 'interrupted'])
+    await waitForFile(marker)
+    expect(readBlockingRecord(record).indexFile).toBe(join(repo.dir, '.git/index.lock'))
+    group.kill('SIGINT')
+    const run = await group.done()
+
+    expect(run.leftover).toBe(false)
+    expectFailed(run, 'SIGINT')
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expect(existsSync(join(repo.dir, '.git/index.lock'))).toBe(false)
+    const after = snapshot(repo)
+    expect(after.index).toEqual(before.index)
+    if (run.stderr.includes('git stash apply')) {
+      console.log('H47 took O7')
+      const id = expectW9(run)
+      expect(ids(after)).toEqual([id, ...ids(before)])
+      for (const [path, bytes] of before.files) {
+        if (after.files.get(path) === bytes) continue
+        const content = bytes.slice(2)
+        const inEntry = [`${id}:${path}`, `${id}^3:${path}`].some((rev) => blobBytes(rev)?.toString('base64') === content)
+        expect(inEntry, `${path} is neither back nor in ${id}`).toBe(true)
+      }
+      // W9's remedy for a missing index, run as printed, puts every file back
+      // and leaves the index alone.
+      runPrintedRestore(run)
+      expectAllBack(before)
+    } else {
+      console.log('H47 took O5')
+      expectNothingChanged(before, after)
+    }
+  }, TIMEOUT)
+})
+
+// ─── A first commit (H27, H28) ──────────────────────────────────────────────
+
+/** W7: the hook, O6. */
+function expectW7(run: Run): void {
+  expect(run.stderr).toContain('first commit')
+  expect(run.stderr).toContain('git add')
+}
+
+function expectNoHead(): void {
+  expect(gitRun(repo, ['rev-parse', '-q', '--verify', 'HEAD']).status).not.toBe(0)
+}
+
+describe('pre-commit.sh: a first commit (H27, H28)', () => {
+  let first: Fixture
+
+  beforeAll(() => {
+    first = buildFirstCommitFixture()
+  }, TIMEOUT)
+
+  afterAll(() => {
+    if (first) removeRepo(first)
+  })
+
+  beforeEach(() => {
+    removeRepo(repo)
+    repo = cloneFixture(first)
+  })
+
+  const unstaged = {
+    'an unstaged edit to a staged file under platform/': () => write(repo, 'platform/public/other.txt', 'other, unstaged\n'),
+    'an untracked file under platform/': () => write(repo, UNTRACKED, 'untracked notes\n'),
+  }
+
+  for (const [name, addWork] of Object.entries(unstaged)) {
+    it(`H27: with no HEAD and ${name}, a direct run ends in O6 with W7, before the validator or the generator runs`, () => {
+      git(repo, ['add', '.'])
+      addWork()
+      const validator = validatorLog()
+      const generator = generatorLog()
+      const before = snapshot(repo)
+      expect(before.stash).toEqual([])
+
+      const run = runHook(repo)
+
+      expect(run.status, run.stderr).toBe(1)
+      expectW7(run)
+      expectNothingChanged(before, snapshot(repo))
+      expectNoHead()
+      expect(readRecord(validator)).toEqual([])
+      expect(readRecord(generator)).toEqual([])
+    }, TIMEOUT)
+
+    it(`H27: with no HEAD and ${name}, git commit -m is refused with W7 and makes no commit`, () => {
+      git(repo, ['add', '.'])
+      addWork()
+      const before = snapshot(repo)
+
+      const run = commit(repo, ['-m', 'first'])
+
+      expect(run.status).toBe(1)
+      expectW7(run)
+      expectNothingChanged(before, snapshot(repo))
+      expectNoHead()
+    }, TIMEOUT)
+  }
+
+  it('H28: with no HEAD and everything under platform/ staged, a direct run ends in O2: the expected _redirects staged as added, with no W3', () => {
+    git(repo, ['add', '.'])
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(['/c/001 /challenge/test-chall/', '/c/:slug /challenge/:slug/', '/zh/c/:slug /zh-TW/challenge/:slug/'])
+    expect(git(repo, ['diff', '--cached', '--name-status', '--', REDIRECTS])).toBe(`A\t${REDIRECTS}\n`)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H28: through git commit -m, the root commit’s tree holds the expected _redirects', () => {
+    git(repo, ['add', '.'])
+    const expected = expectedRedirects(repo)
+
+    const run = commit(repo, ['-q', '-m', 'first'])
+
+    expect(run.status, run.stderr).toBe(0)
+    expect(gitRun(repo, ['rev-parse', '-q', '--verify', 'HEAD^']).status).not.toBe(0)
+    expect(git(repo, ['show', `HEAD:${REDIRECTS}`])).toBe(expected)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H28 boundary: an untracked file outside platform/ still gives O2, and stays byte-identical and untracked', () => {
+    git(repo, ['add', '.'])
+    write(repo, 'notes outside.txt', 'outside platform\n')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toEqual(['?? "notes outside.txt"'])
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H28 boundary: when only an unstaged _redirects differs, the hook needs no stash: O2, the working tree’s file replaced (D3), with W3', () => {
+    git(repo, ['add', '.'])
+    write(repo, REDIRECTS, '# a hand-made file\n')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toEqual([`?? ${REDIRECTS}`])
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expect(stagedRedirects(repo)).toBe(expected)
+    const after = snapshot(repo)
+    expect(withoutPaths(after.files, [REDIRECTS])).toEqual(withoutPaths(before.files, [REDIRECTS]))
+    expect(read(repo, REDIRECTS)).toBe(expected)
+    expect(after.untracked).toEqual([])
+    expect(after.stash).toEqual([])
+    expect(run.stderr).toMatch(W3)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a run with nothing to stash (H42)', () => {
+  it('H42: only _redirects staged with a hand edit and unstaged with another: O2 with W3, no entry of the hook’s own, and the teacher’s entry neither applied nor dropped', () => {
+    const log = join(repo.base, 'generator.log')
+    recordScript(repo, 'generate-redirects.ts', log, true)
+    const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
+    write(repo, REDIRECTS, `${head}# staged edit\n`)
+    git(repo, ['add', REDIRECTS])
+    write(repo, REDIRECTS, `${head}# unstaged edit\n`)
+    const expected = expectedRedirects(repo)
+    expect(expected).toBe(head)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    expect(run.stderr).toMatch(W3)
+    const during = readRecord(log)
+    expect(during).toHaveLength(1)
+    expect(during[0].stash).toEqual(ids(before))
+    expect(read(repo, 'platform/public/other.txt')).toBe('other\n')
+    expect(read(repo, REDIRECTS)).not.toContain('# stashed by the teacher')
+  }, TIMEOUT)
+})
+
+// ─── macOS's /bin/bash 3.2 (H45) ────────────────────────────────────────────
+
+/**
+ * H34 (T-0035's row), the scenario only: a stale `_redirects` committed with
+ * `--no-verify` (door's two rules removed), repaired with the generator's own
+ * command (the fixture has no package.json, so `pnpm redirects:generate` runs
+ * as `node --experimental-strip-types scripts/generate-redirects.ts`), then
+ * `git add` and `git commit` with the given environment.
+ */
+function expectH34(env: NodeJS.ProcessEnv): void {
+  const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
+  const stale = head.split('\n').filter((l) => !l.includes('/challenge/door/') && !l.includes('/zh-TW/challenge/door/')).join('\n')
+  expect(rulesOf(stale)).toEqual(FIXTURE_RULES.filter((r) => !r.includes('door')))
+  write(repo, REDIRECTS, stale)
+  git(repo, ['add', REDIRECTS])
+  git(repo, ['commit', '-q', '--no-verify', '-m', 'a stale _redirects'])
+  const gen = spawnSync('node', ['--experimental-strip-types', 'scripts/generate-redirects.ts'], { cwd: repo.dir, env: repo.env, encoding: 'utf8' })
+  expect(gen.status, gen.stderr).toBe(0)
+  git(repo, ['add', REDIRECTS])
+  const expected = expectedRedirects(repo)
+
+  const run = commit(repo, ['-q', '-m', 'repair _redirects'], env)
+
+  expect(run.status, run.stderr).toBe(0)
+  expect(git(repo, ['show', `HEAD:${REDIRECTS}`])).toBe(expected)
+  expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+}
+
+const BASH_3 = spawnSync('/bin/bash', ['-c', 'echo ${BASH_VERSINFO[0]}'], { encoding: 'utf8' }).stdout?.trim() === '3'
+
+describe.skipIf(!BASH_3)('pre-commit.sh: under macOS’s /bin/bash 3.2 (H45)', () => {
+  const env = (): NodeJS.ProcessEnv => ({ PATH: `/bin:${repo.env.PATH ?? ''}` })
+
+  function expectBinBash(): void {
+    const r = spawnSync('sh', ['-c', 'command -v bash; bash -c \'echo ${BASH_VERSINFO[0]}\''], { env: { ...repo.env, ...env() }, encoding: 'utf8' })
+    expect(r.stdout).toBe('/bin/bash\n3\n')
+  }
+
+  it('H45: H02 and H14 with /bin/bash running the hook directly give their outcome', () => {
+    expectH02H14('/bin/bash')
+  }, TIMEOUT)
+
+  it('H45: H07 through git commit with /bin first on PATH gives its outcome', () => {
+    expectBinBash()
+    expectH07(env())
+  }, TIMEOUT)
+
+  it('H45: H34 through git commit with /bin first on PATH gives its outcome', () => {
+    expectBinBash()
+    expectH34(env())
   }, TIMEOUT)
 })

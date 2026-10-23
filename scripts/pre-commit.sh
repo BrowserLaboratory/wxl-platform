@@ -6,6 +6,11 @@
 # itself (added, copied, modified, renamed, deleted or changed in type). Any
 # other commit passes through untouched.
 #
+# A first commit (no HEAD) that triggers is refused before any change when
+# something under platform/ other than _redirects is unstaged or untracked
+# (O6): git cannot stash before the first commit, so the message asks for
+# every change under platform/ to be staged with git add.
+#
 # When it triggers:
 # 1. Puts the staged snapshot in the working tree under platform/: every other
 #    unstaged change and untracked file under platform/ goes into a stash entry
@@ -27,13 +32,32 @@
 #    succeeded. Afterwards the working tree's _redirects equals the staged one,
 #    even if it held an unstaged change before (D3).
 # 6. On every exit, puts the stashed files back byte for byte, and drops the
-#    hook's own entry only after that restore completed. git stores a stashed
+#    hook's own entry only after that restore completed and the index under
+#    platform/ is still the one the entry recorded. git stores a stashed
 #    file through the repository's attributes (`eol=lf` turns CRLF into LF), so
 #    each stashed regular file is put back from a raw copy taken before. On every
 #    exit other than O2 where the index's _redirects did not change, the working
 #    tree's _redirects keeps the bytes it had before, unless an O5 came during
 #    step 5's git add or later. The restore neither removes nor writes a path with a
 #    symbolically linked directory above it: it skips and names it on stderr.
+# 7. Every way the run ends goes through that restore (O5). A failed git
+#    command ends the run under `set -e`; each git listing is written to a file
+#    first, since a failure inside `< <( )` would go unseen. SIGINT, SIGTERM
+#    and SIGHUP end it with 128 + the signal's number once the foreground
+#    command, which got the same signal, has ended. A run that ends once the
+#    stash push has started, before the hook recorded its entry, reads
+#    refs/stash again at the end and claims the entry it gained. While
+#    restoring, the hook ignores INT, TERM and HUP. When the restore fails, the
+#    entry stays and the hook prints its id and `git stash apply <id>` (O7). It
+#    never restores into a missing index: when the file GIT_INDEX_FILE names is
+#    gone (git removes its index.lock when an interrupted `git commit -a`
+#    ends), the entry stays the same way, and W9 also prints the `git restore`
+#    commands that put the files back without touching the index. A push that
+#    stopped after storing its entry can leave the index under platform/
+#    changed; the hook then puts the files back, keeps the entry, and W9 prints
+#    the `git restore --staged` command that puts the index back. The hook
+#    stages only _redirects, so it runs neither command itself. Their
+#    pathspecs start at the top level, so they work in any directory.
 
 set -euo pipefail
 
@@ -92,9 +116,40 @@ EOF
   exit 1
 fi
 
+# True when something under platform/ other than _redirects is unstaged or
+# untracked: what the hook stashes. A git failure ends the run (O5).
+rest_dirty() {
+  local differs=0 untracked
+  git diff --quiet -- "${REST[@]}" || differs=$?
+  case $differs in
+    0) ;;
+    1) return 0 ;;
+    *) exit "$differs" ;;
+  esac
+  untracked=$(git ls-files --others --exclude-standard -- "${REST[@]}") || exit
+  [ -n "$untracked" ]
+}
+
+# ── A first commit (O6) ─────────────────────────────────────────────────────
+# git cannot stash before the first commit. With no HEAD, the hook refuses
+# before any change when something under platform/ other than _redirects is
+# unstaged or untracked; an unstaged _redirects alone needs no stash (D3).
+if ! git rev-parse -q --verify HEAD >/dev/null && rest_dirty; then
+  cat >&2 <<'EOF'
+[pre-commit] ✗ This is the repository's first commit, and something under platform/ is
+[pre-commit]   unstaged or untracked. git cannot stash before the first commit, so every
+[pre-commit]   change under platform/ must be staged for it: stage it with git add (or remove
+[pre-commit]   what should stay out), then run git commit again. Nothing was changed.
+EOF
+  exit 1
+fi
+
 TOP=$(git rev-parse --show-toplevel)
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/wxl-pre-commit.XXXXXX")
 OWN_ENTRY=""
+# Set once the stash push may have started, with refs/stash as it was before.
+PUSH_STARTED=false
+before=""
 WROTE=false
 STAGED=false
 WT_EXISTED=false
@@ -162,24 +217,107 @@ drop_entry() {
   done
 }
 
+# W9, for O7: the entry stays, and the message says how to apply it.
+keep_entry() {
+  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: $1. They are kept in stash entry $OWN_ENTRY; once the cause is fixed, run: git stash apply $OWN_ENTRY" >&2
+}
+
+# The pathspecs of the commands W9 prints: everything under platform/ except
+# _redirects, read from the top level (`:(top)`) whatever directory the
+# teacher runs them in.
+PRINTED_REST="':(top)platform/' ':(top,exclude)$REDIRECTS'"
+
+# W9 for a missing index. The files git commit had staged still hold those
+# changes, so `git stash apply` can refuse ("would be overwritten"). The
+# commands printed put every file back from the entry without touching the
+# index: tracked files from its working-tree commit, untracked files from its
+# third parent. They overwrite what is there, which the message says.
+keep_entry_without_index() {
+  local remedy="git restore --source=$OWN_ENTRY --worktree -- $PRINTED_REST"
+  if git rev-parse -q --verify "$OWN_ENTRY^3" >/dev/null 2>&1; then
+    remedy="$remedy && git restore --overlay --source=$OWN_ENTRY^3 --worktree -- ':(top)platform/'"
+  fi
+  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: the index this commit ran on is gone (git removes it when an interrupted commit ends). They are kept in stash entry $OWN_ENTRY. git stash apply $OWN_ENTRY can refuse here, since the files the commit had staged still hold those changes. The commands below overwrite the files under platform/ with the entry's, so run them before you change anything there; to put them back without touching the index, run: $remedy" >&2
+}
+
+# True when the index under platform/ is the one the entry recorded (its index
+# commit). git stash push with a pathspec stores the entry first, then runs
+# `git add`, `git apply --index -R` and `git checkout --no-overlay` (git
+# 2.54.0), so a push stopped between those steps leaves the index changed. A
+# failed comparison counts as a change.
+index_as_stashed() {
+  git diff --cached --quiet "$OWN_ENTRY^2" -- "${REST[@]}"
+}
+
+# W9 when the files are back but the index is not: the entry's index commit
+# holds what was staged.
+keep_entry_for_index() {
+  echo "[pre-commit] ✗ Could not put your staged changes under platform/ back: the stash push stopped partway and changed the index. Your unstaged changes and untracked files are back in the working tree, so git stash apply $OWN_ENTRY is not needed; stash entry $OWN_ENTRY keeps what was staged. The command below overwrites what is staged under platform/, so run it before you stage anything there; to put the index back without touching the working tree, run: git restore --staged --source=$OWN_ENTRY^2 -- $PRINTED_REST" >&2
+}
+
 finish() {
   local status=$?
+  # Nothing interrupts the restore: INT, TERM and HUP are ignored from here
+  # on, and the processes the restore starts inherit that.
+  trap '' INT TERM HUP
   set +e
+  # A signal, or a failed read of refs/stash, can end the run after the push
+  # started and before the entry was recorded. The entry refs/stash gained
+  # across the push is still the hook's own; refs/stash unread leaves none.
+  if [ -z "$OWN_ENTRY" ] && [ "$PUSH_STARTED" = true ]; then
+    local top
+    top=$(git rev-parse -q --verify refs/stash 2>/dev/null) || top=""
+    if [ -n "$top" ] && [ "$top" != "$before" ]; then OWN_ENTRY=$top; fi
+  fi
   if [ "$WROTE" = true ] && [ "$STAGED" = false ]; then
     if [ "$WT_EXISTED" = true ]; then cp "$WORK/saved" "$REDIRECTS"; else rm -f "$REDIRECTS"; fi
   fi
   if [ -n "$OWN_ENTRY" ]; then
-    if restore_entry; then
-      drop_entry
-    else
-      echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back. They are kept in stash entry $OWN_ENTRY; once the cause is fixed, run: git stash apply $OWN_ENTRY" >&2
+    # The hook never restores into a missing index: git removes its
+    # index.lock when an interrupted `git commit -a` ends, and the commit the
+    # hook ran for is gone with it. The entry then stays, as when the restore
+    # fails, and W9 says how to apply it.
+    if [ -n "${GIT_INDEX_FILE+set}" ] && [ ! -e "$GIT_INDEX_FILE" ]; then
+      keep_entry_without_index
       [ "$status" -ne 0 ] || status=1
+    elif ! restore_entry; then
+      keep_entry "the restore failed (see git's message above)"
+      [ "$status" -ne 0 ] || status=1
+    elif ! index_as_stashed; then
+      # The entry's index commit is then the only record of what was staged.
+      keep_entry_for_index
+      [ "$status" -ne 0 ] || status=1
+    else
+      drop_entry
     fi
   fi
   rm -rf "$WORK"
   exit "$status"
 }
+# A signal ends the run through finish with 128 + its number, the same under
+# bash 3.2 and bash 5. bash runs the trap once the foreground command (the
+# generator, or git), which got the same signal, has ended.
+on_signal() {
+  trap '' INT TERM HUP
+  exit "$1"
+}
 trap finish EXIT
+trap 'on_signal 129' HUP
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+
+# The commit id refs/stash names, or nothing when there is no stash. Any other
+# failure ends the run: an unread refs/stash would make the teacher's newest
+# entry look like the hook's own.
+stash_top() {
+  local id status=0
+  id=$(git rev-parse -q --verify refs/stash) || status=$?
+  case $status in
+    0) printf '%s\n' "$id" ;;
+    1) ;;
+    *) exit "$status" ;;
+  esac
+}
 
 # ── The versions of _redirects before the hook ──────────────────────────────
 # Each is a blob id, or `none` when absent. An absent version is HEAD's when
@@ -196,6 +334,9 @@ fi
 
 # Untracked challenge directories directly under either watched tree, for W4.
 # Ignored directories are not listed.
+# Each git listing below is written to a file first: a failure inside `< <( )`
+# would escape `set -e`, and the loop would read an empty list.
+git ls-files -z --others --exclude-standard --directory --no-empty-directory -- platform/challenge/ platform/zh-TW/challenge/ > "$WORK/untracked-dirs"
 UNTRACKED_DIRS=""
 while IFS= read -r -d '' path; do
   rest=${path#platform/zh-TW/challenge/}
@@ -204,7 +345,7 @@ while IFS= read -r -d '' path; do
     "$path" | */*/) ;;
     */) UNTRACKED_DIRS="$UNTRACKED_DIRS$path"$'\n' ;;
   esac
-done < <(git ls-files -z --others --exclude-standard --directory --no-empty-directory -- platform/challenge/ platform/zh-TW/challenge/)
+done < "$WORK/untracked-dirs"
 
 # ── Stash everything else under platform/ ───────────────────────────────────
 # Files the index adds (HEAD has no file at the path, perhaps a directory) and
@@ -213,30 +354,37 @@ done < <(git ls-files -z --others --exclude-standard --directory --no-empty-dire
 # a file is recorded, and git's restore removes it. git also lists a path
 # behind a symbolic link as deleted.
 : > "$WORK/deleted"
+git diff -z --name-only --diff-filter=D -- "${REST[@]}" > "$WORK/deleted-all"
 while IFS= read -r -d '' path; do
   [ "$(git cat-file -t "HEAD:$path" 2>/dev/null)" = blob ] || printf '%s\0' "$path" >> "$WORK/deleted"
-done < <(git diff -z --name-only --diff-filter=D -- "${REST[@]}")
+done < "$WORK/deleted-all"
 : > "$WORK/copied"
-if ! git diff --quiet -- "${REST[@]}" || [ -n "$(git ls-files --others --exclude-standard -- "${REST[@]}")" ]; then
+if rest_dirty; then
   # A raw copy of every regular file the stash takes, modified or untracked,
   # for the restore. Symbolic links are stored by git as they are.
+  git diff -z --name-only --diff-filter=MT -- "${REST[@]}" > "$WORK/to-copy"
+  git ls-files -z --others --exclude-standard -- "${REST[@]}" >> "$WORK/to-copy"
   while IFS= read -r -d '' path; do
     if [ -f "$path" ] && [ ! -L "$path" ]; then
       mkdir -p "$WORK/raw/$(dirname "$path")"
       cp -p -- "$path" "$WORK/raw/$path"
       printf '%s\0' "$path" >> "$WORK/copied"
     fi
-  done < <(git diff -z --name-only --diff-filter=MT -- "${REST[@]}"; git ls-files -z --others --exclude-standard -- "${REST[@]}")
-  before=$(git rev-parse -q --verify refs/stash || true)
+  done < "$WORK/to-copy"
+  before=$(stash_top)
   # core.safecrlf=false: the conversion is undone by the raw copy, so git neither
   # warns about it nor, when the setting is true, refuses it.
-  git -c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m "pre-commit: stash unstaged changes" -- "${REST[@]}"
-  after=$(git rev-parse -q --verify refs/stash || true)
-  # The hook's own entry is the one refs/stash gained; a push that saved
-  # nothing leaves refs/stash alone, and then there is nothing to restore.
+  pushed=0
+  PUSH_STARTED=true
+  git -c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m "pre-commit: stash unstaged changes" -- "${REST[@]}" || pushed=$?
+  after=$(stash_top)
+  # The hook's own entry is the one refs/stash gained, even when the push then
+  # reported a failure; a push that saved nothing leaves refs/stash alone, and
+  # then there is nothing to restore.
   if [ -n "$after" ] && [ "$after" != "$before" ]; then
     OWN_ENTRY=$after
   fi
+  [ "$pushed" -eq 0 ] || exit "$pushed"
 fi
 
 # ── Validate ────────────────────────────────────────────────────────────────
@@ -245,10 +393,11 @@ fi
 # is built with a `read` loop (bash 3.2-compatible, unlike `mapfile`) and the
 # validator is skipped when it is empty: bash 3.2 under `set -u` rejects the
 # expansion of an empty array.
+git diff --cached --name-only -z --diff-filter=ACMRD -- platform/challenge/ > "$WORK/validate"
 VALIDATE=()
 while IFS= read -r -d '' path; do
   VALIDATE+=("$path")
-done < <(git diff --cached --name-only -z --diff-filter=ACMRD -- platform/challenge/)
+done < "$WORK/validate"
 if [ ${#VALIDATE[@]} -gt 0 ]; then
   validation=0
   node --experimental-strip-types scripts/challenge-lint-staged.ts "${VALIDATE[@]}" || validation=$?
@@ -262,6 +411,8 @@ fi
 # runs on, as the generator's index slugs do, and are compared as whole
 # strings in plain arrays (bash 3.2 has no associative arrays). Neither array
 # is expanded when empty: bash 3.2 under `set -u` rejects that.
+# index_slugs <tree> <file> reads the tree's `git ls-files -z` from <file>, which
+# the caller writes at the top level, where `set -e` sees git fail.
 index_slugs() {
   local path rest
   while IFS= read -r -d '' path; do
@@ -270,10 +421,12 @@ index_slugs() {
       */*/*) ;;
       */index.md) printf '%s\0' "${rest%/index.md}" ;;
     esac
-  done < <(git ls-files -z -- "$1")
+  done < "$2"
 }
+git ls-files -z -- platform/challenge/ > "$WORK/ls-en"
+git ls-files -z -- platform/zh-TW/challenge/ > "$WORK/ls-zh"
 EN_SLUGS=()
-while IFS= read -r -d '' slug; do EN_SLUGS+=("$slug"); done < <(index_slugs platform/challenge/)
+while IFS= read -r -d '' slug; do EN_SLUGS+=("$slug"); done < <(index_slugs platform/challenge/ "$WORK/ls-en")
 ORPHANS=()
 while IFS= read -r -d '' slug; do
   found=false
@@ -283,7 +436,7 @@ while IFS= read -r -d '' slug; do
     done
   fi
   [ "$found" = true ] || ORPHANS+=("$slug")
-done < <(index_slugs platform/zh-TW/challenge/)
+done < <(index_slugs platform/zh-TW/challenge/ "$WORK/ls-zh")
 if [ ${#ORPHANS[@]} -gt 0 ]; then
   for slug in "${ORPHANS[@]}"; do
     echo "[pre-commit] ✗ platform/zh-TW/challenge/$slug/ is a Traditional Chinese brief, but the index holds no English challenge platform/challenge/$slug/ (its index.md is not staged), so CI would fail this commit." >&2
