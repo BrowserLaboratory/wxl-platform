@@ -383,3 +383,79 @@ describe.each(['short', 'page'] as const)('ShortLinkShare copy behaviour in %s m
     }
   })
 })
+
+// D4, L17, L21: a plain primary click on the URL text selects it and does not navigate, in the
+// list's row anchor as in the nav; a click with a modifier key, or with another button, is left to
+// the browser, so in the list the row's link opens as a link does. The control is mounted alone
+// and inside an anchor, the way the list holds it.
+describe.each([
+  ['short', 'en', 1, undefined],
+  ['page', 'en', 1, 'door-is-open'],
+  ['page', 'zh-TW', 42, 'selected-excerpts'],
+] as const)('ShortLinkShare URL text clicks in %s mode (%s, n = %i, %s)', (m, locale, n, slug) => {
+  beforeEach(() => {
+    mode.value = m
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function mountIn(host: 'alone' | 'anchor') {
+    const share = () => h(ShortLinkShare, { number: n, slug, locale })
+    const Host = defineComponent({
+      render: () => (host === 'anchor' ? h('a', { href: '#elsewhere' }, [share()]) : h('div', [share()])),
+    })
+    return mount(Host, { attachTo: document.body, global: { plugins: [i18nFor(locale)] } })
+  }
+
+  function clickText(wrapper: ReturnType<typeof mountIn>, init: MouseEventInit = {}) {
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init })
+    wrapper.find('[data-short-link]').element.dispatchEvent(event)
+    return event
+  }
+
+  it.each(['alone', 'anchor'] as const)('prevents a plain primary click and does not copy, %s (L17)', async (host) => {
+    const writeText = stubClipboard('resolve')
+    const wrapper = mountIn(host)
+    try {
+      const before = location.href
+      const event = clickText(wrapper)
+      await flushPromises()
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(writeText).not.toHaveBeenCalled()
+      expect(wrapper.find('[data-copy-status]').text()).toBe('')
+      expect(location.href).toBe(before)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it.each([
+    ['Ctrl', { ctrlKey: true }],
+    ['Meta', { metaKey: true }],
+    ['Shift', { shiftKey: true }],
+    ['Alt', { altKey: true }],
+    ['Ctrl and Shift', { ctrlKey: true, shiftKey: true }],
+    ['no modifier, the middle button', { button: 1 }],
+  ] as const)('leaves a click with %s to the browser (L21)', async (_label, init) => {
+    for (const host of ['alone', 'anchor'] as const) {
+      const writeText = stubClipboard('resolve')
+      const wrapper = mountIn(host)
+      try {
+        // Stop the anchor's own navigation after the assertion's point of interest: happy-dom would
+        // otherwise follow `#elsewhere`. A listener on the anchor runs after the URL text's.
+        let seenPrevented: boolean | undefined
+        wrapper.element.addEventListener('click', (e: Event) => { seenPrevented = e.defaultPrevented; e.preventDefault() })
+        const event = clickText(wrapper, init)
+        await flushPromises()
+
+        expect(seenPrevented, host).toBe(false)
+        expect(writeText, host).not.toHaveBeenCalled()
+        expect(event.button).toBe((init as MouseEventInit).button ?? 0)
+      } finally {
+        wrapper.unmount()
+      }
+    }
+  })
+})

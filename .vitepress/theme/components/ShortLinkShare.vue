@@ -1,3 +1,35 @@
+<script lang="ts">
+/**
+ * A plain primary click on a URL text selects the whole text, for copying by hand, and does nothing
+ * else: inside the list's row anchor it does not open the challenge (D4). A click with Ctrl, Meta,
+ * Shift or Alt held, or with another button, is left to the browser, so in the list it opens the
+ * row's link as on any link (L21). Both link modes behave the same.
+ *
+ * Listened for on `window`, in the capture phase, and installed when this module is first
+ * evaluated, not on the element. VitePress's router takes a click on an inbound link in its own
+ * capture-phase listener on `window`, and skips one whose default is already prevented. That
+ * listener is added when the app is created, after the theme's modules have been evaluated, so this
+ * one runs before it; a listener on the element would run after the router had already navigated.
+ */
+function selectUrlText(event: MouseEvent): void {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  const text = event.target instanceof Element ? event.target.closest('[data-short-link]') : null
+  if (!text) return
+  event.preventDefault()
+  const range = document.createRange()
+  range.selectNodeContents(text)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+}
+
+const INSTALLED = '__wxlUrlTextClick'
+if (typeof window !== 'undefined' && !(INSTALLED in window)) {
+  Object.defineProperty(window, INSTALLED, { value: true })
+  window.addEventListener('click', selectUrlText, { capture: true })
+}
+</script>
+
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -56,7 +88,9 @@ const CONFIRMATION_MS = 2000
 const status = ref('')
 /**
  * Whether the status showing is the confirmation. It is one short word, kept whole on one line
- * so the URL text gives up the width instead; the failure message is long and may wrap.
+ * beside the button, where the URL text gives up width for it down to its 6ch minimum (and the
+ * row wraps it below where even that is not enough); the failure message is long, takes a line
+ * of its own and may wrap.
  */
 const confirmed = ref(false)
 let revert: ReturnType<typeof setTimeout> | undefined
@@ -81,23 +115,36 @@ async function copy(): Promise<void> {
 }
 
 onUnmounted(() => clearTimeout(revert))
+
 </script>
 
 <template>
-  <span v-if="link" class="inline-flex items-center gap-1 min-w-0 max-w-full">
+  <!--
+    `display: contents`: the URL text, the button and the status are laid out as items of the
+    caller's own flex row (the list's line 3, the nav's desktop row and its mobile row), not inside
+    a box of their own. That is what lets the row see the URL text's 6ch minimum and its full width
+    at once, which a box around them cannot pass on: its minimum would be the whole URL, since the
+    text never wraps. The caller's row therefore has to be a flex row that wraps (see below), with
+    the gap it wants between the URL text and the button.
+  -->
+  <span v-if="link" class="contents">
     <!--
-      Selectable text, not a control. In the list this sits inside a row that is
-      itself an anchor, so the copy button stops the click; the text is left
-      alone because selecting it is the fallback path.
+      Selectable text, not a control. In the list this sits inside a row that is itself an anchor,
+      so the copy button stops the click, and a plain primary click on the text selects it, in both
+      link modes, without opening the challenge (D4; `selectUrlText` above). A click with a
+      modifier key is left to the browser (L21).
 
-      A box that never wraps: a page URL is long, so where it does not fit it is
-      cut with an ellipsis rather than widening the row, and the title holds the
-      whole copied URL for hover.
+      A box that never wraps (D2: one rule in the list and the nav): a URL is long, a page URL
+      especially, so where it does not fit it is cut with an ellipsis rather than widening the row,
+      and the title holds the whole copied URL for hover. It starts from nothing (`basis-0`) and grows
+      to its full width (`max-w-max`) out of whatever its row leaves, but never gets narrower than six
+      `0` characters of its own font (D14), in every state. In the nav the title takes the row's room
+      first and the URL text yields down to that minimum (D7, MergedNav).
     -->
     <span
       data-short-link
       :title="url"
-      class="block min-w-0 truncate font-mono text-[0.75em] color-[var(--ch-text-3)] select-all"
+      class="block basis-0 grow min-w-[6ch] max-w-max truncate font-mono text-[0.75em] color-[var(--ch-text-3)] select-all"
     >{{ display }}</span>
 
     <button
@@ -116,22 +163,25 @@ onUnmounted(() => clearTimeout(revert))
 
     <!--
       The confirmation does not shrink and does not wrap: `Copied` cut to `Copie`, or `已複製`
-      stacked one character per line, cannot be read, so the URL text gives up the width (D7).
-      The failure message keeps `min-w-0` and may wrap, so it never widens the row or scrolls the
-      page sideways. It still shares the width with the URL text, though: on the nav's 32px mobile
-      row with the brief collapsed, it is squeezed to a few dozen pixels, a long word such as
-      `yourself` is cut, and its 10–12 lines run out of the row. In the nav's desktop place (row 1, a
-      fixed 40px) it wraps too: from 768 to 1024 wide it takes 2–4 lines in English and 2–3 in
-      Traditional Chinese, and runs 4–28px above the nav's top edge. The layout in both rows is
-      T-0037's: the spec lets the mobile row grow and says nothing of the desktop row, so T-0037
-      decides there within S01, S10 and D14.
+      stacked one character per line, cannot be read. It follows the button; where the row has no
+      room for it beside the URL text at its minimum, the row wraps it onto a line below (with the
+      items after it), for the 2 s it shows.
+
+      The failure message is long, and it stays until acted on. It takes a line of its own below
+      the row's items (`order-last basis-full`), as wide as the row, and may wrap there onto as many
+      lines as it needs; the row grows to hold it, in the list and in both nav rows alike. So it
+      neither widens the row, nor takes the URL text below its minimum, nor the title's room, and it
+      never runs out of the row or covers another item.
+
+      While no status shows, the live region is taken out of the row (`absolute`), so an empty
+      status costs the row no gap; it stays in the page so that what it later says is announced.
     -->
     <span
       data-copy-status
       role="status"
       aria-live="polite"
       class="text-[0.7em] color-[var(--ch-text-3)]"
-      :class="confirmed ? 'shrink-0 whitespace-nowrap' : 'min-w-0 whitespace-normal'"
+      :class="!status ? 'absolute' : confirmed ? 'shrink-0 whitespace-nowrap' : 'order-last basis-full min-w-0 whitespace-normal'"
     >{{ status }}</span>
   </span>
 </template>

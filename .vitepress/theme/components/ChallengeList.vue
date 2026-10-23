@@ -204,9 +204,10 @@ const categoryBadge: Record<string, string> = {
 /**
  * The number shown on the row, `#001`.
  *
- * Prefers the frontmatter number so the badge and the short link beside it are
- * the same number. `id` remains the fallback for a challenge that has not been
- * numbered yet; that one shows a badge and no link.
+ * Prefers the frontmatter number so the badge and a short link below it, on a
+ * Cloudflare Pages build, are the same number; on any other build the link is the
+ * challenge page's URL, built from the slug. `id` remains the fallback for a
+ * challenge that has not been numbered yet; that one shows a badge and no link.
  */
 function paddedId(c: ChallengeData): string {
   const n = typeof c.number === 'number' ? c.number : (typeof c.id === 'number' ? c.id : parseInt(String(c.id ?? 0)))
@@ -396,7 +397,7 @@ function toggleSortDir(): void {
         <!-- Line 1: ID + Title + Badges + Date -->
         <div class="flex items-center gap-2 w-full">
           <span class="font-mono text-[0.75em] color-[var(--ch-accent)] font-bold shrink-0">{{ paddedId(c) }}</span>
-          <span class="font-medium color-[var(--ch-text-1)] truncate">{{ c.title }}</span>
+          <span data-row-title class="font-medium color-[var(--ch-text-1)] truncate">{{ c.title }}</span>
           <span v-if="c.difficulty" :class="difficultyBadge[c.difficulty] ?? 'ch-badge'" class="shrink-0">{{ c.difficulty }}</span>
           <span v-if="c.category" :class="categoryBadge[c.category] ?? 'ch-badge'" class="shrink-0">{{ c.category }}</span>
           <!--
@@ -429,11 +430,16 @@ function toggleSortDir(): void {
           </div>
         </div>
         <!--
-          Line 3: the short link. Its own line rather than squeezed onto line 1,
-          because it has to stay readable and selectable at any width — selecting
-          it by hand is the path a reader takes when the clipboard is refused.
+          Line 3: the link, the short link on a Cloudflare Pages build and the challenge page's
+          URL on any other. Its own line rather than squeezed onto line 1, so that it keeps as
+          much of the URL in view as the row allows and stays selectable at any width: selecting
+          it by hand is the path a reader takes when the clipboard is refused. Where it does not
+          fit it is cut with an ellipsis, as in the nav (D2), and its title shows the whole URL on
+          hover; it never gets narrower than 6ch (D14), and a plain click on it selects all of it,
+          the cut part too, instead of opening the challenge (D4). The control lays its parts out
+          on this line, which wraps so the failure message can take a line below when it needs one.
         -->
-        <div class="flex items-center w-full">
+        <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
           <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" />
         </div>
       </a>

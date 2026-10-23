@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
@@ -498,6 +498,36 @@ describe('MergedNav copy controls', () => {
     for (const control of controls) {
       expect(control.props()).toEqual({ number: 1, slug: 'sqli-demo', locale: page })
     }
+  })
+})
+
+// D4, L17, L21 in both places the nav puts a control (the desktop row and the mobile row): a plain
+// primary click on the URL text is prevented and does not copy; a click with a modifier key is not.
+describe.each(['short', 'page'] as const)('MergedNav URL text clicks in %s mode', (m) => {
+  it.each(['en', 'zh-TW'] as const)('prevents a plain click and leaves a modifier click, on both controls, %s', async (locale) => {
+    mockMode.value = m
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    // Attached: the control listens on `window`, ahead of VitePress's router.
+    mockLocaleIndex.value = locale === 'zh-TW' ? 'zh-TW' : 'root'
+    const wrapper = mount(MergedNav, { props: defaultProps, attachTo: document.body, global: { plugins: [makeI18n(locale)] } })
+    const texts = wrapper.findAll('[data-short-link]')
+    expect(texts).toHaveLength(2)
+
+    for (const [i, text] of texts.entries()) {
+      const click = (init: MouseEventInit = {}) => {
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init })
+        text.element.dispatchEvent(event)
+        return event.defaultPrevented
+      }
+      expect(click(), `control ${i}, plain click (L17)`).toBe(true)
+      for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+        expect(click(init), `control ${i}, ${JSON.stringify(init)} (L21)`).toBe(false)
+      }
+    }
+    await flushPromises()
+    expect(writeText).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 })
 

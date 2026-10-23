@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { ChallengeData } from '../../../platform/shared/challenges.data'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
@@ -160,6 +160,62 @@ describe('ChallengeList short links', () => {
 
     expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
     expect(onRowClick).not.toHaveBeenCalled()
+  })
+})
+
+// D4, L17, L21 inside the list's row anchor: a plain primary click on the URL text is prevented and
+// does not copy, so the row does not open; a click with a modifier key is not prevented, so the
+// row's link opens as a link does; and a click on the rest of the row, its title, still opens it.
+// The row anchor's own listener runs after the URL text's, reads the flag, and then stops
+// happy-dom from following the link.
+describe.each(['short', 'page'] as const)('ChallengeList URL text clicks in %s mode', (m) => {
+  // Attached: the control listens on `window`, ahead of VitePress's router, so the event has to
+  // reach it.
+  const mounted: { unmount: () => void }[] = []
+  beforeEach(() => {
+    mockMode.value = m
+  })
+  afterEach(() => {
+    while (mounted.length) mounted.pop()!.unmount()
+  })
+
+  function firstRow(localeIndex: 'root' | 'zh-TW') {
+    mockLocaleIndex.value = localeIndex
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges }, attachTo: document.body })
+    mounted.push(wrapper)
+    const row = wrapper.findAll('a.ch-list-row')[0]
+    const seen: boolean[] = []
+    row.element.addEventListener('click', (e) => { seen.push(e.defaultPrevented); e.preventDefault() })
+    const click = (target: Element, init: MouseEventInit = {}) => {
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init }))
+      return seen.at(-1)
+    }
+    return { row, writeText, click }
+  }
+
+  it.each(['root', 'zh-TW'] as const)('prevents a plain primary click on the first row\'s URL text, localeIndex %s (L17)', async (localeIndex) => {
+    const { row, writeText, click } = firstRow(localeIndex)
+    expect(click(row.find('[data-short-link]').element)).toBe(true)
+    await flushPromises()
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it.each(['root', 'zh-TW'] as const)('leaves a modifier click on the URL text to the row\'s link, localeIndex %s (L21)', async (localeIndex) => {
+    const { row, writeText, click } = firstRow(localeIndex)
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+      expect(click(row.find('[data-short-link]').element, init), JSON.stringify(init)).toBe(false)
+    }
+    await flushPromises()
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it.each(['root', 'zh-TW'] as const)('does not prevent a plain click on the row\'s title, localeIndex %s', (localeIndex) => {
+    const { row, click } = firstRow(localeIndex)
+    const title = row.findAll('span').find((s) => s.text() === mockChallenges[0].title)
+    expect(title).toBeDefined()
+    expect(click(title!.element)).toBe(false)
   })
 })
 
