@@ -1,16 +1,18 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: 5b928e1b046a433642cad71e17246b8fc2aed5dc
+synced_from_sha: 2942a8277e8fa227e7017f9b654e43e3314fb366
 ---
 
 # Spec 0007：GitHub Pages 靶場修正——會自己跟上的 `_redirects`，以及打得開的連結
 
-狀態：第 3 版（2026-10-21）。第 1、2 輪對抗式審查都沒有發現 P0（`review/round-1.md`、`review/round-2.md`），
+狀態：第 3.2 版（2026-10-24）。第 1、2 輪對抗式審查都沒有發現 P0（`review/round-1.md`、`review/round-2.md`），
 因此第 3 階段的關卡已通過。第 3 版套用第 2 輪的處置（`review/disposition-2.md`）與使用者的裁決 D12–D15。
-審查上限是兩輪，所以第 3 版只自審，不再送審（D15）。本檔由英文版翻譯，以英文版為準。本文衍生自
+審查上限是兩輪，所以第 3 版只自審，不再送審（D15）。第 3.1 版（2026-10-24）新增 D16，
+寫明 T-0034 審查時實測到的兩種 O7 結束方式。第 3.2 版（2026-10-24）套用對第 3.1 版的兩輪審查：
+改寫 D16 與 hook 的失敗結果，並改變 hook 的四種結束方式（D16 (b)、(c)、H51、H52）。本檔由英文版翻譯，以英文版為準。本文衍生自
 `traceability.md`，其中保存：
 
-- 決策（S8、Q4–Q11、Q33、D1–D15）；
+- 決策（S8、Q4–Q11、Q33、D1–D16）；
 - seam 0007-S1 到 S8；
 - 詞彙表與模式規則；
 - 連結形式與範例 X1–X6；
@@ -111,12 +113,18 @@ guard、部署方式，以及 commit `_redirects` 的決定，都不變。
   - **孤兒說明頁**：staged 快照裡有孤兒說明頁時，在產生之前就以 W6 拒絕（D12）。
   - **stash** 永遠不放 `_redirects`。只有 `platform/` 底下還有其他 unstaged 或未追蹤的東西時，hook 才會
     stash，而且只把 `refs/stash` 新增的那個 entry 當成自己的。每次結束，包括被中斷與 git 指令失敗，
-    它都會還原那個 entry，並且只在還原完成後才 drop。還原失敗時，它保留 entry，並以 W9 印出它的 id（O7）。
+    它都會還原那個 entry，並且只在還原完成，而且 `platform/` 底下的 index 仍是 entry 記錄的那一份、
+    或這次執行是在仍然存在、會被 git 丟棄的 `index.lock` 上時，才 drop。還原失敗或只還原到一半，或 index
+    在還原前或還原期間不見時，它保留 entry，並以 W9 印出它的 id（O7）。stash push 中途停下、改動了
+    repository 自己的 index 時，它把檔案放回去、保留 entry，W9 印出把 index 放回去的指令（O7），還原失敗
+    時也一樣。在 `index.lock`（`-a`、`-i`、`-p`）上，git 會丟棄這種改動，所以 hook 會 drop entry（O5）。
+    entry 能帶回什麼，見 D16 (a)。
   - **重新產生**在驗證通過之後執行。hook 以每棵樹各自的 index slugs，對 staged 快照產生，所以被忽略與
     未追蹤的目錄都不會算進去。它以自己 repository 的頂層作為 root，再寫入並 stage `_redirects`。
   - **結果 O1–O7** 涵蓋矩陣測到的所有結束方式。成功之後，工作樹的 `_redirects` 等於 staged 的版本
-    （D3）；hook 換掉老師自己做的版本時，W3 會指名這個檔。失敗之後，index 與工作樹都維持原狀。第一個
-    commit 若有 unstaged 的檔案，hook 以 W7 拒絕。
+    （D3）；hook 換掉老師自己做的版本時，W3 會指名這個檔。O3、O4 與 O6 之後，index 與工作樹都維持原狀；
+    O5 之後也是，只是 `_redirects` 可能已是預期的內容。hook 保留自己 entry 的 O7，由結果表與 D16 說明。
+    第一個 commit 若有 unstaged 的檔案，hook 以 W7 拒絕。
 - **wxl-create。** 四份 skill 檔（兩棵樹、兩種語言）的 Step 2 依 P7 對結束狀態分支：
   - exit status 2：轉述 W1，繼續到 Step 3。
   - exit status 3：轉述 W2，然後停下來。
@@ -149,7 +157,7 @@ guard、部署方式，以及 commit `_redirects` 的決定，都不變。
 | # | 邊界 | 保護什麼 | 不保護什麼 | 模型之外 |
 |---|---|---|---|---|
 | B1 | 建置環境 → 建好的網站（`CF_PAGES`） | 只有確切值 `1` 會選擇短連結。其他每一種建置都給題目頁網址，不需要轉址規則。這個選擇在建置時固定，所以送出的 HTML 與 hydrate 後的頁面一致，執行期設定的東西也切換不了它（S09） | 在 Cloudflare Pages 之外手動設定 `CF_PAGES=1` 的建置，會送出只在讀 `_redirects` 的地方才有效的短連結。`SITE_ORIGIN` 仍指向別的主機的 Cloudflare 建置（GitHub Pages 靶場搬到 Cloudflare 卻沒有重跑 fork:init），會送出指向那個主機的短連結。preview 部署的短連結指向正式站。Cloudflare Direct Upload 或 Workers 建置會送出題目頁網址（Q8，已接受） | Cloudflare 的建置平台本身 |
-| B2 | pre-commit hook → 老師的 index 與工作樹 | 結果 O1–O7 與 hook 的約束。hook 只 stage `platform/public/_redirects`，而且只依 staged 快照與 index slugs 推導。它把 `platform/` 底下其他每一個 unstaged 變更與未追蹤檔案逐 byte 還原；或者把它們保留在自己的 stash entry 裡，並印出 entry 的 id（O7）。它從不 apply 或 drop 別的 entry。第一個 commit 有 unstaged 檔案、在別的 index 上、或遇到孤兒說明頁時，它拒絕而不猜測。它不寫 `platform/` 以外的工作樹檔案，也不寫別的 repository 的檔案 | `--no-verify`、`pnpm install` 從沒裝過 hook 的 clone，或跳過 hook、沒有 Node 的 git 工具。git 不跑 pre-commit 就建立的 commit：git 自行完成的 merge、`cherry-pick`、`revert`、`rebase`、`am`，以及 GitHub 網頁介面。這些情況留下的過期檔由 B3 抓到。unstaged 的 `_redirects` 會被取代（D3），並附 W3。`platform/` 底下的空目錄不會還原。symbolic link 會被跟隨。產生器腳本從工作樹執行，所以它們 unstaged 的修改會生效 | commit 期間另一個行程改動 repository，包括同一個 repository 另一個 worktree 裡的 commit。SIGKILL 與斷電 |
+| B2 | pre-commit hook → 老師的 index 與工作樹 | 結果 O1–O7 與 hook 的約束。hook 只 stage `platform/public/_redirects`，而且只依 staged 快照與 index slugs 推導。它把 `platform/` 底下其他每一個 unstaged 變更與未追蹤檔案逐 byte 還原；或者把它們保留在自己的 stash entry 裡，並印出 entry 的 id（O7）。它從不 apply 或 drop 別的 entry。第一個 commit 有 unstaged 檔案、在別的 index 上、或遇到孤兒說明頁時，它拒絕而不猜測。它不寫 `platform/` 以外的工作樹檔案，也不寫別的 repository 的檔案 | `--no-verify`、`pnpm install` 從沒裝過 hook 的 clone，或跳過 hook、沒有 Node 的 git 工具。git 不跑 pre-commit 就建立的 commit：git 自行完成的 merge、`cherry-pick`、`revert`、`rebase`、`am`，以及 GitHub 網頁介面。這些情況留下的過期檔由 B3 抓到。unstaged 的 `_redirects` 會被取代（D3），並附 W3。`platform/` 底下的空目錄不會還原。symbolic link 會被跟隨。產生器腳本從工作樹執行，所以它們 unstaged 的修改會生效。O7 時檔案在 hook 的 entry 裡，entry 依 D16 (a) 所說把它們帶回來：git 在 add 時會轉換的檔案（`eol=lf` 底下、index 版本不含 CR 的 CRLF 檔）帶回來時已被轉換；用 `git stash apply` 時，與 staged hunk 重疊或相鄰的 unstaged hunk 會衝突。index 新增、工作樹已刪除的檔案會以 index 版本回來。stash push 在 repository 自己的 index 上中途停下後，index 維持 push 留下的樣子，直到執行 W9 的 `git restore --staged` 指令（D16 (b)） | commit 期間另一個行程改動 repository，包括同一個 repository 另一個 worktree 裡的 commit。SIGKILL 與斷電 |
 | B3 | CI guard test → merge 與部署 | 不變：它在每個靶場、每種主機上執行，本 epic 既不跳過也不削弱它（Q9） | 老師自己改過 CI 設定的靶場 | — |
 | B4 | 建好的網站 → 學習者的螢幕與剪貼簿 | 文字只來自 `SITE_ORIGIN`、補零的號碼，以及符合 slug 文法的 slug，經由 Vue 會跳脫的文字與屬性綁定輸出。`SITE_ORIGIN` 由 fork:init 設定，或依 wxl-fork-init skill 的說明手改。不涉及學習者輸入，也沒有新的請求 | `SITE_ORIGIN` 沒有指向靶場真實網址時，連結打不開，或開到它所指的網站（D10）。fork 從沒跑過 fork:init、只帶 `--base` 跑過、或用 rebrand 模式跑過卻沒有手改這個常數時，會保留上游的 origin。這時連結會開到上游的網站，學習者的紀錄也存在上游的 origin 底下。repository 改名、自訂網域卻沒帶 `--origin`，以及手改時多了結尾斜線，也都會讓連結壞掉。沒有儲存偏好的學習者，會從英文題目頁網址被導到繁中頁，而那一頁可能不存在（D6、OQ-023） | — |
 | B5 | `create:challenge` → 老師的工作樹 | 除了既有的檔案，它只寫 `_redirects`。產生器在寫入之前就拒絕不一致的樹，並有自己的狀態（2）；keygen 失敗也有自己的狀態（3） | 與產生內容不同的 `_redirects` bytes 會被取代（C08） | — |
@@ -245,12 +253,13 @@ guard、部署方式，以及 commit `_redirects` 的決定，都不變。
     - 在 commit 進去的 `_redirects` 仍帶本 epic 之前 header 的靶場裡，commit 一道題目。（H31–H38、H44）
 - **AC-23** 穩健性：
   - 下列情況以 O5 結束：產生期間收到 SIGINT、SIGTERM 或 SIGHUP，以及 hook stash 之前就有 git 指令失敗。
-  - 還原失敗以 O7 結束。W9 指名 hook 的 entry，它仍列在清單裡，套用後就能把 unstaged 檔案帶回來。
-  - 第一個 commit 若 `platform/` 底下有 unstaged 檔案，以 O6 與 W7 結束；全部都已 stage 的第一個 commit 以 O2 結束。
+  - 還原失敗，或在寫不進去的檔案上只還原到一半，以 O7 結束。W9 指名 hook 的 entry，它仍列在清單裡並保存著 unstaged 檔案。套用它，或在 apply 拒絕時執行 W9 的 `git restore` 指令，就能把它們帶回來，D16 (a) 列出的情況除外。還原做完時 index 已經不見的話，entry 也會保留，W9 印出 index 不見時的形式。
+  - stash push 在改動 index 之後中途停下：在 repository 自己的 index 上以 O7 結束，每個檔案的 bytes 都已回來，W9 的 `git restore --staged` 指令把 index 放回去。還原也失敗時，W9 在第一種形式之後印出這個指令，依印出的順序執行這些指令，就能把每個檔案與 index 放回去。在 `git commit -a` 底下，git 自己的子指令失敗時以 O5 結束：hook drop 自己的 entry、不印 W9，`.git/index` 不變。這是對 `-a` 實測的結果；`-i` 與 `-p` 在 git 原始碼裡走同一條路徑。訊號送到 commit 的整個 process group 時，依下一點結束。
   - 對被中斷的 `git commit -a` 送 SIGINT，依 race 的結果以 O5 或 O7 結束。兩種情況下 `.git/index` 都不變、沒有 commit，每個 unstaged 檔案不是已經回來，就是在被指名的 entry 裡。
+  - 第一個 commit 若 `platform/` 底下有 unstaged 檔案，以 O6 與 W7 結束；全部都已 stage 的第一個 commit 以 O2 結束。
   - 工作樹裡只有 `_redirects` 不同時，hook 不建立自己的 entry，也不碰別的 entry。
   - 每個有既存 entry 的 hook 案例，那個 entry 仍以同一個 commit id 列在清單裡。每個案例中，真實 repository 的 `_redirects`、index 與 stash list 都不變。
-  - 在 Mac 上，H02、H07、H14 與 H34 在 `/bin/bash` 3.2 底下得到相同的結果。（H25–H30、H42、H45–H47）
+  - 在 Mac 上，H02、H07、H14 與 H34 在 `/bin/bash` 3.2 底下得到相同的結果。（H25–H30、H42、H45–H52）
 - **AC-24** stage 6 確認 P1–P8 每一段都依段落表的要求改寫，包括四份 skill 檔中 wxl-create 對 exit status 2 與 3 的處理。（T05）
 - **AC-25** `shortLink.ts` 與 `.vitepress/config.mts` 對每個 fork:init 定位點仍各只有一行符合，`fork-init.test.ts` 與 `upstream-guard.test.ts` 通過。（F01）
 

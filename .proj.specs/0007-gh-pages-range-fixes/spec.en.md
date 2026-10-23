@@ -1,12 +1,15 @@
 # Spec 0007: GitHub Pages range fixes — a `_redirects` that keeps up, and links that open
 
-Status: revision 3 (2026-10-21). Rounds 1 and 2 of adversarial review found no P0
+Status: revision 3.2 (2026-10-24). Rounds 1 and 2 of adversarial review found no P0
 (`review/round-1.md`, `review/round-2.md`), so the stage 3 gate is met. Revision 3 applies round 2's
 disposition (`review/disposition-2.md`) and the user's decisions D12–D15. Two rounds is the ceiling,
-so revision 3 is self-checked rather than reviewed again (D15). Derived from `traceability.md`,
+so revision 3 is self-checked rather than reviewed again (D15). Revision 3.1 (2026-10-24) adds D16,
+which names two ends of O7 that T-0034's review measured. Revision 3.2 (2026-10-24) applies the
+review of 3.1, in two rounds: it rewrites D16 and the hook's failure outcomes, and changes four of
+the hook's ends (D16 (b), (c), H51, H52). Derived from `traceability.md`,
 which holds:
 
-- the decisions (S8, Q4–Q11, Q33, D1–D15);
+- the decisions (S8, Q4–Q11, Q33, D1–D16);
 - the seams 0007-S1 to S8;
 - the vocabulary and the mode rule;
 - the link forms with examples X1–X6;
@@ -127,15 +130,23 @@ lacks (OQ-023).
   - **The stash** never holds `_redirects`. The hook stashes only when something else under
     `platform/` is unstaged or untracked, and treats as its own only the entry that `refs/stash`
     gained. On every exit, including interruption and a failed git command, it restores that entry,
-    and drops it only after the restore completed. If restoring fails, it keeps the entry and prints
-    its id with W9 (O7).
+    and drops it only after the restore completed and either the index under `platform/` is the one
+    the entry recorded, or the run is on an `index.lock` that still exists, which git discards. If
+    restoring fails or stops partway, or the index is gone before or during the restore, it keeps
+    the entry and prints its id with W9 (O7). After a stash push that stopped partway and changed
+    the repository's own index, it puts the files back, keeps the entry, and W9 prints the command
+    that puts the index back (O7), also when the restore failed. On `index.lock` (`-a`, `-i`, `-p`),
+    git discards such a change, so the hook drops the entry (O5). What the entry gives back is
+    described in D16 (a).
   - **Regeneration** runs after validation passes. The hook generates over the staged snapshot with
     the per-tree index slugs, so ignored and untracked directories are left out. It names its own
     repository's top level as the root, then writes and stages `_redirects`.
   - **Outcomes O1–O7** cover the ends the matrix exercises. After success, the working tree's
     `_redirects` equals the staged one (D3), and W3 names the file when the hook replaced a version
-    the teacher made. After a failure, the index and the working tree are as before. On a first commit
-    with unstaged files, the hook refuses with W7.
+    the teacher made. After O3, O4 and O6, the index and the working tree are as before; after O5,
+    they are too, except that `_redirects` may hold the expected content. O7, where the hook keeps its
+    entry, is described in the outcomes table and D16. On a first commit with unstaged files, the hook
+    refuses with W7.
 - **wxl-create.** Step 2 in all four skill files (two trees, two languages) branches on the exit
   status as P7 requires:
   - On exit status 2 it surfaces W1 and continues to Step 3.
@@ -172,7 +183,7 @@ lacks (OQ-023).
 | # | Boundary | Protects | Does not protect | Outside the model |
 |---|---|---|---|---|
 | B1 | Build environment → built site (`CF_PAGES`) | Only the exact value `1` selects short links. Every other build gets page URLs, which need no redirect rules. The choice is fixed at build, so the HTML as served and the hydrated page agree, and nothing set at run time switches it (S09) | A build outside Cloudflare Pages with `CF_PAGES=1` set by hand ships short links that only resolve where `_redirects` is read. A Cloudflare build whose `SITE_ORIGIN` still names another host (a GitHub Pages range moved to Cloudflare without rerunning fork:init) ships short links to that host. A preview deployment's short links point at production. A Cloudflare Direct Upload or Workers build ships page URLs (Q8, accepted) | Cloudflare's build platform itself |
-| B2 | Pre-commit hook → the teacher's index and working tree | Outcomes O1–O7 and the hook's constraints. The hook stages only `platform/public/_redirects`, derived only from the staged snapshot and the index slugs. It restores every other unstaged change and untracked file under `platform/` byte for byte, or keeps them in its own stash entry and prints the entry's id (O7). It never applies or drops another entry. It refuses rather than guesses on a first commit with unstaged files, on another index, and on an orphan brief. It writes no working-tree file outside `platform/` and no other repository's files | `--no-verify`, a clone where `pnpm install` never installed the hook, or a client that skips hooks or lacks Node. Commits git makes without pre-commit: a merge git concludes itself, `cherry-pick`, `revert`, `rebase`, `am`, and GitHub's web interface. B3 catches the stale file each of these leaves. An unstaged version of `_redirects` is replaced (D3), with W3. Empty untracked directories under `platform/` are not restored. Symbolic links are followed. The generator scripts run from the working tree, so their unstaged edits apply | Another process changing the repository during the commit, including a commit in another worktree of the same repository. SIGKILL and a power loss |
+| B2 | Pre-commit hook → the teacher's index and working tree | Outcomes O1–O7 and the hook's constraints. The hook stages only `platform/public/_redirects`, derived only from the staged snapshot and the index slugs. It restores every other unstaged change and untracked file under `platform/` byte for byte, or keeps them in its own stash entry and prints the entry's id (O7). It never applies or drops another entry. It refuses rather than guesses on a first commit with unstaged files, on another index, and on an orphan brief. It writes no working-tree file outside `platform/` and no other repository's files | `--no-verify`, a clone where `pnpm install` never installed the hook, or a client that skips hooks or lacks Node. Commits git makes without pre-commit: a merge git concludes itself, `cherry-pick`, `revert`, `rebase`, `am`, and GitHub's web interface. B3 catches the stale file each of these leaves. An unstaged version of `_redirects` is replaced (D3), with W3. Empty untracked directories under `platform/` are not restored. Symbolic links are followed. The generator scripts run from the working tree, so their unstaged edits apply. In O7 the files are in the hook's entry, which gives them back as D16 (a) says: a file git converts when it adds it (CRLF under `eol=lf` when its index version has no CR) comes back converted, and with `git stash apply` an unstaged hunk overlapping or adjacent to a staged one conflicts. A file the index adds and the working tree has deleted comes back with its index version. After a stash push that stopped partway on the repository's own index, the index stays as the push left it until W9's `git restore --staged` command is run (D16 (b)) | Another process changing the repository during the commit, including a commit in another worktree of the same repository. SIGKILL and a power loss |
 | B3 | CI guard test → merge and deploy | Unchanged: it runs on every range and host, and this epic neither skips nor weakens it (Q9) | A range whose own CI configuration the teacher has changed | — |
 | B4 | Built site → learner's screen and clipboard | The text comes only from `SITE_ORIGIN`, the padded number and a slug inside the slug grammar, rendered through Vue's escaping text and attribute bindings. `SITE_ORIGIN` is set by fork:init, or by hand where the wxl-fork-init skill says to. No learner input and no new request is involved | A `SITE_ORIGIN` that does not name the range's real address gives links that do not open, or that open the site it names (D10). A fork keeps upstream's origin when it never ran fork:init, or ran it with only `--base` or in rebrand mode without editing the constant. Its links then open upstream's site, where learners' records are stored under upstream's origin. A renamed repository, a custom domain without `--origin`, and a hand-edited value with a trailing slash also break links. A learner with no stored preference is redirected from an English page URL to a Traditional Chinese page, which may not exist (D6, OQ-023) | — |
 | B5 | `create:challenge` → the teacher's working tree | Besides its existing files, it writes only `_redirects`. Generation refuses an inconsistent tree before writing, with its own status (2), and keygen failure has its own status (3) | `_redirects` bytes that differ from the generated content are replaced (C08) | — |
@@ -268,12 +279,13 @@ No intended vulnerability of any challenge is touched, so ADR-0005 does not appl
     - a challenge commit in a range whose committed `_redirects` has the header from before this epic. (H31–H38, H44)
 - **AC-23** Robustness:
   - These end in O5: SIGINT, SIGTERM or SIGHUP during generation, and a git command failing before the hook stashed.
-  - A restore that fails ends in O7. W9 names the hook's entry, which stays listed and brings the unstaged files back once applied.
+  - A restore that fails, or stops partway on a file it cannot write, ends in O7. W9 names the hook's entry, which stays listed and holds the unstaged files. Applying it, or running W9's `git restore` commands where apply refuses, brings them back, except in the cases D16 (a) names. When the index is gone once the restore is done, the entry stays too, with W9's missing-index form.
+  - A stash push that stops partway after changing the index ends in O7 on the repository's own index: every file's bytes are back, and W9's `git restore --staged` command puts the index back. When the restore fails as well, W9 prints that command after its first form, and the printed commands, run in order, put every file and the index back. Under `git commit -a`, when git's own child command fails, it ends in O5: the hook drops its entry and prints no W9, and `.git/index` is as before. This is measured for `-a`; `-i` and `-p` take the same path in git's source. A signal to the commit's process group ends as the next item says.
   - SIGINT to an interrupted `git commit -a` ends in O5 or O7, as the race falls. In both cases `.git/index` is as before, no commit is made, and every unstaged file is back or in the named entry.
   - A first commit with an unstaged file under `platform/` ends in O6 with W7. A first commit with everything staged ends in O2.
   - When `_redirects` is the only file that differs in the working tree, the hook makes no entry of its own and touches no other.
   - In every hook case with a pre-existing entry, that entry is still listed with its commit id. In every case the real repository's `_redirects`, index and stash list are unchanged.
-  - On a Mac, H02, H07, H14 and H34 give the same outcomes under `/bin/bash` 3.2. (H25–H30, H42, H45–H47)
+  - On a Mac, H02, H07, H14 and H34 give the same outcomes under `/bin/bash` 3.2. (H25–H30, H42, H45–H52)
 - **AC-24** Stage 6 finds each of the passages P1–P8 rewritten as the passages table requires. This includes wxl-create's handling of exit statuses 2 and 3 in all four skill files. (T05)
 - **AC-25** `shortLink.ts` and `.vitepress/config.mts` each still hold exactly one line matching each fork:init anchor, and `fork-init.test.ts` and `upstream-guard.test.ts` pass. (F01)
 

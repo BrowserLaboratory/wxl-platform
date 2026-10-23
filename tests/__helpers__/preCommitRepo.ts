@@ -15,6 +15,12 @@
  * - one stash entry made before any case runs, which changes `platform/public/` files;
  * - the hook installed as `.git/hooks/pre-commit`, running this checkout's hook by path.
  *
+ * The first-commit fixture (H27, H28, `buildFirstCommitFixture`) is a new
+ * repository at the same kind of path with no commit and no stash entry. It
+ * holds the copied scripts, the `node_modules` link, `.gitignore`,
+ * `.gitattributes`, `test-chall` (#1) and `platform/public/other.txt`, and no
+ * `_redirects`.
+ *
  * Child processes get the test's environment with every inherited `GIT_*`
  * variable removed, `HOME` set to a temporary directory and `GIT_CONFIG_GLOBAL`
  * set to a temporary file holding the identity, so an outer hook cannot point
@@ -25,6 +31,7 @@ import {
   appendFileSync,
   chmodSync,
   cpSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -39,7 +46,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { generateRedirects } from '../../scripts/generate-redirects'
 
 export const PROJECT_ROOT = resolve(import.meta.dirname, '../..')
@@ -71,8 +78,8 @@ export interface Repo {
 }
 
 export interface Fixture extends Repo {
-  /** The commit id of the stash entry made before any case runs. */
-  preexisting: string
+  /** The commit id of the stash entry made before any case runs; null for the first-commit fixture, which has none. */
+  preexisting: string | null
 }
 
 export interface Run {
@@ -110,15 +117,15 @@ export function git(repo: Repo, args: string[], extraEnv: NodeJS.ProcessEnv = {}
   return r.stdout
 }
 
-/** Run this checkout's hook directly, with `bash`, at the repository's top level. */
-export function runHook(repo: Repo, extraEnv: NodeJS.ProcessEnv = {}): Run {
-  const r = spawnSync('bash', [HOOK], { cwd: repo.dir, env: { ...repo.env, ...extraEnv }, encoding: 'utf8' })
+/** Run this checkout's hook directly, with `bash` (or the given shell), at the repository's top level. */
+export function runHook(repo: Repo, extraEnv: NodeJS.ProcessEnv = {}, bash = 'bash'): Run {
+  const r = spawnSync(bash, [HOOK], { cwd: repo.dir, env: { ...repo.env, ...extraEnv }, encoding: 'utf8' })
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 
 /** Run a real `git commit`, which runs the installed hook. */
-export function commit(repo: Repo, args: string[]): Run {
-  return gitRun(repo, ['commit', ...args])
+export function commit(repo: Repo, args: string[], extraEnv: NodeJS.ProcessEnv = {}): Run {
+  return gitRun(repo, ['commit', ...args], extraEnv)
 }
 
 export function write(repo: Repo, path: string, content: string | Buffer): void {
@@ -156,8 +163,8 @@ export function writeBrief(repo: Repo, slug: string, number: number): void {
   write(repo, `platform/zh-TW/challenge/${slug}/index.md`, ['---', `title: "${slug} 中文"`, `number: ${number}`, '---', '', '說明', ''].join('\n'))
 }
 
-/** Build the fixture once; cases start from a copy (`cloneFixture`). */
-export function buildFixture(): Fixture {
+/** A new repository at `<mkdtemp>/暫存 repo` holding the copied scripts, the `node_modules` link and the attributes. */
+function initRepo(): Repo {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'wxl-pre-commit-')))
   const home = join(base, 'home')
   mkdirSync(home)
@@ -172,6 +179,29 @@ export function buildFixture(): Fixture {
   appendFileSync(join(dir, '.git/info/exclude'), '/node_modules\n')
   write(repo, '.gitignore', 'logs/\ntmp/\n')
   write(repo, '.gitattributes', readFileSync(join(PROJECT_ROOT, '.gitattributes')))
+  return repo
+}
+
+function installHook(repo: Repo): void {
+  const hook = join(repo.dir, '.git/hooks/pre-commit')
+  mkdirSync(dirname(hook), { recursive: true })
+  writeFileSync(hook, `#!/bin/sh\nexec bash '${HOOK}'\n`)
+  chmodSync(hook, 0o755)
+}
+
+/** The first-commit fixture (H27, H28): no commit, no stash entry, nothing staged yet, no `_redirects`. */
+export function buildFirstCommitFixture(): Fixture {
+  const repo = initRepo()
+  writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge' })
+  write(repo, 'platform/public/other.txt', 'other\n')
+  installHook(repo)
+  return { ...repo, preexisting: null }
+}
+
+/** Build the fixture once; cases start from a copy (`cloneFixture`). */
+export function buildFixture(): Fixture {
+  const repo = initRepo()
+  const { dir } = repo
   write(repo, 'README.md', '# Fixture\n')
 
   writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge' })
@@ -190,11 +220,7 @@ export function buildFixture(): Fixture {
   write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# stashed by the teacher\n`)
   git(repo, ['stash', 'push', '-q', '-m', "teacher's own entry"])
   const preexisting = git(repo, ['rev-parse', 'refs/stash']).trim()
-
-  const hook = join(dir, '.git/hooks/pre-commit')
-  mkdirSync(dirname(hook), { recursive: true })
-  writeFileSync(hook, `#!/bin/sh\nexec bash '${HOOK}'\n`)
-  chmodSync(hook, 0o755)
+  installHook(repo)
 
   return { ...repo, preexisting }
 }
@@ -320,30 +346,40 @@ export function realRepoState(): RealState {
 
 // ─── Recording stubs ────────────────────────────────────────────────────────
 
+/** A stub's expression for the commit ids `git stash list` gives, newest first. */
+const STASH_IDS = `spawnSync('git', ['stash', 'list', '--format=%H'], { encoding: 'utf8' }).stdout.split('\\n').filter((l) => l !== '')`
+
 /**
  * Rename a script the hook calls to `real-<name>` and put a stub at its path
- * that appends a JSON line to `log` (outside the repository), then runs the
- * renamed copy with the same arguments. The renamed name still ends with the
- * original one, so the copy's own direct-run check passes.
- *
- * `recordStash` also records `git stash list` while the stub runs.
+ * that runs `prelude`, then the renamed copy with the same arguments, and
+ * exits with its status. The renamed name still ends with the original one, so
+ * the copy's own direct-run check passes. `prelude` sees `args`, and the
+ * imports `appendFileSync`, `writeFileSync` and `spawnSync`.
  */
-export function recordScript(repo: Repo, script: string, log: string, recordStash = false): void {
+function wrapScript(repo: Repo, script: string, prelude: string): void {
   const path = join(repo.dir, 'scripts', script)
   renameSync(path, join(repo.dir, 'scripts', `real-${script}`))
-  writeFileSync(path, `import { appendFileSync } from 'node:fs'
+  writeFileSync(path, `import { appendFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
-const entry: Record<string, unknown> = { argv: args }
-if (${recordStash}) {
-  entry.stash = spawnSync('git', ['stash', 'list', '--format=%H'], { encoding: 'utf8' }).stdout.split('\\n').filter((l) => l !== '')
-}
-appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n')
+${prelude}
 const real = fileURLToPath(new URL('./real-${script}', import.meta.url))
 const r = spawnSync(process.execPath, ['--experimental-strip-types', real, ...args], { stdio: 'inherit' })
 process.exit(r.status ?? 1)
 `)
+}
+
+/**
+ * Put a stub at a script the hook calls that appends a JSON line to `log`
+ * (outside the repository), then runs the real script (`wrapScript`).
+ *
+ * `recordStash` also records `git stash list` while the stub runs.
+ */
+export function recordScript(repo: Repo, script: string, log: string, recordStash = false): void {
+  wrapScript(repo, script, `const entry: Record<string, unknown> = { argv: args }
+if (${recordStash}) entry.stash = ${STASH_IDS}
+appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n')`)
 }
 
 export interface Recorded {
@@ -359,4 +395,272 @@ export function readRecord(log: string): Recorded[] {
     return []
   }
   return raw.split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as Recorded)
+}
+
+// ─── Interruption and failure stubs (H25, H26, H46–H49, H52) ────────────────
+
+/** The directory the stubs and the wrapper write their markers into: `<base>/標記 dir/`. */
+export function markerDir(repo: Repo): string {
+  const dir = join(repo.base, '標記 dir')
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+/** Poll for a file against a deadline: a condition, never a fixed sleep. */
+export async function waitForFile(path: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!existsSync(path)) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${path}`)
+    await new Promise((r) => setTimeout(r, 20))
+  }
+}
+
+export interface GroupRun extends Run {
+  /** The signal that ended the group's leader, when one did. */
+  signal: NodeJS.Signals | null
+  /** True when a process of the group was still alive after the deadline and had to be killed. */
+  leftover: boolean
+}
+
+export interface Group {
+  /** Send a signal to every process of the group. */
+  kill(signal: NodeJS.Signals): void
+  /** Send a signal to the group's leader alone, as `kill <pid>` does. */
+  killLeader(signal: NodeJS.Signals): void
+  /** Wait for the leader's exit, then for the whole group to be gone; kill whatever is left. */
+  done(): Promise<GroupRun>
+}
+
+function groupAlive(pgid: number): boolean {
+  try {
+    process.kill(-pgid, 0)
+    return true
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ESRCH') return false
+    throw e
+  }
+}
+
+/** The groups `startGroup` started that may still be alive. */
+const groups = new Set<number>()
+
+/**
+ * Kill every group `startGroup` started that is still alive, for a file's
+ * `afterEach`: a case that failed before its `done()` would otherwise leave a
+ * blocked stub or wrapper running.
+ */
+export function killStrayGroups(): void {
+  for (const pgid of groups) {
+    if (groupAlive(pgid)) process.kill(-pgid, 'SIGKILL')
+  }
+  groups.clear()
+}
+
+/**
+ * Start a command at the repository's top level as the leader of a new
+ * process group (`detached`), so a signal can go to the hook and every
+ * process it started, as a terminal's Ctrl-C does.
+ */
+export function startGroup(repo: Repo, command: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}): Group {
+  const child = spawn(command, args, { cwd: repo.dir, env: { ...repo.env, ...extraEnv }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const pgid = child.pid
+  if (pgid === undefined) throw new Error(`could not start ${command}`)
+  groups.add(pgid)
+  let stdout = ''
+  let stderr = ''
+  child.stdout.setEncoding('utf8').on('data', (d: string) => { stdout += d })
+  child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d })
+  const closed = new Promise<{ status: number | null; signal: NodeJS.Signals | null }>((res) => {
+    child.on('close', (status, signal) => res({ status, signal }))
+  })
+  return {
+    kill: (signal) => process.kill(-pgid, signal),
+    killLeader: (signal) => process.kill(pgid, signal),
+    async done() {
+      let leftover = false
+      try {
+        const { status, signal } = await closed
+        const deadline = Date.now() + 30_000
+        while (groupAlive(pgid)) {
+          if (Date.now() > deadline) {
+            leftover = true
+            break
+          }
+          await new Promise((r) => setTimeout(r, 20))
+        }
+        return { status, signal, stdout, stderr, leftover }
+      } finally {
+        // Cleanup only: a group still alive here was reported as leftover above.
+        if (groupAlive(pgid)) process.kill(-pgid, 'SIGKILL')
+        groups.delete(pgid)
+      }
+    },
+  }
+}
+
+export interface BlockingOptions {
+  /** Where the stub writes its marker once it blocks. */
+  marker: string
+  /** A JSON file where the stub records `git stash list` ids and `GIT_INDEX_FILE` before blocking. */
+  record?: string
+  /** Remove the file `GIT_INDEX_FILE` names before writing the marker. */
+  removeIndexFile?: boolean
+}
+
+export interface BlockingRecord {
+  stash: string[]
+  indexFile: string | null
+}
+
+/**
+ * Replace the fixture's generator with a stub that writes a marker and blocks
+ * (`setInterval`). node dies of SIGINT, SIGTERM and SIGHUP by default.
+ */
+export function blockingGenerator(repo: Repo, options: BlockingOptions): void {
+  writeFileSync(join(repo.dir, 'scripts/generate-redirects.ts'), `import { rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+const options = ${JSON.stringify(options)}
+const indexFile = process.env.GIT_INDEX_FILE ?? null
+if (options.record) writeFileSync(options.record, JSON.stringify({ stash: ${STASH_IDS}, indexFile }))
+if (options.removeIndexFile && indexFile) rmSync(indexFile)
+writeFileSync(options.marker, '')
+setInterval(() => {}, 1000)
+`)
+}
+
+export function readBlockingRecord(path: string): BlockingRecord {
+  return JSON.parse(readFileSync(path, 'utf8')) as BlockingRecord
+}
+
+/**
+ * Put a stub at the fixture's generator that creates `<gitdir>/index.lock`,
+ * then runs the real generator (`wrapScript`) (H26).
+ */
+export function lockingGenerator(repo: Repo): void {
+  wrapScript(repo, 'generate-redirects.ts', `writeFileSync(${JSON.stringify(join(repo.dir, '.git/index.lock'))}, '')`)
+}
+
+export type WrapperMode =
+  /** Exit 128 without running git. */
+  | 'fail'
+  /** Run git, then exit 1 whatever it returned. */
+  | 'run-then-fail'
+  /** Write the `blocked` marker, wait for the `release` file, then run git. Dies with a signal. */
+  | 'block'
+  /** As `block`, but ignoring INT, TERM and HUP itself (`trap '' INT TERM HUP`). */
+  | 'block-ignoring'
+  /** Run git, then write the `blocked` marker, wait for the `release` file and exit with git's status. Dies with a signal. */
+  | 'run-then-block'
+  /** Remove the file `GIT_INDEX_FILE` names, as git does with its `index.lock` when an interrupted commit ends, then run git. */
+  | 'remove-index-then-run'
+
+export interface Wrapper {
+  /** The environment that puts the wrapper first on `PATH`. */
+  env: NodeJS.ProcessEnv
+  /** Written once the wrapper blocks. */
+  blocked: string
+  /** Let a blocked wrapper go on. */
+  release(): void
+  /** True once the wrapper matched an invocation. */
+  matched(): boolean
+}
+
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * A `git` on `PATH` (`<base>/bin 工具/git`) that runs the real git, resolved
+ * once by absolute path, and acts on the first invocation whose arguments,
+ * joined with spaces, equal `args` (or start with it, with `prefix`). Every
+ * other invocation runs git unchanged.
+ */
+export function gitWrapper(repo: Repo, args: string, mode: WrapperMode, prefix = false): Wrapper {
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { env: repo.env, encoding: 'utf8' }).stdout.trim()
+  if (!realGit.startsWith('/')) throw new Error(`git not found: ${realGit}`)
+  const bin = join(repo.base, 'bin 工具')
+  const dir = join(repo.base, 'wrapper 標記')
+  mkdirSync(bin, { recursive: true })
+  mkdirSync(dir, { recursive: true })
+  const test = prefix ? `case "$*" in ${shQuote(args)}*) true ;; *) false ;; esac` : `[ "$*" = ${shQuote(args)} ]`
+  const wait = `: > ${shQuote(join(dir, 'blocked'))}
+  while [ ! -e ${shQuote(join(dir, 'release'))} ]; do sleep 0.05; done`
+  const block = `${wait}
+  exec ${shQuote(realGit)} "$@"`
+  const action = {
+    fail: 'exit 128',
+    'run-then-fail': `${shQuote(realGit)} "$@"\n  exit 1`,
+    block,
+    'block-ignoring': `trap '' INT TERM HUP\n  ${block}`,
+    'run-then-block': `status=0\n  ${shQuote(realGit)} "$@" || status=$?\n  ${wait}\n  exit "$status"`,
+    'remove-index-then-run': 'rm -f -- "$GIT_INDEX_FILE"',
+  }[mode]
+  writeFileSync(join(bin, 'git'), `#!/bin/sh
+if ${test} && mkdir ${shQuote(join(dir, 'matched'))} 2>/dev/null; then
+  ${action}
+fi
+exec ${shQuote(realGit)} "$@"
+`)
+  chmodSync(join(bin, 'git'), 0o755)
+  return {
+    env: { PATH: `${bin}:${repo.env.PATH ?? ''}` },
+    blocked: join(dir, 'blocked'),
+    release: () => writeFileSync(join(dir, 'release'), ''),
+    matched: () => existsSync(join(dir, 'matched')),
+  }
+}
+
+export interface ChildBlocker {
+  /** The environment that sets `GIT_EXEC_PATH`. */
+  env: NodeJS.ProcessEnv
+  /** Written once git's child command blocks. */
+  blocked: string
+  /** True once the blocker matched a child command. */
+  matched(): boolean
+}
+
+/**
+ * Block one of the commands git runs itself. git runs its own child commands
+ * from `GIT_EXEC_PATH` (`git stash push` with a pathspec stores its entry, then
+ * runs `git add`, `git diff-index`, `git apply --index -R` and
+ * `git checkout --no-overlay`), so a `git` on `PATH` never sees them. The
+ * directory `<base>/exec 工具/` links every entry of the real exec path except
+ * `git`, a script that runs the real one. The first child command whose
+ * arguments, joined with spaces, start with `args` writes the `blocked` marker
+ * and becomes `sleep`, which a signal ends. A shell loop could outlive the
+ * signal: a shell that receives SIGINT while reaping a child that exited
+ * normally may carry on, and then keep the group's output open. With `fail`,
+ * that child command writes the marker and exits 1 instead, as a git failure
+ * that no signal causes: `git commit -a` then still holds its `index.lock`
+ * when the hook ends.
+ */
+export function gitChildBlocker(repo: Repo, args: string, mode: 'block' | 'fail' = 'block'): ChildBlocker {
+  const execPath = spawnSync('git', ['--exec-path'], { env: repo.env, encoding: 'utf8' }).stdout.trim()
+  if (!execPath.startsWith('/')) throw new Error(`no git exec path: ${execPath}`)
+  const realGit = existsSync(join(execPath, 'git'))
+    ? join(execPath, 'git')
+    : spawnSync('sh', ['-c', 'command -v git'], { env: repo.env, encoding: 'utf8' }).stdout.trim()
+  const dir = join(repo.base, 'exec 工具')
+  const marks = join(repo.base, 'exec 標記')
+  mkdirSync(dir, { recursive: true })
+  mkdirSync(marks, { recursive: true })
+  for (const entry of readdirSync(execPath)) {
+    if (entry !== 'git') symlinkSync(join(execPath, entry), join(dir, entry))
+  }
+  writeFileSync(join(dir, 'git'), `#!/bin/sh
+case "$*" in
+  ${shQuote(args)}*)
+    if mkdir ${shQuote(join(marks, 'matched'))} 2>/dev/null; then
+      : > ${shQuote(join(marks, 'blocked'))}
+      ${mode === 'fail' ? 'exit 1' : 'exec sleep 3600'}
+    fi ;;
+esac
+exec ${shQuote(realGit)} "$@"
+`)
+  chmodSync(join(dir, 'git'), 0o755)
+  return {
+    env: { GIT_EXEC_PATH: dir },
+    blocked: join(marks, 'blocked'),
+    matched: () => existsSync(join(marks, 'matched')),
+  }
 }
