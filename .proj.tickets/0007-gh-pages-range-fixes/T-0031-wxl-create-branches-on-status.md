@@ -2,7 +2,7 @@
 id: T-0031
 title: wxl-create Step 2 branches on create:challenge's exit status
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0030]
 ---
 
@@ -245,3 +245,10 @@ Run from the worktree root on the uncommitted working tree over a54e917 (HEAD a5
 | Status | frontmatter | `status: review` |
 
 Gaps: none.
+
+### 2026-10-23 — landed (stage 9)
+
+PR [#37](https://github.com/BrowserLaboratory/wxl-platform/pull/37), rebased onto `e5ad839` (T-0030,
+#36) with the epic's docs commit `a54e917` dropped (patch-id unchanged), squash-merged into `main`
+as `b55d0ae` on 2026-10-23, from head `308510d`. The PR's CI: 10 checks passing, none failing. The PR also carried T-0030's landing record. Stage 8 has no browser surface for this ticket (skill text only).
+Frontmatter `status: done`.

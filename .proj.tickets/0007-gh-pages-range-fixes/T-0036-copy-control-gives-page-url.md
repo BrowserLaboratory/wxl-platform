@@ -2,7 +2,7 @@
 id: T-0036
 title: Off Cloudflare Pages, the copy control shows and copies the challenge page's URL
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -655,3 +655,10 @@ calling through. The PR's CI: 10 checks passing, none failing.
 
 Stage 8 box ticked: V01 above and V02 (2026-10-21, local). V02's selection clause stays with
 T-0037. Frontmatter `status: review` until the PR lands.
+
+### 2026-10-23 — landed (stage 9)
+
+PR [#39](https://github.com/BrowserLaboratory/wxl-platform/pull/39), rebased onto `e5ad839` (T-0030,
+#36) with the epic's docs commit `a54e917` dropped (patch-id unchanged), squash-merged into `main`
+as `8a8af74` on 2026-10-23, from head `14f9318`. The PR's CI: 10 checks passing, none failing. Stage 8: V02 (local, page mode) and V01 (the PR's Cloudflare preview, short mode) both passed, recorded above. V02's selection clause and the `copy_failed` layout in both nav rows stay with T-0037.
+Frontmatter `status: done`.
