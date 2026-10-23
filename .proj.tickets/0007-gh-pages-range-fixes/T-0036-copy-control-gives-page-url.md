@@ -39,7 +39,7 @@ ellipsis, shows whole on hover, and never makes the page scroll sideways.
 - [x] S04, S05, S09: HTML as served equals hydrated text; the clipboard holds the page URL; a run-time `window` flag does not switch the mode (AC-9)
 - [x] F01: one fork:init anchor line each in `shortLink.ts` and `config.mts`; `fork-init.test.ts` and `upstream-guard.test.ts` pass (AC-25)
 - [x] P4: the comments on `SITE_ORIGIN` and the "same string" header line in `shortLink.ts` describe both modes (AC-24)
-- [ ] Stage 8: V01 on the ticket's Cloudflare preview and V02 on a local build, challenge pages with their Browser panel open (AC-20)
+- [x] Stage 8: V01 on the ticket's Cloudflare preview and V02 on a local build, challenge pages with their Browser panel open (AC-20)
 
 ## 給使用者（zh-TW）
 
@@ -635,3 +635,23 @@ Commands run in this worktree after round 3, and their results:
   `lsof -tnP -iTCP:4173 -sTCP:LISTEN` printed nothing.
 - `git diff a54e917 -- .vitepress/theme/i18n/messages/ | wc -l` → `0`.
 - Frontmatter: `status: review`. Still open: V01 (Cloudflare preview) and V02's selection clause (T-0037).
+
+### 2026-10-23 — end-to-end V01 (stage 8, Cloudflare preview)
+
+Surface: PR [#39](https://github.com/BrowserLaboratory/wxl-platform/pull/39)'s Cloudflare Pages
+preview for `6abec71` (the branch tip after the rebase onto `e5ad839`), opened at its commit URL
+`https://0915ba99.wxl-platform.pages.dev` in the desktop app's built-in browser at 1024 wide, plus
+`curl` for the redirect statuses. Not covered: other widths, other browsers, real touch input. The
+pane's `clipboard-write` permission is `denied`, so a click ends in `short_link.copy_failed`; the
+copied value was read by wrapping `navigator.clipboard.writeText` to record its argument before
+calling through. The PR's CI: 10 checks passing, none failing.
+
+| Row | Result | Evidence |
+|---|---|---|
+| V01: the list shows short links whose origin is `SITE_ORIGIN`, both languages | pass | `/challenges` and `/zh-TW/challenges`: the four shown URL texts are `wxl.browserlab.online[/zh]/c/{001,002,008,010}`, each `title` the same with `https://`; `scrollWidth` equals `innerWidth` |
+| V01: the list copies them | pass | English row 4 → `https://wxl.browserlab.online/c/010`; Traditional Chinese row 1 → `https://wxl.browserlab.online/zh/c/001` |
+| V01: the nav shows and copies them, Browser panel open | pass | `/challenge/selected-excerpts/` and `/zh-TW/challenge/selected-excerpts/`: one shown URL text, `wxl.browserlab.online[/zh]/c/010`, copied as the same with `https://`; one visible copy button; the Browser panel's `iframe[srcdoc]` at 611×616 renders the challenge (screenshots in the session) |
+| V01: `/c/NNN` and `/zh/c/NNN` on the preview's host open their challenges | pass | `curl -w '%{http_code} %{redirect_url}'`: `/c/001` → 302 `/challenge/door-is-open/`, `/c/010` → 302 `/challenge/selected-excerpts/`, `/zh/c/001` → 302 `/zh-TW/challenge/door-is-open/`, `/zh/c/010` → 302 `/zh-TW/challenge/selected-excerpts/`. In the browser, `/c/001` and `/zh/c/010` opened the challenge pages with the Browser panel rendering the application |
+
+Stage 8 box ticked: V01 above and V02 (2026-10-21, local). V02's selection clause stays with
+T-0037. Frontmatter `status: review` until the PR lands.
