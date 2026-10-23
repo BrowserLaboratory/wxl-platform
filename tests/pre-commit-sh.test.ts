@@ -15,7 +15,7 @@
  * committed bytes instead, which do not come from the oracle.
  */
 
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { generateRedirects } from '../scripts/generate-redirects'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -631,6 +631,220 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     expect(run.stderr).toContain('carries different numbers across locale trees')
     expectNothingChanged(before, snapshot(repo))
     expect(readRecord(log)).toEqual([])
+  }, TIMEOUT)
+})
+
+// ─── Orphan briefs (D12, AC-15) ─────────────────────────────────────────────
+
+function generatorLog(): string {
+  const log = join(repo.base, 'generator.log')
+  recordScript(repo, 'generate-redirects.ts', log)
+  return log
+}
+
+/** The teacher's other work a refusal must leave alone: two unstaged edits, `_redirects` among them, and an untracked file. */
+function addTeacherWork(): void {
+  write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a hand edit\n`)
+  write(repo, 'platform/public/other.txt', 'other, unstaged\n')
+  write(repo, 'platform/notes/untracked.txt', 'untracked notes\n')
+}
+
+/**
+ * O4 with W6 for each orphan slug, refused before generating: exit 1, both
+ * paths of each slug and D12's three ways out on stderr, no `--staged` call
+ * and no W5 text.
+ */
+function expectW6(run: Run, slugs: string[], generator: string): void {
+  expect(run.status, run.stderr).toBe(1)
+  for (const slug of slugs) {
+    expect(run.stderr).toContain(`platform/zh-TW/challenge/${slug}/`)
+    expect(run.stderr).toContain(`platform/challenge/${slug}/`)
+  }
+  expect(run.stderr).toMatch(/delete/i)
+  expect(run.stderr).toMatch(/rename/i)
+  expect(run.stderr).toMatch(/retire/i)
+  expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
+  expect(run.stderr).not.toContain('held by more than one challenge')
+  expect(run.stderr).not.toContain('carries different numbers')
+}
+
+describe('pre-commit.sh: orphan briefs (D12)', () => {
+  it('H17: retiring door while its brief stays ends in O4 with W6 naming door, and nothing changes', () => {
+    const generator = generatorLog()
+    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['door'], generator)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('H21: deleting only door’s English directory ends in O4 with W6 naming door, and nothing changes', () => {
+    const generator = generatorLog()
+    git(repo, ['rm', '-rq', 'platform/challenge/door'])
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['door'], generator)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('H22: renaming only door’s English directory to gate ends in O4 with W6 naming door, and nothing changes', () => {
+    const generator = generatorLog()
+    git(repo, ['mv', 'platform/challenge/door', 'platform/challenge/gate'])
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['door'], generator)
+    expect(run.stderr).not.toContain('platform/zh-TW/challenge/gate/')
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('H41: renaming only door’s Traditional Chinese directory to gate ends in O4 with W6 naming gate, and the validator never runs', () => {
+    const generator = generatorLog()
+    const validator = validatorLog()
+    git(repo, ['mv', 'platform/zh-TW/challenge/door', 'platform/zh-TW/challenge/gate'])
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['gate'], generator)
+    expect(readRecord(validator)).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('H17 through git commit -m: refused with W6, no commit is made, and nothing changes', () => {
+    const generator = generatorLog()
+    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    addTeacherWork()
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-m', 'retire door'])
+
+    expectW6(run, ['door'], generator)
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('H21 through git commit -a -m: the orphan exists only in the index.lock git hands the hook; refused with W6, no commit is made, and nothing changes', () => {
+    const generator = generatorLog()
+    rmSync(join(repo.dir, 'platform/challenge/door'), { recursive: true })
+    addTeacherWork()
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+    // The deletion is in the working tree only: .git/index still holds door's English page.
+    expect(before.index.some((l) => l.endsWith('\tplatform/challenge/door/index.md'))).toBe(true)
+
+    const run = commit(repo, ['-a', '-m', 'delete door'])
+
+    expectW6(run, ['door'], generator)
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('K-17: an English page on disk but not in the index backs no brief, and two orphans are each named', () => {
+    const generator = generatorLog()
+    const validator = validatorLog()
+    writeChallenge(repo, 'platform/challenge', 'fresh', 4)
+    writeBrief(repo, 'fresh', 4)
+    writeBrief(repo, 'ghost', 5)
+    git(repo, ['add', 'platform/zh-TW/challenge/fresh/index.md', 'platform/zh-TW/challenge/ghost/index.md'])
+    addTeacherWork()
+    const before = snapshot(repo)
+    expect(before.untracked).toContain('?? platform/challenge/fresh/index.md')
+
+    const run = runHook(repo)
+
+    expectW6(run, ['fresh', 'ghost'], generator)
+    expect(readRecord(validator)).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('K-17 boundary: ignored directories, which stay on disk through the hook’s stash, neither back a brief nor make one', () => {
+    const generator = generatorLog()
+    // logs/ and tmp/ are ignored. The English logs page stays on disk; its brief is force-added.
+    writeChallenge(repo, 'platform/challenge', 'logs', 4)
+    writeBrief(repo, 'logs', 4)
+    git(repo, ['add', '-f', 'platform/zh-TW/challenge/logs/index.md'])
+    // An ignored brief with no English page at all is not in the index slugs.
+    writeBrief(repo, 'tmp', 5)
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['logs'], generator)
+    expect(run.stderr).not.toContain('platform/zh-TW/challenge/tmp/')
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('D12: an orphan HEAD already holds refuses a commit whose own change creates none', () => {
+    git(repo, ['rm', '-rq', 'platform/challenge/door'])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'an orphan, bypassing the hook'])
+    const generator = generatorLog()
+    write(repo, 'platform/challenge/test-chall/src/app.py', 'from flask import Flask\napp = Flask("test-chall")\n')
+    git(repo, ['add', 'platform/challenge/test-chall/src/app.py'])
+    addTeacherWork()
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['door'], generator)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('no English index slug at all: with every English challenge deleted, door’s brief still ends in O4 with W6 (an empty English list is not expanded under bash 3.2 set -u)', () => {
+    const generator = generatorLog()
+    git(repo, ['rm', '-rq', 'platform/challenge/test-chall', 'platform/challenge/door'])
+    addTeacherWork()
+    const before = snapshot(repo)
+    expect(before.index.some((l) => l.includes('\tplatform/challenge/'))).toBe(false)
+
+    const run = runHook(repo)
+
+    expectW6(run, ['door'], generator)
+    expect(run.stderr).not.toContain('unbound variable')
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  /** The rule lines once door is retired with its brief: both of door's rules are gone. */
+  const RETIRED_DOOR_RULES = ['/c/001 /challenge/test-chall/', '/c/:slug /challenge/:slug/', '/zh/c/:slug /zh-TW/challenge/:slug/']
+
+  it('H39: retiring door together with its brief ends in O2, and both its rules go', () => {
+    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    git(repo, ['rm', '-rq', 'platform/zh-TW/challenge/door'])
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(RETIRED_DOOR_RULES)
+    expectNoW3W4(run)
+    expect(run.stderr).not.toContain('platform/zh-TW/challenge/door/')
+  }, TIMEOUT)
+
+  it('H39 boundary: a brief removed only from the index stays on disk untracked, is no orphan, and both rules go', () => {
+    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    git(repo, ['rm', '-rq', '--cached', 'platform/zh-TW/challenge/door'])
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toContain('?? platform/zh-TW/challenge/door/index.md')
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(RETIRED_DOOR_RULES)
+    expectNoW3W4(run)
+    expect(run.stderr).not.toContain('platform/zh-TW/challenge/door/')
   }, TIMEOUT)
 })
 
