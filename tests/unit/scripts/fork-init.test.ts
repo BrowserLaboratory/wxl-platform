@@ -1563,6 +1563,15 @@ describe('runForkInit — anchor mode: site name (A6, A7)', () => {
 
 // T32/T8/AC-O1/AC-A5: --origin writes A8 as a JSON string literal, hostname lowercased, path case
 // unchanged.
+// 0007 P3/D10 (T-0038): the A8 replacement warning names SITE_ORIGIN as the range's address, the
+// origin of every copied link, not only the short links' origin.
+function expectRangeAddressWording(warning: string | undefined) {
+  expect(warning).toMatch(/^A8: /)
+  expect(warning).toContain('range address')
+  expect(warning).toContain('every copied link')
+  expect(warning).not.toContain('short-link origin')
+}
+
 describe('runForkInit — anchor mode: short-link origin (A8)', () => {
   let root: string
   beforeEach(() => {
@@ -1644,6 +1653,7 @@ describe('runForkInit — anchor mode: short-link origin (A8)', () => {
     expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
     expect(warning).toContain('https://c.example')
     expect(warning).toContain('https://test-owner.github.io/web-range')
+    expectRangeAddressWording(warning)
   })
 
   // T37/AC-O2: name = <owner>.github.io (compared case-insensitively) derives the user-site A8,
@@ -1734,6 +1744,7 @@ describe('runForkInit — anchor mode: short-link origin (A8)', () => {
     expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
     expect(warning).toContain('https://custom.example')
     expect(warning).toContain('https://e.example')
+    expectRangeAddressWording(warning)
   })
 
   it('warns when a custom existing value is replaced by a derived GitHub Pages origin', () => {
@@ -1746,6 +1757,7 @@ describe('runForkInit — anchor mode: short-link origin (A8)', () => {
     expect(warning, JSON.stringify(res.warnings)).toBeTruthy()
     expect(warning).toContain('https://custom.example')
     expect(warning).toContain('https://test-owner.github.io/web-range')
+    expectRangeAddressWording(warning)
   })
 
   it('does not warn when no --origin is given and none is derived', () => {

@@ -112,3 +112,30 @@ describe('zh-TW CW-E11/CW-E14 formatting and wording', () => {
     expect(w05).not.toContain('暫存目錄')
   })
 })
+
+describe("S6-ORIGIN names the value as the range's address, the origin of every copied link (0007 P3, D10)", () => {
+  const origins = ['https://alice.github.io/r', 'https://a"b.example']
+
+  it('en says range address and every copied link, not short link, and prints the value as a JSON string literal', () => {
+    for (const origin of origins) {
+      const text = en['S6-ORIGIN']({ origin })
+      expect(text).toContain('range address')
+      expect(text).toContain('every copied link')
+      expect(text).not.toContain('short link')
+      expect(text).toContain(jsonValue(origin))
+    }
+  })
+
+  it('zh-TW says 靶場網址 and 每一條連結, not 短連結, 複製連結 or origin, and prints the value as a JSON string literal', () => {
+    for (const origin of origins) {
+      const text = zhTW['S6-ORIGIN']({ origin })
+      expect(text).toContain('靶場網址')
+      expect(text).toContain('每一條連結')
+      expect(text).not.toContain('短連結')
+      expect(text).not.toContain('複製連結')
+      expect(text.replace(jsonValue(origin), '')).not.toContain('origin')
+      expect(text).toContain(jsonValue(origin))
+      expect(stripPunctuation(text)).not.toBe(stripPunctuation(en['S6-ORIGIN']({ origin })))
+    }
+  })
+})
