@@ -1,16 +1,17 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: 5b928e1b046a433642cad71e17246b8fc2aed5dc
+synced_from_sha: 0700a2b7f9c68a1539e6d9d179537a27c3adc6d6
 ---
 
 # Spec 0007：GitHub Pages 靶場修正——會自己跟上的 `_redirects`，以及打得開的連結
 
 狀態：第 3 版（2026-10-21）。第 1、2 輪對抗式審查都沒有發現 P0（`review/round-1.md`、`review/round-2.md`），
 因此第 3 階段的關卡已通過。第 3 版套用第 2 輪的處置（`review/disposition-2.md`）與使用者的裁決 D12–D15。
-審查上限是兩輪，所以第 3 版只自審，不再送審（D15）。本檔由英文版翻譯，以英文版為準。本文衍生自
+審查上限是兩輪，所以第 3 版只自審，不再送審（D15）。第 3.1 版（2026-10-24）新增 D16，
+寫明 T-0034 審查時實測到的兩種 O7 結束方式。本檔由英文版翻譯，以英文版為準。本文衍生自
 `traceability.md`，其中保存：
 
-- 決策（S8、Q4–Q11、Q33、D1–D15）；
+- 決策（S8、Q4–Q11、Q33、D1–D16）；
 - seam 0007-S1 到 S8；
 - 詞彙表與模式規則；
 - 連結形式與範例 X1–X6；
@@ -245,7 +246,7 @@ guard、部署方式，以及 commit `_redirects` 的決定，都不變。
     - 在 commit 進去的 `_redirects` 仍帶本 epic 之前 header 的靶場裡，commit 一道題目。（H31–H38、H44）
 - **AC-23** 穩健性：
   - 下列情況以 O5 結束：產生期間收到 SIGINT、SIGTERM 或 SIGHUP，以及 hook stash 之前就有 git 指令失敗。
-  - 還原失敗以 O7 結束。W9 指名 hook 的 entry，它仍列在清單裡，套用後就能把 unstaged 檔案帶回來。
+  - 還原失敗以 O7 結束。W9 指名 hook 的 entry，它仍列在清單裡並保存著 unstaged 檔案；套用後就能把它們帶回來，D16 列出的兩種情況除外。
   - 第一個 commit 若 `platform/` 底下有 unstaged 檔案，以 O6 與 W7 結束；全部都已 stage 的第一個 commit 以 O2 結束。
   - 對被中斷的 `git commit -a` 送 SIGINT，依 race 的結果以 O5 或 O7 結束。兩種情況下 `.git/index` 都不變、沒有 commit，每個 unstaged 檔案不是已經回來，就是在被指名的 entry 裡。
   - 工作樹裡只有 `_redirects` 不同時，hook 不建立自己的 entry，也不碰別的 entry。

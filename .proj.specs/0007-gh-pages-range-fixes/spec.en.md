@@ -3,10 +3,11 @@
 Status: revision 3 (2026-10-21). Rounds 1 and 2 of adversarial review found no P0
 (`review/round-1.md`, `review/round-2.md`), so the stage 3 gate is met. Revision 3 applies round 2's
 disposition (`review/disposition-2.md`) and the user's decisions D12–D15. Two rounds is the ceiling,
-so revision 3 is self-checked rather than reviewed again (D15). Derived from `traceability.md`,
+so revision 3 is self-checked rather than reviewed again (D15). Revision 3.1 (2026-10-24) adds D16,
+which names two ends of O7 that T-0034's review measured. Derived from `traceability.md`,
 which holds:
 
-- the decisions (S8, Q4–Q11, Q33, D1–D15);
+- the decisions (S8, Q4–Q11, Q33, D1–D16);
 - the seams 0007-S1 to S8;
 - the vocabulary and the mode rule;
 - the link forms with examples X1–X6;
@@ -268,7 +269,7 @@ No intended vulnerability of any challenge is touched, so ADR-0005 does not appl
     - a challenge commit in a range whose committed `_redirects` has the header from before this epic. (H31–H38, H44)
 - **AC-23** Robustness:
   - These end in O5: SIGINT, SIGTERM or SIGHUP during generation, and a git command failing before the hook stashed.
-  - A restore that fails ends in O7. W9 names the hook's entry, which stays listed and brings the unstaged files back once applied.
+  - A restore that fails ends in O7. W9 names the hook's entry, which stays listed and holds the unstaged files; applying it brings them back, except in the two cases D16 names.
   - SIGINT to an interrupted `git commit -a` ends in O5 or O7, as the race falls. In both cases `.git/index` is as before, no commit is made, and every unstaged file is back or in the named entry.
   - A first commit with an unstaged file under `platform/` ends in O6 with W7. A first commit with everything staged ends in O2.
   - When `_redirects` is the only file that differs in the working tree, the hook makes no entry of its own and touches no other.

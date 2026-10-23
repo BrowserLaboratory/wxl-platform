@@ -10,6 +10,9 @@ after the earlier rows of the same letter. Both rounds found no P0, so stage 3's
 Revision 3 gets no third round (two is the ceiling); its new rules were checked as described in
 "Checks on this revision".
 
+Revision 3.1 (2026-10-24) adds D16, which settles two ends of O7 that T-0034's stage 6 review
+measured. It rewrites rows H26 and O7 and the check "Restore, then drop; O7", and adds no code.
+
 The decisions come from stage 1, recorded in the local research note
 `.proj.research/2026-10-18-dev-image-gh-pages-grill.md` (converged 2026-10-18; the user confirmed
 its summary on 2026-10-20), and from stage 3. Only the decisions below bind this epic. The note's
@@ -43,6 +46,7 @@ other epics, which cover starting without Rust and a container development envir
 | D13 | (2026-10-21, round 2 decision C) When keygen fails after the scaffold was written, `create:challenge` exits 3, as `challenge:retype` does for keygen and IO errors. Status 1 then always means nothing was written. wxl-create re-asks the name on no status but 1, and its menus answer with words, not digits. |
 | D14 | (2026-10-21, round 2 decision D) The URL text never gets narrower than six `0` characters of its own font (6ch), with an ellipsis when cut. This holds while `short_link.copy_failed` shows too. |
 | D15 | (2026-10-21, round 2 decision A) Round 2's findings go into revision 3 of the spec and this matrix, self-checked, with no third review round. |
+| D16 | (2026-10-24, decided under the user's standing authorization of 2026-10-23 for T-0033 to T-0038: "授權權限，完成到結束") Two ends of O7 are documented, not changed, since either change would add a guarantee or break B2. (a) Applying the hook's entry brings the unstaged files back byte for byte, except that an unstaged hunk overlapping a staged one conflicts, and its unstaged content is then `git checkout <id> -- <path>`; and that a text file written with CRLF comes back with LF line endings, which is how `* text=auto eol=lf` stores it in the entry. The hook keeps no raw copy past its run. (b) A `git stash push` that stopped partway after changing the index ends in O7 with the unstaged files back and the index as the push left it. W9 then prints `git restore --staged --source=<id>^2 -- …`, which puts the index back. The hook never writes the index under `platform/` itself (B2). |
 
 ## Seams
 
@@ -285,7 +289,7 @@ outside `platform/` are never written; `.git/` is git's own. Empty untracked dir
 | O4 triggered; an orphan brief, or generation fails | 1, with W6 or W5 | as before | as before, `_redirects` included | as before |
 | O5 interrupted by SIGINT, SIGTERM or SIGHUP, or a git command fails, at any point, and any restore the hook needed completed | non-zero | as before, or differing only in `_redirects` holding the expected content | every file other than `_redirects` as before, untracked files still untracked; `_redirects` as before, or equal to the expected content when the index holds it | as before |
 | O6 triggered with no `HEAD` while something under `platform/` is unstaged or untracked | 1, before any change, with W7: git cannot stash before the first commit, so every change under `platform/` must be staged for it | as before | as before | as before |
-| O7 restoring the hook's own entry fails | non-zero, with W9 | as O5 | the files that entry holds are as they were in the stash, not yet back, until the printed entry is applied; `_redirects` as O5 | as before, plus the hook's entry |
+| O7 restoring the hook's own entry fails, or a `git stash push` stopped partway after changing the index (D16) | non-zero, with W9 | as O5; after a push that stopped partway, as the push left it, until W9's `git restore --staged` command is run | the files that entry holds are as they were in the stash, not yet back, until the printed entry is applied, with D16's two exceptions; after a push that stopped partway, every file back as O5 describes; `_redirects` as O5 | as before, plus the hook's entry |
 
 O1 to O7 and the commit-forms refusal cover the ends the matrix exercises. SIGKILL and a power loss
 cannot be handled and are outside the model, and a missing `node` ends the run with the shell's own
@@ -420,7 +424,7 @@ the hook directly.
 | H23 | staged change | a retired challenge | moved back from `.archive/challenge/` | O2; its `/c/NNN` rule returns | AC-12 |
 | H24 | staged change | a challenge's `index.md` | changed in type: replaced by a symbolic link to `brief.md` in the same directory, which holds the same bytes and is staged | O2; the staged `_redirects` keeps `HEAD`'s bytes; the validator does not receive the path | AC-12 |
 | H25 | interruption | SIGINT; SIGTERM; SIGHUP, each sent to the hook's process group while a generator stub blocks after writing its marker | a challenge change staged, files unstaged | O5 | AC-23 |
-| H26 | git failure | a generator stub creates `.git/index.lock` and leaves it, so `git add` fails and so does the restore | a challenge change staged, files unstaged | O7: W9, and the entry with the printed id is listed. Once the lock is removed, `git stash apply` of that id brings the unstaged files back byte for byte | AC-23 |
+| H26 | git failure | a generator stub creates `.git/index.lock` and leaves it, so `git add` fails and so does the restore | a challenge change staged, files unstaged | O7: W9, and the entry with the printed id is listed. Once the lock is removed, `git stash apply` of that id brings the unstaged files back byte for byte, for files outside D16's two exceptions (a hunk overlapping a staged one, a CRLF text file) | AC-23 |
 | H27 | no `HEAD` | first commit, with an unstaged file under `platform/` | its own fixture: a new repository with no commit and no stash entry, `platform/public/` holding one other file | O6 with W7 | AC-23 |
 | H28 | no `HEAD` | first commit, everything under `platform/` staged | the same fixture as H27 | O2 | AC-23 |
 | H29 | stash | the pre-existing entry | every H row except H27 and H28 | still listed, with the same commit id | AC-23 |
@@ -535,7 +539,7 @@ matrix row names its seam.
 | D13: keygen failure exits 3 | C05 (status 1 before any file is written); wxl-mutate's statuses; P7; `pnpm` forwarding | consistent. Status 1 now always means nothing was written, so re-asking the name on 1 is safe. `challenge:retype` uses 3 for the same failure. `pnpm` 10.28.0, the version `packageManager` pins, returns a script's status 2 and 3 unchanged (measured 2026-10-21). No other caller or document reads keygen's status as 1 (searched: scripts, tests, CI, README, CONTRIBUTE, challenge-pipeline) |
 | D14: the 6ch minimum (S10) | S01 at 360 wide while `short_link.copy_failed` shows; S08; D7 and S07 | compatible only if the status text does not widen the row. The spec lets the status text wrap and the nav's mobile row grow taller while a status shows. 6ch is shorter than any page URL or short link, so S08's cut still happens. S07 is now D7's definition, with the minimum as its floor |
 | The commit-forms predicate | the measured table; a direct `bash` run; a linked worktree; `-p` and `--only` | the predicate gives "own" for every measured form the outcomes should apply to, and "other" for the path form. A direct run has the variable unset. `-p` and `--only` are inferred and checked by H36 and H33 |
-| Restore, then drop; O7 | O5's stash column; AC-23; B2 "restores … byte for byte" | O5 now applies only when every restore completed, and O7 covers the rest. O7 keeps the bytes in the entry and prints how to apply it, so B2's guarantee holds once the entry is applied |
+| Restore, then drop; O7 | O5's stash column; AC-23; B2 "restores … byte for byte" | O5 now applies only when every restore completed, and O7 covers the rest. O7 keeps the files in the entry and prints how to apply it, so B2's guarantee holds once the entry is applied, with D16's two exceptions: an overlapping hunk is taken with `git checkout <id> -- <path>`, and a CRLF text file comes back with LF line endings |
 | The hook's entry is the one `refs/stash` gained | H29; the measured case where a push excluding `_redirects` saves nothing | consistent. Measured 2026-10-21 (git 2.54.0): such a push prints "No local changes to save", exits 0 and leaves `refs/stash` unchanged, so taking `stash@{0}` would have picked the teacher's entry. H42 covers it |
 | W3's condition | D3; H01, H07, H10, H11, H31, H42 | H01 after `pnpm dev` prints nothing; every case that discards a version the teacher made prints W3 |
 | Per-tree index slugs | the guard's per-slug `index.md` rule; G01 | the same file on a clean checkout, which is what CI has. `includeSlug` gains the page's locale as a second argument, so the guard's one-argument call does not change |

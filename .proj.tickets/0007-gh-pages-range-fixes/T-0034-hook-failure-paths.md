@@ -30,7 +30,7 @@ dropped.
 ## Acceptance criteria
 
 - [x] H25: SIGINT, SIGTERM, SIGHUP to the hook's process group while a generator stub blocks → O5 (AC-23)
-- [ ] H26: a generator stub leaves `.git/index.lock`, so `git add` and the restore fail → O7, W9; `git stash apply` of the printed id restores the files byte for byte once the lock is gone (AC-23). Met for LF and binary files (the H26 case). Not met for a CRLF file or a hunk overlapping a staged one; this awaits the user's ruling (stage 6 round 1, finding 5)
+- [x] H26: a generator stub leaves `.git/index.lock`, so `git add` and the restore fail → O7, W9; `git stash apply` of the printed id restores the files byte for byte once the lock is gone (AC-23). Met as revision 3.1 words it: byte for byte outside D16's two exceptions (a CRLF text file, a hunk overlapping a staged one), which the H26 case leaves out (see "rulings" below)
 - [x] H27, H28: first commit with an unstaged file → O6 with W7; everything staged → O2, on their own fixture (AC-23)
 - [x] H42: only `_redirects` differs in the working tree → no entry of the hook's own; the pre-existing entry is neither applied nor dropped (AC-23)
 - [x] H45: H02, H07, H14 and H34 under `/bin/bash` 3.2 give their bash 5 outcomes; run on a Mac at stage 5, and the coverage report says so (AC-23)
@@ -359,7 +359,7 @@ confirmed.
   holds a CRLF file (git writes it back with LF under `eol=lf`) or a hunk that overlaps a staged one
   (it conflicts after `--keep-index`). The raw copies go with `$WORK` (open point 3). The same holds
   for W9's `git restore` commands after a missing index. Stage 6 round 1 (finding 5) confirmed this
-  against H26 and B2; it awaits the user's ruling.
+  against H26 and B2. Settled by D16 (a) in revision 3.1: documented, not changed (see "rulings" below).
 - **A failed `rev-parse` of `refs/stash` right after a push that saved an entry.** Since stage 6,
   `finish` reads `refs/stash` again and claims the entry it gained. The entry stays unidentified (no
   restore, no W9, the entry in `git stash list`) only when that second read fails too. Read from the
@@ -379,8 +379,8 @@ confirmed.
   the files back, keeps the entry and prints W9 with the command that puts the index back. That end
   is neither O5 (the index is not as before) nor O7 as traceability words it (the files are back, and
   O7's index column says "as O5"). Meeting O5 would need the hook to write the index under
-  `platform/` itself, against B2's "The hook stages only `platform/public/_redirects`". Either ruling
-  (the hook restores the index, or a spec revision names this end) is the user's, with finding 5.
+  `platform/` itself, against B2's "The hook stages only `platform/public/_redirects`". Settled by D16 (b)
+  in revision 3.1: the spec names this end as part of O7, and the hook does not write the index (see "rulings" below).
 - **The git wrapper's wait loop under a signal.** The round 2 rerun had one 60 s timeout, in a
   changed-index case, while its blocker still waited in a `sleep 0.05` shell loop. A likely cause, not
   reproduced: a shell that gets SIGINT while it reaps a `sleep` that exited normally can carry on,
@@ -759,3 +759,46 @@ security review (stage 7) and round 2; end-to-end (stage 8, local).
 
 For T-0039, unchanged: W7 and the three forms of W9 are new teacher-facing text that README or skill
 text may want to mention.
+
+### 2026-10-24 — rulings on gaps 1 and 2 (D16, revision 3.1)
+
+The completeness check left two gaps for the user. The user's standing authorization of 2026-10-23
+for T-0033 to T-0038 ("授權權限，完成到結束") covers them, so the parent decided both, choosing the
+option that changes no code and adds no guarantee (global rule 5's side-effect check), and recorded
+the decision as D16 in `traceability.md` revision 3.1.
+
+1. Gap 1 (H26, findings 5 and 9, security S6): documented, not changed. Measured with git 2.54.0 in a
+   throwaway repository with this repository's `.gitattributes` (`* text=auto eol=lf`), a file with
+   a staged and an overlapping unstaged change, and an unstaged CRLF file, stashed with
+   `git stash push --keep-index --include-untracked`: `git stash apply <id>` left conflict markers
+   in the overlapping file, and `git checkout <id> -- platform/o.txt` brought its unstaged content
+   back exactly; `git show <id>:platform/crlf.txt | od -c` printed `x \n y \n`, so the entry itself
+   holds LF line endings and no later step could restore the CRLF bytes from it. To rerun, from the
+   repository root, in a new empty directory `$E`:
+
+   ```sh
+   git init -q "$E/r" && cp .gitattributes "$E/r/" && cd "$E/r" && git config user.email t@t && git config user.name t
+   mkdir platform && printf 'a\nb\nc\n' > platform/o.txt && printf 'x\n' > platform/crlf.txt && git add -A && git commit -qm init
+   printf 'a\nSTAGED\nc\n' > platform/o.txt && git add platform/o.txt && printf 'a\nUNSTAGED\nc\n' > platform/o.txt
+   printf 'x\r\ny\r\n' > platform/crlf.txt
+   git stash push -q --keep-index --include-untracked -m probe && id=$(git rev-parse refs/stash)
+   git stash apply -q "$id"; cat platform/o.txt          # conflict markers
+   git checkout "$id" -- platform/o.txt && cat platform/o.txt   # a, UNSTAGED, c
+   git show "$id:platform/crlf.txt" | od -c              # x \n y \n
+   ```
+
+   Keeping `$WORK/raw` past the run (option a) was not chosen: it adds a guarantee and
+   leaves copies of the teacher's files in `TMPDIR`.
+2. Gap 2 (round 2, finding 6): the spec now names the end. The O7 row covers a `git stash push` that
+   stopped partway after changing the index: the files are back, the index is as the push left it,
+   and W9 prints `git restore --staged --source=<id>^2 -- …`. Having the hook restore the index
+   itself was not chosen: B2 says the hook stages only `platform/public/_redirects`.
+
+Changed: `traceability.md` (revision 3.1 note, D16, rows O7 and H26, the check "Restore, then drop;
+O7"), `spec.en.md` (status note, the decisions range, AC-23's O7 bullet) and `spec.zh-TW.md` (the
+same three, `synced_from_sha` set to `git hash-object .proj.specs/0007-gh-pages-range-fixes/spec.en.md`
+→ `0700a2b7f9c68a1539e6d9d179537a27c3adc6d6`). No code or test changed. H26 is ticked against the
+revised row. For T-0039: W9's text does not mention `git checkout <id> -- <path>` for an overlapping
+hunk; README or skill text may want to.
+
+Gap 3 (the PR's CI, bash 5, and the preview) remains for stage 9.
