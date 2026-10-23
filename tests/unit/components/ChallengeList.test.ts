@@ -12,14 +12,23 @@ const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 // instance says something else — which is the only way to see which of the two the
 // rendered strings actually follow.
 const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
+// Identity by default. The N04 cases make it prefix a non-root base, so a base wrongly added to
+// the copied URL shows up there while every other case keeps today's hrefs.
+const mockWithBase = vi.hoisted(() => ({ prefix: '' }))
 vi.mock('vitepress', () => ({
-  withBase: vi.fn((path: string) => path),
+  withBase: vi.fn((path: string) => `${mockWithBase.prefix}${path}`),
   // The list takes its locale from the page, not from the vue-i18n runtime:
   // the runtime instance starts at `en` and only reaches the right value after
   // hydration, so a zh-TW page would ship `/c/001` into its static HTML and
   // correct it to `/zh/c/001` on hydration.
   useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
+
+// The link mode, a build-time constant read through one module, set per test. Short mode by
+// default so today's short-link cases keep their meaning; an undefined constant would mean page
+// mode.
+const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
+vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
 
 // Progress is read through the persistence layer, and the list is the only thing
 // under test here. Mocked at that boundary so a test that is about markers is not
@@ -66,6 +75,8 @@ beforeEach(async () => {
   // locale at 'root' therefore keeps the two disagreeing, which is the state that
   // makes the page-locale assertions below mean something.
   mockLocaleIndex.value = 'root'
+  mockMode.value = 'short'
+  mockWithBase.prefix = ''
   const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
   ChallengeList = mod.default
 })
@@ -149,6 +160,89 @@ describe('ChallengeList short links', () => {
 
     expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
     expect(onRowClick).not.toHaveBeenCalled()
+  })
+})
+
+// What each row's control is given (N01, N02): its number, the row slug, and the page's locale,
+// which differs here from the runtime locale tests/setup.ts installs (zh-TW).
+describe('ChallengeList copy controls', () => {
+  it.each([
+    ['root', 'en'],
+    ['zh-TW', 'zh-TW'],
+  ] as const)('pass number, row slug and page locale with localeIndex %s (N01, N02)', async (localeIndex, locale) => {
+    mockLocaleIndex.value = localeIndex
+    const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
+    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const controls = wrapper.findAllComponents(ShortLinkShare)
+
+    expect(controls.map((c) => c.props())).toEqual([
+      { number: 1, slug: 'sqli-demo', locale },
+      { number: 2, slug: 'php-demo', locale },
+      { number: 3, slug: 'hard', locale },
+    ])
+  })
+})
+
+// N04: in page mode the copied URL is SITE_ORIGIN + the page's path, with no base added, even
+// where withBase prefixes one (the row's own href does carry it). Expected values are built from
+// SITE_ORIGIN with plain string operations (T70/AC-C1).
+describe('ChallengeList in page mode with a non-root base (N04)', () => {
+  beforeEach(() => {
+    mockMode.value = 'page'
+    mockWithBase.prefix = '/my-range'
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) },
+      configurable: true,
+      writable: true,
+    })
+  })
+
+  async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' = 'root') {
+    mockLocaleIndex.value = locale
+    const wrapper = mount(ChallengeList, { props: { challenges } })
+    const row = wrapper.findAll('a.ch-list-row')[0]
+    await row.find('[data-copy-link]').trigger('click')
+    await flushPromises()
+    const writeText = navigator.clipboard.writeText as ReturnType<typeof vi.fn>
+    return { copied: writeText.mock.calls[0]?.[0], href: row.attributes('href'), shown: row.find('[data-short-link]').text() }
+  }
+
+  it.each(['/challenge/sqli-demo', '/challenge/sqli-demo/'])('copies the page URL for the fixture url %s', async (url) => {
+    const { copied, href, shown } = await copiedFrom([{ id: 1, number: 1, title: 'SQL', url, difficulty: 'easy', category: 'web' }])
+    expect(copied).toBe(`${SITE_ORIGIN}/challenge/sqli-demo/`)
+    expect(shown).toBe(`${DISPLAY_ORIGIN}/challenge/sqli-demo/`)
+    expect(href).toBe(`/my-range${url}`)
+  })
+
+  it('copies the Traditional Chinese page URL from a zh-TW row', async () => {
+    const { copied, href } = await copiedFrom(
+      [{ id: 3, number: 3, title: '摘錄', url: '/zh-TW/challenge/selected-excerpts/', difficulty: 'easy', category: 'web' }],
+      'zh-TW',
+    )
+    expect(copied).toBe(`${SITE_ORIGIN}/zh-TW/challenge/selected-excerpts/`)
+    expect(href).toBe('/my-range/zh-TW/challenge/selected-excerpts/')
+  })
+})
+
+// N05, N06: the #NNN badge and the grid view do not change with the mode.
+describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mode', (m) => {
+  beforeEach(() => {
+    mockMode.value = m
+  })
+
+  it('keeps the #NNN badge on every row (N05)', () => {
+    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const badges = wrapper.findAll('a.ch-list-row').map((row) => row.find('span.font-mono').text())
+    expect(badges).toEqual(['#001', '#002', '#003'])
+  })
+
+  it('renders no copy control in grid view (N06)', async () => {
+    const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
+    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    await wrapper.find('button[title="格線模式"]').trigger('click')
+    expect(wrapper.findAll('[data-challenge-card]')).toHaveLength(3)
+    expect(wrapper.find('[data-short-link]').exists()).toBe(false)
+    expect(wrapper.findAllComponents(ShortLinkShare)).toHaveLength(0)
   })
 })
 

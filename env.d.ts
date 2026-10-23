@@ -15,3 +15,10 @@ declare module 'php-wasm/PhpWeb.mjs' {
 declare module 'php-wasm/PhpNode.mjs' {
   export const PhpNode: new (args?: Record<string, unknown>) => unknown
 }
+
+/**
+ * The link mode, as `vite.define` in `.vitepress/config.mts` hands it to the site bundle:
+ * true only for a Cloudflare Pages build (`CF_PAGES=1`). Undefined where nothing replaces it,
+ * as under vitest. Read it through `.vitepress/theme/linkMode.ts` only.
+ */
+declare const __WXL_SHORT_LINKS__: boolean | undefined

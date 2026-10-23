@@ -35,7 +35,14 @@ vi.mock('vitepress', () => ({
   withBase: (url: string) => mockBase.value + url,
 }))
 
+// The link mode, a build-time constant read through one module, set per test. Short mode by
+// default so today's short-link cases keep their meaning; an undefined constant would mean page
+// mode.
+const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
+vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
+
 import MergedNav from '../../../.vitepress/theme/components/MergedNav.vue'
+import ShortLinkShare from '../../../.vitepress/theme/components/ShortLinkShare.vue'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
 
 // T70/AC-C1: built from SITE_ORIGIN with plain string operations, not shortLinkDisplay, so this
@@ -99,6 +106,7 @@ async function mountOpened(locale: 'en' | 'zh-TW', props = defaultProps) {
 beforeEach(() => {
   mockLocaleIndex.value = 'root'
   mockBase.value = ''
+  mockMode.value = 'short'
 })
 
 const defaultProps = {
@@ -110,6 +118,7 @@ const defaultProps = {
   noteCount: 0,
   descriptionCollapsed: false,
   number: 1,
+  slug: 'sqli-demo',
   completed: false,
 }
 
@@ -475,6 +484,43 @@ describe('MergedNav short link', () => {
   })
 })
 
+// N03: both places the nav puts a control (desktop and mobile row) get the challenge's number,
+// its slug and the page's locale, which differs here from the runtime locale.
+describe('MergedNav copy controls', () => {
+  it.each([
+    ['en', 'zh-TW'],
+    ['zh-TW', 'en'],
+  ] as const)('pass number, slug and the %s page locale (runtime %s) to both controls (N03)', (page, runtime) => {
+    mockLocaleIndex.value = page === 'zh-TW' ? 'zh-TW' : 'root'
+    const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n(runtime)] } })
+    const controls = wrapper.findAllComponents(ShortLinkShare)
+    expect(controls).toHaveLength(2)
+    for (const control of controls) {
+      expect(control.props()).toEqual({ number: 1, slug: 'sqli-demo', locale: page })
+    }
+  })
+})
+
+// N04: in page mode the nav copies SITE_ORIGIN + the page's path, with no base added, even where
+// withBase prefixes one. Expected values are plain string operations on SITE_ORIGIN.
+describe('MergedNav in page mode with a non-root base (N04)', () => {
+  it.each([
+    ['en', '/challenge/sqli-demo/'],
+    ['zh-TW', '/zh-TW/challenge/sqli-demo/'],
+  ] as const)('copies the %s page URL from both controls', async (locale, path) => {
+    mockMode.value = 'page'
+    mockBase.value = '/my-range'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mountIn(locale)
+
+    const texts = wrapper.findAll('[data-short-link]')
+    expect(texts.map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${path}`, `${DISPLAY_ORIGIN}${path}`])
+    for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
+    expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${path}`], [`${SITE_ORIGIN}${path}`]])
+    for (const [url] of writeText.mock.calls as unknown as [string][]) expect(url).not.toContain('/my-range')
+  })
+})
 
 // After C1 a solved challenge that is opened again starts a FRESH attack session and
 // keeps the earlier one, so the page a returning learner lands on is indistinguishable

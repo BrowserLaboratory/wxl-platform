@@ -22,6 +22,11 @@ const props = defineProps<{
    */
   number?: number
   /**
+   * The challenge's slug, from the page's path. Off Cloudflare Pages the copied link is the
+   * challenge page's URL, which is built from it.
+   */
+  slug?: string
+  /**
    * Whether the learner has already solved this challenge.
    *
    * Supplied by the layout, which is where the read of local progress belongs. This
@@ -134,7 +139,13 @@ const categoryBadge: Record<string, string> = {
         >{{ category }}</span>
 
         <!-- Short link: the address a reader is given, next to the title it names. -->
-        <ShortLinkShare class="hidden md:inline-flex" :number="number" :locale="locale" />
+        <!--
+          `max-md:hidden`, not `hidden md:inline-flex`: the control's root is itself
+          `inline-flex`, which UnoCSS emits after `hidden`, so a plain `hidden` lost and
+          this control showed below md beside the mobile row's own. A media-query rule
+          comes after both.
+        -->
+        <ShortLinkShare class="max-md:hidden" :number="number" :slug="slug" :locale="locale" />
 
         <!--
           `tp`, not `$t`: the label follows the page locale like every other string in
@@ -245,7 +256,7 @@ const categoryBadge: Record<string, string> = {
         data-badge="category"
         :class="categoryBadge[category] ?? 'ch-badge'"
       >{{ category }}</span>
-      <ShortLinkShare :number="number" :locale="locale" />
+      <ShortLinkShare :number="number" :slug="slug" :locale="locale" />
       <!--
         Never labelled, at any width this row renders at. The row has no free space to
         absorb a badge: its title is `flex-1`, so the title IS the free space and
@@ -256,10 +267,15 @@ const categoryBadge: Record<string, string> = {
         which is what icon-only PRODUCES, not what it avoids.
       -->
       <ChallengeDoneBadge v-if="completed" label-mode="never" :label="tp('challenge_progress.completed_badge')" />
+      <!--
+        Does not shrink and does not wrap. The URL text beside it is a long page URL and gives up
+        the width instead (D7); a toggle that could shrink was squeezed to `📖 / 題 / 目`, one
+        character per line, spilling out of this 32px row.
+      -->
       <button
         v-if="descriptionCollapsed"
         data-desc-toggle
-        class="ch-nav-pill-btn text-[0.75em] md:hidden"
+        class="ch-nav-pill-btn text-[0.75em] md:hidden shrink-0 whitespace-nowrap"
         @click="$emit('toggle-description')"
       >📖 {{ tp('merged_nav.description_toggle_label') }}</button>
     </div>

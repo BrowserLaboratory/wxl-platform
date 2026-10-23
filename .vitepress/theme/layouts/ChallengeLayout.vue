@@ -833,6 +833,7 @@ onUnmounted(() => {
       :difficulty="fm.difficulty ?? ''"
       :category="fm.category ?? ''"
       :number="typeof fm.number === 'number' ? fm.number : undefined"
+      :slug="slug"
       :completed="challengeCompleted"
       :runtimeReady="runtimeReady"
       :runtimeError="runtimeError"
