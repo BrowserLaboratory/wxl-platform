@@ -13,20 +13,26 @@
 # 2. Validates the staged platform/challenge/ paths that the ACMRD filter
 #    selects, as before (challenge-lint-staged.ts), and only when there is one.
 #    A type change (T) triggers regeneration but is not validated.
-# 3. Generates _redirects over the staged snapshot, restricted to the index
+# 3. Before generating, refuses an orphan brief (D12): a slug in the
+#    Traditional Chinese tree's index slugs that the English tree's index slugs
+#    lack, which CI would fail. It exits 1 with a message naming
+#    platform/zh-TW/challenge/<slug>/ and platform/challenge/<slug>/, and
+#    nothing is changed. The check reads the whole staged snapshot, not only
+#    the staged change.
+# 4. Generates _redirects over the staged snapshot, restricted to the index
 #    slugs: per tree, the slugs whose <tree>/<slug>/index.md is in the index.
 #    A page counts only when its own tree lists its slug, so ignored and
 #    untracked challenge directories are left out.
-# 4. Writes and stages _redirects only after validation and generation
+# 5. Writes and stages _redirects only after validation and generation
 #    succeeded. Afterwards the working tree's _redirects equals the staged one,
 #    even if it held an unstaged change before (D3).
-# 5. On every exit, puts the stashed files back byte for byte, and drops the
+# 6. On every exit, puts the stashed files back byte for byte, and drops the
 #    hook's own entry only after that restore completed. git stores a stashed
 #    file through the repository's attributes (`eol=lf` turns CRLF into LF), so
 #    each stashed regular file is put back from a raw copy taken before. On every
 #    exit other than O2 where the index's _redirects did not change, the working
 #    tree's _redirects keeps the bytes it had before, unless an O5 came during
-#    step 4's git add or later. The restore neither removes nor writes a path with a
+#    step 5's git add or later. The restore neither removes nor writes a path with a
 #    symbolically linked directory above it: it skips and names it on stderr.
 
 set -euo pipefail
@@ -247,6 +253,48 @@ if [ ${#VALIDATE[@]} -gt 0 ]; then
   validation=0
   node --experimental-strip-types scripts/challenge-lint-staged.ts "${VALIDATE[@]}" || validation=$?
   [ "$validation" -eq 0 ] || exit "$validation"
+fi
+
+# ── Orphan briefs (D12) ─────────────────────────────────────────────────────
+# A Traditional Chinese brief whose slug the English tree's index slugs lack
+# would fail CI ("backs every translated slug with a root-locale challenge"),
+# so it is refused before generating. Both lists come from the index the hook
+# runs on, as the generator's index slugs do, and are compared as whole
+# strings in plain arrays (bash 3.2 has no associative arrays). Neither array
+# is expanded when empty: bash 3.2 under `set -u` rejects that.
+index_slugs() {
+  local path rest
+  while IFS= read -r -d '' path; do
+    rest=${path#"$1"}
+    case "$rest" in
+      */*/*) ;;
+      */index.md) printf '%s\0' "${rest%/index.md}" ;;
+    esac
+  done < <(git ls-files -z -- "$1")
+}
+EN_SLUGS=()
+while IFS= read -r -d '' slug; do EN_SLUGS+=("$slug"); done < <(index_slugs platform/challenge/)
+ORPHANS=()
+while IFS= read -r -d '' slug; do
+  found=false
+  if [ ${#EN_SLUGS[@]} -gt 0 ]; then
+    for en in "${EN_SLUGS[@]}"; do
+      if [ "$en" = "$slug" ]; then found=true; break; fi
+    done
+  fi
+  [ "$found" = true ] || ORPHANS+=("$slug")
+done < <(index_slugs platform/zh-TW/challenge/)
+if [ ${#ORPHANS[@]} -gt 0 ]; then
+  for slug in "${ORPHANS[@]}"; do
+    echo "[pre-commit] ✗ platform/zh-TW/challenge/$slug/ is a Traditional Chinese brief, but the index holds no English challenge platform/challenge/$slug/ (its index.md is not staged), so CI would fail this commit." >&2
+  done
+  cat >&2 <<'EOF'
+[pre-commit]   Delete, rename or retire each brief together with its English directory: delete
+[pre-commit]   both, rename both, or, when you retire the challenge to .archive/challenge/,
+[pre-commit]   delete its brief in the same commit (git rm -r platform/zh-TW/challenge/<slug>/).
+[pre-commit]   If the English challenge exists but is not staged yet, git add it. Nothing was changed.
+EOF
+  exit 1
 fi
 
 # ── Generate, then write and stage ──────────────────────────────────────────

@@ -27,6 +27,10 @@
  * index. A page counts only when its own tree lists its slug, so an ignored or
  * untracked directory is never included, in either tree. The output goes to
  * stdout; the hook writes and stages it only once generation succeeded.
+ * Before calling it, the hook refuses an orphan brief (D12): a Traditional
+ * Chinese brief whose slug the English tree's index slugs lack, which
+ * `redirects.test.ts` ("backs every translated slug with a root-locale
+ * challenge") would fail in CI.
  */
 
 import { writeFileSync, existsSync } from 'node:fs'
@@ -101,7 +105,9 @@ export interface GenerateOptions {
    *   unregenerated file is still caught the moment the new challenge is
    *   staged, which is before it can be committed or built.
    * - The pre-commit hook (`--staged`) passes the index slugs, per tree: a page
-   *   counts only when its own tree's `<slug>/index.md` is in the index. On a
+   *   counts only when its own tree's `<slug>/index.md` is in the index. The
+   *   hook has already refused a snapshot whose Traditional Chinese index slugs
+   *   are not all English ones (D12), so no brief here lacks its page. On a
    *   clean checkout, as in CI, both give the same file.
    */
   includeSlug?: (slug: string, locale: string) => boolean
