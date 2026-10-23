@@ -397,7 +397,7 @@ export function readRecord(log: string): Recorded[] {
   return raw.split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as Recorded)
 }
 
-// ─── Interruption and failure stubs (H25, H26, H46, H47) ────────────────────
+// ─── Interruption and failure stubs (H25, H26, H46–H49, H52) ────────────────
 
 /** The directory the stubs and the wrapper write their markers into: `<base>/標記 dir/`. */
 export function markerDir(repo: Repo): string {
@@ -551,6 +551,8 @@ export type WrapperMode =
   | 'block-ignoring'
   /** Run git, then write the `blocked` marker, wait for the `release` file and exit with git's status. Dies with a signal. */
   | 'run-then-block'
+  /** Remove the file `GIT_INDEX_FILE` names, as git does with its `index.lock` when an interrupted commit ends, then run git. */
+  | 'remove-index-then-run'
 
 export interface Wrapper {
   /** The environment that puts the wrapper first on `PATH`. */
@@ -591,6 +593,7 @@ export function gitWrapper(repo: Repo, args: string, mode: WrapperMode, prefix =
     block,
     'block-ignoring': `trap '' INT TERM HUP\n  ${block}`,
     'run-then-block': `status=0\n  ${shQuote(realGit)} "$@" || status=$?\n  ${wait}\n  exit "$status"`,
+    'remove-index-then-run': 'rm -f -- "$GIT_INDEX_FILE"',
   }[mode]
   writeFileSync(join(bin, 'git'), `#!/bin/sh
 if ${test} && mkdir ${shQuote(join(dir, 'matched'))} 2>/dev/null; then
@@ -626,9 +629,12 @@ export interface ChildBlocker {
  * arguments, joined with spaces, start with `args` writes the `blocked` marker
  * and becomes `sleep`, which a signal ends. A shell loop could outlive the
  * signal: a shell that receives SIGINT while reaping a child that exited
- * normally may carry on, and then keep the group's output open.
+ * normally may carry on, and then keep the group's output open. With `fail`,
+ * that child command writes the marker and exits 1 instead, as a git failure
+ * that no signal causes: `git commit -a` then still holds its `index.lock`
+ * when the hook ends.
  */
-export function gitChildBlocker(repo: Repo, args: string): ChildBlocker {
+export function gitChildBlocker(repo: Repo, args: string, mode: 'block' | 'fail' = 'block'): ChildBlocker {
   const execPath = spawnSync('git', ['--exec-path'], { env: repo.env, encoding: 'utf8' }).stdout.trim()
   if (!execPath.startsWith('/')) throw new Error(`no git exec path: ${execPath}`)
   const realGit = existsSync(join(execPath, 'git'))
@@ -646,7 +652,7 @@ case "$*" in
   ${shQuote(args)}*)
     if mkdir ${shQuote(join(marks, 'matched'))} 2>/dev/null; then
       : > ${shQuote(join(marks, 'blocked'))}
-      exec sleep 3600
+      ${mode === 'fail' ? 'exit 1' : 'exec sleep 3600'}
     fi ;;
 esac
 exec ${shQuote(realGit)} "$@"

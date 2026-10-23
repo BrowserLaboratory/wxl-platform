@@ -26,13 +26,16 @@
 | S3 | `finish` 開頭到 `trap ''` 之間收到訊號，巢狀 exit 略過整個還原 | `scripts/pre-commit.sh:214-217` | low | 0/1 | 駁回，已列為 known edge |
 | S4 | 還原期間忽略訊號且由子行程繼承，hook 可能比 git 活得久、無法 Ctrl-C | `scripts/pre-commit.sh:217`、`:244` | low | 0/1 | 駁回 |
 | S5 | `git commit -a` 中斷、index 消失後，W9 提示的 `git stash apply <id>` 會因 working tree 已變動而拒絕 | `scripts/pre-commit.sh:228` | low | 1/1 成立 | 實測後已修正（先寫失敗測試） |
-| S6 | O7 時 `$WORK/raw` 被刪，CRLF 檔案的原始位元組永久遺失 | `scripts/pre-commit.sh:237` | low | 1/1 成立 | 保留為 known edge，待使用者裁決 |
+| S6 | O7 時 `$WORK/raw` 被刪，CRLF 檔案的原始位元組永久遺失 | `scripts/pre-commit.sh:237` | low | 1/1 成立 | 第 3.1 版由 D16 (a) 記載、不改程式；第 3.2 版依實測修正範圍（見第 3 輪） |
 | S7 | 測試 harness 可能用 SIGKILL 殺到 PGID 被重用的無關 process group | `tests/__helpers__/preCommitRepo.ts:450-468` | low | 0/1 | 駁回 |
 | S8 | 已 commit 的 ticket 紀錄寫入本機使用者路徑與 session id | ticket 紀錄第 262、268、336 行 | low | 0/1 | 駁回 |
 | S9 | push 存好 entry 後中途停下，index 已被改動；hook 認領 entry、只還原 working tree 就 drop，`^2` 是 staged 內容唯一的紀錄 | `scripts/pre-commit.sh:241-245`、`:257-258`、`:349-357`（第 2 輪審查時） | medium | 3/3 成立 | 實測後已修正（先寫失敗測試） |
 | S10 | push 成功卻沒存東西時，`finish` 的認領會延伸到之後才出現的其他 entry | `scripts/pre-commit.sh:241-244`、`:348-357`（第 2 輪審查時） | low | 0/1 | 駁回 |
 | S11 | missing index 時 W9 印出的 `git restore` 會直接覆寫 working tree，而且 pathspec 相對於目前目錄 | `scripts/pre-commit.sh:225-229`（第 2 輪審查時） | low | 1/1 成立 | 已修正（先寫失敗測試） |
 | S12 | `killStrayGroups` 與 `killLeader` 可能對 ID 已被重用的 process group 送訊號 | `tests/__helpers__/preCommitRepo.ts:452-457`、`:478`（第 2 輪審查時） | low | 0/1 | 駁回 |
+| S13 | `git commit -a`／`-i`／`-p` 時 push 中途停下，W9 第三種形式印出的 `git restore --staged --source=<id>^2` 會把 `-a` 的 staging 寫進真正的 `.git/index` | `scripts/pre-commit.sh:248-256`、`:286-289`（第 3.1 版審查時） | medium | 3/3 成立（finding F2） | 已修正（先寫失敗測試） |
+| S14 | 還原只做到一半時，W9 只給 `git stash apply <id>`，而它會拒絕 | `scripts/pre-commit.sh:177-205`、`:283-284`（第 3.1 版審查時） | low | 1/1 成立（finding F9） | 已修正（先寫失敗測試） |
+| S15 | D16 (a) 建議的 `git checkout <id> -- <path>` 會改動 index；有衝突的 `git stash apply` 會把其他檔案留成 staged | D16 (a)（第 3.1 版） | medium | 3/3 成立（finding F7） | 實測後改寫 D16 (a)，程式不變 |
 
 這份報告只說明審查過哪些地方、得到什麼結果，不代表這個專案已經安全。
 
@@ -275,3 +278,37 @@ stage 7 執行者補充：
   - `bash -n` 與 `/bin/bash -n scripts/pre-commit.sh` 都是 exit 0；`pnpm -s challenge:validate` → `All checks passed.`。
   - `pgrep -fl pre-commit.sh` 沒有輸出（exit 1）。
 - 本報告第 2 輪同樣沒有做相依套件掃描、模糊測試或動態分析。
+
+## 第 3 輪（第 3.1 版的審查）
+
+### 結論摘要
+
+對第 3.1 版（D16）的審查提出 F1–F18。其中三項涉及老師的 index 與工作樹（B2）：F2、F9 成立並改了程式（S13、S14），F7 成立並改寫 D16 (a)（S15）；S6 的範圍依同一次實測修正。其他成立的 finding 是 spec 文字，不涉及安全。完整紀錄與指令在 ticket 的「2026-10-24 — review of revision 3.1 (D16)」。
+
+### S13：`index.lock` 上 push 中途停下，W9 的指令會改動真正的 index（已修正）
+
+- **位置**：第 3.1 版審查時 `scripts/pre-commit.sh:248-256`（`index_as_stashed`、`keep_entry_for_index`）與 `:286-289`（`finish` 的分支）。**嚴重度**：medium。**類別**：資料完整性（老師的 staging）。**信心**：高（三位 skeptic 都實測過）。
+- **攻擊者前提**：沒有攻擊者。老師用 `git commit -a`（或 `-i`、`-p`），而 hook 的 stash push 在 git 自己的 `apply --index -R` 或 `checkout --no-overlay` 這一步失敗，git 仍握著 `index.lock`。
+- **資料流**：hook 比較的是 `GIT_INDEX_FILE` 指的 `index.lock`，發現它和 `<id>^2` 不同，就印出第三種 W9。hook 失敗後 git 丟棄 lock，`.git/index` 其實沒變；但 `<id>^2` 記的是 lock 的內容，含 `-a` 自動 stage 的所有 tracked 變更。老師照 W9 執行 `git restore --staged --source=<id>^2`，就會把沒打算 stage 的檔案 stage 進 `.git/index`，部分 stage 的版本也被蓋掉。
+- **修正**：`on_own_index` 判斷出 `.lock` 形式時設定 `ON_LOCK=true`。`finish` 在 index 與 `<id>^2` 不同、而且 `ON_LOCK=true` 時，不印 W9，直接 drop entry（檔案已放回），並保持非零結束碼，讓 git 一定丟棄 lock。結果是 O5，`.git/index` 不變（D16 (b)，第 3.2 版）。hook 仍然不寫 `platform/` 底下 `_redirects` 以外的 index entry。
+- **測試與 mutation**：`gitChildBlocker` 新增 `fail` 模式。H49 以 `it.each` 透過真正的 `git commit -a` 讓兩個子指令各自失敗。修正前：`PATH="/bin:$PATH" pnpm -s vitest run tests/pre-commit-sh.test.ts -t "H48|H49|H50"` → `Tests  3 failed | 4 passed | 92 skipped (99)`，H49 兩個都是 `expected '[pre-commit] ✗ Could not put your sta…' not to contain 'git restore --staged'`。修正後同一條指令（加上 `H26|H47|missing index`）→ `Tests  12 passed | 87 skipped (99)`。M22（`if [ "$ON_LOCK" = true ]` 改成 `if false`）→ H49 兩個失敗。
+- **處置**：已修正。自己的 index 上（一般 `git commit`、`--amend`、linked worktree、直接執行）仍是 O7 加第三種 W9（H48）。
+
+### S14：還原做到一半時，W9 的 `git stash apply` 會拒絕（已修正）
+
+- **位置**：第 3.1 版審查時 `restore_entry`（`:177-205`）與 `finish`（`:283-284`）。**嚴重度**：low。**類別**：復原指引錯誤（沒有資料遺失）。
+- **前提**：`platform/` 底下有個沒有寫入權限的目錄，裡面有 untracked 檔案。push 刪不掉它（只有警告，結束碼 0），還原時 `checkout-index` 也覆寫不了它，但 tracked 檔案已經放回去。
+- **修正**：W9 第一種形式除了 `git stash apply <id>`，也印出 missing-index 形式用的 `git restore` 指令（抽成 `restore_commands`），並說明 apply 因檔案已回來而拒絕時改用它們；它們會覆寫 `platform/` 底下的檔案，訊息照樣說明（D16 (c)）。
+- **測試與 mutation**：H50（root 執行時略過）。修正前同上一條指令，H50 失敗在 `runPrintedRestore`（沒有可執行的指令）。M23（拿掉這段文字）→ H50 失敗。
+
+### S15：D16 (a) 的復原步驟會改動 index（改寫 D16 (a)）
+
+- **證據**：以 hook 自己的 push 指令實測（git 2.54.0，`/bin/bash` 3.2.57；腳本與輸出見 ticket）。有衝突的 `git stash apply` 讓所有合併進來的檔案都變成 staged；`git checkout <id> -- <path>` 連同 index 一起寫；與 staged hunk 相鄰（中間沒有未變動的行）的 unstaged hunk 也會衝突。W9 印出的 `git restore` 指令不碰 index，除了 CRLF 之外每個檔案都逐 byte 回來。
+- **處置**：D16 (a) 改寫成實測結果，並指出在 repository 自己的 index 上，`git restore --staged --source=<id>^2` 能把 index 放回去；在 `index.lock` 上 `<id>^2` 是 `-a` 的 staging，所以改用 `git restore` 指令。
+- **S6 的範圍**：只有 index 版本不含 CR 的檔案會失去 CRLF；index 版本已含 CR 的檔案原樣保存。`ident` 等屬性造成的轉換同樣不是逐 byte。這個 repository 的 `.gitattributes` 沒有設定這類屬性。
+
+### 第 3 輪審查範圍的限制
+
+- `-i` 與 `-p` 的 lock 情況沒有實際執行，依據是 git 原始碼中與 `-a` 相同的路徑。
+- 還原時跳過 symbolic link 底下的路徑（`result=1`），是另一種做到一半的結束方式，只從程式碼判讀，沒有執行。
+- 同樣沒有做相依套件掃描、模糊測試或動態分析。

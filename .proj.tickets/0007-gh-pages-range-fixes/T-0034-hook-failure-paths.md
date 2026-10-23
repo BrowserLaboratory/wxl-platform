@@ -18,8 +18,9 @@ ticket makes every way that run can end safe:
 - A first commit with unstaged files is refused (O6).
 - It works under macOS's `/bin/bash` 3.2, where an empty array under `set -u` ends the shell.
 
-Spec: `traceability.md` revision 3, "The hook" constraints, outcomes O5–O7, messages W7 and W9,
-seam 0007-S5 (generator stubs, the path with a space and non-ASCII characters, `GIT_*` removed).
+Spec: `traceability.md` revision 3.2, "The hook" constraints, outcomes O5–O7, messages W7 and W9,
+seam 0007-S5 (generator stubs, the `git` wrapper and the child-command blocker, the path with a
+space and non-ASCII characters, inherited `GIT_*` removed).
 
 ## Deliverable
 
@@ -30,12 +31,17 @@ dropped.
 ## Acceptance criteria
 
 - [x] H25: SIGINT, SIGTERM, SIGHUP to the hook's process group while a generator stub blocks → O5 (AC-23)
-- [x] H26: a generator stub leaves `.git/index.lock`, so `git add` and the restore fail → O7, W9; `git stash apply` of the printed id restores the files byte for byte once the lock is gone (AC-23). Met as revision 3.1 words it: byte for byte outside D16's two exceptions (a CRLF text file, a hunk overlapping a staged one), which the H26 case leaves out (see "rulings" below)
+- [x] H26: a generator stub leaves `.git/index.lock`, so `git add` and the restore fail → O7, W9; `git stash apply` of the printed id restores the files byte for byte once the lock is gone (AC-23). Met as revision 3.2 words it: byte for byte outside D16 (a)'s exceptions (a file git converts on add, such as CRLF over an LF index version; with `git stash apply`, an unstaged hunk overlapping or adjacent to a staged one), which the H26 case leaves out (see "rulings" and "review of revision 3.1" below)
 - [x] H27, H28: first commit with an unstaged file → O6 with W7; everything staged → O2, on their own fixture (AC-23)
 - [x] H42: only `_redirects` differs in the working tree → no entry of the hook's own; the pre-existing entry is neither applied nor dropped (AC-23)
 - [x] H45: H02, H07, H14 and H34 under `/bin/bash` 3.2 give their bash 5 outcomes; run on a Mac at stage 5, and the coverage report says so (AC-23)
 - [x] H46: `.git/index.lock` exists before a direct run → O5 before any change (AC-23)
 - [x] H47: SIGINT to a `git commit -a`'s process group → O5 or O7; `.git/index` unchanged, no commit, no unstaged file lost (AC-23)
+- [x] H48: a stash push stopped partway (git's own `apply --index -R` or `checkout --no-overlay` blocked and signalled, or failing) on the repository's own index → O7 with W9's third form; its `git restore --staged` command puts the index back (AC-23; added in revision 3.2)
+- [x] H49: the same child command fails during `git commit -a` → O5, exact: no W9, no commit, `.git/index` as before (AC-23; added in revision 3.2)
+- [x] H50: a restore that stops partway on an untracked file in a directory without write permission → O7 with W9; W9's printed `git restore` commands put every file back where `git stash apply` refuses (AC-23; added in revision 3.2)
+- [x] H51: in that directory, a tracked file with an unstaged change as well, so the push stops partway with the index changed and the restore fails → O7 with W9's first form followed by `git restore --staged`; the printed commands, in order, put every file and the index back (AC-23; added in revision 3.2's second round)
+- [x] H52: `index.lock` removed just as the hook's restore starts → O7 with W9's missing-index form, the entry kept (AC-23; added in revision 3.2's second round)
 - [x] H29, H30 hold for each of these rows except H27 and H28, which have no pre-existing entry (AC-23)
 
 ## 給使用者（zh-TW）
@@ -310,15 +316,19 @@ hook branch each row drives, confirmed by the mutations above.
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| S5 harness | `afterEach` of all 94 cases (87 at stage 5, 91 after stage 6 round 1); `run.leftover` in each group case; `killStrayGroups()` first in `afterEach` (stage 6) | H29 where the fixture has an entry; H30 everywhere, H27 and H28 included; no process left in a case's group, also when a case fails before its `done()` | AC-23 (H29, H30) | — |
+| S5 harness | `afterEach` of all 101 cases (87 at stage 5, 91 after stage 6 round 1, 94 after round 2, 99 after revision 3.2's first round, plus H51 and H52); `run.leftover` in each group case; `killStrayGroups()` first in `afterEach` (stage 6) | H29 where the fixture has an entry; H30 everywhere, H27 and H28 included; no process left in a case's group, also when a case fails before its `done()` | AC-23 (H29, H30) | — |
 | S5 direct run, blocking generator | H25 × 3 | `on_signal` → `finish` → restore → drop; exit 129/130/143; the H19 overlap file's unstaged bytes; the hook's entry seen during the run (M1, M3) | AC-23 (H25) | bash 5: CI's ubuntu |
 | S5 direct run, blocking generator and git wrapper | "ignores … while it restores" | `trap ''` while the restore runs; drop after the restore (M2) | AC-23 (constraints) | bash 5: CI |
 | S5 direct run, git wrapper (blocking `git add`) | H25 boundary | the `WROTE` and not `STAGED` put-back (M4) | AC-23 (H25; the `_redirects` constraint) | a signal after the `add` started: a race, not tested (plan) |
-| S5 direct run, lock stub | H26 | the failed restore; W9; the entry kept; `git stash apply` once the lock is gone (M4, M5) | AC-23 (H26), met for LF and binary files | CRLF files and overlapping hunks: known edges, awaiting the user's ruling (stage 6 finding 5) |
+| S5 direct run, lock stub | H26 | the failed restore; W9; the entry kept; `git stash apply` once the lock is gone (M4, M5) | AC-23 (H26), met for LF and binary files | CRLF files and overlapping or adjacent hunks: D16 (a) since revision 3.2 (measured, not a case) |
 | S5 direct run | H46 | the push's failure before any entry; status (M6, M7) | AC-23 (H46) | — |
 | S5 direct run, git wrapper (one failure) | 11 cases | push saved then failed; push that saved nothing, with the teacher's entry on top (stage 6); 7 listings; the pre-check; `refs/stash` before the push (M9–M12, M17) | AC-23 (O5) | the `git ls-files --others` inside `rest_dirty`, which is only reached when no tracked file under `platform/` is unstaged; `rev-parse` after the push, which `finish` now reads again; a failed `git stash drop`; `git rev-parse -q --verify HEAD` failing in the O6 check, which then counts as no `HEAD` (exit 1 with W7, nothing changed). All read from the code, not run |
 | S5 direct run, git wrapper (the push, then a signal; stage 6) | 2 cases | SIGINT to the group after the push saved its entry; SIGTERM to the hook alone before git runs the push. `finish` claims the entry `refs/stash` gained, restores and drops it; exit 130 and 143 (M16) | AC-23 (O5; the constraint "once the hook has an entry of its own, every exit restores it") | a signal that stops git in the middle of the push is driven by the next row since round 2. Round 1's claim that these two cases and H46 covered every state of such a push was wrong: git stores the entry before it changes the index (stage 6 round 2, finding 6) |
-| S5 direct run, git's own child command blocked (`gitChildBlocker`, round 2) | 2 cases | SIGINT to the group while git's `git apply --index -R` or `git checkout --no-overlay` blocks: the entry stored, the index changed. `finish` claims the entry, puts the files back, finds the index under `platform/` differing from `<id>^2`, keeps the entry and prints W9 with `git restore --staged --source=<id>^2`; that command, run in `platform/challenge/door/`, puts the index back (M20, M21) | AC-23 (O5; the constraint "dropped only after the restore completed") | a stop inside `git add` or `git diff-index`: measured to leave the index as stashed (`add` blocked: `cached vs ^2: 0`), which the index check then passes. The outcome is neither O5 nor O7 as traceability words them, see the known edge |
+| S5 direct run, git's own child command blocked (`gitChildBlocker`, round 2) | 2 cases | SIGINT to the group while git's `git apply --index -R` or `git checkout --no-overlay` blocks: the entry stored, the index changed. `finish` claims the entry, puts the files back, finds the index under `platform/` differing from `<id>^2`, keeps the entry and prints W9 with `git restore --staged --source=<id>^2`; that command, run in `platform/challenge/door/`, puts the index back (M20, M21) | AC-23 (H48; O7, D16 (b)) | a stop inside `git add` or `git diff-index`: measured to leave the index as stashed (`add` blocked: `cached vs ^2: 0`), which the index check then passes. Since revision 3.2 these are H48, with two more cases in which the child command fails instead of blocking (O7, D16 (b)) |
+| S5 `git commit -a`, git's own child command failing (`gitChildBlocker(…, 'fail')`, revision 3.2) | H49 × 2 | the push stopped partway on `index.lock`: `ON_LOCK` set by `on_own_index`; `finish` puts the files back, finds the lock changed, drops the entry, keeps the status non-zero; git discards the lock (M22) | AC-23 (H49; D16 (b)) | `-i` and `-p`: the same path in git's source, not run |
+| S5 direct run, a directory without write permission (revision 3.2) | H50 | the restore stopping at `checkout-index` after every tracked file came back; W9's first form with `restore_commands` and no `git restore --staged`; the untracked file still there; the index as before but for `_redirects`; `git stash apply` refusing; the printed commands (M23, M26) | AC-23 (H50; D16 (c)) | skipped as root; a path behind a symbolic link (the other partial end, `result=1`): read from the code, not run |
+| S5 direct run, the same directory with a tracked unstaged file too (revision 3.2, second round) | H51 | the push stopped at `git apply --index -R` with the index changed, then the restore failing; `keep_entry` followed by `keep_index_too`; every printed command run in order (M24, M26) | AC-23 (H51; D16 (b)) | skipped as root |
+| S5 direct run on `.git/index.lock`, git wrapper (`remove-index-then-run`, revision 3.2, second round) | H52 | the second `index_gone` check after `restore_entry`; `keep_entry_without_index` instead of `drop_entry`; the printed commands (M25) | AC-23 (H52; the missing-index constraint) | the real race under `git commit -p` (the review measured it, 7 of 300 runs): the wrapper stands in for git's removal |
 | S5 direct run, index removed by the stub | the missing-index case × 3 (`git stash apply`; W9's printed `git restore` commands at the top level; the same in `platform/challenge/door/`, round 2) | the guard in `finish`; W9; no index written; `git stash apply`; the printed commands, with tracked changes the working tree lacks, from any directory (M8, M18, M19, M21) | AC-23 (constraint; H47) | — |
 | S5 `git commit -a` | H47 | O7 in each run whose branch was printed on this hook (4 of 4 at stage 5: cycle 8's `--reporter=verbose` run and the three 87-case runs below; 3 of 3 at stage 6, 6 of 6 at round 2); W9's printed commands put every file back with the index unchanged (stage 6, M18, M19); O5 under M8 | AC-23 (H47) | the O5 branch is not reached here: git removes its lock before the hook restores. The race is accepted by the row |
 | first-commit fixture | H27 × 4, H28 × 2, 2 boundaries | the O6 refusal before any stub runs; O2 with no `HEAD`, no W3; W3 for an untracked `_redirects` alone (M13, M14) | AC-23 (H27, H28) | — |
@@ -360,6 +370,10 @@ confirmed.
   (it conflicts after `--keep-index`). The raw copies go with `$WORK` (open point 3). The same holds
   for W9's `git restore` commands after a missing index. Stage 6 round 1 (finding 5) confirmed this
   against H26 and B2. Settled by D16 (a) in revision 3.1: documented, not changed (see "rulings" below).
+  Revision 3.2 corrects it from a new measurement: CRLF is lost only when the index version has no
+  CR; `ident` and other conversions are lost too; an adjacent hunk conflicts like an overlapping one;
+  a conflicting apply leaves the merged files staged and `git checkout <id> -- <path>` stages its file.
+  W9's `git restore` commands avoid both index effects (see "review of revision 3.1" below).
 - **A failed `rev-parse` of `refs/stash` right after a push that saved an entry.** Since stage 6,
   `finish` reads `refs/stash` again and claims the entry it gained. The entry stays unidentified (no
   restore, no W9, the entry in `git stash list`) only when that second read fails too. Read from the
@@ -381,6 +395,17 @@ confirmed.
   O7's index column says "as O5"). Meeting O5 would need the hook to write the index under
   `platform/` itself, against B2's "The hook stages only `platform/public/_redirects`". Settled by D16 (b)
   in revision 3.1: the spec names this end as part of O7, and the hook does not write the index (see "rulings" below).
+  Revision 3.2 narrows it to the repository's own index: on `index.lock` git discards the change, so
+  the hook drops its entry and the run ends in O5 (H49).
+- **A restore that stops partway (revision 3.2).** When a later step of `restore_entry` fails after
+  its first `git restore`, some files are back and `git stash apply` refuses. W9's first form now
+  also prints the `git restore` commands (H50). A path skipped behind a symbolic link ends the same
+  way; read from the code, not run.
+- **A file the index adds and the working tree has deleted, in O7 (revision 3.2, second round).**
+  git stash does not record the deletion, so W9's `git restore` commands and `git stash apply`
+  write the index version back. The hook removes such files itself only when its restore completes
+  (`$WORK/deleted`), and that list goes with `$WORK`. Named in D16 (a) and B2, not printed as a
+  command; the file that comes back holds the index version, so no work is lost.
 - **The git wrapper's wait loop under a signal.** The round 2 rerun had one 60 s timeout, in a
   changed-index case, while its blocker still waited in a `sleep 0.05` shell loop. A likely cause, not
   reproduced: a shell that gets SIGINT while it reaps a `sleep` that exited normally can carry on,
@@ -572,9 +597,9 @@ missing-index case gained a third variant that runs the commands in `platform/ch
   `checkout` (after `git apply --index -R`): `cached vs ^2: 1`, the staged change gone from the index
   and the working tree at `HEAD`. `GIT_TRACE=1` showed the order `add`, `diff-index`, `apply --index -R`,
   `checkout --no-overlay`, each run from git's exec path.
-- `index_as_stashed` (now `:248-250`) compares the index under `platform/` (`_redirects` excluded)
+- `index_as_stashed` (`:248-250` at `b2a12cb`) compares the index under `platform/` (`_redirects` excluded)
   with the entry's index commit. `finish` drops the entry only when the restore completed and that
-  comparison holds (now `:283-292`). Otherwise `keep_entry_for_index` (now `:254-256`) prints a third
+  comparison holds (`:283-292` at `b2a12cb`). Otherwise `keep_entry_for_index` (`:254-256` at `b2a12cb`) prints a third
   form of W9: the files are back, `git stash apply <id>` is not needed, and
   `git restore --staged --source=<id>^2 -- <PRINTED_REST>` puts the index back. The hook runs neither
   command itself: B2 says it stages only `_redirects` (known edge).
@@ -802,3 +827,284 @@ revised row. For T-0039: W9's text does not mention `git checkout <id> -- <path>
 hunk; README or skill text may want to.
 
 Gap 3 (the PR's CI, bash 5, and the preview) remains for stage 9.
+
+### 2026-10-24 — review of revision 3.1 (D16)
+
+A read-only reviewer reported F1–F18 against `d98ff27`. Skeptics then tried to refute each: a
+medium finding stands with 2 of 3, a low one with 1 of 1. The parent passed the verdicts on; this
+section records what was done, in this worktree, left uncommitted. The result is revision 3.2 of the
+spec and two changes to the hook. Commands below use
+`F=/private/tmp/claude-501/-Users-phoenix-dev-browserlab-wxl-platform/9d2ad28a-5ecd-41b7-9894-89a8012ae1c4/scratchpad/wf3/fix`.
+
+**Confirmed, and what was done**
+
+| # | Sev. | Finding | Votes | Done |
+|---|---|---|---|---|
+| F1 | medium | the constraints "hold in every outcome", and ":277" (byte for byte), contradict D16 (a) in O7 | 3 of 3 | the constraints now hold "except where O7 and D16 say otherwise"; the byte-for-byte constraint holds when the hook's restore completes, and in O7 points at D16 (a) |
+| F2 | medium | under `-a`/`-i`/`-p`, W9's third form compares `index.lock` and prints `git restore --staged --source=<id>^2`, which would write `-a`'s staging into the real `.git/index` | 3 of 3 | fixed test-first (H49, below): on `index.lock` the hook drops its entry once the files are back and prints no W9, ending in O5. D16 (b), O5 and O7 say so |
+| F3 | medium | B2's does-not-protect column does not list D16's exceptions | 3 of 3 | B2 (both languages) now names D16 (a)'s conversions and conflicts and D16 (b)'s index |
+| F4 | medium | the hook section still says the index and working tree are as before after a failure | 3 of 3 | both languages: as before after O3, O4, O6; after O5 except `_redirects`; O7 described by the table and D16. The stash bullet names the partial restore, the partial push and the lock case |
+| F5 | medium | O5's and O7's conditions overlap for a push that stopped partway | 3 of 3 | O5 now requires the index under `platform/` to be the one the entry recorded, or the run to be on `index.lock`; the check "Restore, then drop; O7" says so |
+| F6 | medium | D16 (b)'s end has no H row or AC wording; W9's required substrings miss the third form's command | 3 of 3 | rows H48 (own index: O7, third form), H49 (`commit -a`: O5) and H50 (partial restore) mapped to AC-23; AC-23 gains a bullet; W9 requires `git restore` in every form, `git stash apply` in the first two and `git restore --staged` in the third, and a paragraph names the three forms. The existing case is now named H48 and asserts `git restore --staged --source=<id>^2` (`expectW9ForIndex`) |
+| F7 | medium | D16 (a)'s `git checkout <id> -- <path>` also stages the file, and a conflicting apply leaves other files staged | 3 of 3 | measured (below), D16 (a) rewritten: W9's `git restore` commands are the way back without touching the index; after a conflicting apply, `git restore --staged --source=<id>^2` puts the index back on the repository's own index only |
+| F8 | low | O7's "every file back as O5 describes" overclaims: the push left untracked files staged | 1 of 1 | O7: every file's bytes are back, but the files the push staged, untracked ones included, stay staged until W9's `git restore --staged` is run |
+| F9 | low | a restore that stops partway leaves files back, and W9's `git stash apply` then refuses | 1 of 1 | fixed test-first (H50): W9's first form also prints the `git restore` commands (`restore_commands`, shared with the missing-index form); O7 says "not yet back or partly back"; D16 (c) |
+| F10 | low | the CRLF exception is too broad and was inferred; other conversions are missing | 1 of 1 | measured: CRLF is lost only where the index version has no CR (tracked or untracked); a CRLF index version is kept; `ident` is not byte for byte. D16 (a) now names conversions on add as an open class |
+| F12 | low | "the hook never writes the index under `platform/` itself" is false (`_redirects`) | 1 of 1 | D16: "Besides `_redirects`, the hook writes no index entry under `platform/` and does not undo its push's index changes (B2)"; the hook header says the same |
+| F13 | low | the checks on the revision do not check D16 (b) | 1 of 1 | two check rows: D16 (b) against O5, the drop constraints, B2's "stages only", H47 and the commit-forms table; D16 (c) against W9, O7 and D16 (a) |
+| F14 | low | the status line still says revision 3 | 1 of 1 | both languages: revision 3.2 (2026-10-24), with a sentence on what 3.2 does |
+| F17 | low | adjacent hunks conflict too, not only overlapping ones | 1 of 1 | measured (below): adjacent conflicts, one unchanged line between merges; D16 (a), B2 and H26 say "overlapping or adjacent" |
+
+**Rejected by the skeptics** (no change made for them):
+
+| # | Finding | Votes | Reason |
+|---|---|---|---|
+| F11 | the ruling's measurement did not use the hook's push form | 0 of 1 | the skeptic ran both forms: identical entries (same trees for `^1`, `^2`, `^3`), same apply exit 1 and conflict, same LF. This revision's measurement uses the hook's form anyway |
+| F15 | the hook header overclaims | 0 of 1 | points 6 and 7 qualify themselves; W9's command puts the index back where it is printed. Point 6's opening was still reworded with this change's code ("unless the restore fails or the entry is kept as point 7 says"), and point 7 now describes the partial restore and the lock case |
+| F16 | W9 prints `<id>^2` and `^3` unquoted | 0 of 1 | zsh's `EXTENDED_GLOB` is not a default; it fails loudly and the entry stays; already rejected in round 2 |
+| F18 | the parent, not the user, ruled on gaps 1 and 2 | 0 of 1 | review.md's adjudication rule covers disagreements between reviewers; these were unanimous findings, decided under the recorded standing authorization |
+
+**Finding F2: test first.** `gitChildBlocker(repo, args, 'fail')` makes git's own child command exit 1
+instead of blocking, so `git commit -a` still holds `index.lock` when the hook ends. H49
+(`it.each` over `apply --index -R` and `checkout --no-overlay`, through `git commit -a`) expects O5
+exactly, no `git restore --staged`, no `git stash apply`, `HEAD` unchanged and no lock left. H48 gains
+the same two failures in a direct run, where the third form must still be printed. The fix:
+`on_own_index` sets `ON_LOCK=true` for the `.lock` form, and `finish`, when the index differs from
+`<id>^2` on a lock, keeps the status non-zero and drops the entry. B2 is kept: the hook writes no
+index entry besides `_redirects`.
+
+**Finding F9: test first.** H50 puts an untracked file in `platform/notes/唯讀 dir/` (mode 0555;
+skipped as root). The push warns that it cannot unlink it and exits 0; the restore's `checkout-index`
+fails on it after the tracked files came back. The case expects O7 with W9, the tracked edits back,
+`git stash apply` refusing once the directory is writable, and W9's printed commands putting every
+file back (`_redirects` holding the expected content, as O5 allows).
+
+- Red: `PATH="/bin:$PATH" pnpm -s vitest run tests/pre-commit-sh.test.ts -t "H48|H49|H50"` →
+  `Tests  3 failed | 4 passed | 92 skipped (99)`: both H49 cases on
+  `expected '[pre-commit] ✗ Could not put your sta…' not to contain 'git restore --staged'`, and H50
+  on `expected null not to be null` in `runPrintedRestore` (no command printed).
+- Green: `PATH="/bin:$PATH" pnpm -s vitest run tests/pre-commit-sh.test.ts -t "H48|H49|H50|H26|H47|missing index"`
+  → `Tests  12 passed | 87 skipped (99)`.
+- Mutations, each applied to the hook and reverted (`cmp` against `$F/pre-commit.sh.orig` →
+  identical), with `python3 -I $F/mut.py scripts/pre-commit.sh <M>` then
+  `PATH="/bin:$PATH" pnpm -s vitest run tests/pre-commit-sh.test.ts -t "H48|H49|H50|H26"`:
+  M22 (`if [ "$ON_LOCK" = true ]; then` → `if false; then`) → `Tests  2 failed | 6 passed | 91 skipped (99)` (both H49);
+  M23 (W9's first form without the `git restore` commands) → `Tests  1 failed | 7 passed | 91 skipped (99)` (H50).
+
+**Measured for F7, F10 and F17.** git 2.54.0, `/bin/bash` 3.2.57, this worktree's `.gitattributes`
+(`* text=auto eol=lf`), the hook's own push command and pathspec. Rerun:
+`rm -rf $F/E && mkdir $F/E && LC_ALL=C /bin/bash $F/measure.sh /Users/phoenix/dev/browserlab/wxl-platform/.claude/worktrees/T-0034 $F/E`
+(output kept in `$F/measure.txt`). The script:
+
+```sh
+#!/bin/bash
+# D16 (a) measurement with the hook's own push command (the `git stash push` in scripts/pre-commit.sh).
+# Usage: /bin/bash measure.sh <worktree> <empty dir E>
+set -u
+W=$1 E=$2
+REST=(platform/ ":(exclude)platform/public/_redirects")
+PRINTED=(':(top)platform/' ':(top,exclude)platform/public/_redirects')
+
+setup() { # $1 = repo dir
+  git init -q "$1" && cp "$W/.gitattributes" "$1/" && cd "$1" || exit 1
+  git config user.email t@t && git config user.name t
+  mkdir -p platform/public
+  printf 'r\n' > platform/public/_redirects
+  printf 'a\nb\nc\n' > platform/o.txt          # overlapping hunk
+  printf 'l1\nl2\nl3\nl4\nl5\nl6\n' > platform/adj.txt   # adjacent hunk
+  printf 'l1\nl2\nl3\nl4\nl5\nl6\n' > platform/gap.txt   # one unchanged line between
+  printf 'p\n' > platform/other.txt            # unstaged only
+  printf 'x\n' > platform/crlf.txt             # index LF, working tree CRLF
+  printf 'k\r\n' > platform/crin.txt           # index already CRLF
+  git add -A
+  git update-index --add --cacheinfo "100644,$(git hash-object -w --no-filters platform/crin.txt),platform/crin.txt"
+  git commit -qm init
+  printf 'a\nSTAGED\nc\n' > platform/o.txt && git add platform/o.txt && printf 'a\nUNSTAGED\nc\n' > platform/o.txt
+  printf 'l1\nl2\nS3\nl4\nl5\nl6\n' > platform/adj.txt && git add platform/adj.txt && printf 'l1\nl2\nS3\nU4\nl5\nl6\n' > platform/adj.txt
+  printf 'l1\nl2\nS3\nl4\nl5\nl6\n' > platform/gap.txt && git add platform/gap.txt && printf 'l1\nl2\nS3\nl4\nU5\nl6\n' > platform/gap.txt
+  printf 'p\nOTHER-UNSTAGED\n' > platform/other.txt
+  printf 'x\r\ny\r\n' > platform/crlf.txt
+  printf 'k\r\nm\r\n' > platform/crin.txt
+  printf 'u\r\nv\r\n' > platform/untr-crlf.txt
+  mkdir -p ../before-wt && cp -p platform/*.txt ../before-wt/
+  git ls-files -s > ../before-index.txt
+  git status --porcelain=v1 --untracked-files=all > ../before-status.txt
+  git -c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m "pre-commit: stash unstaged changes" -- "${REST[@]}"
+  echo "push=$?"
+  id=$(git rev-parse refs/stash)
+}
+
+bytes() { # which files differ from before, byte for byte
+  for f in ../before-wt/*.txt; do
+    n=platform/$(basename "$f")
+    if cmp -s "$f" "$n"; then echo "  same  $n"; else echo "  DIFF  $n"; fi
+  done
+  printf '  od crlf.txt:      '; od -c platform/crlf.txt | head -1
+  printf '  od crin.txt:      '; od -c platform/crin.txt | head -1
+  printf '  od untr-crlf.txt: '; od -c platform/untr-crlf.txt | head -1
+}
+index() {
+  if git ls-files -s | diff -q - ../before-index.txt >/dev/null; then echo "  index: same as before"; else echo "  index: DIFFERS from before:"; git ls-files -s | diff ../before-index.txt - | sed 's/^/    /'; fi
+  echo "  git diff --cached --name-only:"; git diff --cached --name-only | sed 's/^/    /'
+  echo "  status:"; git status --porcelain=v1 --untracked-files=all | sed 's/^/    /'
+}
+
+echo "git: $(git --version); bash: $BASH_VERSION"
+echo "== Route A: git stash apply <id>, then git checkout <id> -- <path>, then git restore --staged --source=<id>^2"
+( setup "$E/a"
+  echo "entry: git show \$id:platform/crlf.txt | od -c -> $(git show "$id:platform/crlf.txt" | od -c | head -1)"
+  echo "entry: git show \$id^3:platform/untr-crlf.txt | od -c -> $(git show "$id^3:platform/untr-crlf.txt" | od -c | head -1)"
+  git stash apply -q "$id"; echo "-- after git stash apply: exit=$?"; index; bytes
+  git checkout "$id" -- platform/o.txt platform/adj.txt; echo "-- after git checkout \$id -- platform/o.txt platform/adj.txt: exit=$?"; index; bytes
+  git restore --staged --source="$id^2" -- "${PRINTED[@]}"; echo "-- after git restore --staged --source=\$id^2 -- PRINTED_REST: exit=$?"; index; bytes
+)
+echo "== Route B: W9's printed git restore commands, from the O7 state"
+( setup "$E/b"
+  git restore --source="$id" --worktree -- "${PRINTED[@]}" && git restore --overlay --source="$id^3" --worktree -- ':(top)platform/'
+  echo "-- after the printed commands: exit=$?"; index; bytes
+)
+echo "== ident: the attribute in .gitattributes"
+( git init -q "$E/i" && cd "$E/i" && git config user.email t@t && git config user.name t
+  mkdir platform && printf '* text=auto eol=lf\nplatform/id.txt ident\n' > .gitattributes
+  printf 'a\n' > platform/id.txt && git add -A && git commit -qm init
+  printf 'a\n$Id$\n' > platform/id.txt
+  git -c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m "pre-commit: stash unstaged changes" -- "${REST[@]}"; echo "push=$?"
+  git stash apply -q "$(git rev-parse refs/stash)"; echo "apply=$?"; echo "  platform/id.txt now: $(sed -n 2p platform/id.txt)"
+)
+```
+
+Results:
+
+- The entry: `crlf.txt` (index LF, working tree CRLF) and the untracked `untr-crlf.txt` are stored
+  as `x \n y \n` and `u \n v \n`. `crin.txt`, whose index version already holds CR, is stored
+  and given back as `k \r \n m \r \n`.
+- Route A, `git stash apply <id>` → exit 1. `o.txt` (overlapping) and `adj.txt` (adjacent: `l3`
+  staged, `l4` unstaged) are `UU`; `gap.txt` (one unchanged line between) merged cleanly. Every
+  merged file is now staged: `git diff --cached --name-only` lists `crin.txt`, `crlf.txt`,
+  `gap.txt` and `other.txt` too, and `git ls-files -s` differs from before.
+- Then `git checkout <id> -- platform/o.txt platform/adj.txt` → exit 0: both files hold their
+  unstaged bytes (`cmp` same) and are staged with them (`o.txt` at `fee33ac`, before `9310c48`).
+- Then `git restore --staged --source=<id>^2 -- ':(top)platform/' ':(top,exclude)platform/public/_redirects'`
+  → exit 0, `index: same as before`. Every file `cmp`-identical to before except `crlf.txt` and
+  `untr-crlf.txt`, which are LF.
+- Route B, from the O7 state, W9's printed commands (`git restore --source=<id> --worktree -- …`
+  `&& git restore --overlay --source=<id>^3 --worktree -- ':(top)platform/'`) → exit 0,
+  `index: same as before`, no conflict, the same bytes as route A's end.
+- `ident`: with `platform/id.txt ident` in `.gitattributes`, `$Id$` comes back as
+  `$Id: 0667178464fa6a45884c8d52229dd83ec37e8d9f $`.
+
+**Spec changes (revision 3.2).** `traceability.md`: revision note; D16 rewritten as (a), (b), (c);
+the constraints' scope, the drop constraint and the byte-for-byte constraint; O5's condition and
+index column; O7's condition, index and working-tree columns; W9's substrings and its three forms;
+H26; new H48–H50; AC-23's rows; the check "Restore, then drop; O7" and two new checks.
+`spec.en.md` and `spec.zh-TW.md`: the status line and paragraph; the stash bullet and the outcomes
+bullet of the hook section; B2's does-not-protect column; AC-23's bullets and rows. `synced_from_sha`
+is `git hash-object .proj.specs/0007-gh-pages-range-fixes/spec.en.md` after the last edit.
+`review/security-T-0034.md`: "第 3 輪" with S13 (F2), S14 (F9) and S15 (F7), and S6's summary row.
+
+**Commands rerun after the changes**, in this worktree:
+
+- `PATH="/bin:$PATH" pnpm vitest run tests/pre-commit-sh.test.ts --reporter=verbose`, twice in a row
+  → `Tests  99 passed (99)` and `H47 took O7` each time (94 before, plus H48 × 2, H49 × 2 and H50).
+  `bash` here is `/bin/bash` 3.2.57; bash 5 is CI's.
+- `pnpm test --run` → `Test Files  130 passed (130)`, `Tests  4469 passed | 1 skipped (4470)`, exit 0:
+  round 2's 4464 plus the 5 new cases.
+- `/bin/bash -n scripts/pre-commit.sh` → exit 0.
+- `pnpm -s challenge:validate` → `All checks passed.`, exit 0.
+- `pgrep -fl pre-commit.sh` → no output, exit 1.
+- `grep -n "stash \(drop\|apply\|pop\)" scripts/pre-commit.sh`, comments and printed text left out →
+  one `git stash drop`, in `drop_entry`.
+- `git stash list` in this worktree → empty; no `git stash` ran in the real repository or a worktree.
+
+Acceptance criteria: H48, H49 and H50 are added and ticked, each observed by its case above; H26's
+note follows D16 (a) as revision 3.2 words it. No criterion was unticked. For T-0039: W9's first
+form now also prints the `git restore` commands, and after `git commit -a` a push that stopped
+partway prints no W9. Gap 3 (the PR's CI on bash 5, and the preview) remains for stage 9. `status`
+stays `review`.
+
+
+#### Round 2 (2026-10-24): the review of the uncommitted revision 3.2
+
+The reviewer and the skeptics ran again on this worktree's uncommitted fix. The parent passed on
+three lists of confirmed findings (called A, B and C below, since their ids repeat) and the rejected
+ones. Everything below is in this worktree, left uncommitted. Commands use
+`R=/private/tmp/claude-501/-Users-phoenix-dev-browserlab-wxl-platform/9d2ad28a-5ecd-41b7-9894-89a8012ae1c4/scratchpad/wf3/r2-fix`.
+
+**Confirmed, and what was done**
+
+| # | Sev. | Finding | Done |
+|---|---|---|---|
+| A R2-S1, B R2-S1, C R2-S1 | medium | after a push that stopped partway on the repository's own index, a failed restore takes W9's first form and never compares the index, so `git restore --staged` is not printed, against O7's index column, W9 and D16 (b); the teacher's next commit would carry the unstaged and untracked files | fixed test-first (H51): `finish` compares the index after a failed restore too, on the repository's own index, and `keep_index_too` prints a second line with `git restore --staged --source=<id>^2 -- …`. W9, O7, D16 (b), the stash bullet and AC-23 say so |
+| C R2-S5 | low | on `index.lock`, git can remove the lock after `finish`'s check and before the restore (a SIGINT to `git commit -p`); the restore then runs on no index, does not remove the teacher's deleted files, and the entry is dropped with no W9 | fixed test-first (H52): `index_gone` is checked again once the restore is done, and a lock gone by then keeps the entry with W9's missing-index form. The constraint, O5's condition ("an `index.lock` that still exists"), O7's condition and D16 (b) say so |
+| A R2-S2 | low | the hook header's point 6 leaves out the O7 after step 5's `git add` (H50), where `_redirects` holds the expected content | point 6: "unless an O5 or an O7 came during step 5's git add or later", also on `index.lock`; point 6 also names the lock case of the drop; point 7 names the second index check and the first form's index line |
+| A R2-S3 | low | D16 (a) and (c) say W9's commands give every other file back byte for byte, but a file the index adds and the working tree has deleted comes back | documented, not changed: D16 (a), B2's does-not-protect column (both languages), the D16 (c) check ("outside D16 (a)'s exceptions"), a new check row and a known edge |
+| A R2-S4 | low | `expectW9ForIndex` took the id from the third form's "git stash apply <id> is not needed" | the third form's id now comes from `git restore --staged --source=<id>^2`; the helper also requires `stash entry <id>` and no `git restore --source=<id> --worktree` and no `run: git stash apply`. The message is kept, and W9's paragraph now says the third form says apply is not needed; the wording is the user's to change |
+| A R2-S6, B R2-S11 | low | the ticket's coverage report and references were stale: 94 cases, H48's AC column "O5", "revision 3", `pre-commit.sh:400`, "now `:248-250`" and the like | 101 cases with the history; H48's AC column "AC-23 (H48; O7, D16 (b))"; "revision 3.2"; the measurement script names the push instead of a line; the round 2 line numbers say "at `b2a12cb`" |
+| A R2-S7 | low | seam S5 says every `GIT_*` variable is removed, while cases set `GIT_INDEX_FILE`, `GIT_EXEC_PATH` and a `git` wrapper on `PATH` | S5 now says every inherited `GIT_*` variable is removed and lists what a case may set |
+| A R2-S8 | low | `expectW9` did not require the first form's `git restore` commands, so swapping the first form for the third went unseen (all 99 passed) | `expectW9` requires `git restore --source=<id> --worktree`; H50 requires no `git restore --staged`. M26 below now fails H26, H50 and H51 |
+| A R2-S9 | low | the helper's section header did not name H48 and H49 | "(H25, H26, H46–H49, H52)" |
+| B R2-S3 | low | AC-23 and D16 (b) say a partial push under `git commit -a` ends in O5 without saying the cause; a signal to the group ends in O7 through the missing index; AC-23 names only `-a` | both say "when git's own child command fails"; a signal to the group follows H47 (O5 or O7); AC-23 says `-a` is measured and `-i`, `-p` take the same path in git's source |
+| B R2-S4 | low | on `index.lock`, an O5 after the hook staged `_redirects` leaves the expected content in the working tree while `<gitdir>/index` holds the old one, which O5's row did not say | documented, not changed: O5's working-tree column and the `_redirects` constraint say so; the hook comment too. B2 already lists an unstaged `_redirects` as replaced (D3). H52's end shows it |
+| B R2-S5 | low | the spec's stash bullet says "drops it only after … the entry recorded" and then that the lock case drops it | both languages: "only after the restore completed and either … recorded, or the run is on an `index.lock` that still exists" |
+| B R2-S6 | low | D16 opens with "Three ends of O7", but (a) is not an end and (b)'s lock case is O5 | "Three questions about O7 and the ends next to it are settled" |
+| B R2-S7 | low | spec.zh-TW.md's AC-23 had the SIGINT item and the first-commit item in the other order | reordered to match spec.en.md; `synced_from_sha` recomputed |
+| B R2-S10 | low | H50 checked one tracked file, not that the untracked file is still there, and not the index right after the run | H50 checks every tracked file the entry holds, the untracked file still there, and the index as before but for `_redirects` |
+| B R2-S14 | low | O5's condition names "the entry recorded" also for runs with no entry (H46) | "when the hook has an entry, …" |
+
+**Rejected by the skeptics** (no change made for them): A R2-S5 (the third form's cause on a failed
+comparison: unreachable within B2's scope), A R2-S10 (the repeated `status=1` lines: no defect),
+A R2-S11 ("below" in a one-line message: style), B R2-S2 (a failed comparison counted as a change:
+needs a corrupt repository), B R2-S8 (the checks table's heading: the rows say their revision),
+B R2-S9 (apply named in the third form: the ticket's O7 asks for it), B R2-S12 and C R2-S3 ("see
+git's message above" after a skipped symbolic link: unreachable), B R2-S13 ("index version has no
+CR" for untracked files: accurate), B R2-S15 (the Solution summary: accurate), C R2-S2 (the silent
+lock branch at status 0: not reached), C R2-S4 (no-overlay restore removing files staged after W9:
+inside W9's "run them before you change anything there"), C R2-S6 (a direct run with
+`GIT_INDEX_FILE=<gitdir>/index.lock`: the caller's lock).
+
+**Test first.** H51 puts a committed file `platform/notes/唯讀 dir/表.txt` with an unstaged change
+next to H50's untracked draft, in the same 0555 directory (skipped as root). H52 copies `.git/index`
+to `.git/index.lock`, runs the hook with `GIT_INDEX_FILE` naming it, and a `git` wrapper in the new
+mode `remove-index-then-run` removes that file at the hook's first `git restore --source=`.
+
+- Red: `TMPDIR=$R PATH="/bin:$PATH" pnpm vitest run tests/pre-commit-sh.test.ts` →
+  `Tests  2 failed | 99 passed (101)`: H51 on `expected '警告: unable to unlink …' to contain
+  'git restore --staged --source=…'`, and H52 on `expected '[pre-commit] ✓ door\n[pre-commit] pla…'
+  to contain 'the index this commit ran on is gone'`. The other 99, with the stricter `expectW9`,
+  `expectW9ForIndex`, `runPrintedRestore` (every printed command, in order) and H50, passed on the
+  hook as it was.
+- Green, first try: H51 passed; H52 failed on `_redirects` only (the hand edit replaced by the
+  expected content, with `.git/index` holding the old one). That is B R2-S4's end, which O5 allows
+  on `index.lock`, so H52 now asserts it instead of `expectAllBack`. Then
+  `TMPDIR=$R PATH="/bin:$PATH" pnpm vitest run tests/pre-commit-sh.test.ts` → `Tests  101 passed (101)`.
+- Mutations, each applied with `python3 -I $R/mut.py scripts/pre-commit.sh <M>`, run with
+  `TMPDIR=$R PATH="/bin:$PATH" pnpm -s vitest run tests/pre-commit-sh.test.ts -t "H26|H50|H51|H52"`,
+  and reverted (`cmp $R/pre-commit.sh.orig scripts/pre-commit.sh` → identical): M24 (no
+  `keep_index_too`) → `1 failed` (H51); M25 (no second `index_gone` check) → `1 failed` (H52); M26
+  (`keep_entry` replaced by `keep_entry_for_index` after a failed restore, A R2-S8's swap) →
+  `3 failed` (H26, H50, H51).
+
+**Spec changes (revision 3.2, second round).** `traceability.md`: the revision note; D16 ((a) the
+added-then-deleted file; (b) H51, the cause under `-a`, the signal case and H52); seam S5; W9's row and
+paragraph; the `_redirects` and drop constraints; O5's condition and working-tree column; O7's
+condition and index column; H50; new H51 and H52; AC-23's rows; four check rows changed or added.
+`spec.en.md` and `spec.zh-TW.md`: the status line, the stash bullet, B2's does-not-protect column,
+AC-23's bullets and rows, and the zh-TW AC-23 order. `synced_from_sha` is
+`git hash-object .proj.specs/0007-gh-pages-range-fixes/spec.en.md` after the last edit
+(`2942a8277e8fa227e7017f9b654e43e3314fb366`). `review/security-T-0034.md` is not changed in this round.
+
+**Commands rerun after the changes**, in this worktree:
+
+- `PATH="/bin:$PATH" pnpm vitest run tests/pre-commit-sh.test.ts --reporter=verbose`, twice in a row
+  → exit 0, `Tests  101 passed (101)` and `H47 took O7` each time. `bash` here is `/bin/bash`
+  3.2.57; bash 5 is not installed on this Mac and is CI's.
+- `pnpm test --run` → exit 0, `Test Files  130 passed (130)`, `Tests  4471 passed | 1 skipped (4472)`:
+  the first round's 4469 plus H51 and H52.
+- `/bin/bash -n scripts/pre-commit.sh` → exit 0. `pnpm -s challenge:validate` → `All checks passed.`,
+  exit 0. `python3 scripts/verify-project.py` → `PASS`.
+- `pgrep -fl pre-commit.sh` → no output, exit 1. `git stash list` in this worktree → empty; no
+  `git stash` ran in the real repository or a worktree.
+
+Acceptance criteria: H51 and H52 are added and ticked, each observed by its case above. No criterion
+was unticked. For T-0039: W9's first form can now carry a second line with `git restore --staged`.
+`status` stays `review`.

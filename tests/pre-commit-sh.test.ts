@@ -15,7 +15,7 @@
  * committed bytes instead, which do not come from the oracle.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { generateRedirects } from '../scripts/generate-redirects'
@@ -1255,12 +1255,17 @@ function entryUntracked(id: string): string[] {
   return git(repo, ['ls-tree', '-r', '-z', '--name-only', `${id}^3`]).split('\0').filter(Boolean)
 }
 
-/** W9: the hook's entry id and `git stash apply`. Returns the printed id. */
+/**
+ * W9's first or second form (a failed or partial restore, a missing index):
+ * `git stash apply <id>` and the `git restore` commands that put the files
+ * back without the index. Returns the printed id.
+ */
 function expectW9(run: Run | GroupRun): string {
-  expect(run.stderr).toContain('git stash apply')
   const m = run.stderr.match(/git stash apply ([0-9a-f]{40})/)
   expect(m, run.stderr).not.toBeNull()
-  return m![1]
+  const id = m![1]
+  expect(run.stderr).toContain(`git restore --source=${id} --worktree`)
+  return id
 }
 
 /**
@@ -1284,15 +1289,17 @@ function expectO7(run: Run | GroupRun, before: Snapshot, after: Snapshot, signal
 }
 
 /**
- * Run the `git restore` commands W9 prints after a missing index or a changed
- * index, as a teacher would paste them into a shell, in `cwd` (the top level
- * unless given).
+ * Run every `git restore` command W9 prints, in the order printed, as a
+ * teacher would paste them into a shell, in `cwd` (the top level unless
+ * given). Each printed line ends with its command.
  */
 function runPrintedRestore(run: Run | GroupRun, cwd = repo.dir): void {
-  const m = run.stderr.match(/, run: (git restore .*)$/m)
-  expect(m, run.stderr).not.toBeNull()
-  const r = spawnSync('sh', ['-c', m![1]], { cwd, env: repo.env, encoding: 'utf8' })
-  expect(r.status, r.stderr).toBe(0)
+  const commands = [...run.stderr.matchAll(/, run: (git restore .*)$/gm)].map((m) => m[1])
+  expect(commands.length, run.stderr).toBeGreaterThan(0)
+  for (const command of commands) {
+    const r = spawnSync('sh', ['-c', command], { cwd, env: repo.env, encoding: 'utf8' })
+    expect(r.status, `${command}\n${r.stderr}`).toBe(0)
+  }
 }
 
 /** Every file, the untracked list and the index as before the run. */
@@ -1411,11 +1418,29 @@ describe('pre-commit.sh: a signal while the stash push runs (O5)', () => {
   }, TIMEOUT)
 })
 
-describe('pre-commit.sh: a stash push that stops after it stored its entry and changed the index (O7, W9)', () => {
-  it.each([
-    ['apply --index -R', 'its git add has staged the unstaged and untracked files'],
-    ['checkout --no-overlay', 'its git apply -R has put the index back to HEAD'],
-  ] as const)('SIGINT while git’s own `git %s` blocks (%s): the hook puts the files back, keeps its entry, and W9’s printed command puts the index back', async (child) => {
+/** The child commands of git's own after which a stash push has changed the index (D16 (b)). */
+const PARTWAY = [
+  ['apply --index -R', 'its git add has staged the unstaged and untracked files'],
+  ['checkout --no-overlay', 'its git apply -R has put the index back to HEAD'],
+] as const
+
+/**
+ * W9's third form: the files are back, so it gives no command that writes the
+ * working tree, only the `git restore --staged` command that puts the index
+ * back. Returns the printed id.
+ */
+function expectW9ForIndex(run: Run | GroupRun): string {
+  const m = run.stderr.match(/git restore --staged --source=([0-9a-f]{40})\^2 /)
+  expect(m, run.stderr).not.toBeNull()
+  const id = m![1]
+  expect(run.stderr).toContain(`stash entry ${id}`)
+  expect(run.stderr).not.toContain(`git restore --source=${id} --worktree`)
+  expect(run.stderr).not.toMatch(/run: git stash apply/)
+  return id
+}
+
+describe('pre-commit.sh: a stash push that stops after it stored its entry and changed the index (H48: O7, W9)', () => {
+  it.each(PARTWAY)('H48: SIGINT while git’s own `git %s` blocks (%s): the hook puts the files back, keeps its entry, and W9’s printed command puts the index back', async (child) => {
     addFailureWork(false)
     const blocker = gitChildBlocker(repo, child)
     const before = snapshot(repo)
@@ -1431,7 +1456,7 @@ describe('pre-commit.sh: a stash push that stops after it stored its entry and c
     expect(blocker.matched(), 'blocker never matched').toBe(true)
     expect(run.leftover).toBe(false)
     expect(run.status, run.stderr).toBe(130)
-    const id = expectW9(run)
+    const id = expectW9ForIndex(run)
     const after = snapshot(repo)
     expect(ids(after)).toEqual([id, ...ids(before)])
     expect(after.files).toEqual(before.files)
@@ -1439,6 +1464,147 @@ describe('pre-commit.sh: a stash push that stops after it stored its entry and c
     // The command's pathspecs start at the top level, so it works in a subdirectory.
     runPrintedRestore(run, join(repo.dir, 'platform/challenge/door'))
     expectAllBack(before)
+  }, TIMEOUT)
+
+  it.each(PARTWAY)('H48: git’s own `git %s` fails (%s) in a direct run: the same end without a signal', (child) => {
+    addFailureWork(false)
+    const blocker = gitChildBlocker(repo, child, 'fail')
+    const before = snapshot(repo)
+
+    const run = runHook(repo, blocker.env)
+
+    expect(blocker.matched(), 'blocker never matched').toBe(true)
+    expectFailed(run)
+    const id = expectW9ForIndex(run)
+    const after = snapshot(repo)
+    expect(ids(after)).toEqual([id, ...ids(before)])
+    expect(after.files).toEqual(before.files)
+    expect(after.index).not.toEqual(before.index)
+    runPrintedRestore(run)
+    expectAllBack(before)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a stash push that stops partway under git commit -a (H49)', () => {
+  it.each(PARTWAY)('H49: git’s own `git %s` fails (%s) during a git commit -a: git discards the index.lock the push changed, so the hook drops its entry once the files are back and prints no W9: O5, exact, and no commit', (child) => {
+    addFailureWork(false)
+    const blocker = gitChildBlocker(repo, child, 'fail')
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-a', '-q', '-m', 'stopped partway'], blocker.env)
+
+    expect(blocker.matched(), 'blocker never matched').toBe(true)
+    expect(run.stderr).not.toContain('git restore --staged')
+    expect(run.stderr).not.toContain('git stash apply')
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expect(existsSync(join(repo.dir, '.git/index.lock'))).toBe(false)
+    expectO5(run, before, snapshot(repo))
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: a restore that stops partway (H50)', () => {
+  const LOCKED_DIR = 'platform/notes/唯讀 dir'
+  const LOCKED = `${LOCKED_DIR}/草稿.txt`
+
+  // root may remove a file from a directory it cannot write, so the case needs another user.
+  it.skipIf(process.getuid?.() === 0)('H50: an untracked file in a directory without write permission: the push cannot remove it and the restore cannot overwrite it, so the restore stops partway; O7 with W9, and once the directory is writable again W9’s printed git restore commands put every file back, where git stash apply refuses', () => {
+    addFailureWork(false)
+    write(repo, LOCKED, 'draft\n')
+    const dir = join(repo.dir, LOCKED_DIR)
+    chmodSync(dir, 0o555)
+    try {
+      const before = snapshot(repo)
+
+      const run = runHook(repo)
+
+      expectFailed(run)
+      const id = expectW9(run)
+      // The push completed, so W9 is its first form, with no command for the index.
+      expect(run.stderr).not.toContain('git restore --staged')
+      const after = snapshot(repo)
+      expect(ids(after)).toEqual([id, ...ids(before)])
+      // Partly back: every tracked edit came back before the untracked file failed.
+      const tracked = entryTracked(id)
+      expect(tracked.sort()).toEqual([BINARY, NOTES, 'platform/public/other.txt'].sort())
+      for (const path of tracked) expect(after.files.get(path), path).toBe(before.files.get(path))
+      // The push could not remove the untracked file, and the entry holds it too.
+      expect(existsSync(join(repo.dir, LOCKED))).toBe(true)
+      expect(entryUntracked(id)).toContain(LOCKED)
+      // The push completed, so the index is as before, but for the _redirects the hook staged.
+      expect(withoutRedirects(after.index)).toEqual(withoutRedirects(before.index))
+      chmodSync(dir, 0o755)
+      // Files already back make git stash apply refuse.
+      expect(gitRun(repo, ['stash', 'apply', '--quiet', id]).status).not.toBe(0)
+      runPrintedRestore(run)
+      const back = snapshot(repo)
+      // _redirects was staged before the restore failed: as O5 allows, it holds the expected content.
+      expect(withoutPaths(back.files, [REDIRECTS])).toEqual(withoutPaths(before.files, [REDIRECTS]))
+      expect(back.untracked).toEqual(before.untracked)
+      expect(withoutRedirects(back.index)).toEqual(withoutRedirects(before.index))
+      expect(read(repo, REDIRECTS)).toBe(stagedRedirects(repo))
+    } finally {
+      chmodSync(dir, 0o755)
+    }
+  }, TIMEOUT)
+
+  it.skipIf(process.getuid?.() === 0)('H51: a tracked file with an unstaged change and an untracked file in a directory without write permission: the push’s git add stages both, its git apply -R cannot rewrite the tracked file, so it stops partway with the index changed, and the restore then fails on the untracked file; O7 with W9’s first form and the git restore --staged command, and once the directory is writable W9’s printed commands, run in order, put every file and the index back', () => {
+    const LOCKED_TRACKED = `${LOCKED_DIR}/表.txt`
+    // Committed with the notes by addFailureWork.
+    write(repo, LOCKED_TRACKED, 'table\n')
+    addFailureWork(false)
+    write(repo, LOCKED_TRACKED, 'table, unstaged\n')
+    write(repo, LOCKED, 'draft\n')
+    const dir = join(repo.dir, LOCKED_DIR)
+    chmodSync(dir, 0o555)
+    try {
+      const before = snapshot(repo)
+
+      const run = runHook(repo)
+
+      expectFailed(run)
+      const id = expectW9(run)
+      expect(run.stderr).toContain(`git restore --staged --source=${id}^2`)
+      const after = snapshot(repo)
+      expect(ids(after)).toEqual([id, ...ids(before)])
+      // The push's git add staged the unstaged change and the untracked files.
+      expect(after.index).not.toEqual(before.index)
+      chmodSync(dir, 0o755)
+      runPrintedRestore(run)
+      expectAllBack(before)
+    } finally {
+      chmodSync(dir, 0o755)
+    }
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: the index goes missing during the restore (AC-23 constraint, H52)', () => {
+  it('H52: on index.lock, when the lock is gone by the time the restore runs, as after git removed it on a SIGINT to an interrupted git commit -p, the hook keeps its entry and prints W9 for a missing index instead of dropping the entry, and W9’s printed commands put every file back', () => {
+    addFailureWork(false)
+    const lock = join(repo.dir, '.git/index.lock')
+    copyFileSync(join(repo.dir, '.git/index'), lock)
+    // git removes the lock just as the hook's restore starts: after the hook checked for it.
+    const wrapper = gitWrapper(repo, 'restore --source=', 'remove-index-then-run', true)
+    const before = snapshot(repo)
+
+    const run = runHook(repo, { ...wrapper.env, GIT_INDEX_FILE: lock })
+
+    expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(existsSync(lock)).toBe(false)
+    expectFailed(run)
+    expect(run.stderr).toContain('the index this commit ran on is gone')
+    const id = expectW9(run)
+    const after = snapshot(repo)
+    expect(ids(after)).toEqual([id, ...ids(before)])
+    expect(after.index).toEqual(before.index)
+    runPrintedRestore(run)
+    const back = snapshot(repo)
+    expect(withoutPaths(back.files, [REDIRECTS])).toEqual(withoutPaths(before.files, [REDIRECTS]))
+    expect(back.untracked).toEqual(before.untracked)
+    expect(back.index).toEqual(before.index)
+    // The hook staged _redirects in the lock that is gone: as O5 allows on
+    // index.lock, the working tree holds the expected content, .git/index the old one.
+    expect(read(repo, REDIRECTS)).toBe(expectedRedirects(repo))
   }, TIMEOUT)
 })
 

@@ -31,15 +31,19 @@
 # 5. Writes and stages _redirects only after validation and generation
 #    succeeded. Afterwards the working tree's _redirects equals the staged one,
 #    even if it held an unstaged change before (D3).
-# 6. On every exit, puts the stashed files back byte for byte, and drops the
-#    hook's own entry only after that restore completed and the index under
-#    platform/ is still the one the entry recorded. git stores a stashed
+# 6. On every exit, restores the stashed files byte for byte, unless the
+#    restore fails or the entry is kept as point 7 says, and drops the hook's
+#    own entry only after that restore completed and the index under
+#    platform/ is still the one the entry recorded, or the run is on
+#    index.lock (point 7). git stores a stashed
 #    file through the repository's attributes (`eol=lf` turns CRLF into LF), so
 #    each stashed regular file is put back from a raw copy taken before. On every
 #    exit other than O2 where the index's _redirects did not change, the working
-#    tree's _redirects keeps the bytes it had before, unless an O5 came during
-#    step 5's git add or later. The restore neither removes nor writes a path with a
-#    symbolically linked directory above it: it skips and names it on stderr.
+#    tree's _redirects keeps the bytes it had before, unless an O5 or an O7 came
+#    during step 5's git add or later: it then holds those bytes or the expected
+#    content, also on index.lock, where git discards the staged one. The
+#    restore neither removes nor writes a path with a symbolically linked
+#    directory above it: it skips and names it on stderr.
 # 7. Every way the run ends goes through that restore (O5). A failed git
 #    command ends the run under `set -e`; each git listing is written to a file
 #    first, since a failure inside `< <( )` would go unseen. SIGINT, SIGTERM
@@ -47,16 +51,26 @@
 #    command, which got the same signal, has ended. A run that ends once the
 #    stash push has started, before the hook recorded its entry, reads
 #    refs/stash again at the end and claims the entry it gained. While
-#    restoring, the hook ignores INT, TERM and HUP. When the restore fails, the
-#    entry stays and the hook prints its id and `git stash apply <id>` (O7). It
-#    never restores into a missing index: when the file GIT_INDEX_FILE names is
-#    gone (git removes its index.lock when an interrupted `git commit -a`
-#    ends), the entry stays the same way, and W9 also prints the `git restore`
-#    commands that put the files back without touching the index. A push that
-#    stopped after storing its entry can leave the index under platform/
-#    changed; the hook then puts the files back, keeps the entry, and W9 prints
-#    the `git restore --staged` command that puts the index back. The hook
-#    stages only _redirects, so it runs neither command itself. Their
+#    restoring, the hook ignores INT, TERM and HUP. When the restore fails, or
+#    stops partway, the entry stays and the hook prints its id, `git stash
+#    apply <id>`, and the `git restore` commands that put the files back
+#    without touching the index, for when apply refuses because some files
+#    are already back (O7). Applying the entry is not byte for byte in the
+#    cases D16 (a) names. The hook never drops its entry when the index is
+#    missing: when the file GIT_INDEX_FILE names is gone (git removes its
+#    index.lock when an interrupted `git commit -a` ends), it does not
+#    restore, and the entry stays the same way, with the same `git restore`
+#    commands. git can remove the file while the restore runs, so the hook
+#    looks for it again once the restore is done. A push
+#    that stopped after storing its entry can leave the index under platform/
+#    changed. On the repository's own index, the hook then puts the files
+#    back, keeps the entry, and W9 prints the `git restore --staged` command
+#    that puts the index back; when the restore failed too, W9 prints that
+#    command after its first form's. On index.lock (`-a`, `-i`, `-p`), git
+#    discards the changed lock when the hook fails, so the hook puts the files
+#    back and drops the entry (O5).
+#    Besides _redirects the hook writes no index entry under platform/ and
+#    does not undo its push's, so it runs none of these commands itself. Their
 #    pathspecs start at the top level, so they work in any directory.
 
 set -euo pipefail
@@ -91,7 +105,10 @@ esac
 # index is a temporary one (`git commit <path>`, `--only`), where the outcomes
 # below cannot hold, so a run that triggers there is refused. CDPATH is cleared
 # for the `cd`: an exported one would send a relative `cd .git` elsewhere, or
-# make `cd` print the directory into the result.
+# make `cd` print the directory into the result. ON_LOCK records the `.lock`
+# form: git discards that file when the hook fails, so whatever the run changed
+# in it does not stay.
+ON_LOCK=false
 physical_path() {
   local dir
   dir=$(CDPATH= cd -- "$(dirname "$1")" 2>/dev/null && pwd -P) || return 1
@@ -103,7 +120,9 @@ on_own_index() {
   own=$(unset GIT_INDEX_FILE; git rev-parse --git-path index) || return 1
   own=$(physical_path "$own") || return 1
   given=$(physical_path "$GIT_INDEX_FILE") || return 1
-  [ "$given" = "$own" ] || [ "$given" = "$own.lock" ]
+  [ "$given" = "$own" ] && return 0
+  [ "$given" = "$own.lock" ] || return 1
+  ON_LOCK=true
 }
 if ! on_own_index; then
   cat >&2 <<'EOF'
@@ -217,27 +236,34 @@ drop_entry() {
   done
 }
 
-# W9, for O7: the entry stays, and the message says how to apply it.
-keep_entry() {
-  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: $1. They are kept in stash entry $OWN_ENTRY; once the cause is fixed, run: git stash apply $OWN_ENTRY" >&2
-}
-
 # The pathspecs of the commands W9 prints: everything under platform/ except
 # _redirects, read from the top level (`:(top)`) whatever directory the
 # teacher runs them in.
 PRINTED_REST="':(top)platform/' ':(top,exclude)$REDIRECTS'"
 
-# W9 for a missing index. The files git commit had staged still hold those
-# changes, so `git stash apply` can refuse ("would be overwritten"). The
-# commands printed put every file back from the entry without touching the
-# index: tracked files from its working-tree commit, untracked files from its
-# third parent. They overwrite what is there, which the message says.
-keep_entry_without_index() {
+# The commands W9 prints to put every file back from the entry without
+# touching the index: tracked files from its working-tree commit, untracked
+# files from its third parent. They overwrite what is there, which W9 says.
+restore_commands() {
   local remedy="git restore --source=$OWN_ENTRY --worktree -- $PRINTED_REST"
   if git rev-parse -q --verify "$OWN_ENTRY^3" >/dev/null 2>&1; then
     remedy="$remedy && git restore --overlay --source=$OWN_ENTRY^3 --worktree -- ':(top)platform/'"
   fi
-  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: the index this commit ran on is gone (git removes it when an interrupted commit ends). They are kept in stash entry $OWN_ENTRY. git stash apply $OWN_ENTRY can refuse here, since the files the commit had staged still hold those changes. The commands below overwrite the files under platform/ with the entry's, so run them before you change anything there; to put them back without touching the index, run: $remedy" >&2
+  printf '%s\n' "$remedy"
+}
+
+# W9, for O7: the entry stays, and the message says how to apply it. A restore
+# that stopped partway leaves some files back, and `git stash apply` then
+# refuses ("would be overwritten", "already exists"), so the commands that put
+# the files back without the index are printed too.
+keep_entry() {
+  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: $1. They are kept in stash entry $OWN_ENTRY; once the cause is fixed, run: git stash apply $OWN_ENTRY. If it refuses because some of those files are already back, use the commands below instead. They overwrite the files under platform/ with the entry's, so run them before you change anything there; to put them back without touching the index, run: $(restore_commands)" >&2
+}
+
+# W9 for a missing index. The files git commit had staged still hold those
+# changes, so `git stash apply` can refuse ("would be overwritten").
+keep_entry_without_index() {
+  echo "[pre-commit] ✗ Could not put your unstaged changes under platform/ back: the index this commit ran on is gone (git removes it when an interrupted commit ends). They are kept in stash entry $OWN_ENTRY. git stash apply $OWN_ENTRY can refuse here, since the files the commit had staged still hold those changes. The commands below overwrite the files under platform/ with the entry's, so run them before you change anything there; to put them back without touching the index, run: $(restore_commands)" >&2
 }
 
 # True when the index under platform/ is the one the entry recorded (its index
@@ -247,6 +273,19 @@ keep_entry_without_index() {
 # failed comparison counts as a change.
 index_as_stashed() {
   git diff --cached --quiet "$OWN_ENTRY^2" -- "${REST[@]}"
+}
+
+# W9's first form gains this line when the push also changed the repository's
+# own index: once the files are back, the entry's index commit gives back what
+# was staged. The line ends with its command, as the first form's does.
+keep_index_too() {
+  echo "[pre-commit]   The stash push also stopped partway and changed the index: stash entry $OWN_ENTRY keeps what was staged. Once the files are back, the command below overwrites what is staged under platform/, so run it before you stage anything there; to put the index back without touching the working tree, run: git restore --staged --source=$OWN_ENTRY^2 -- $PRINTED_REST" >&2
+}
+
+# True when the file GIT_INDEX_FILE names is gone: git removes its index.lock
+# when an interrupted commit ends.
+index_gone() {
+  [ -n "${GIT_INDEX_FILE+set}" ] && [ ! -e "$GIT_INDEX_FILE" ]
 }
 
 # W9 when the files are back but the index is not: the entry's index commit
@@ -273,20 +312,38 @@ finish() {
     if [ "$WT_EXISTED" = true ]; then cp "$WORK/saved" "$REDIRECTS"; else rm -f "$REDIRECTS"; fi
   fi
   if [ -n "$OWN_ENTRY" ]; then
-    # The hook never restores into a missing index: git removes its
+    # The hook never drops its entry when the index is missing: git removes its
     # index.lock when an interrupted `git commit -a` ends, and the commit the
     # hook ran for is gone with it. The entry then stays, as when the restore
-    # fails, and W9 says how to apply it.
-    if [ -n "${GIT_INDEX_FILE+set}" ] && [ ! -e "$GIT_INDEX_FILE" ]; then
+    # fails, and W9 says how to apply it. git can remove the lock after this
+    # check, while the restore runs (a SIGINT to `git commit -p`); a restore
+    # on no index does not remove the files the teacher deleted, so the index
+    # is checked again after it, and the entry stays the same way.
+    if index_gone; then
       keep_entry_without_index
       [ "$status" -ne 0 ] || status=1
     elif ! restore_entry; then
       keep_entry "the restore failed (see git's message above)"
+      # A push that stopped partway can have changed the repository's own
+      # index as well; git discards a changed index.lock itself.
+      if [ "$ON_LOCK" = false ] && ! index_as_stashed; then keep_index_too; fi
+      [ "$status" -ne 0 ] || status=1
+    elif index_gone; then
+      keep_entry_without_index
       [ "$status" -ne 0 ] || status=1
     elif ! index_as_stashed; then
-      # The entry's index commit is then the only record of what was staged.
-      keep_entry_for_index
-      [ "$status" -ne 0 ] || status=1
+      if [ "$ON_LOCK" = true ]; then
+        # On index.lock (`-a`, `-i`, `-p`) the changed index is git's lock,
+        # which git discards when the hook fails: the repository's index never
+        # changed, so the entry is not needed and W9 is not printed. The status
+        # stays non-zero, so git does discard the lock.
+        [ "$status" -ne 0 ] || status=1
+        drop_entry
+      else
+        # The entry's index commit is then the only record of what was staged.
+        keep_entry_for_index
+        [ "$status" -ne 0 ] || status=1
+      fi
     else
       drop_entry
     fi
