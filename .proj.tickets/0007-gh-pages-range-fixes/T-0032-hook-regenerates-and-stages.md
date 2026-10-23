@@ -2,7 +2,7 @@
 id: T-0032
 title: The pre-commit hook regenerates and stages _redirects from the staged snapshot
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -44,7 +44,7 @@ commit that triggers is refused with W8.
 - [x] P6: the hook's header comment and the generator's `includeSlug` comment describe the watched paths, the index-slug rule, D3 and the unchanged `ACMRD` filter (AC-24). The D12 sentence that traceability P6 also asks for lands with T-0033
 
 - [x] G01 at stage 6: the guard test's assertion, inclusion rule and CI steps unchanged; `includeSlug`'s new locale argument leaves the guard's call unchanged (AC-17)
-- [ ] Stage 8: V03 as far as this ticket's change reaches (AC-20)
+- [x] Stage 8: V03 as far as this ticket's change reaches (AC-20)
 
 ## 給使用者（zh-TW）
 
@@ -705,3 +705,11 @@ hook only, prints the diff, and runs `PATH="/bin:$PATH" pnpm vitest run tests/pr
 | M11 rerun on the two cases (item 5) | 2 failed; unmodified 2 passed |
 
 Status stays `review`: stage 8's CI half and the preview deployment are still open.
+
+### 2026-10-23 — landed (stage 9)
+
+PR [#38](https://github.com/BrowserLaboratory/wxl-platform/pull/38), rebased onto `e5ad839` (T-0030,
+#36) with the epic's docs commit `a54e917` dropped (patch-id unchanged), squash-merged into `main`
+as `8e00561` on 2026-10-23, from head `9db75e5`. The PR's CI: 10 checks passing, none failing. Bash 5, which the local stage 8 could not cover: the CI `test` job ran on `ubuntu-24.04` and `tests/pre-commit-sh.test.ts` passed, 44 tests. Still open, as recorded above: the ignored link that replaced a directory of newly staged files (a pre-existing edge), and the NOGLOB case that cannot be made red.
+Stage 8 box ticked: the local V03 rows above, and the PR's CI and Cloudflare Pages deployment (the `Cloudflare Pages` check passed); the hook has no page, so the preview has nothing further to drive.
+Frontmatter `status: done`.
