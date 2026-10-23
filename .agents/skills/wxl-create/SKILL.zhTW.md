@@ -90,7 +90,12 @@ Please reply with a number, the option name, or a custom value.
 ### Step 2：Scaffold
 
 - **What**：透過既有 scaffold CLI 建立題目骨架（prose 不重複 scaffold 邏輯）。
-- **How**：以 Bash 執行 `pnpm create:challenge --name "<slug>" --backend "<backend>" --difficulty "<difficulty>" --flag "<flag>" --title "<title>"`。要自動產生 flag 就省略 `--flag`。exit code 1（名稱衝突）時顯示錯誤並以純文字區塊問「換名稱 / 取消」；`1` 重問 slug 並重跑，`2` 停止。
+- **How**：以 Bash 執行 `pnpm create:challenge --name "<slug>" --backend "<backend>" --difficulty "<difficulty>" --flag "<flag>" --title "<title>"`。要自動產生 flag 就省略 `--flag`。接著依 exit status 分流：
+  - **exit status 0**：繼續 Step 3。
+  - **exit status 1**：沒有寫入任何檔案；錯誤訊息會指出已存在的 slug 或不合法的引數。顯示錯誤，並以純文字區塊請使用者回覆 `change`（修改）或 `cancel`（取消）。回 `change` 就重問錯誤訊息指出的參數（題目已存在時是 slug）並重跑；回 `cancel` 就停止。只有 exit status 1 會重問參數。
+  - **exit status 2**：題目已建立，但 `platform/public/_redirects` 沒有重新產生。把 stderr 的訊息轉述給使用者（訊息說明 commit 這道題目時會重新產生這個檔案），然後用同一個 slug 繼續 Step 3。保留 `platform/challenge/<slug>/`。
+  - **exit status 3**：骨架已寫入並帶有永久編號，但 keygen 失敗。把 stderr 的訊息（含 keygen 的輸出）轉述給使用者，然後停止。請使用者修好原因後執行 `pnpm challenge:keygen <slug>`，再用同一個 slug 從 Step 3 接續這個 skill；和 exit status 2 一樣，commit 這道題目時會重新產生 `platform/public/_redirects`。保留 `platform/challenge/<slug>/`。
+- **Verification**：exit status 0，或 exit status 2 且已把訊息轉述給使用者；`platform/challenge/<slug>/` 存在。
 
 ### Step 3：生成漏洞應用程式碼
 
