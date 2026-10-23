@@ -2,26 +2,33 @@
  * create-challenge.ts
  *
  * Scaffolds a new challenge directory structure, app skeleton, flag.txt,
- * and frontmatter stub, then auto-runs challenge:keygen.
+ * and frontmatter stub, auto-runs challenge:keygen, then regenerates
+ * platform/public/_redirects over the whole working tree.
  *
  * Usage:
  *   pnpm create:challenge --name <slug> [--title <title>] \
  *     [--backend flask|fastapi|php] [--difficulty easy|medium|hard] \
  *     [--flag <flag>]
+ *
+ * Exit status:
+ *   0  created, keygen ran, _redirects regenerated
+ *   1  invalid argument or name collision; nothing was written
+ *   2  created and keygen ran, but _redirects was not regenerated (W1)
+ *   3  the scaffold was written but keygen failed (W2)
  */
 
 import { parseArgs } from 'node:util'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { stringify as yamlStringify } from 'yaml'
 import { nextChallengeNumber } from './challenge-numbers.ts'
+import { writeRedirects } from './generate-redirects.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
 const ROOT       = resolve(__dirname, '..')
-const CHALLENGES = resolve(ROOT, 'platform', 'challenge')
 
 const VALID_BACKENDS = ['flask', 'fastapi', 'php'] as const
 type Backend = (typeof VALID_BACKENDS)[number]
@@ -42,14 +49,14 @@ export interface ScaffoldOptions {
   /**
    * The challenge's permanent number, one greater than every number ever
    * assigned. Passed in rather than computed here so the generator stays pure;
-   * `main()` reads the tree.
+   * `run()` reads the tree.
    */
   number: number
 }
 
 /**
  * Everything the CLI arguments alone determine. The number is not among them —
- * it is read out of the challenge tree, so it joins in `main()`.
+ * it is read out of the challenge tree, so it joins in `run()`.
  */
 export type ScaffoldArgs = Omit<ScaffoldOptions, 'number'>
 
@@ -248,48 +255,73 @@ export function generateMarkdown(opts: ScaffoldOptions): string {
   return `---\n${fmStr}\n---\n\n# ${title}\n\nTODO: Write challenge description here.\n`
 }
 
-// ─── Main (only runs when executed directly) ───────────────────────────────
+// ─── Entry (exported for testing) ──────────────────────────────────────────
 
-async function main(): Promise<void> {
-  const { values } = parseArgs({
-    args: process.argv.slice(2),
-    options: {
-      name:       { type: 'string' },
-      title:      { type: 'string' },
-      backend:    { type: 'string' },
-      difficulty: { type: 'string' },
-      flag:       { type: 'string' },
-    },
-  })
+/** What a keygen runner reports. `output` is what keygen printed. */
+export interface KeygenResult {
+  ok: boolean
+  output: string
+}
+
+export interface RunDeps {
+  /** The repository root the challenge is created under. */
+  root: string
+  /** Runs `challenge:keygen` for one slug under `root`. A throw counts as failure. */
+  runKeygen: (slug: string, root: string) => KeygenResult
+  /** Output sinks; the CLI passes the process streams. */
+  stdout?: (text: string) => void
+  stderr?: (text: string) => void
+}
+
+const USAGE =
+  'Usage: pnpm create:challenge --name <slug> [--title <title>] ' +
+  '[--backend flask|fastapi|php] [--difficulty easy|medium|hard] [--flag <flag>]'
+
+/**
+ * Scaffold a challenge under `deps.root`, run keygen, then regenerate
+ * `platform/public/_redirects` over the whole working tree, as `pnpm dev` and
+ * `pnpm build` do. Returns the exit status.
+ */
+export function run(argv: string[], deps: RunDeps): number {
+  const { root, runKeygen } = deps
+  const out = deps.stdout ?? ((s: string) => { process.stdout.write(s) })
+  const err = deps.stderr ?? ((s: string) => { process.stderr.write(s) })
+  const challengesDir = resolve(root, 'platform', 'challenge')
 
   // ── 1. Validate CLI args ─────────────────────────────────────────────────
   let opts: ScaffoldOptions
   try {
+    const { values } = parseArgs({
+      args: argv,
+      options: {
+        name:       { type: 'string' },
+        title:      { type: 'string' },
+        backend:    { type: 'string' },
+        difficulty: { type: 'string' },
+        flag:       { type: 'string' },
+      },
+    })
     // The number is assigned here, once, from the whole tree — live challenges
     // and retired ones alike. It is never derived from an ordering and never
     // changed afterwards; see scripts/challenge-numbers.ts.
-    opts = { ...validateArgs(values as RawArgs), number: nextChallengeNumber(ROOT) }
+    opts = { ...validateArgs(values as RawArgs), number: nextChallengeNumber(root) }
   } catch (e) {
-    console.error(`Error: ${(e as Error).message}`)
-    console.error(
-      'Usage: pnpm create:challenge --name <slug> [--title <title>] ' +
-      '[--backend flask|fastapi|php] [--difficulty easy|medium|hard] [--flag <flag>]',
-    )
-    process.exit(1)
+    err(`Error: ${(e as Error).message}\n${USAGE}\n`)
+    return 1
   }
 
   const { slug, backend, flag } = opts
 
   // ── 2. Collision detection ───────────────────────────────────────────────
   try {
-    checkCollision(slug, CHALLENGES)
+    checkCollision(slug, challengesDir)
   } catch (e) {
-    console.error(`Error: ${(e as Error).message}`)
-    process.exit(1)
+    err(`Error: ${(e as Error).message}\n`)
+    return 1
   }
 
   // ── 3. Create directory and write files (per-folder structure) ──────────
-  const slugDir = resolve(CHALLENGES, slug)
+  const slugDir = resolve(challengesDir, slug)
   const srcDir = resolve(slugDir, 'src')
   mkdirSync(srcDir, { recursive: true })
 
@@ -303,35 +335,79 @@ async function main(): Promise<void> {
   writeFileSync(resolve(srcDir, 'flag.txt'), flag,                    'utf-8')
   writeFileSync(resolve(slugDir, 'index.md'), generateMarkdown(opts), 'utf-8')
 
-  console.log(`✓ Scaffold created:`)
-  console.log(`  platform/challenge/${slug}/index.md`)
-  console.log(`  platform/challenge/${slug}/src/${appFile}`)
-  console.log(`  platform/challenge/${slug}/src/flag.txt`)
+  out(
+    `✓ Scaffold created:\n` +
+    `  platform/challenge/${slug}/index.md\n` +
+    `  platform/challenge/${slug}/src/${appFile}\n` +
+    `  platform/challenge/${slug}/src/flag.txt\n`,
+  )
 
-  // ── 5. Auto-run keygen ───────────────────────────────────────────────────
-  console.log(`\nRunning challenge:keygen ${slug} …`)
+  // ── 4. Auto-run keygen ───────────────────────────────────────────────────
+  out(`\nRunning challenge:keygen ${slug} …\n`)
+  let keygen: KeygenResult
   try {
-    const output = execSync(`pnpm challenge:keygen ${slug}`, {
-      encoding: 'utf-8',
-      cwd: ROOT,
-    })
-    process.stdout.write(output)
-    console.log(`✓ Keygen complete — challenge is ready.`)
+    keygen = runKeygen(slug, root)
   } catch (e) {
-    const err = e as { stderr?: string; stdout?: string; message?: string }
-    console.error('Keygen failed:')
-    console.error(err.stderr ?? err.stdout ?? err.message)
-    process.exit(1)
+    keygen = { ok: false, output: (e as Error).message }
   }
+  if (!keygen.ok) {
+    // W2. Status 3, not 1: the scaffold is on disk, so re-asking the name
+    // would collide with it (D13).
+    err(
+      `Error: keygen failed after the scaffold was written:\n${keygen.output.trimEnd()}\n\n` +
+      `The challenge was created at platform/challenge/${slug}/. ` +
+      `Fix the cause above, then run:\n` +
+      `  pnpm challenge:keygen ${slug}\n` +
+      `  pnpm redirects:generate\n` +
+      `platform/public/_redirects was not regenerated.\n`,
+    )
+    return 3
+  }
+  out(keygen.output)
+  out(`✓ Keygen complete.\n`)
+
+  // ── 5. Regenerate _redirects over the whole working tree ─────────────────
+  try {
+    writeRedirects(root)
+  } catch (e) {
+    // W1. Status 2: the challenge exists and keygen ran, so only the redirect
+    // file is behind (D8). A generator refusal throws before anything is
+    // written, so the file on disk is as it was.
+    err(
+      `Error: platform/public/_redirects was not regenerated:\n${(e as Error).message}\n\n` +
+      `The challenge was created at platform/challenge/${slug}/ and keygen ran. ` +
+      `Fix the cause above; git commit of the challenge then regenerates ` +
+      `platform/public/_redirects from what is staged, ` +
+      `and pnpm redirects:generate rewrites it from the working tree.\n`,
+    )
+    return 2
+  }
+  out(`✓ Regenerated platform/public/_redirects — challenge is ready.\n`)
+  return 0
 }
 
-// Guard: only run main() when this file is the entry point (not when imported by tests)
+// ─── CLI guard (only runs when executed directly) ──────────────────────────
+
+/**
+ * Runs `pnpm challenge:keygen <slug>` in `root`. Its stdout becomes the
+ * result's output; on success its warnings go to stderr as they happen today,
+ * and on failure both streams go into the output W2 prints.
+ */
+function runKeygenCli(slug: string, root: string): KeygenResult {
+  // The slug is kebab-case by now (validateArgs), so it is safe in a shell string.
+  const r = spawnSync(`pnpm challenge:keygen ${slug}`, { cwd: root, encoding: 'utf-8', shell: true })
+  if (r.status === 0) {
+    if (r.stderr) process.stderr.write(r.stderr)
+    return { ok: true, output: r.stdout }
+  }
+  const output = `${r.stderr ?? ''}${r.stdout ?? ''}`
+  return { ok: false, output: output || (r.error?.message ?? `keygen exited with status ${r.status}`) }
+}
+
 if (
   process.argv[1] &&
   fileURLToPath(import.meta.url) === resolve(process.argv[1])
 ) {
-  main().catch((e) => {
-    console.error(e)
-    process.exit(1)
-  })
+  // exitCode, not exit(): exit() can cut off output still queued for a pipe.
+  process.exitCode = run(process.argv.slice(2), { root: ROOT, runKeygen: runKeygenCli })
 }
