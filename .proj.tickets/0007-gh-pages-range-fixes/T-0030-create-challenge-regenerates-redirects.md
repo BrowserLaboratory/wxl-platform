@@ -2,7 +2,7 @@
 id: T-0030
 title: create:challenge regenerates _redirects, with exit statuses 1, 2 and 3
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -413,3 +413,12 @@ stray artifact is left. Frontmatter `status: review`.
 
 Still open for the user, not a gap in this ticket's rows: open point 5 (a failing scaffold write
 exits 1 after a partial write, against D13).
+
+### 2026-10-23 — landed (stage 9)
+
+PR [#36](https://github.com/BrowserLaboratory/wxl-platform/pull/36), squash-merged into `main` by the
+user as `e5ad839` (2026-10-23 08:30 UTC), carrying `a54e917` (the epic's spec, review rounds,
+tickets, `GLOSSARY.md` and `OPEN-QUESTIONS.md`) and `1cc71be`. CI: 10 checks passing, none failing;
+the Cloudflare Pages preview deployed. No page is involved in this ticket, so stage 8 stays the local
+V03 run above. Open point 5 (a failing scaffold write exits 1) is still open for the user.
+Frontmatter `status: done`.
