@@ -668,3 +668,27 @@ in the plan's scope. `git status --short --ignored` also listed `test-results/`,
 Playwright's `.last-run.json` from the smoke run above (`{"status": "passed", "failedTests": []}`);
 it was removed. What remains ignored is `node_modules/` and the build folders `.vitepress/dist/`,
 `.vitepress/wasm/` and `platform/public/challenge/`. No ref was changed. Frontmatter: `status: review`.
+
+### 2026-10-24 — end-to-end on the PR's Cloudflare preview (short mode)
+
+Beyond the ticket's V02 (local, page mode): the same behaviour in short mode. Surface: PR
+[#42](https://github.com/BrowserLaboratory/wxl-platform/pull/42)'s Cloudflare Pages preview for
+`fdfb683`, at its commit URL `https://91f84259.wxl-platform.pages.dev`, in the desktop app's built-in
+browser, at 1024 wide and at 375×812 (the pane's mobile emulation), the browser's language being
+Traditional Chinese. The pane denies `clipboard-write`, so a click on the copy button ends in
+`short_link.copy_failed`; that is the state checked below. Measured with `getComputedStyle`,
+`clientWidth`/`scrollWidth`, `getBoundingClientRect` and `String(window.getSelection())` from the
+page; 6ch measured as the width of a hidden `000000` span in the URL text's font. Not covered: other
+browsers, real touch input, the English pages on this host.
+
+| Check | Result | Evidence |
+|---|---|---|
+| list, 1024: a plain click on row 1's URL text selects it and stays | pass | selection `wxl.browserlab.online/zh/c/001`, URL still `/zh-TW/challenges` |
+| list, 1024: the same while `copy_failed` shows | pass | status `複製失敗——請反白畫面上這段網址自行複製` on its own line under the URL text; selection as above; `scrollWidth` 1009 ≤ `innerWidth` 1024 |
+| list, 1024: a click elsewhere in the row opens the challenge (S06) | pass | a click on row 1's description → `/zh-TW/challenge/door-is-open/` |
+| list, 1024: 6ch minimum (S10) | pass | each URL text 217 px ≥ 43 px |
+| nav, 1024, `door-is-open`, Browser panel open: click selects, page stays | pass | selection `wxl.browserlab.online/zh/c/001`, URL unchanged; the Browser panel's iframe 611×600 shows FileHub |
+| nav, 1024: `copy_failed` in the desktop row | pass | the nav grew to 0–56 px and the message sits at 32–56 px, inside it (T-0036 measured it running 4–28 px above the nav at this width); URL text 217 px, not cut; title not cut; `scrollWidth` = 1024 |
+| nav, 375×812, `selected-excerpts`: D7 and S10 | pass | URL text cut (151 px of 217) and ≥ 43 px; the title `精選節錄` not cut; `scrollWidth` = 375 |
+| nav, 375×812: click selects, page stays | pass | selection `wxl.browserlab.online/zh/c/010`, URL unchanged |
+| nav, 375×812: `copy_failed` on the mobile row | pass | message on its own line at 72–96 px, not cut (`scrollWidth` ≤ `clientWidth`), the row grown; `scrollWidth` = 375; Browser panel rendering the challenge (screenshot in the session) |
