@@ -197,9 +197,9 @@ async function askField(io, t, questioner, field, current) {
   }
 }
 
-/** S6: each answer, and the short-link origin the engine will write (traceability.md "Setup
- * questions"): the parsed args' `origin` when present, else `deriveGithubPagesOrigin(repo)` for
- * GitHub Pages. */
+/** S6: each answer, and the range address (the origin of every copied link) the engine will
+ * write (traceability.md "Setup questions"): the parsed args' `origin` when present, else
+ * `deriveGithubPagesOrigin(repo)` for GitHub Pages. */
 function printSummary(io, t, deps, current, parsedArgs) {
   io.stdout.write(t['S6-AUTHOR']({ value: current.author }) + '\n')
   io.stdout.write(t['S6-REPO']({ value: current.repo }) + '\n')

@@ -18,19 +18,19 @@
  *   (the base definition) to its upstream form from deployment; --base only applies without
  *   --host, and writes A9 as a literal.
  *
- *   --origin sets the short-link origin (A8); --host github-pages derives it when --origin is
- *   not given (required with --host cloudflare-pages). --site-name sets the site title (A6) and
- *   both home pages' hero name (A7). --rebrand cannot be combined with --host, --origin or
- *   --site-name (A mode's new flags are rejected in B mode).
+ *   --origin sets the range address, the origin of every copied link (A8); --host github-pages
+ *   derives it when --origin is not given (required with --host cloudflare-pages). --site-name
+ *   sets the site title (A6) and both home pages' hero name (A7). --rebrand cannot be combined
+ *   with --host, --origin or --site-name (A mode's new flags are rejected in B mode).
  *
  * Modes:
  *   A (default)          rewrites only the identity anchors (traceability.md's A1-A9):
  *                        the manifest (structured), the doc-anchor forms in README.md,
  *                        README.en.md and CONTRIBUTE.md — wherever they occur, whatever
  *                        repository slug they held — A9 (the base definition), A6/A7 (the site
- *                        name, from --site-name), A8 (the short-link origin, from --origin or
- *                        derived), and the deploy workflow (chosen by --host). No tree walk;
- *                        every other file is byte-identical.
+ *                        name, from --site-name), A8 (the range address, the origin of every
+ *                        copied link, from --origin or derived), and the deploy workflow (chosen
+ *                        by --host). No tree walk; every other file is byte-identical.
  *   B (--rebrand <name>) today's path: walks the whole tree doing the upstream-slug swap and
  *                        also renames the four runtime-sensitive keys (deterministic,
  *                        structure-aware), plus an HONEST residual inventory of every
@@ -848,12 +848,12 @@ function sensitiveRenames(lower: string, upper: string): ReadonlyArray<{ key: st
   ]
 }
 
-// ─── A6-A8 (site name, short-link origin): anchor mode only — never reached in rebrand mode,
+// ─── A6-A8 (site name, range address): anchor mode only — never reached in rebrand mode,
 // since --rebrand rejects --host/--origin/--site-name (T50) ───────────────────────────────────
 
 const PLATFORM_HOME_RELS = ['platform/index.md', 'platform/zh-TW/index.md'] as const
 const SHORT_LINK_REL = '.vitepress/challenge/shortLink.ts'
-/** The upstream short-link origin (traceability.md, T81): replacing a value that is not this one
+/** The upstream range address, SITE_ORIGIN (traceability.md, T81): replacing a value that is not this one
  *  warns; a run that starts from this one never does. */
 const UPSTREAM_SITE_ORIGIN = 'https://wxl.browserlab.online'
 
@@ -1079,7 +1079,7 @@ function a7LineFor(line: string, newLiteral: string): string {
 }
 
 /** `https://<owner, lowercased>.github.io[/<name as given>]` (traceability.md, T36-T37): the
- *  derived short-link origin for `--host github-pages` without `--origin`, omitting the path for
+ *  derived range address for `--host github-pages` without `--origin`, omitting the path for
  *  the user site `<owner>.github.io` (compared case-insensitively). `repo` must already have passed
  *  parseForkInitArgs's `owner/name` check (T45); create-wxl calls it only after a successful parse. */
 export function deriveGithubPagesOrigin(repo: string): string {
@@ -1361,7 +1361,7 @@ export function runForkInit(
     } else {
       // ── A mode: only the identity anchors (A1–A9, traceability.md) and the workflow — the doc
       //   anchors (A2–A5), the config's A9 line, A6 (site title) and A7 (home-page hero name) when
-      //   --site-name is given, and A8 (short-link origin) when --origin is given or derived. No
+      //   --site-name is given, and A8 (range address) when --origin is given or derived. No
       //   tree walk — every file outside A1–A9 and the workflow is byte-identical (T3).
       //
       //   Every CHECKED read/content computation below happens before anything is written —
@@ -1450,7 +1450,7 @@ export function runForkInit(
         }
       }
 
-      // ── A8 (short-link origin): --origin, or derived from --host github-pages without
+      // ── A8 (range address): --origin, or derived from --host github-pages without
       //   --origin (T32-T38/T81/AC-O1-AC-O2). Read byte-preserving (latin1) (T4); the write
       //   decision compares the WHOLE LINE about to be written against the existing one, not just
       //   the decoded value (T8: a same-VALUE line in a different quote style is still rewritten
@@ -1478,13 +1478,14 @@ export function runForkInit(
         if (line !== newLine) {
           const oldValue = evalJsStringLiteral(valueMatch[1])
           if (oldValue !== finalOrigin && oldValue !== UPSTREAM_SITE_ORIGIN) {
-            // T81/AC-O2: replacing a short-link origin that is not upstream's warns — the engine
+            // T81/AC-O2: replacing a range address that is not upstream's warns — the engine
             // keeps no state, so it cannot otherwise tell a fork's own custom domain from one that
             // should be silently kept. Compares the DECODED value: a line rewritten only to
             // normalise its quoting (the same value, differently quoted) never warns.
             warnings.push(
               `A8: ${SHORT_LINK_REL} changes from ${JSON.stringify(oldValue)} to ${JSON.stringify(finalOrigin)} — ` +
-                `a custom short-link origin is replaced only when --origin (or a derived GitHub Pages origin) says so.`,
+                `a custom range address (SITE_ORIGIN, the origin of every copied link) is replaced only when ` +
+                `--origin (or a derived GitHub Pages origin) says so.`,
             )
           }
           const nextLines = lines.slice()
