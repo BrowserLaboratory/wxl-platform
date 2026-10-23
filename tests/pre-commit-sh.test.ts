@@ -9,13 +9,16 @@
  *
  * The oracle for "the expected `_redirects`" is `generateRedirects` over
  * `git checkout-index --all` of the staged snapshot, taken before the hook
- * runs. A case that ends in O2 also pins its rule lines with literals: the
+ * runs. The commit-form cases (H32, H34–H38) take it over the index git
+ * handed the hook, which the recording shim copied before the hook ran: for
+ * `-p` and `-i` that `index.lock` is the only index holding the staged
+ * snapshot. A case that ends in O2 also pins its rule lines with literals: the
  * whole of FIXTURE_RULES where the staged challenges are the fixture's, or
  * else the lines its change adds or removes. H05, H24 and H43 pin HEAD's
  * committed bytes instead, which do not come from the oracle.
  */
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { generateRedirects } from '../scripts/generate-redirects'
@@ -23,6 +26,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   HOOK,
   REDIRECTS,
+  addWorktree,
   blockingGenerator,
   buildFirstCommitFixture,
   buildFixture,
@@ -35,13 +39,16 @@ import {
   gitRun,
   gitWrapper,
   killStrayGroups,
+  lines,
   lockingGenerator,
   markerDir,
+  physicalPath,
   read,
   readBlockingRecord,
   readRecord,
   realRepoState,
   recordScript,
+  recordingShim,
   removeRepo,
   rulesOf,
   runHook,
@@ -57,7 +64,9 @@ import {
   type Fixture,
   type GroupRun,
   type RealState,
+  type Repo,
   type Run,
+  type Shim,
   type Snapshot,
 } from './__helpers__/preCommitRepo'
 
@@ -1012,6 +1021,308 @@ describe('pre-commit.sh: commit forms', () => {
   }, TIMEOUT)
 })
 
+// ─── Commit forms through the recording shim (H32, H34–H38) ─────────────────
+
+/**
+ * O2 through a commit form, read after the commit in the worktree `r`: status
+ * 0; git handed the hook `indexFile` (compared as physical absolute paths),
+ * once; `HEAD`'s, the staged and the working tree's `_redirects` are the
+ * oracle over the index the shim copied; the index equals that copy apart
+ * from `_redirects`; every other working-tree byte, the untracked lines and
+ * `git stash list` with ids are as before. Returns the oracle.
+ */
+function expectCommitO2(run: Run, shim: Shim, r: Repo, before: Snapshot, indexFile: string): string {
+  expect(run.status, run.stderr).toBe(0)
+  expect(shim.recorded().map((p) => physicalPath(r.dir, p))).toEqual([physicalPath(r.dir, indexFile)])
+  const expected = expectedRedirects(r, { GIT_INDEX_FILE: shim.index })
+  const handed = lines(git(r, ['ls-files', '--stage'], { GIT_INDEX_FILE: shim.index }))
+  const after = snapshot(r)
+  expect(git(r, ['show', `HEAD:${REDIRECTS}`])).toBe(expected)
+  expect(stagedRedirects(r)).toBe(expected)
+  expect(after.files.get(REDIRECTS)).toBe(`-:${Buffer.from(expected).toString('base64')}`)
+  expect(withoutRedirects(after.index)).toEqual(withoutRedirects(handed))
+  expect(withoutPaths(after.files, [REDIRECTS])).toEqual(withoutPaths(before.files, [REDIRECTS]))
+  expect(after.untracked).toEqual(before.untracked)
+  expect(after.stash).toEqual(before.stash)
+  return expected
+}
+
+/** Unstaged edits to `platform/public/other.txt` and `door/src/app.py`, and an untracked `platform/notes/untracked.txt`, in `r`. */
+function addUnstagedWork(r: Repo): void {
+  write(r, 'platform/public/other.txt', 'other, unstaged\n')
+  write(r, DOOR_APP, 'from flask import Flask\napp = Flask("door, unstaged")\n')
+  write(r, 'platform/notes/untracked.txt', 'untracked\n')
+}
+
+/** A stub at the validator that records the `git stash list` ids while it runs; `expectHookEntryOnTop` reads them. */
+function stashLogOf(r: Repo): string {
+  const log = join(r.base, 'validator stash.log')
+  recordScript(r, 'challenge-lint-staged.ts', log, true)
+  return log
+}
+
+/** The validator ran once and saw one new entry (the hook's) on top of the stash, with the ids from `before` behind it in order. */
+function expectHookEntryOnTop(stashLog: string, before: Snapshot): void {
+  const ids = before.stash.map((l) => l.split(' ')[0])
+  const during = readRecord(stashLog)
+  expect(during).toHaveLength(1)
+  const [top, ...rest] = during[0].stash ?? []
+  expect(top).toMatch(/^[0-9a-f]{40}$/)
+  expect(ids).not.toContain(top)
+  expect(rest).toEqual(ids)
+}
+
+/** Commit a stale `_redirects` (door's two rules removed) with `--no-verify`. */
+function commitStaleRedirects(): void {
+  const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
+  const stale = head.split('\n').filter((l) => !l.includes('/challenge/door/') && !l.includes('/zh-TW/challenge/door/')).join('\n')
+  expect(rulesOf(stale)).toEqual(FIXTURE_RULES.filter((r) => !r.includes('door')))
+  write(repo, REDIRECTS, stale)
+  git(repo, ['add', REDIRECTS])
+  git(repo, ['commit', '-q', '--no-verify', '-m', 'a stale _redirects'])
+}
+
+/**
+ * E1's repair step: the generator's own command over the whole working tree
+ * (the fixture has no package.json, so `pnpm redirects:generate` runs as
+ * `node --experimental-strip-types scripts/generate-redirects.ts`), then
+ * `git add` of the file.
+ */
+function repairRedirects(): void {
+  const gen = spawnSync('node', ['--experimental-strip-types', 'scripts/generate-redirects.ts'], { cwd: repo.dir, env: repo.env, encoding: 'utf8' })
+  expect(gen.status, gen.stderr).toBe(0)
+  git(repo, ['add', REDIRECTS])
+}
+
+/**
+ * H34: a stale `_redirects` committed with `--no-verify`, repaired as E1
+ * says, then `git commit` with the given environment, through the recording
+ * shim: O2 on `.git/index`, and no W3, since the staged version already was
+ * the expected one (H45 runs it with `/bin` first on `PATH`).
+ */
+function expectH34(env: NodeJS.ProcessEnv): void {
+  commitStaleRedirects()
+  repairRedirects()
+  const shim = recordingShim(repo)
+  const before = snapshot(repo)
+
+  const run = commit(repo, ['-q', '-m', 'repair _redirects'], env)
+
+  const expected = expectCommitO2(run, shim, repo, before, '.git/index')
+  expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+  expectNoW3W4(run)
+}
+
+describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
+  it('H32: git commit --amend that adds a challenge commits the expected file, with the amended change and unstaged files kept', () => {
+    const amended = 'from flask import Flask\napp = Flask("door, amended")\n'
+    write(repo, DOOR_APP, amended)
+    git(repo, ['add', DOOR_APP])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'door change'])
+    const parent = git(repo, ['rev-parse', 'HEAD~1'])
+    writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
+    git(repo, ['add', 'platform/challenge/new-chall'])
+    addUnstagedWork(repo)
+    const stashLog = stashLogOf(repo)
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-q', '--amend', '--no-edit'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index')
+    expect(git(repo, ['rev-parse', 'HEAD~1'])).toBe(parent)
+    expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(amended)
+    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/index.md'])).toBe(challengeIndex('new-chall', 4))
+    expect(rulesOf(expected)).toEqual(expect.arrayContaining([...FIXTURE_RULES, '/c/004 /challenge/new-chall/']))
+    expectHookEntryOnTop(stashLog, before)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H34: a stale committed _redirects, repaired with the generator, git add and git commit, commits the expected file', () => {
+    expectH34({})
+  }, TIMEOUT)
+
+  it('H34 boundary: an untracked numbered challenge during the repair is left out of the commit’s file, with W3 and W4, and stays untracked', () => {
+    commitStaleRedirects()
+    writeChallenge(repo, 'platform/challenge', 'draft', 4)
+    repairRedirects()
+    expect(rulesOf(read(repo, REDIRECTS))).toContain('/c/004 /challenge/draft/')
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toContain('?? platform/challenge/draft/index.md')
+
+    const run = commit(repo, ['-q', '-m', 'repair _redirects'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index')
+    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).toMatch(w4('platform/challenge/draft/'))
+  }, TIMEOUT)
+
+  /**
+   * H35's fixture: branch `side` adds `alpha` (#4) and `main` adds `beta` (#5),
+   * each with its regenerated `_redirects`, committed with `--no-verify`. Then
+   * `git merge side` stops with `_redirects` the only unmerged path. Returns
+   * the two tips.
+   */
+  function mergeStoppedOnRedirects(): { main: string; side: string } {
+    git(repo, ['switch', '-q', '-c', 'side'])
+    writeChallenge(repo, 'platform/challenge', 'alpha', 4)
+    write(repo, REDIRECTS, generateRedirects(repo.dir))
+    git(repo, ['add', 'platform/challenge/alpha', REDIRECTS])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'alpha'])
+    git(repo, ['switch', '-q', 'main'])
+    writeChallenge(repo, 'platform/challenge', 'beta', 5)
+    write(repo, REDIRECTS, generateRedirects(repo.dir))
+    git(repo, ['add', 'platform/challenge/beta', REDIRECTS])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'beta'])
+    const tips = { main: git(repo, ['rev-parse', 'main']).trim(), side: git(repo, ['rev-parse', 'side']).trim() }
+
+    const merge = gitRun(repo, ['merge', '-q', 'side'])
+
+    expect(merge.status, merge.stderr).toBe(1)
+    expect(git(repo, ['diff', '--name-only', '--diff-filter=U'])).toBe(`${REDIRECTS}\n`)
+    return tips
+  }
+
+  function expectMergeCommit(tips: { main: string; side: string }): void {
+    const [, ...parents] = git(repo, ['rev-list', '--parents', '-n1', 'HEAD']).trim().split(' ')
+    expect(parents).toEqual([tips.main, tips.side])
+    expect(existsSync(join(repo.dir, '.git/MERGE_HEAD'))).toBe(false)
+  }
+
+  it('H35: a merge whose _redirects conflict is resolved with the generator and git add, concluded with git commit, commits the expected file', () => {
+    const tips = mergeStoppedOnRedirects()
+    repairRedirects()
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-q', '--no-edit'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index')
+    expectMergeCommit(tips)
+    expect(rulesOf(expected)).toEqual(expect.arrayContaining([...FIXTURE_RULES, '/c/004 /challenge/alpha/', '/c/005 /challenge/beta/']))
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H35 boundary: an untracked challenge and an unstaged edit during the resolution; the hook stashes mid-merge, and the merge commit’s file leaves the draft out, with W3 and W4', () => {
+    const tips = mergeStoppedOnRedirects()
+    writeChallenge(repo, 'platform/challenge', 'draft', 6)
+    write(repo, 'platform/public/other.txt', 'other, unstaged\n')
+    repairRedirects()
+    expect(rulesOf(read(repo, REDIRECTS))).toContain('/c/006 /challenge/draft/')
+    const stashLog = stashLogOf(repo)
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-q', '--no-edit'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index')
+    expectMergeCommit(tips)
+    expect(rulesOf(expected)).toEqual(expect.arrayContaining([...FIXTURE_RULES, '/c/004 /challenge/alpha/', '/c/005 /challenge/beta/']))
+    expect(rulesOf(expected).some((r) => r.startsWith('/c/006 '))).toBe(false)
+    expectHookEntryOnTop(stashLog, before)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).toMatch(w4('platform/challenge/draft/'))
+  }, TIMEOUT)
+
+  it('H36: git commit -p with its answers piped on stdin commits the expected file, and the unanswered hunks stay unstaged', () => {
+    const LONG = 'platform/notes/long.txt'
+    const long = Array.from({ length: 20 }, (_, i) => `line ${i + 1}\n`)
+    write(repo, LONG, long.join(''))
+    git(repo, ['add', LONG])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'long notes'])
+    const door = git(repo, ['show', `HEAD:${DOOR_APP}`])
+    write(repo, 'platform/challenge/test-chall/index.md', challengeIndex('Test Challenge', 6))
+    write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not selected")\n')
+    const firstOnly = ['line 1, selected\n', ...long.slice(1)]
+    write(repo, LONG, [...firstOnly.slice(0, 19), 'line 20, not selected\n'].join(''))
+    write(repo, 'platform/notes/untracked.txt', 'untracked\n')
+    const stashLog = stashLogOf(repo)
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    // Hunk order: door/src/app.py, test-chall/index.md, then long.txt's two hunks.
+    const run = gitRun(repo, ['commit', '-q', '-p', '-m', 'commit -p'], {}, 'n\ny\ny\nn\n')
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
+    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/index.md'])).toBe(challengeIndex('Test Challenge', 6))
+    expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(door)
+    expect(git(repo, ['show', `HEAD:${LONG}`])).toBe(firstOnly.join(''))
+    expect(git(repo, ['diff', '--name-only', '--', 'platform/'])).toBe(`${DOOR_APP}\n${LONG}\n`)
+    expect(rulesOf(expected)).toContain('/c/006 /challenge/test-chall/')
+    expect(rulesOf(expected).some((r) => r.startsWith('/c/001 '))).toBe(false)
+    expectHookEntryOnTop(stashLog, before)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H37: git commit -i <path> commits the staged challenge and the named file, with the expected file, and the other edit stays unstaged', () => {
+    const door = git(repo, ['show', `HEAD:${DOOR_APP}`])
+    writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
+    git(repo, ['add', 'platform/challenge/new-chall'])
+    write(repo, 'platform/challenge/test-chall/index.md', challengeIndex('Test Challenge', 7))
+    write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not named")\n')
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall/index.md', '-m', 'commit -i'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
+    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/index.md'])).toBe(challengeIndex('new-chall', 4))
+    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/index.md'])).toBe(challengeIndex('Test Challenge', 7))
+    expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(door)
+    expect(git(repo, ['diff', '--name-only'])).toBe(`${DOOR_APP}\n`)
+    expect(rulesOf(expected)).toEqual(expect.arrayContaining(['/c/004 /challenge/new-chall/', '/c/007 /challenge/test-chall/']))
+    expect(rulesOf(expected).some((r) => r.startsWith('/c/001 '))).toBe(false)
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H37 boundary: git commit -i of a challenge directory removed from the working tree commits its deletion, and its rule goes', () => {
+    rmSync(join(repo.dir, 'platform/challenge/test-chall'), { recursive: true })
+    write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not named")\n')
+    const shim = recordingShim(repo)
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall', '-m', 'commit -i'])
+
+    const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
+    expect(git(repo, ['ls-tree', '-r', '--name-only', 'HEAD', 'platform/challenge/test-chall'])).toBe('')
+    expect(git(repo, ['diff', '--name-only'])).toBe(`${DOOR_APP}\n`)
+    expect(rulesOf(expected)).toEqual(FIXTURE_RULES.filter((r) => !r.startsWith('/c/001 ')))
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H38: git commit in a linked worktree commits the expected file there, its unstaged files are byte-identical, and the shared stash list keeps the teacher’s entry', () => {
+    // The main worktree's own work, which the worktree's commit must not touch.
+    write(repo, 'platform/public/other.txt', 'other, unstaged in the main worktree\n')
+    write(repo, 'platform/notes/main.txt', 'untracked in the main worktree\n')
+    const wt = addWorktree(repo)
+    const mainTip = git(repo, ['rev-parse', 'main']).trim()
+    const mainBefore = snapshot(repo)
+    writeChallenge(wt, 'platform/challenge', 'new-chall', 4)
+    git(wt, ['add', 'platform/challenge/new-chall'])
+    addUnstagedWork(wt)
+    const stashLog = stashLogOf(wt)
+    const shim = recordingShim(repo)
+    const indexFile = git(wt, ['rev-parse', '--git-path', 'index']).trim()
+    expect(physicalPath(wt.dir, indexFile)).toBe(join(realpathSync(join(repo.dir, '.git')), 'worktrees/連結-worktree/index'))
+    const before = snapshot(wt)
+    expect(before.stash).toEqual(mainBefore.stash)
+    expect(before.stash.some((l) => l.startsWith(`${repo.preexisting} `))).toBe(true)
+
+    const run = commit(wt, ['-q', '-m', 'in the linked worktree'])
+
+    const expected = expectCommitO2(run, shim, wt, before, indexFile)
+    expect(rulesOf(expected)).toContain('/c/004 /challenge/new-chall/')
+    expectHookEntryOnTop(stashLog, before)
+    expect(git(wt, ['rev-parse', 'wt~1']).trim()).toBe(mainTip)
+    expect(git(wt, ['rev-parse', 'wt']).trim()).toBe(git(wt, ['rev-parse', 'HEAD']).trim())
+    expect(git(repo, ['rev-parse', 'main']).trim()).toBe(mainTip)
+    expectNothingChanged(mainBefore, snapshot(repo))
+    expectNoW3W4(run)
+  }, TIMEOUT)
+})
+
 // ─── The hook's stash (AC-23 constraint, B2) ────────────────────────────────
 
 describe('pre-commit.sh: the hook’s stash entry', () => {
@@ -1836,32 +2147,6 @@ describe('pre-commit.sh: a run with nothing to stash (H42)', () => {
 })
 
 // ─── macOS's /bin/bash 3.2 (H45) ────────────────────────────────────────────
-
-/**
- * H34 (T-0035's row), the scenario only: a stale `_redirects` committed with
- * `--no-verify` (door's two rules removed), repaired with the generator's own
- * command (the fixture has no package.json, so `pnpm redirects:generate` runs
- * as `node --experimental-strip-types scripts/generate-redirects.ts`), then
- * `git add` and `git commit` with the given environment.
- */
-function expectH34(env: NodeJS.ProcessEnv): void {
-  const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
-  const stale = head.split('\n').filter((l) => !l.includes('/challenge/door/') && !l.includes('/zh-TW/challenge/door/')).join('\n')
-  expect(rulesOf(stale)).toEqual(FIXTURE_RULES.filter((r) => !r.includes('door')))
-  write(repo, REDIRECTS, stale)
-  git(repo, ['add', REDIRECTS])
-  git(repo, ['commit', '-q', '--no-verify', '-m', 'a stale _redirects'])
-  const gen = spawnSync('node', ['--experimental-strip-types', 'scripts/generate-redirects.ts'], { cwd: repo.dir, env: repo.env, encoding: 'utf8' })
-  expect(gen.status, gen.stderr).toBe(0)
-  git(repo, ['add', REDIRECTS])
-  const expected = expectedRedirects(repo)
-
-  const run = commit(repo, ['-q', '-m', 'repair _redirects'], env)
-
-  expect(run.status, run.stderr).toBe(0)
-  expect(git(repo, ['show', `HEAD:${REDIRECTS}`])).toBe(expected)
-  expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
-}
 
 const BASH_3 = spawnSync('/bin/bash', ['-c', 'echo ${BASH_VERSINFO[0]}'], { encoding: 'utf8' }).stdout?.trim() === '3'
 
