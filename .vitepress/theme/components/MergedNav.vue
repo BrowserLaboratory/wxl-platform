@@ -16,7 +16,9 @@ const props = defineProps<{
   noteCount: number
   descriptionCollapsed: boolean
   /**
-   * The challenge's permanent number. The short link is built from it and sits
+   * The challenge's permanent number. On a Cloudflare Pages build the copied
+   * link is the short link built from it; on any other build it is the page URL,
+   * built from `slug`, and a missing number still shows no link. The link sits
    * beside the title here rather than in the description panel, which spends
    * most of a challenge collapsed.
    */
@@ -105,10 +107,18 @@ const categoryBadge: Record<string, string> = {
 
 <template>
   <nav class="merged-nav border-b border-[var(--ch-border)] bg-[var(--ch-bg)] color-[var(--ch-text-1)]">
-    <!-- Row 1: Desktop/Tablet = full row; Mobile = brand + back + utilities -->
-    <div class="flex items-center h-[40px] px-3 gap-2">
-      <!-- Left section: brand + back + title(desktop/tablet only) + badges(desktop/tablet only) -->
-      <div class="flex items-center gap-2 flex-1 min-w-0">
+    <!--
+      Row 1: Desktop/Tablet = full row; Mobile = brand + back + utilities. At least 40px: from md
+      up it grows while `short_link.copy_failed` shows, which takes a line of its own below the
+      left section's items (ShortLinkShare).
+    -->
+    <div class="flex items-center min-h-[40px] px-3 gap-2">
+      <!--
+        Left section: brand + back + title(desktop/tablet only) + badges(desktop/tablet only).
+        It wraps only for the failure message, which takes a line of its own below: every other
+        item fits its first line, since the title and the URL text start from nothing and only grow.
+      -->
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 flex-1 min-w-0">
         <!-- Brand -->
         <span class="font-bold text-[0.875em] color-[var(--ch-accent)] shrink-0">WXL</span>
 
@@ -126,7 +136,12 @@ const categoryBadge: Record<string, string> = {
 
         <!-- Title + badges: visible on md+ (tablet/desktop), hidden on mobile -->
         <span class="ch-nav-sep hidden md:inline">|</span>
-        <span class="hidden md:inline font-semibold text-[0.875em] truncate">{{ title }}</span>
+        <!--
+          The title has priority over the URL text (D7): it starts from nothing and grows first,
+          up to its full width, by a factor that leaves the URL text a negligible share, so the URL
+          text yields down to its 6ch minimum (D14) before the title is cut at all.
+        -->
+        <span data-nav-title class="hidden md:inline basis-0 grow-[1000000] min-w-0 max-w-max font-semibold text-[0.875em] truncate">{{ title }}</span>
         <span
           v-if="difficulty"
           data-badge="difficulty"
@@ -138,12 +153,14 @@ const categoryBadge: Record<string, string> = {
           :class="[categoryBadge[category] ?? 'ch-badge', 'hidden md:inline-block']"
         >{{ category }}</span>
 
-        <!-- Short link: the address a reader is given, next to the title it names. -->
         <!--
-          `max-md:hidden`, not `hidden md:inline-flex`: the control's root is itself
-          `inline-flex`, which UnoCSS emits after `hidden`, so a plain `hidden` lost and
-          this control showed below md beside the mobile row's own. A media-query rule
-          comes after both.
+          The link a reader is given, next to the title it names: the short link on a Cloudflare
+          Pages build, the challenge page's URL on any other (the same control as the list's, D2).
+        -->
+        <!--
+          `max-md:hidden`, not `hidden md:contents`: the control's root sets its own display
+          (`contents`, earlier `inline-flex`), and a plain `hidden` lost to it, so this control
+          showed below md beside the mobile row's own. A media-query rule comes after both.
         -->
         <ShortLinkShare class="max-md:hidden" :number="number" :slug="slug" :locale="locale" />
 
@@ -243,9 +260,21 @@ const categoryBadge: Record<string, string> = {
       </div>
     </div>
 
-    <!-- Row 2: Mobile only — title + badges + 📖 toggle -->
-    <div class="flex items-center h-[32px] px-3 gap-2 md:hidden border-t border-[var(--ch-border)]">
-      <span class="font-semibold text-[0.8125em] truncate flex-1">{{ title }}</span>
+    <!--
+      Row 2: Mobile only — title + badges + link + 📖 toggle. At least 32px, and it may grow while a
+      status shows: the confirmation, where it does not fit beside the URL text at its minimum, and
+      the failure message, which takes a line of its own, wrap below. At rest nothing wraps: the
+      title and the URL text start from nothing, and the 6px gap (not row 1's 8px) is what leaves
+      the URL text its 6ch beside the badges, the done badge and the English `📖` toggle at 360 wide
+      (measured with the challenge completed and the brief collapsed: at 8px the row's minimum was
+      342px of the 336px it has, and the toggle wrapped to a second line).
+    -->
+    <div class="flex flex-wrap items-center min-h-[32px] px-3 gap-x-1.5 gap-y-1 md:hidden border-t border-[var(--ch-border)]">
+      <!--
+        Title priority as in row 1 (D7). `mr-auto` takes what the title and the URL text leave,
+        so the items after the title stay at the row's end.
+      -->
+      <span data-nav-title class="basis-0 grow-[1000000] min-w-0 max-w-max mr-auto font-semibold text-[0.8125em] truncate">{{ title }}</span>
       <span
         v-if="difficulty"
         data-badge="difficulty"
@@ -259,18 +288,18 @@ const categoryBadge: Record<string, string> = {
       <ShortLinkShare :number="number" :slug="slug" :locale="locale" />
       <!--
         Never labelled, at any width this row renders at. The row has no free space to
-        absorb a badge: its title is `flex-1`, so the title IS the free space and
-        anything added comes out of it.
-        Measured at 360px: the title is 45px with no marker, 10px with the icon, and
-        collapses past measuring with the label shown. The 45-to-0 figure is the one
-        this decision rests on — an earlier version of this comment quoted 45-to-10,
-        which is what icon-only PRODUCES, not what it avoids.
+        absorb a badge: the title and the URL text share what the other items leave, the
+        title first (D7), and the URL text keeps at least 6ch (D14), so anything added comes
+        out of the title once the URL text is at its minimum, in both link modes.
+        Measured at 360px on the English `selected-excerpts` page in page mode (2026-10-23):
+        with the brief open the title is 114px of 114 before completion and 111px with the
+        icon; with the brief collapsed, 39px and 6px.
       -->
       <ChallengeDoneBadge v-if="completed" label-mode="never" :label="tp('challenge_progress.completed_badge')" />
       <!--
-        Does not shrink and does not wrap. The URL text beside it is a long page URL and gives up
-        the width instead (D7); a toggle that could shrink was squeezed to `📖 / 題 / 目`, one
-        character per line, spilling out of this 32px row.
+        Does not shrink and does not wrap. The URL text beside it gives up the width instead,
+        down to its 6ch minimum, and then the title (D7, D14); a toggle that could shrink was
+        squeezed to `📖 / 題 / 目`, one character per line, spilling out of this 32px row.
       -->
       <button
         v-if="descriptionCollapsed"

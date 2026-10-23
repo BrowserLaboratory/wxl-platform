@@ -11,7 +11,7 @@
  * from the imported `UPSTREAM_SLUG`, `.toLowerCase()` and `.toUpperCase()` (ticket T-0011, Note
  * 11) — otherwise the real-tree guard test below would catch this file flagging itself.
  */
-import { readFileSync, statSync, lstatSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { readFileSync, statSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
@@ -35,6 +35,7 @@ import {
   sha256Hex,
   type DocAnchor,
 } from '../../../scripts/fork-init'
+import { isUpstreamDecision, realUpstreamDecision } from '../../__helpers__/upstreamDecision'
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 
@@ -354,23 +355,8 @@ describe('upstream guard — confinement', () => {
 
 // ─── the upstream decision (T65-T66) ────────────────────────────────────────
 
-/** T65-T66/AC-G2: whether the tree currently running is upstream itself. `hasRangeJson` is the
- *  0005-create-wxl override of 0004 T66: a root range.json (create-wxl's setup record) means the
- *  tree is a created range, never upstream itself, when the decision falls back to the manifest
- *  and work tree; GITHUB_REPOSITORY, when set, still decides alone and ignores it. */
-function isUpstreamDecision(
-  githubRepository: string | undefined,
-  manifest: unknown,
-  isWorkTree: boolean,
-  hasRangeJson: boolean,
-): boolean {
-  if (githubRepository !== undefined && githubRepository !== '') {
-    return githubRepository === UPSTREAM_SLUG
-  }
-  const repository = typeof manifest === 'object' && manifest !== null ? (manifest as Record<string, unknown>).repository : undefined
-  const url = typeof repository === 'object' && repository !== null ? (repository as Record<string, unknown>).url : undefined
-  return url === `git+https://github.com/${UPSTREAM_SLUG}.git` && isWorkTree && !hasRangeJson
-}
+// The decision itself lives in tests/__helpers__/upstreamDecision.ts, shared with the assertions
+// that hold only on upstream's own origin (spec 0007, S08).
 
 describe('upstream decision', () => {
   // T65/AC-G2: GITHUB_REPOSITORY set and non-empty decides alone.
@@ -766,34 +752,7 @@ function realTreeFiles(): Record<string, string> {
   return files
 }
 
-/** Whether `REPO_ROOT` is a git work tree at all (T66's fallback condition). `spawnSync` itself
- *  never throws — a missing `git` executable surfaces as `res.error`, not an exception — so there
- *  is nothing here for a `try`/`catch` to catch. */
-function isGitWorkTree(): boolean {
-  const res = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: REPO_ROOT, encoding: 'utf8' })
-  if (res.error || res.status !== 0) return false
-  return res.stdout.trim() === 'true'
-}
-
-function realManifest(): unknown {
-  try {
-    return JSON.parse(readFileSync(resolve(REPO_ROOT, 'package.json'), 'utf8'))
-  } catch {
-    return undefined
-  }
-}
-
-/** Whether `REPO_ROOT` itself has a root range.json (0005-create-wxl override of 0004 T66): this
- *  repository is upstream and never carries one, but a range created by create-wxl would. */
-function hasRootRangeJson(): boolean {
-  try {
-    return lstatSync(resolve(REPO_ROOT, 'range.json')).isFile()
-  } catch {
-    return false
-  }
-}
-
-const REAL_DECISION = isUpstreamDecision(process.env.GITHUB_REPOSITORY, realManifest(), isGitWorkTree(), hasRootRangeJson())
+const REAL_DECISION = realUpstreamDecision(REPO_ROOT)
 
 describe.runIf(REAL_DECISION)('deploy template hash pin (upstream only)', () => {
   it('the current template’s LF-normalised SHA-256 is pinned and not in the engine’s known-old list', () => {
