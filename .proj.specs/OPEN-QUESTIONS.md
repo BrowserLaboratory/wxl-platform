@@ -553,7 +553,7 @@ with the consequence falling on the current learner's own data.
 ## OQ-016 — Should the copy-short-link button hide itself on a GitHub Pages range?
 
 **Deferred on:** 2026-10-14
-**Status:** open
+**Status:** resolved
 
 **Reason.** `platform/public/_redirects` is the file that makes a short link resolve, and only
 Cloudflare Pages reads it; GitHub Pages ignores it, so a short link printed from a GitHub Pages
@@ -600,6 +600,22 @@ handed out there. The page URL still fails to open the range in these cases:
 Mode rule, link forms and rows M01–M04, L01–L21:
 `.proj.specs/0007-gh-pages-range-fixes/traceability.md`. At 0007's close-out, set the status to
 resolved and record the verifying evidence here.
+
+**Resolved on 2026-10-24 (0007's close-out).** Verified in T-0039's stage 8 against `f12aba2`, which
+holds the whole epic (`.proj.tickets/0007-gh-pages-range-fixes/T-0039-documents-and-epic-stage-8.md`):
+- On a real GitHub Pages project-site range made with create-wxl (`CXPhoenix/wxl-e2e-0007`, V04), the
+  list and the nav show and copy page URLs, never `/c/` links, in both languages:
+  `https://cxphoenix.github.io/wxl-e2e-0007/zh-TW/challenge/staff-only/` from the Traditional Chinese
+  list, `…/challenge/just-a-preview/` from the English one, and each nav's own page. Each copied
+  URL, opened afresh, opens its challenge with the Browser panel rendering it. After V05 added a
+  challenge, its URL copied from the deployed list opened it.
+- On a local build without `CF_PAGES` (V02), 64 checks passed: page URLs shown and copied, cut with
+  an ellipsis at 375 wide with the whole URL as `title`.
+- On the Cloudflare preview (V01), short links are unchanged and `/c/NNN`, `/zh/c/NNN` still redirect.
+
+The three limits listed above remain as recorded. The first (a wrong `SITE_ORIGIN`) and the user-site
+remark are refined by 0007's chain analysis (`review/chain-analysis.md`, N-4 and N-5). The third
+(OQ-023) was reproduced on the same range and is the next epic.
 
 ---
 
@@ -837,6 +853,27 @@ browser profile whose stored language is English (V04).
 
 **Revisit when.** A teacher reports a learner reaching a 404 from a copied English link, or an epic
 changes the language redirect or the challenge scaffold.
+
+**Reproduced on 2026-10-24 (epic 0007's stage 8, T-0039); the user calls it the most serious problem
+now.** On the temporary GitHub Pages range `CXPhoenix/wxl-e2e-0007` (created with create-wxl from
+`f12aba2`), the challenge `v05-php-check` was added with `pnpm create:challenge --backend php`, which
+writes only `platform/challenge/v05-php-check/`:
+- `/zh-TW/challenges` lists 4 challenges and leaves it out; `/challenges` lists 5.
+- With `localStorage['wxl-locale'] = 'zh-TW'`, opening the copied English URL
+  `https://cxphoenix.github.io/wxl-e2e-0007/challenge/v05-php-check/` redirects to
+  `/zh-TW/challenge/v05-php-check/`, whose title is `404 | WXL e2e 0007`
+  (`curl` gives 404 for the Traditional Chinese path and 200 for the English one).
+- A visitor with no stored preference takes the same path, since `DEFAULT_VISITING_LOCALE` is
+  `zh-TW`; this part is read from the code, not reproduced in a fresh profile.
+
+So a teacher who authors only the English challenge, as the scaffold and wxl-create do, publishes a
+challenge that a learner on the default language neither finds in the list nor opens from a copied
+link. Related: OQ-024 (making zh-TW the root locale, and the cost of authoring both languages).
+
+**Decided on 2026-10-24:** the user makes this an epic of its own, first in line, ahead of the GHCR
+authoring-environment epic; stage 1 (`/grill-with-docs`, user-invoked) chooses among the options
+above (redirect only to a page that exists, list English-only challenges in the Traditional Chinese
+list, scaffold a Traditional Chinese brief, or OQ-024's root-locale move).
 
 
 ---

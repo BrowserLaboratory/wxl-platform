@@ -85,6 +85,11 @@ branch names embed them. Files live under `.proj.tickets/NNNN-<epic-slug>/`. Lay
 With the breakdown, show a claim table that maps every row of `traceability.md` to the ticket that
 delivers it. A row that no ticket claims is a gap in the breakdown, not a detail for later.
 
+When the epic's behaviour depends on a host (a deployment platform, its CI), the first ticket that
+touches deployment runs its stage 8 on a real, temporary instance of that host, not only the
+ticket that lands last. Tickets that change the same file in turn are merged into one, or ordered so
+that each starts only after the previous one lands.
+
 **Gate:** the user approves the breakdown — granularity, blocking edges, and what each ticket
 delivers — and every traceability row is claimed by a ticket.
 
@@ -114,6 +119,10 @@ under test does not exist yet.
 verified carries a command that reproduces it, or a `path:line` pinned to a named commit. When a
 record compares against an earlier commit, read that commit with `git show <commit>:<path>` from
 the start rather than inferring from the current file.
+
+**Standing authorization.** A standing authorization covers the tickets it names. A new or changed
+spec decision (a new D-number) is shown to the user as a short decision summary and confirmed before
+it is implemented, even under that authorization.
 
 **Gate:** test plan table approved before the loop starts; coverage report table produced before
 stage 6.
@@ -166,6 +175,10 @@ squash, so the ticket's red–green commits become one commit on `main`; generat
 with `tw-emoji-commit` and put the ticket id in its subject. A problem found after landing opens a
 new ticket, which names the original ticket in its context.
 
+A PR opened before stage 8 ends, for its preview deployment or its CI, is opened as a draft. Mark it
+ready and enable auto-merge only once the ticket's stage 8 record is written. A merge, auto-merge
+included, does not notify the agent, so the user says when the PR has landed.
+
 Every `git commit` variant uses `tw-emoji-commit`. Existing user authorization for
 landing work remains valid; report unresolved decisions instead of silently choosing
 an unexpected remote or base. Update ticket status to `done` once the change is on `main`.
@@ -193,4 +206,5 @@ Two different things, kept apart:
   downstream of it. It lives in `.proj.specs/OPEN-QUESTIONS.md`.
 
 Both record why they were deferred, the evidence behind that call, and the condition that should
-bring them back.
+bring them back. Before deferring something a teacher or learner would see, reproduce it once on the
+surface that runs it, and write what they see into the reason.
