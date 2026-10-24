@@ -838,3 +838,68 @@ browser profile whose stored language is English (V04).
 **Revisit when.** A teacher reports a learner reaching a 404 from a copied English link, or an epic
 changes the language redirect or the challenge scaffold.
 
+
+---
+
+## OQ-024 — Should Traditional Chinese become the root locale, with English moved under `/en/`, and what does that cost?
+
+**Deferred on:** 2026-10-24
+**Status:** open
+
+**Reason.** Raised by the user on 2026-10-24 ("把 zh-TW 變成預設（搬移，en 版搬遷到 `/en/`）要計算成本"):
+teachers author mainly in Traditional Chinese and may forget the bilingual version. Two things have to
+be measured before a decision: the cost of the move itself, and how much a bilingual challenge raises
+an agent's token cost when authoring. Neither has been measured.
+
+**Evidence.** Verified by reading:
+- English is the root locale today: pages live under `platform/` (`challenge/`, `challenges.md`,
+  `guide/`, `reference/`), and the Traditional Chinese mirror under `platform/zh-TW/` (AGENTS.md,
+  "Repository layout").
+- The site already sends a first-time visitor to `zh-TW`: `DEFAULT_VISITING_LOCALE` is `'zh-TW'`
+  (`.vitepress/theme/i18n/index.ts:25`).
+- The hook, the generator and the tests key on both trees and on the English tree as the backing
+  one: the orphan-brief refusal (D12, T-0033) and `redirects.test.ts` ("backs every translated slug
+  with a root-locale challenge"); short links `/c/NNN` and `/zh/c/NNN` (`platform/public/_redirects`).
+- `pnpm create:challenge` scaffolds only `platform/challenge/<slug>/` (OQ-023).
+
+Inferred, not measured: the move touches the VitePress locale config, every path in the hook,
+generator, guard and tests, the short-link rules, the create-wxl and fork:init templates, the
+challenge pipeline's skills, and every existing range's URLs (handouts with printed links).
+
+**Blocks.** Any epic that changes the locale layout or makes a bilingual brief optional. Options: move
+zh-TW to the root; keep the layout and make the English brief optional; keep both mandatory and have
+the authoring tools produce both.
+
+**Not blocked.** OQ-023 (the language redirect to a missing zh-TW page) can be fixed under either
+layout. The teacher authoring-environment epic can start; its stage 1 should know this is open.
+
+**Revisit when.** The authoring-environment epic reaches stage 1, or an experiment measures the token
+cost of authoring a bilingual challenge against a single-language one.
+
+---
+
+## OQ-025 — What manual does a teacher need to stand up a range unaided?
+
+**Deferred on:** 2026-10-24
+**Status:** open
+
+**Reason.** Raised by the user on 2026-10-24 ("需要做更好的手冊，輔助老師們建置起這個平台"). At the last
+teacher workshop, teachers got stuck mainly on setting up the environment. What the manual covers
+depends on the authoring-environment epic (a GHCR image started with docker compose, GitHub Pages as
+the teacher's host), which has not been through stage 1.
+
+**Evidence.** Verified by reading: the README's "部署" section is the main setup document today, and
+it mixes the teacher's path (`npm create wxl`, GitHub Pages settings) with the maintainer's (the
+Cloudflare Pages build command that installs Rust and `wasm-pack`, `fork:init`'s option table).
+Epic 0007's T-0039 rewrites the `_redirects` and copy-button sentences across the documents but not
+the setup path. The 2026-10-18 stage 1 interview deferred the Quick start rewrite to the "start without
+Rust" epic (`.proj.research/2026-10-18-dev-image-gh-pages-grill.md`, Q1, Q30).
+
+**Blocks.** A teacher-facing setup manual. Options: a separate teacher manual (site pages under
+`guide/`, or a standalone document) alongside the README; rewrite the README's quick start; a
+Cloudflare Pages article for teachers who choose it (the user's answer 2 of 2026-10-24).
+
+**Not blocked.** T-0039's document sentences, and the authoring-environment epic's design.
+
+**Revisit when.** The authoring-environment epic settles what a teacher installs and runs, or before
+the next teacher workshop.
