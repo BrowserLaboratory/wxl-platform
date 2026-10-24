@@ -104,6 +104,8 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
   - **Exit status 1**: nothing was written; the error names an existing slug or an invalid argument. Show the error and ask, in a plain-text block, for the reply `change` or `cancel`. On `change`, re-ask the parameter the error names (the slug when the challenge already exists) and re-run; on `cancel`, stop. Exit status 1 is the only status that re-asks a parameter.
   - **Exit status 2**: the challenge was created, but `platform/public/_redirects` was not regenerated. Show the user the message from stderr, which says that committing the challenge regenerates the file, then continue to Step 3 with the same slug. Keep `platform/challenge/<slug>/`.
   - **Exit status 3**: the scaffold was written with its number, but keygen failed. Show the user the message from stderr, which holds keygen's output, and stop. Tell the user to fix the cause, run `pnpm challenge:keygen <slug>`, and then resume this skill at Step 3 with the same slug; as with exit status 2, committing the challenge regenerates `platform/public/_redirects`. Keep `platform/challenge/<slug>/`.
+
+  `platform/public/_redirects` is generated from the challenges; do not edit it by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when challenges change. Commit it together with them: GitHub Pages does not read it, but CI checks that it matches the challenges. If CI reports it stale, run `pnpm redirects:generate` and commit the result.
 - **Verification**: Exit status 0, or exit status 2 with its message shown to the user; `platform/challenge/<slug>/` exists.
 
 ### Step 3: Generate vulnerable application code

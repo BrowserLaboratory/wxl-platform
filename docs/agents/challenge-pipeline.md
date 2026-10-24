@@ -12,7 +12,12 @@ unintended solution, exploit spec, blind solve — is defined in [`GLOSSARY.md`]
 | `platform/challenge/<slug>/` | the engagement brief (`index.md`) and the application under `src/` |
 | `platform/zh-TW/challenge/<slug>/` | the Traditional Chinese brief |
 | `tests/challenges/<slug>.spec.ts` | the exploit spec |
-| `platform/public/_redirects` | short links, generated from the tree by `pnpm redirects:generate`; never edit it |
+| `platform/public/_redirects` | the short-link rules, described below the table |
+
+`platform/public/_redirects` is generated from the challenges; do not edit it by hand. `pnpm create:challenge`
+and the pre-commit hook regenerate it when challenges change. Commit it together with them: GitHub
+Pages does not read it, but CI checks that it matches the challenges. If CI reports it stale, run
+`pnpm redirects:generate` and commit the result.
 
 A number is assigned once by `pnpm create:challenge` and is unique within this site only.
 

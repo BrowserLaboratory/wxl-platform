@@ -13,6 +13,9 @@ always open the Browser panel.
 
 - vitest swallows `console.log` under the default reporter, and `--silent=false` does not bring it
   back. Write diagnostics to a file with `node:fs` instead.
+- A new git worktree has no `.vitepress/wasm/`, the ignored output of `pnpm wasm:build`, so the
+  keygen, layout and tab cases of `pnpm test` fail there. Run `pnpm wasm:build` in the worktree, or
+  copy the directory from a checkout whose build is newer than the last change under `chall-wasm/`.
 - Composables that hold module-level refs (`useSessionGate` and its neighbours) keep state across
   tests in one file. Call `vi.resetModules()` between tests that need a fresh instance.
 

@@ -9,10 +9,14 @@
 # substituted on the right. First matching rule wins, so put specific rules
 # above general ones. Cloudflare caps this file at 2100 rules.
 #
-# GENERATED FILE — DO NOT EDIT BY HAND.
-# Produced by `pnpm redirects:generate` from the challenge tree, and rewritten
-# as part of `pnpm build`. A hand edit is reverted by the next build and fails
-# tests/unit/site/redirects-generated.test.ts in the meantime.
+# `platform/public/_redirects` is generated from the challenges; do not edit it
+# by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when
+# challenges change. Commit it together with them: GitHub Pages does not read
+# it, but CI checks that it matches the challenges. If CI reports it stale, run
+# `pnpm redirects:generate` and commit the result.
+#
+# `pnpm build` rewrites it too. The CI check is
+# tests/unit/site/redirects-generated.test.ts.
 
 # Numbered short links, one pair per challenge. A number is assigned once and
 # never reused, so a link printed on a handout keeps pointing at the same

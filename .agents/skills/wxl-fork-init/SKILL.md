@@ -1,6 +1,6 @@
 ---
 name: wxl-fork-init
-description: Use when forking or template-cloning this repo into a new project. Drives the deterministic `pnpm fork:init` CLI to reset package.json identity, choose the deploy host and base via `--host`, set the short-link origin and site name, swap GitHub URLs, add the Pages deploy workflow, and (optionally) rebrand the `wxl` short-name — instead of hand-editing files. Keywords fork, template, 分叉, rebrand, --host, --origin, --site-name, base path, GitHub Pages 404, deploy.yml, package.json identity, ECL-2.0.
+description: Use when forking or template-cloning this repo into a new project. Drives the deterministic `pnpm fork:init` CLI to reset package.json identity, choose the deploy host and base via `--host`, set the range's address (the origin of every copied link) and site name, swap GitHub URLs, add the Pages deploy workflow, and (optionally) rebrand the `wxl` short-name — instead of hand-editing files. Keywords fork, template, 分叉, rebrand, --host, --origin, --site-name, base path, GitHub Pages 404, deploy.yml, package.json identity, ECL-2.0.
 ---
 
 # WXL Fork 最小改動（script-driven）
@@ -40,11 +40,11 @@ description: Use when forking or template-cloning this repo into a new project. 
 - **Verification**: 已知 `--author` 與合法 `--repo`（`owner/repo`）；A 另有已選 `--host`（Cloudflare Pages 另有合法 `--origin`）；B 另有 `--rebrand`。
 
 `host`／`base` 決策（A 模式，沿用品牌）：
-- 部署到 GitHub Pages 專案站（`<owner>.github.io/<repo>/`）、使用者站（`<owner>.github.io`），或日後要換成自訂網域 → `--host github-pages`；base path 由部署時的 `configure-pages` 動作自動算出，不用再寫死路徑。沒帶 `--origin` 時短連結網址依 `--repo` 推導；換成自訂網域要自己帶 `--origin`。
+- 部署到 GitHub Pages 專案站（`<owner>.github.io/<repo>/`）、使用者站（`<owner>.github.io`），或日後要換成自訂網域 → `--host github-pages`；base path 由部署時的 `configure-pages` 動作自動算出，不用再寫死路徑。沒帶 `--origin` 時靶場網址依 `--repo` 推導；換成自訂網域要自己帶 `--origin`。
 - 部署到 Cloudflare Pages → `--host cloudflare-pages`，必帶 `--origin https://<project>.pages.dev`（或你的自訂網域，不能帶路徑）。
 - 完全不帶 `--host` 時，`--base '/<repo>/'`／`--base none` 才會生效，直接把路徑寫死進 `.vitepress/config.mts`；漏帶 `--host` 的症狀是：頁面能開但 CSS／JS／WASM 全 404，或部署目標換了之後路徑沒跟著變。
 
-B 模式（`--rebrand`）決策：`--rebrand` 不能和 `--host`／`--origin`／`--site-name` 同時出現（CLI 會直接拒絕），只能用 `--base` 決定 base path：GitHub Pages 專案站用 `--base '/<repo>/'`，根目錄（使用者站、自訂網域、Cloudflare Pages）用 `--base none`。部署到 Cloudflare Pages 時，B 模式裝回的 GitHub Pages workflow 要自己手動刪除；短連結網址（`SITE_ORIGIN`）與網站標題、首頁靶場名稱也都要手動改，CLI 在 B 模式不會動這幾處。
+B 模式（`--rebrand`）決策：`--rebrand` 不能和 `--host`／`--origin`／`--site-name` 同時出現（CLI 會直接拒絕），只能用 `--base` 決定 base path：GitHub Pages 專案站用 `--base '/<repo>/'`，根目錄（使用者站、自訂網域、Cloudflare Pages）用 `--base none`。部署到 Cloudflare Pages 時，B 模式裝回的 GitHub Pages workflow 要自己手動刪除。不論部署到哪裡，靶場網址（`SITE_ORIGIN`，複製出來的每一條連結都從它開始）與網站標題、首頁靶場名稱都要手動改，CLI 在 B 模式不會動這幾處。
 
 ### Step 2: dry-run 預覽
 
@@ -55,7 +55,7 @@ B 模式（`--rebrand`）決策：`--rebrand` 不能和 `--host`／`--origin`／
 ### Step 3: 正式執行
 
 - **What**: 套用確定性編輯。
-- **How**: 執行 `pnpm fork:init <flags>`（不帶 `--dry-run`）。CLI 會改 package.json 身分欄位、把固定幾處的上游 repository slug `BrowserLaboratory/wxl-platform` 錨點（README／README.en／CONTRIBUTE，各自固定的網址或指令形狀）換成 `--repo`、依 `--site-name` 設定網站標題與首頁名稱、依 `--origin`（或由 `--host github-pages` 推導）設定短連結網址，並依 `--host` 決定部署 workflow 怎麼處理——四種既有狀態（不存在／與目前範本相同／與已知舊範本相同／其他）在三種 `--host` 下各自的對應，見 README 的狀態表，這裡不重複；兩種 `--host` 都會把 `.vitepress/config.mts` 的 base 定義還原成上游那行，base path 改由部署環境決定。B 模式會先對整棵樹（排除 `.git`／`node_modules`／`.claude`／`.agents`／`.codex`、`pnpm-lock.yaml`、`.vitepress/dist`／`.vitepress/cache`、CLI 自身與其測試）做上游 repository slug 與四個 runtime 敏感鍵的結構化 rename，並列出敏感鍵報告；其餘含 `wxl` 者列於 **residual inventory**（`file:line`，如 `Wxlsh`、`wxlsh` 子系統、`scripts/wxl-solver` 路徑引用）。含 `wxl` 的 `--repo`／`--author` 由建構保證不被誤改（無 sentinel）。
+- **How**: 執行 `pnpm fork:init <flags>`（不帶 `--dry-run`）。CLI 會改 package.json 身分欄位、把固定幾處的上游 repository slug `BrowserLaboratory/wxl-platform` 錨點（README／README.en／CONTRIBUTE，各自固定的網址或指令形狀）換成 `--repo`、依 `--site-name` 設定網站標題與首頁名稱、依 `--origin`（或由 `--host github-pages` 推導）設定靶場網址，並依 `--host` 決定部署 workflow 怎麼處理——四種既有狀態（不存在／與目前範本相同／與已知舊範本相同／其他）在三種 `--host` 下各自的對應，見 README 的狀態表，這裡不重複；兩種 `--host` 都會把 `.vitepress/config.mts` 的 base 定義還原成上游那行，base path 改由部署環境決定。B 模式會先對整棵樹（排除 `.git`／`node_modules`／`.claude`／`.agents`／`.codex`、`pnpm-lock.yaml`、`.vitepress/dist`／`.vitepress/cache`、CLI 自身與其測試）做上游 repository slug 與四個 runtime 敏感鍵的結構化 rename，並列出敏感鍵報告；其餘含 `wxl` 者列於 **residual inventory**（`file:line`，如 `Wxlsh`、`wxlsh` 子系統、`scripts/wxl-solver` 路徑引用）。含 `wxl` 的 `--repo`／`--author` 由建構保證不被誤改（無 sentinel）。
 - **Verification**: CLI exit 0；結尾摘要列出變更檔、（B）已改敏感鍵與 residual inventory；有殘留時訊息會聲明 rebrand 未完成。
 
 ### Step 4: 驗收
@@ -94,4 +94,6 @@ git grep -nE "CXPh03n1x|CXPhoenix" -- .
 pnpm install && pnpm build && pnpm docs:preview
 ```
 
-`--origin`（或由 `--host github-pages` 推導）已經把 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 改成你自己的網址；只有完全沒帶 `--origin` 也沒帶 `--host` 時才需要自己手改，否則複製出去的短連結會指向原本的網站。部署在 GitHub Pages 時，短連結（`platform/public/_redirects`）不會生效，只有 Cloudflare Pages 會讀這個檔。
+`--origin`（或由 `--host github-pages` 推導）已經把 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 改成你的靶場網址，複製出來的每一條連結都從它開始；只有完全沒帶 `--origin` 也沒帶 `--host` 時才需要自己手改，否則複製出來的連結會指向原本的網站。部署在 GitHub Pages 時，短連結（`platform/public/_redirects`）不會生效，只有 Cloudflare Pages 會讀這個檔。每道題目旁的複製按鈕，只有在 Cloudflare Pages 建置的靶場上才會複製短連結；其他靶場複製的是題目頁的網址。題目改名之後這個網址就會失效；而且只有 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 是靶場的網址時，它才會開到這個靶場。
+
+`platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
