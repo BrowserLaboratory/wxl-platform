@@ -38,3 +38,12 @@ W9's third form reads as the user decides, and the traceability row, the tests a
 hook 的 W9 第三種訊息裡有一句「所以不需要 `git stash apply <id>`」。這句是否保留、改寫或刪除，等使用者決定；改的話，hook、traceability 與測試要一起改。
 
 ## Comments
+
+### 2026-10-24 — revisit trigger fired (T-0039)
+
+T-0039 wrote the W9 documents this ticket's `revisit_when` names: the "Committing challenges" /
+「commit 題目」 section of both READMEs describes the third form and H51's extra line without
+quoting the sentence in question; it says that when `git restore --staged --source=<id>^2` is the
+only command printed, the unstaged files are already back. That is the fact the sentence states, so
+keeping, rewording or dropping it does not change the README. The ruling stays the user's and the
+status stays `pending`.

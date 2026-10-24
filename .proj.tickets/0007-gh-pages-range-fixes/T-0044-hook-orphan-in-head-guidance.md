@@ -36,3 +36,12 @@ The refusal tells a teacher whose own change did not create the orphan what to d
 如果孤兒說明頁已經在 `HEAD` 裡（例如有人用 `--no-verify` commit），之後每一個會觸發 hook 的 commit 都會被擋，即使老師改的是別的題目。這張票要讓拒絕訊息或文件告訴老師怎麼解，或改成只擋這次 commit 造成的孤兒。
 
 ## Comments
+
+### 2026-10-24 — revisit trigger fired (T-0039)
+
+T-0039 wrote the documents this ticket's `revisit_when` names: the "Committing challenges" /
+「commit 題目」 section of both READMEs says that an orphan brief committed with `--no-verify`
+refuses every later challenge commit until its English challenge is committed or the brief is
+removed with `git rm -r platform/zh-TW/challenge/<slug>/`. W6 itself is unchanged and still names
+only the remedies for an orphan the commit creates, so the decision in the first criterion stays
+open and the status stays `pending`.

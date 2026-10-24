@@ -78,7 +78,7 @@ pnpm dev
 | `pnpm wasm:build` | 建置所有 Rust WASM 模組 |
 | `pnpm wasm:test` | 執行 Rust 單元測試（`cargo test`） |
 | `pnpm wasm:tools` | 嘗試把 `wasm-tools` 裝進 Rust 工具鏈；失敗也不會報錯、一律以 0 結束，請用 `wasm-tools --version` 確認 |
-| `pnpm fork:init` | fork 之後改寫專案身分（作者、GitHub 網址、短連結網址、網站名稱，以及依 `--host` 決定的部署設定）。必須帶 `--author` 和 `--repo`；每次執行都要帶齊參數，`--host` 與 `--base` 互斥；套件名稱只在帶 `--name` 或 `--rebrand` 時才會改 |
+| `pnpm fork:init` | fork 之後改寫專案身分（作者、GitHub 網址、靶場網址、網站名稱，以及依 `--host` 決定的部署設定）。必須帶 `--author` 和 `--repo`；每次執行都要帶齊參數，`--host` 與 `--base` 互斥；套件名稱只在帶 `--name` 或 `--rebrand` 時才會改 |
 | `pnpm challenge:keygen` | 為每一題產生加密的 WASM 模組 |
 | `pnpm create:challenge` | 依參數建立新題目的骨架；必須帶 `--name <slug>`，不帶參數會印出用法並以 1 結束 |
 | `pnpm challenge:validate` | 檢查每一題的 frontmatter 與檔案結構 |
@@ -141,6 +141,18 @@ wasmModule: /challenge/door-is-open/runtime.wasm  # 由 keygen 產生
 
 分支策略、PR 流程與 commit 慣例請見 [CONTRIBUTE.md](CONTRIBUTE.md)。
 
+## commit 題目
+
+每個改到題目或 `platform/public/_redirects` 的 commit，pre-commit hook 都會重新產生這個檔；hook 擋下 commit 時，訊息會說明怎麼做。以下幾種情況，光是重新 commit 不夠：
+
+- **靶場的第一個 commit**：改到題目或 `_redirects` 的第一個 commit，只要 `platform/` 底下除了 `_redirects` 以外還有沒 stage 或沒追蹤的檔案就會被擋，因為第一個 commit 之前 git 沒辦法 stash。把它們 stage（或移除不該放進來的檔案），再 commit 一次。
+- **hook 沒辦法把變更放回去**：hook 會把你在 `platform/` 底下還沒 stage 的變更和未追蹤的檔案留在一個 stash entry，並印出它的 commit id。照訊息執行 `git stash apply <id>`。apply 拒絕時，訊息印出的 `git restore` 指令會用 entry 裡的版本覆寫 `platform/` 底下的檔案，所以要在改動那裡的任何東西之前執行。apply 回報衝突時（兩處變更改到同一行或相鄰的行就會這樣），用 `git checkout <id> -- <path>` 從 entry 取回那個檔案。這時 git 會把那個檔案，以及 entry 裡其他已經套用的變更，都留在 stage 的狀態；執行 `git restore --staged --source=<id>^2 -- ':(top)platform/' ':(top,exclude)platform/public/_redirects'` 可以放回 commit 之前 stage 的內容，所以 commit 之前先看一下 `git status`。
+- **hook 沒辦法把 stage 的變更放回去**：git 的 stash 做到一半停下、又改動了 index 時，訊息會說明，並印出 `git restore --staged --source=<id>^2 -- …`。這個指令會用 commit 之前 stage 的內容覆寫 `platform/` 底下已 stage 的內容，所以要等檔案都放回來、而且還沒 stage 那裡的任何東西時執行。訊息只印這個指令時，你沒 stage 的檔案已經放回來了；否則先照上一項的指令做。
+- **修復過期的 `_redirects`**：`pnpm redirects:generate` 會讀整個工作目錄，所以未追蹤的題目草稿在 frontmatter 裡還沒有 `number` 時會拒絕，訊息會指出是哪一份草稿。先修好或移走草稿；或是 stage 一個題目變更再 commit，hook 會依 stage 的內容重新產生這個檔。
+- **繁中說明頁沒有對應的英文題目**：這種 commit 會被擋。如果之前已經用 `--no-verify` commit 進去，之後每個題目 commit 都會被擋，直到把英文題目 commit 進來，或用 `git rm -r platform/zh-TW/challenge/<slug>/` 移除這份說明頁。
+
+前面兩項「沒辦法放回去」的情況裡，hook 的 stash entry 會一直留在 `git stash list` 裡。檔案和 index 都放回來之後，用 `git stash list --format='%gd %H'` 找出 id 和訊息印出的一樣的那一行，再用那一行的 `git stash drop stash@{<n>}` 刪掉它；`git stash drop` 不接受 id 本身。
+
 ## 部署
 
 建置結果放在 `.vitepress/dist/`，是純靜態檔案，可以部署到任何靜態網站服務。
@@ -194,7 +206,7 @@ pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host github-pag
 pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare-pages --origin https://<你的專案>.pages.dev --site-name "<你的靶場名稱>"
 ```
 
-它會改寫 `package.json` 的身分欄位、把上游的 GitHub 網址換成你的、依 `--site-name` 設定網站標題與兩個首頁的靶場名稱、依 `--origin`（或由 `--host github-pages` 推導）設定短連結網址，並依下表決定要不要從 `scripts/templates/deploy.yml.template` 把 `.github/workflows/deploy.yml` 裝上——這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，安裝會成功；如果你已經放了自己的 workflow，腳本不會覆蓋，只會發出警告。
+它會改寫 `package.json` 的身分欄位、把上游的 GitHub 網址換成你的、依 `--site-name` 設定網站標題與兩個首頁的靶場名稱、依 `--origin`（或由 `--host github-pages` 推導）設定靶場網址（複製出來的每一條連結都從它開始），並依下表決定要不要從 `scripts/templates/deploy.yml.template` 把 `.github/workflows/deploy.yml` 裝上——這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，安裝會成功；如果你已經放了自己的 workflow，腳本不會覆蓋，只會發出警告。
 
 | 既有 `.github/workflows/deploy.yml` | `--host github-pages` | `--host cloudflare-pages` | 不帶 `--host` |
 |---|---|---|---|
@@ -203,7 +215,7 @@ pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare
 | 與已知舊範本輸出相同 | 取代為目前範本，並警告它是舊版輸出 | 刪除，並警告 | 保持原樣，警告內容不同、需要手動合併 |
 | 其他（兩者皆非，可能是你自己客製的版本） | 能推導出 `SITE_BASE` 就保持並警告；不能就保持並警告改用 `--host github-pages` | 保持原樣，並警告 | 保持原樣，警告內容不同、需要手動合併 |
 
-**`fork:init` 不保留任何狀態，每次執行都要帶齊參數**：它不會記得你上一次用了什麼設定，這一次沒帶的參數就當作「這次不改」，而不是「沿用上一次」——但有兩個例外，不管這次帶了什麼都照樣會動：(a) 不帶 `--host` 時，只要 `.github/workflows/deploy.yml` 還不存在就會裝回（見上表）；(b) `--host github-pages` 沒帶 `--origin` 時，短連結網址每次都會依 `--repo` 重新推導並覆寫，覆寫一個不是上游預設值的舊網址時會警告新舊網址。**Cloudflare Pages 靶場每次都要帶 `--host cloudflare-pages`**——如果某一次忘了帶、改用不帶 `--host` 的指令，**不帶 `--host` 執行會重新裝回 GitHub Pages workflow**，而這份 workflow 對一個 Cloudflare Pages 靶場毫無用處；自訂網域的 GitHub Pages 靶場同理每次都要帶 `--origin`，否則下一次沒帶 `--origin` 的 `--host github-pages` 執行會把短連結網址覆寫回推導值。rebrand 模式（`--rebrand`）不能和 `--host`／`--origin`／`--site-name` 一起用，部署設定要另外手動處理，細節見 `wxl-fork-init` skill。
+**`fork:init` 不保留任何狀態，每次執行都要帶齊參數**：它不會記得你上一次用了什麼設定，這一次沒帶的參數就當作「這次不改」，而不是「沿用上一次」——但有兩個例外，不管這次帶了什麼都照樣會動：(a) 不帶 `--host` 時，只要 `.github/workflows/deploy.yml` 還不存在就會裝回（見上表）；(b) `--host github-pages` 沒帶 `--origin` 時，靶場網址每次都會依 `--repo` 重新推導並覆寫，覆寫一個不是上游預設值的舊網址時會警告新舊網址。**Cloudflare Pages 靶場每次都要帶 `--host cloudflare-pages`**——如果某一次忘了帶、改用不帶 `--host` 的指令，**不帶 `--host` 執行會重新裝回 GitHub Pages workflow**，而這份 workflow 對一個 Cloudflare Pages 靶場毫無用處；自訂網域的 GitHub Pages 靶場同理每次都要帶 `--origin`，否則下一次沒帶 `--origin` 的 `--host github-pages` 執行會把靶場網址覆寫回推導值。rebrand 模式（`--rebrand`）不能和 `--host`／`--origin`／`--site-name` 一起用，部署設定要另外手動處理，細節見 `wxl-fork-init` skill。
 
 `--host` 與 `--base` 互斥：帶 `--host`（不論哪一種）時，`.vitepress/config.mts` 的 base 定義一律回到上游這一行：
 
@@ -211,10 +223,12 @@ pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare
 const siteBase = process.env.SITE_BASE || '/'
 ```
 
-- **GitHub Pages 專案網站**（`https://<owner>.github.io/<repo>/`）→ `--host github-pages`。裝好的 workflow 會在部署時先執行 `configure-pages`，由 GitHub 自己算出這個網站的 base path 再交給建置流程，不管是專案網站、使用者網站還是未來換了自訂網域都一樣，原始碼裡再也沒有任何路徑寫死。沒有帶 `--origin` 時，短連結網址會依 `--repo` 推導成 `https://<owner>.github.io/<repo>`（使用者網站 `<owner>.github.io` 則省略路徑）；用了自訂網域要自己帶 `--origin`。
+- **GitHub Pages 專案網站**（`https://<owner>.github.io/<repo>/`）→ `--host github-pages`。裝好的 workflow 會在部署時先執行 `configure-pages`，由 GitHub 自己算出這個網站的 base path 再交給建置流程，不管是專案網站、使用者網站還是未來換了自訂網域都一樣，原始碼裡再也沒有任何路徑寫死。沒有帶 `--origin` 時，靶場網址會依 `--repo` 推導成 `https://<owner>.github.io/<repo>`（使用者網站 `<owner>.github.io` 則省略路徑）；用了自訂網域要自己帶 `--origin`。
 - **Cloudflare Pages 靶場** → `--host cloudflare-pages`，必須帶 `--origin https://<你的專案>.pages.dev`（或你的自訂網域，不能帶路徑）；這個指令不會裝 GitHub Pages 的 workflow。
 
-> **短連結只在 Cloudflare Pages 上有效。** 短連結是 `platform/public/_redirects` 裡的規則，只有 Cloudflare Pages 會讀這個檔。在 GitHub Pages 的靶場上，所有頁面都正常，但印在講義上的短連結會連到 404。
+> **短連結只在 Cloudflare Pages 上有效。** 短連結是 `platform/public/_redirects` 裡的規則，只有 Cloudflare Pages 會讀這個檔，所以在 GitHub Pages 的靶場上，短連結開不到題目。每道題目旁的複製按鈕，只有在 Cloudflare Pages 建置的靶場上才會複製短連結；其他靶場複製的是題目頁的網址。題目改名之後這個網址就會失效；而且只有 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 是靶場的網址時，它才會開到這個靶場。
+>
+> `platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
 
 不帶 `--host` 時，這一行只依 `--base` 改寫；沒帶 `--base` 就維持原狀，可能還是上游原本那一行，也可能是前一次 `--base` 留下的字面值。`--base /<repo>/` 把這段路徑寫死進 `.vitepress/config.mts`；`--base none` 寫成字面值 `const siteBase = '/'`（不是清掉這一行）。**用 `--base` 的靶場，CI 的 site smoke 與 challenge 測試會失敗**——這兩種測試都從 `/` 出發操作頁面，寫死的子路徑會讓它們 404；改用 `--host github-pages` 把 base 交給部署當下決定，本機與 CI 的每一次建置都停在 `/`，就不會遇到這個問題。
 

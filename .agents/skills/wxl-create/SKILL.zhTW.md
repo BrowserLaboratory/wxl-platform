@@ -95,6 +95,8 @@ Please reply with a number, the option name, or a custom value.
   - **exit status 1**：沒有寫入任何檔案；錯誤訊息會指出已存在的 slug 或不合法的引數。顯示錯誤，並以純文字區塊請使用者回覆 `change`（修改）或 `cancel`（取消）。回 `change` 就重問錯誤訊息指出的參數（題目已存在時是 slug）並重跑；回 `cancel` 就停止。只有 exit status 1 會重問參數。
   - **exit status 2**：題目已建立，但 `platform/public/_redirects` 沒有重新產生。把 stderr 的訊息轉述給使用者（訊息說明 commit 這道題目時會重新產生這個檔案），然後用同一個 slug 繼續 Step 3。保留 `platform/challenge/<slug>/`。
   - **exit status 3**：骨架已寫入並帶有永久編號，但 keygen 失敗。把 stderr 的訊息（含 keygen 的輸出）轉述給使用者，然後停止。請使用者修好原因後執行 `pnpm challenge:keygen <slug>`，再用同一個 slug 從 Step 3 接續這個 skill；和 exit status 2 一樣，commit 這道題目時會重新產生 `platform/public/_redirects`。保留 `platform/challenge/<slug>/`。
+
+  `platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
 - **Verification**：exit status 0，或 exit status 2 且已把訊息轉述給使用者；`platform/challenge/<slug>/` 存在。
 
 ### Step 3：生成漏洞應用程式碼

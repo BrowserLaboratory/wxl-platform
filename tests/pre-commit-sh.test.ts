@@ -1005,8 +1005,7 @@ describe('pre-commit.sh: commit forms', () => {
     const current = read(repo, REDIRECTS)
     write(repo, REDIRECTS, A54E917_HEADER + current.slice(current.indexOf('\n\n')))
     git(repo, ['add', REDIRECTS])
-    // Empty until T-0039 changes the header (G02): the two headers are equal today.
-    git(repo, ['commit', '-q', '--no-verify', '--allow-empty', '-m', 'a range from before 0007'])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'a range from before 0007'])
     expect(git(repo, ['show', `HEAD:${REDIRECTS}`]).startsWith(A54E917_HEADER)).toBe(true)
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
     git(repo, ['add', 'platform/challenge/new-chall'])
