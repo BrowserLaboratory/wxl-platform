@@ -2,7 +2,7 @@
 id: T-0035
 title: The pre-commit hook gives the expected _redirects in every commit form it runs in
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0032]
 ---
 
@@ -517,3 +517,10 @@ exists (190 lines). Frontmatter `status: review`.
 No gaps found. Still outside this ticket's local reach, as the stage 8 subsection says: the PR's CI
 (bash 5 on ubuntu) and the Cloudflare preview, which run after the parent commits and pushes; the
 epic's final stage 8 is T-0039's.
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#45](https://github.com/BrowserLaboratory/wxl-platform/pull/45), squash-merged into `main` by
+GitHub auto-merge as `00ab30d` on 2026-10-24, from head `3d72190`; auto-merge was enabled with a squash message
+from the project `tw-emoji-commit` skill. The PR's CI: 10 checks passing, none failing. Before the PR, the branch was rebased onto `a2b1b96` (T-0034, #44) with T-0034's three original commits dropped; the tree equals the one tested locally (110 hook cases, 4520 tests). The first CI run failed only `fork-init-cross-os (windows-latest, 24)`: six cases of `create-wxl/test/bin.test.mjs` hit vitest's 5000 ms limit on a slow runner (194 s against 103–150 s for that job in the twelve runs before it); this ticket does not touch `create-wxl/`, and the same code passed on `a2b1b96`. The failed job was rerun with `gh run rerun 40056318499 --failed` and passed.
+Frontmatter `status: done`.

@@ -2,7 +2,7 @@
 id: T-0034
 title: The pre-commit hook ends cleanly on interruption, git failures and a first commit
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0032]
 ---
 
@@ -1108,3 +1108,10 @@ AC-23's bullets and rows, and the zh-TW AC-23 order. `synced_from_sha` is
 Acceptance criteria: H51 and H52 are added and ticked, each observed by its case above. No criterion
 was unticked. For T-0039: W9's first form can now carry a second line with `git restore --staged`.
 `status` stays `review`.
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#44](https://github.com/BrowserLaboratory/wxl-platform/pull/44), squash-merged into `main` by
+GitHub auto-merge as `a2b1b96` on 2026-10-23, from head `16c4d95`; auto-merge was enabled with a squash message
+from the project `tw-emoji-commit` skill. The PR's CI: 10 checks passing, none failing. Before the PR, the branch was rebased onto `101a982` with T-0033's commit `d1413c2` dropped (its patch-id equals `4b1f81a`'s). It carried revision 3.2 of the spec (D16), decided under the user's standing authorization of 2026-10-23, and the fixes from the review of revision 3.1. The PR's CI ran the hook cases under bash 5. Left open for the user, as recorded above: whether a failure on `index.lock` should also put back a hand edit to `_redirects`, and whether W9's third form keeps the sentence that `git stash apply` is not needed.
+Frontmatter `status: done`.

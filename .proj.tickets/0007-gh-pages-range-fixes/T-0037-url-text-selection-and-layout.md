@@ -2,7 +2,7 @@
 id: T-0037
 title: The URL text selects on a click, yields to the title, and keeps six characters
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0036]
 ---
 
@@ -692,3 +692,10 @@ browsers, real touch input, the English pages on this host.
 | nav, 375×812, `selected-excerpts`: D7 and S10 | pass | URL text cut (151 px of 217) and ≥ 43 px; the title `精選節錄` not cut; `scrollWidth` = 375 |
 | nav, 375×812: click selects, page stays | pass | selection `wxl.browserlab.online/zh/c/010`, URL unchanged |
 | nav, 375×812: `copy_failed` on the mobile row | pass | message on its own line at 72–96 px, not cut (`scrollWidth` ≤ `clientWidth`), the row grown; `scrollWidth` = 375; Browser panel rendering the challenge (screenshot in the session) |
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#42](https://github.com/BrowserLaboratory/wxl-platform/pull/42), squash-merged into `main` by
+GitHub auto-merge as `101a982` on 2026-10-23, from head `82f9b3f`; auto-merge was enabled with a squash message
+from the project `tw-emoji-commit` skill. The PR's CI: 10 checks passing, none failing. Stage 8 in short mode was checked on the PR's Cloudflare preview before auto-merge was enabled (recorded above).
+Frontmatter `status: done`.
