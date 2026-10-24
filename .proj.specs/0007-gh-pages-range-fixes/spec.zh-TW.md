@@ -1,15 +1,15 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: 2942a8277e8fa227e7017f9b654e43e3314fb366
+synced_from_sha: 1261967afc169b543d27e5231ca98a3b81d4f005
 ---
 
 # Spec 0007：GitHub Pages 靶場修正——會自己跟上的 `_redirects`，以及打得開的連結
 
-狀態：第 3.2 版（2026-10-24）。第 1、2 輪對抗式審查都沒有發現 P0（`review/round-1.md`、`review/round-2.md`），
+狀態：第 3.3 版（2026-10-24）。第 1、2 輪對抗式審查都沒有發現 P0（`review/round-1.md`、`review/round-2.md`），
 因此第 3 階段的關卡已通過。第 3 版套用第 2 輪的處置（`review/disposition-2.md`）與使用者的裁決 D12–D15。
 審查上限是兩輪，所以第 3 版只自審，不再送審（D15）。第 3.1 版（2026-10-24）新增 D16，
 寫明 T-0034 審查時實測到的兩種 O7 結束方式。第 3.2 版（2026-10-24）套用對第 3.1 版的兩輪審查：
-改寫 D16 與 hook 的失敗結果，並改變 hook 的四種結束方式（D16 (b)、(c)、H51、H52）。本檔由英文版翻譯，以英文版為準。本文衍生自
+改寫 D16 與 hook 的失敗結果，並改變 hook 的四種結束方式（D16 (b)、(c)、H51、H52）。第 3.3 版（2026-10-24，epic 收尾）依使用者對串連分析 N-1、N-2 的選擇（`review/chain-analysis.md`；T-0051、T-0052），把 B3 限定在有執行 Actions 的 repository，並在 B2 最後一欄寫明 upstream 自己的平行 session。本檔由英文版翻譯，以英文版為準。本文衍生自
 `traceability.md`，其中保存：
 
 - 決策（S8、Q4–Q11、Q33、D1–D16）；
@@ -157,8 +157,8 @@ guard、部署方式，以及 commit `_redirects` 的決定，都不變。
 | # | 邊界 | 保護什麼 | 不保護什麼 | 模型之外 |
 |---|---|---|---|---|
 | B1 | 建置環境 → 建好的網站（`CF_PAGES`） | 只有確切值 `1` 會選擇短連結。其他每一種建置都給題目頁網址，不需要轉址規則。這個選擇在建置時固定，所以送出的 HTML 與 hydrate 後的頁面一致，執行期設定的東西也切換不了它（S09） | 在 Cloudflare Pages 之外手動設定 `CF_PAGES=1` 的建置，會送出只在讀 `_redirects` 的地方才有效的短連結。`SITE_ORIGIN` 仍指向別的主機的 Cloudflare 建置（GitHub Pages 靶場搬到 Cloudflare 卻沒有重跑 fork:init），會送出指向那個主機的短連結。preview 部署的短連結指向正式站。Cloudflare Direct Upload 或 Workers 建置會送出題目頁網址（Q8，已接受） | Cloudflare 的建置平台本身 |
-| B2 | pre-commit hook → 老師的 index 與工作樹 | 結果 O1–O7 與 hook 的約束。hook 只 stage `platform/public/_redirects`，而且只依 staged 快照與 index slugs 推導。它把 `platform/` 底下其他每一個 unstaged 變更與未追蹤檔案逐 byte 還原；或者把它們保留在自己的 stash entry 裡，並印出 entry 的 id（O7）。它從不 apply 或 drop 別的 entry。第一個 commit 有 unstaged 檔案、在別的 index 上、或遇到孤兒說明頁時，它拒絕而不猜測。它不寫 `platform/` 以外的工作樹檔案，也不寫別的 repository 的檔案 | `--no-verify`、`pnpm install` 從沒裝過 hook 的 clone，或跳過 hook、沒有 Node 的 git 工具。git 不跑 pre-commit 就建立的 commit：git 自行完成的 merge、`cherry-pick`、`revert`、`rebase`、`am`，以及 GitHub 網頁介面。這些情況留下的過期檔由 B3 抓到。unstaged 的 `_redirects` 會被取代（D3），並附 W3。`platform/` 底下的空目錄不會還原。symbolic link 會被跟隨。產生器腳本從工作樹執行，所以它們 unstaged 的修改會生效。O7 時檔案在 hook 的 entry 裡，entry 依 D16 (a) 所說把它們帶回來：git 在 add 時會轉換的檔案（`eol=lf` 底下、index 版本不含 CR 的 CRLF 檔）帶回來時已被轉換；用 `git stash apply` 時，與 staged hunk 重疊或相鄰的 unstaged hunk 會衝突。index 新增、工作樹已刪除的檔案會以 index 版本回來。stash push 在 repository 自己的 index 上中途停下後，index 維持 push 留下的樣子，直到執行 W9 的 `git restore --staged` 指令（D16 (b)） | commit 期間另一個行程改動 repository，包括同一個 repository 另一個 worktree 裡的 commit。SIGKILL 與斷電 |
-| B3 | CI guard test → merge 與部署 | 不變：它在每個靶場、每種主機上執行，本 epic 既不跳過也不削弱它（Q9） | 老師自己改過 CI 設定的靶場 | — |
+| B2 | pre-commit hook → 老師的 index 與工作樹 | 結果 O1–O7 與 hook 的約束。hook 只 stage `platform/public/_redirects`，而且只依 staged 快照與 index slugs 推導。它把 `platform/` 底下其他每一個 unstaged 變更與未追蹤檔案逐 byte 還原；或者把它們保留在自己的 stash entry 裡，並印出 entry 的 id（O7）。它從不 apply 或 drop 別的 entry。第一個 commit 有 unstaged 檔案、在別的 index 上、或遇到孤兒說明頁時，它拒絕而不猜測。它不寫 `platform/` 以外的工作樹檔案，也不寫別的 repository 的檔案 | `--no-verify`、`pnpm install` 從沒裝過 hook 的 clone，或跳過 hook、沒有 Node 的 git 工具。git 不跑 pre-commit 就建立的 commit：git 自行完成的 merge、`cherry-pick`、`revert`、`rebase`、`am`，以及 GitHub 網頁介面。這些情況留下的過期檔由 B3 抓到。unstaged 的 `_redirects` 會被取代（D3），並附 W3。`platform/` 底下的空目錄不會還原。symbolic link 會被跟隨。產生器腳本從工作樹執行，所以它們 unstaged 的修改會生效。O7 時檔案在 hook 的 entry 裡，entry 依 D16 (a) 所說把它們帶回來：git 在 add 時會轉換的檔案（`eol=lf` 底下、index 版本不含 CR 的 CRLF 檔）帶回來時已被轉換；用 `git stash apply` 時，與 staged hunk 重疊或相鄰的 unstaged hunk 會衝突。index 新增、工作樹已刪除的檔案會以 index 版本回來。stash push 在 repository 自己的 index 上中途停下後，index 維持 push 留下的樣子，直到執行 W9 的 `git restore --staged` 指令（D16 (b)） | commit 期間另一個行程改動 repository，包括同一個 repository 另一個 worktree 裡的 commit。upstream 自己的平行 session 就是這樣 commit 的；這時 hook 可能認領、還原或 drop 另一個 session 的 stash entry（T-0052）。SIGKILL 與斷電 |
+| B3 | CI guard test → merge 與部署 | 不變：只要 repository 有執行 GitHub Actions，它在每個靶場、每種主機上都會執行，本 epic 既不跳過也不削弱它（Q9） | 老師自己改過 CI 設定的靶場。Actions 沒有啟用的 repository：新的 repository 可能出現 GitHub 要求啟用 workflow 的提示，擁有者按下之前，push 與 pull request 都不會執行 guard，`workflow_dispatch` 的部署卻照樣執行（T-0039 V05、T-0051）。執行 `pnpm build` 的部署會從題目重新產生 `_redirects`；只用 `vitepress build` 建置的主機會直接上線 commit 裡的檔案 | — |
 | B4 | 建好的網站 → 學習者的螢幕與剪貼簿 | 文字只來自 `SITE_ORIGIN`、補零的號碼，以及符合 slug 文法的 slug，經由 Vue 會跳脫的文字與屬性綁定輸出。`SITE_ORIGIN` 由 fork:init 設定，或依 wxl-fork-init skill 的說明手改。不涉及學習者輸入，也沒有新的請求 | `SITE_ORIGIN` 沒有指向靶場真實網址時，連結打不開，或開到它所指的網站（D10）。fork 從沒跑過 fork:init、只帶 `--base` 跑過、或用 rebrand 模式跑過卻沒有手改這個常數時，會保留上游的 origin。這時連結會開到上游的網站，學習者的紀錄也存在上游的 origin 底下。repository 改名、自訂網域卻沒帶 `--origin`，以及手改時多了結尾斜線，也都會讓連結壞掉。沒有儲存偏好的學習者，會從英文題目頁網址被導到繁中頁，而那一頁可能不存在（D6、OQ-023） | — |
 | B5 | `create:challenge` → 老師的工作樹 | 除了既有的檔案，它只寫 `_redirects`。產生器在寫入之前就拒絕不一致的樹，並有自己的狀態（2）；keygen 失敗也有自己的狀態（3） | 與產生內容不同的 `_redirects` bytes 會被取代（C08） | — |
 

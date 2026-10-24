@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0007 收尾報告</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --text: #1b2430;
+  --muted: #566273;
+  --line: #d5dce4;
+  --accent: #0d5c63;
+  --accent-soft: #e3f0f1;
+  --warn: #8a5a00;
+  --warn-soft: #fbf1dc;
+  --ok: #276234;
+  --code-bg: #eaeef2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161c;
+    --surface: #182029;
+    --text: #e3e8ee;
+    --muted: #9aa6b4;
+    --line: #2c3743;
+    --accent: #5fb8bf;
+    --accent-soft: #15303330;
+    --warn: #e0b45c;
+    --warn-soft: #2e2615;
+    --ok: #7cc98a;
+    --code-bg: #202a35;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.7 -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1.02rem; margin: 24px 0 8px; }
+p, li { color: var(--text); }
+.meta { color: var(--muted); font-size: .9rem; margin: 0 0 24px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.answer { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 16px 20px; margin: 8px 0 8px; }
+.answer p { margin: 6px 0; }
+.answer strong { color: var(--accent); }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); margin: 8px 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+.pass { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.gap { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier { white-space: nowrap; font-weight: 600; }
+.note { background: var(--warn-soft); border: 1px solid var(--line); padding: 12px 16px; margin: 12px 0; }
+ol.chain li { margin: 6px 0; }
+.decision { background: var(--surface); border: 1px solid var(--line); padding: 16px 20px; margin-top: 12px; }
+.decision ol { margin: 8px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0007 收尾報告</h1>
+<p class="meta">GitHub Pages 靶場修正：會自己跟上的 <code>_redirects</code>，以及打得開的連結。2026-10-24。範圍：<code>3b52e65</code> 到 <code>cdaff71</code>。</p>
+
+<div class="answer">
+<p><strong>結論：epic 的交付已在 <code>main</code> 上，可以宣告完成，但有三件事要你決定。</strong></p>
+<p>10 張 ticket 都已合併。第 8 階段的 V01～V04 在含整個 epic 的 commit 上通過；V05 只差「靶場 CI 的 Run tests log」，原因是新建的 GitHub repository 沒有啟用 Actions。串連分析沒有找到跨越模型內信任邊界的串連，但 N-1（CI 沒有執行時 B3 等於失效）與 N-2（平行 worktree 的 stash 競態）需要裁決。另外 OQ-023 已重現，你已經把它排成下一個 epic。</p>
+</div>
+
+<div class="note">2026-10-24 補記：使用者已裁決，三件事都照建議處理。V05 已在使用者啟用 Actions 後補驗通過（Quality Gates run <code>40081283163</code>，<code>Run tests</code> 裡 <code>redirects-generated.test.ts</code> 的 10 個 case 通過）；N-1、N-2 開成 T-0051、T-0052，spec 改成 3.3 版；回顧九項提案寫進 <code>docs/agents/workflow.md</code>。</div>
+
+<h2>要決定什麼</h2>
+<p>epic 能不能收尾，取決於三點：V05 的 CI 偏離是否接受、N-1 與 N-2 用什麼方式處理、回顧的提案哪些要採用。其餘項目（OQ-016 關閉、pending ticket、文件）都已落地或在本次的紀錄 PR 裡。</p>
+
+<h2>交付內容</h2>
+<div class="scroll"><table>
+<thead><tr><th>Ticket</th><th>PR／合併 commit</th><th>做了什麼</th></tr></thead>
+<tbody>
+<tr><td>T-0030</td><td>#36 <code>e5ad839</code></td><td><code>create:challenge</code> 建題後重新產生 <code>_redirects</code>，結束狀態分成 1、2、3</td></tr>
+<tr><td>T-0031</td><td>#37 <code>b55d0ae</code></td><td>wxl-create 的 Step 2 依結束狀態分流</td></tr>
+<tr><td>T-0032</td><td>#38 <code>8e00561</code></td><td>pre-commit hook 依 staged 快照重新產生並 stage <code>_redirects</code></td></tr>
+<tr><td>T-0036</td><td>#39 <code>8a8af74</code></td><td>非 Cloudflare Pages 建置時，複製按鈕顯示並複製題目頁網址</td></tr>
+<tr><td>T-0038</td><td>#41 <code>6f1b839</code></td><td>create-wxl 與 fork:init 把 origin 說成靶場網址</td></tr>
+<tr><td>T-0033</td><td>#43 <code>4b1f81a</code></td><td>hook 拒絕失去英文題目的繁中說明頁</td></tr>
+<tr><td>T-0037</td><td>#42 <code>101a982</code></td><td>點一下網址文字即全選，最窄保留 6ch</td></tr>
+<tr><td>T-0034</td><td>#44 <code>a2b1b96</code></td><td>hook 在中斷、git 失敗與第一個 commit 時乾淨收尾（D16）</td></tr>
+<tr><td>T-0035</td><td>#45 <code>00ab30d</code></td><td>以真的 <code>git commit</code> 驗證每一種 commit 方式</td></tr>
+<tr><td>T-0039</td><td>#48 <code>cdaff71</code></td><td>規範句寫進 10 份文件、README 新增「commit 題目」一節、第 8 階段</td></tr>
+</tbody></table></div>
+<p>另有紀錄 PR #40、#46，以及 #47：把已知、未修的邊界開成 11 張 pending ticket（T-0040～T-0050）。全套測試從 127 個檔、4,203 個 case，增加到 131 個檔、4,540 個 case。</p>
+
+<h2>第 8 階段</h2>
+<div class="scroll"><table>
+<thead><tr><th>列</th><th>表面</th><th>結果</th><th>重點證據</th></tr></thead>
+<tbody>
+<tr><td>V01</td><td>#48 的 Cloudflare preview，內建瀏覽器</td><td class="pass">通過</td><td>清單與 nav 顯示並複製 <code>wxl.browserlab.online/c/NNN</code>；<code>/zh/c/010</code> 302 到繁中題目；點一下網址文字即全選、不離開頁面</td></tr>
+<tr><td>V02</td><td>本機 <code>env -u CF_PAGES pnpm build</code>，agent-browser</td><td class="pass">通過</td><td>64 項檢查全部 PASS：題目頁網址、375 寬的省略號與 <code>title</code>、全選、沒有橫向捲動</td></tr>
+<tr><td>V03</td><td>暫時 clone，真的 <code>git commit</code></td><td class="pass">通過</td><td>commit <code>370863d</code> 含 <code>/c/011</code> 規則，guard test 22 個 case 通過；沒有手動碰 <code>_redirects</code></td></tr>
+<tr><td>V04</td><td>暫時 GitHub Pages 靶場 <code>CXPhoenix/wxl-e2e-0007</code></td><td class="pass">通過</td><td>兩種語言各從清單、nav 複製一個網址，四個都打開題目，Browser panel 畫出題目</td></tr>
+<tr><td>V05</td><td>同一個靶場</td><td class="gap">部分</td><td>新題目 commit 帶著正確的 <code>_redirects</code>，部署後從清單複製的網址打得開；但 push 沒有觸發 Quality Gates，Run tests log 不存在</td></tr>
+</tbody></table></div>
+<div class="note">V05 的原因：靶場 repository 的 Actions 頁顯示「Workflows aren't being run on this repository」，API 卻回報 <code>enabled: true</code>。手動觸發的部署有執行，push 觸發的 CI 沒有。依賴這個 CI 的 guard test（信任邊界 B3）在這種靶場上不會執行，create-wxl 的下一步說明也沒有提醒老師。</div>
+
+<h2>安全審查與串連分析</h2>
+<p>10 份 ticket 安全審查確認的缺陷都已修掉，駁回的候選都附了理由。串連分析檢查了 A～X 共 24 條候選鏈，再由獨立 challenger 挑戰，結論是沒有跨越模型內信任邊界的串連。需要你看的是這幾項：</p>
+<div class="scroll"><table>
+<thead><tr><th>觀察</th><th>內容</th><th>建議</th></tr></thead>
+<tbody>
+<tr><td>N-1</td><td>新建 repository 的 Actions 沒有啟用時，guard test 不會執行。部署執行 <code>pnpm build</code> 時會重新產生 <code>_redirects</code>，網站不受影響；只跑 <code>vitepress build</code> 的主機會把 commit 裡的檔案逐字上線</td><td>開 pending ticket，讓 create-wxl 的下一步與 README 提醒老師啟用 Actions，並修改 spec 的 B3 全稱句</td></tr>
+<tr><td>N-2</td><td>兩個 worktree 同時 commit 時，hook 可能認領或 drop 到別的 session 的 stash entry。spec 把它列在模型外，但這正是 upstream 自己的平行作法。舊 hook 的 <code>git stash pop</code> 也有同樣問題</td><td>先在 spec 的 B2 寫明這個例外；nonce 守護另開 pending ticket，先做副作用檢查</td></tr>
+<tr><td>N-3～N-8</td><td>README 轉述 D16 (a) 少了一個條件、OQ-016 的一句話說得太寬、E2／Z2 低估了 <code>SITE_ORIGIN</code> 指向別站的後果，以及幾項本機資訊與範圍說明</td><td>文件修正，可以併進下一張碰到這些檔案的 ticket</td></tr>
+<tr><td>N-9</td><td>page mode 的英文網址，遇到只有英文版的題目時，會把預設 zh-TW 的學習者導到 404（OQ-023）</td><td>已排成下一個 epic</td></tr>
+</tbody></table></div>
+
+<h2>為什麼可以收尾</h2>
+<ol class="chain">
+<li>每張 ticket 都走完第 5～9 階段，並有 coverage report、stage 6 與 stage 7 的處置紀錄。</li>
+<li>規格的驗收列在第 8 階段逐一對應到表面：短連結在 Cloudflare preview、page mode 在本機與真的 GitHub Pages。</li>
+<li>唯一沒照字面達成的 V05 CI 條件，有本機替代證據：在靶場的 <code>26d2f66</code> 上，guard test 與 sentence-map 測試 28 個通過、14 個依 T04 跳過。</li>
+<li>串連分析加上獨立挑戰都沒有找到模型內的跨界串連，依 <code>review.md</code> 不需要在收尾前開 ticket。</li>
+</ol>
+
+<h2>代價</h2>
+<ul>
+<li>宣告收尾等於接受 V05 的 CI 條件以本機執行代替，除非你先啟用 Actions、讓 push 觸發 Quality Gates 補驗。</li>
+<li>N-1 與 N-2 不在本 epic 修，這段期間新建的 GitHub Pages 靶場可能在老師不知情下沒有 CI；upstream 的平行 session 仍可能踩到 stash 競態。</li>
+<li>11 張 pending ticket 與 N-3～N-8 的文件修正都留到之後。</li>
+<li>暫時 repository <code>CXPhoenix/wxl-e2e-0007</code> 還在，要由你刪除。</li>
+</ul>
+
+<h2>證據表</h2>
+<div class="scroll"><table>
+<thead><tr><th>主張</th><th>來源</th><th>層級</th></tr></thead>
+<tbody>
+<tr><td>10 張 ticket 都已合併到 <code>main</code></td><td><code>git log --first-parent origin/main</code>：<code>e5ad839</code>～<code>cdaff71</code></td><td class="tier">已驗證</td></tr>
+<tr><td>測試從 4,203 增加到 4,540 個 case</td><td>T-0030 ticket 第 211 行的基準；T-0039 ticket 的 Full suites 紀錄</td><td class="tier">已驗證</td></tr>
+<tr><td>V01 的短連結顯示、複製與 302 導向</td><td>T-0039 ticket 第 8 階段 V01 表；<code>curl -w '%{http_code} %{redirect_url}'</code></td><td class="tier">已驗證</td></tr>
+<tr><td>V02 的 64 項檢查全部通過</td><td><code>&lt;scratch&gt;/t0039/v02/v02-summary.txt</code>：64 個 PASS、FAILURES 0</td><td class="tier">已驗證</td></tr>
+<tr><td>V03 的 commit 帶著預期的 <code>_redirects</code></td><td><code>git show 370863d -- platform/public/_redirects</code>；guard test 22 個通過</td><td class="tier">已驗證</td></tr>
+<tr><td>V04 的四個複製網址都打開題目</td><td>T-0039 ticket V04 表；內建瀏覽器截圖</td><td class="tier">已驗證</td></tr>
+<tr><td>V05 的 push 沒有產生任何 Quality Gates run</td><td><code>gh api repos/CXPhoenix/wxl-e2e-0007/actions/runs</code> 只列出兩次 <code>workflow_dispatch</code></td><td class="tier">已驗證</td></tr>
+<tr><td>原因是 repository 的 Actions 沒有啟用</td><td>使用者提供的 Actions 頁截圖；API 卻回報 <code>enabled: true</code>，兩者矛盾的原因未查明</td><td class="tier">推論</td></tr>
+<tr><td>老師新建的靶場會遇到同樣情況</td><td>由 V05 的單一觀察推得，沒有在第二個 repository 重現</td><td class="tier">推論</td></tr>
+<tr><td>執行 <code>pnpm build</code> 的部署會重新產生 <code>_redirects</code></td><td><code>package.json:30</code>；<code>scripts/templates/deploy.yml.template:100-103</code></td><td class="tier">已驗證</td></tr>
+<tr><td>只跑 <code>vitepress build</code> 的主機會把 commit 裡的檔案逐字上線</td><td><code>package.json:20</code>；主機是否讀這個檔屬平台行為，沒有實測</td><td class="tier">推論</td></tr>
+<tr><td>舊 hook 也用 <code>git stash pop</code></td><td><code>git show 3b52e65:scripts/pre-commit.sh</code> 第 29、47 行</td><td class="tier">已驗證</td></tr>
+<tr><td>平行 worktree 時 hook 可能認領別的 entry</td><td><code>scripts/pre-commit.sh:431-443</code> 的認領邏輯讀碼；時序沒有重現</td><td class="tier">推論</td></tr>
+<tr><td>沒有跨越模型內信任邊界的串連</td><td><code>review/chain-analysis.md</code> 的結論與獨立挑戰</td><td class="tier">推論</td></tr>
+<tr><td>只有英文版的題目不在 zh-TW 清單，英文網址被導到 404</td><td>暫時靶場：<code>/zh-TW/challenges</code> 4 題、<code>/challenges</code> 5 題；<code>wxl-locale = zh-TW</code> 時導到 <code>404 | WXL e2e 0007</code></td><td class="tier">已驗證</td></tr>
+<tr><td>完全沒有偏好的學習者也會被導到 404</td><td><code>DEFAULT_VISITING_LOCALE</code> 讀碼（OQ-023 證據段），沒有用全新 profile 重現</td><td class="tier">推論</td></tr>
+<tr><td>GitHub Actions 當時服務正常</td><td>githubstatus.com 的 components API：Actions operational</td><td class="tier">外部</td></tr>
+</tbody></table></div>
+
+<h3>這份報告不主張的事</h3>
+<ul>
+<li>不主張專案整體已經安全；安全審查只涵蓋本 epic 的變更與串連。</li>
+<li>不主張 N-1、N-2 的建議方案已經過副作用檢查；它們只是候選。</li>
+<li>不決定 OQ-023 的修法；四個方向留給下一個 epic 的第 1 階段。</li>
+<li>Windows、Netlify 等其他主機上的行為沒有驗證。</li>
+</ul>
+
+<h2>請你決定</h2>
+<div class="decision">
+<p>可以用一行回答：</p>
+<ol>
+<li>V05 的 CI 條件：先啟用 Actions 補驗，還是接受本機替代？</li>
+<li>N-1、N-2：照建議開 pending ticket 並修改 spec，還是只記錄？</li>
+<li>回顧的九項提案：全部採用、挑選，還是延後？</li>
+</ol>
+</div>
+</main>
+</body>
+</html>
