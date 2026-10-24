@@ -15,6 +15,10 @@
  * - one stash entry made before any case runs, which changes `platform/public/` files;
  * - the hook installed as `.git/hooks/pre-commit`, running this checkout's hook by path.
  *
+ * A commit-form case may replace that installed hook with a recording shim
+ * (`recordingShim`), and may add a linked worktree under the same temporary
+ * directory (`addWorktree`).
+ *
  * The first-commit fixture (H27, H28, `buildFirstCommitFixture`) is a new
  * repository at the same kind of path with no commit and no stash entry. It
  * holds the copied scripts, the `node_modules` link, `.gitignore`,
@@ -264,10 +268,14 @@ function walk(root: string, rel: string, out: Map<string, string>): void {
   }
 }
 
+/** The non-empty lines of `s`. */
+export function lines(s: string): string[] {
+  return s.split('\n').filter((l) => l !== '')
+}
+
 export function snapshot(repo: Repo): Snapshot {
   const files = new Map<string, string>()
   walk(repo.dir, '', files)
-  const lines = (s: string) => s.split('\n').filter((l) => l !== '')
   return {
     index: lines(git(repo, ['ls-files', '--stage'])),
     files,
@@ -277,7 +285,7 @@ export function snapshot(repo: Repo): Snapshot {
 }
 
 export function stashList(repo: Repo): string[] {
-  return git(repo, ['stash', 'list', '--format=%H %gd %gs']).split('\n').filter((l) => l !== '')
+  return lines(git(repo, ['stash', 'list', '--format=%H %gd %gs']))
 }
 
 /** The staged `_redirects`, or null when the index has none. */
@@ -394,7 +402,60 @@ export function readRecord(log: string): Recorded[] {
   } catch {
     return []
   }
-  return raw.split('\n').filter((l) => l !== '').map((l) => JSON.parse(l) as Recorded)
+  return lines(raw).map((l) => JSON.parse(l) as Recorded)
+}
+
+// ─── Commit forms (H32, H34–H38) ────────────────────────────────────────────
+
+/** A path as a physical absolute path, resolved against `cwd`; its last component need not exist. */
+export function physicalPath(cwd: string, path: string): string {
+  const full = resolve(cwd, path)
+  return join(realpathSync(dirname(full)), full.slice(dirname(full).length + 1))
+}
+
+export interface Shim {
+  /** The copy of the index file git handed the hook, taken before the hook ran. */
+  index: string
+  /** Each run's `GIT_INDEX_FILE`, as git handed it, or `<unset>`. */
+  recorded(): string[]
+}
+
+/**
+ * Replace the installed `.git/hooks/pre-commit` (which every worktree of the
+ * repository shares) with a shim that appends `GIT_INDEX_FILE` to a log under
+ * `<base>/索引 記錄/`, copies the file it names there, then runs this
+ * checkout's hook with `exec bash`, as the installed hook does. It changes no
+ * tracked file. For `-p` and `-i` the copy is the only index that holds the
+ * staged snapshot before the hook runs.
+ */
+export function recordingShim(repo: Repo): Shim {
+  const dir = join(repo.base, '索引 記錄')
+  mkdirSync(dir, { recursive: true })
+  const log = join(dir, 'log')
+  const index = join(dir, 'index')
+  writeFileSync(join(repo.dir, '.git/hooks/pre-commit'), `#!/bin/sh
+printf '%s\\n' "\${GIT_INDEX_FILE-<unset>}" >> ${shQuote(log)}
+if [ -n "\${GIT_INDEX_FILE+set}" ]; then cp -- "$GIT_INDEX_FILE" ${shQuote(index)} || exit 1; fi
+exec bash ${shQuote(HOOK)}
+`)
+  return {
+    index,
+    recorded: () => (existsSync(log) ? lines(readFileSync(log, 'utf8')) : []),
+  }
+}
+
+/**
+ * A linked worktree of the fixture repository at `<base>/連結 worktree`, on a
+ * new branch `wt` (without `-b`, git derives the branch name from the path,
+ * which is not a valid one). It gets its own `node_modules` link, which the
+ * shared `.git/info/exclude` already excludes. It lives under `<base>`, so
+ * `removeRepo` removes it with the repository.
+ */
+export function addWorktree(repo: Repo): Repo {
+  const path = join(repo.base, '連結 worktree')
+  git(repo, ['worktree', 'add', '-q', '-b', 'wt', path])
+  symlinkSync(join(PROJECT_ROOT, 'node_modules'), join(path, 'node_modules'))
+  return { base: repo.base, dir: realpathSync(path), env: repo.env }
 }
 
 // ─── Interruption and failure stubs (H25, H26, H46–H49, H52) ────────────────
