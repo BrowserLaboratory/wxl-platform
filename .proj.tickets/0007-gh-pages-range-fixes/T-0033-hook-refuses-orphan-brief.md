@@ -2,7 +2,7 @@
 id: T-0033
 title: The pre-commit hook refuses a Traditional Chinese brief left without its English challenge
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0032]
 ---
 
@@ -461,3 +461,10 @@ No gaps in the record. Still open outside it, as stage 8 already says: the ticke
 bash 5) and the preview deployment, once the parent pushes the branch. The user has turned
 auto-merge on, so the PR should not be allowed to merge before that CI run is seen. T-0039 owns
 the documents that may state point 7 and Known edges.
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#43](https://github.com/BrowserLaboratory/wxl-platform/pull/43), squash-merged into `main` by
+GitHub auto-merge as `4b1f81a` on 2026-10-23, from head `d1413c2`; auto-merge was enabled with a squash message
+from the project `tw-emoji-commit` skill. The PR's CI: 10 checks passing, none failing. The PR's CI ran the hook cases under bash 5 on `ubuntu-latest` (the `test` job), which the local stage 8 could not cover.
+Frontmatter `status: done`.

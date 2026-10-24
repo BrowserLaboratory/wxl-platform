@@ -2,7 +2,7 @@
 id: T-0038
 title: create-wxl and fork:init describe the origin as the range's address
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0036]
 ---
 
@@ -401,3 +401,10 @@ Tree: `git status --short` lists only the five source and test files, this ticke
 ticket. No stray artifact was found or removed. Frontmatter `status: review`.
 
 No gaps.
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#41](https://github.com/BrowserLaboratory/wxl-platform/pull/41), squash-merged into `main` by
+GitHub auto-merge as `6f1b839` on 2026-10-23, from head `b334927`; auto-merge was enabled with a squash message
+from the project `tw-emoji-commit` skill. The PR's CI: 10 checks passing, none failing. create-wxl's new wording reaches teachers with its next publish.
+Frontmatter `status: done`.
