@@ -2,7 +2,7 @@
 id: T-0039
 title: Every document says the same sentence, and the epic's stage 8 runs end to end
 epic: 0007-gh-pages-range-fixes
-status: review
+status: done
 blocked_by: [T-0030, T-0031, T-0032, T-0033, T-0034, T-0035, T-0036, T-0037, T-0038]
 ---
 
@@ -33,15 +33,15 @@ and on a real GitHub Pages range.
 
 ## Acceptance criteria
 
-- [ ] T01, T02: the five E1 rows and the five Z1 rows hold their sentence (AC-18)
-- [ ] T03: `README.en.md` holds E2; `README.md` and both wxl-fork-init skill files hold Z2 (AC-19)
-- [ ] T04: S6 runs only under the upstream decision; stage 6 confirms the gate on the diff (AC-18)
-- [ ] T05: P1, P2, the README and skill parts of P3, and P8 rewritten as the passages table requires; `glossary.test.ts` passes (AC-24)
-- [ ] G02: the generator header carries E1; the committed `_redirects` is regenerated in the same commit and passes the guard (AC-17)
-- [ ] G01 at stage 6: the guard test and its CI steps unchanged (AC-17)
-- [ ] V01–V03 against a commit holding the whole epic (AC-20)
-- [ ] V04, V05 on a temporary GitHub Pages project-site range, each outward action confirmed with the user first; the user deletes the repository afterwards (AC-21)
-- [ ] At close-out: set OQ-016 to resolved with the verifying evidence
+- [x] T01, T02: the five E1 rows and the five Z1 rows hold their sentence (AC-18)
+- [x] T03: `README.en.md` holds E2; `README.md` and both wxl-fork-init skill files hold Z2 (AC-19)
+- [x] T04: S6 runs only under the upstream decision; stage 6 confirms the gate on the diff (AC-18)
+- [x] T05: P1, P2, the README and skill parts of P3, and P8 rewritten as the passages table requires; `glossary.test.ts` passes (AC-24)
+- [x] G02: the generator header carries E1; the committed `_redirects` is regenerated in the same commit and passes the guard (AC-17)
+- [x] G01 at stage 6: the guard test and its CI steps unchanged (AC-17)
+- [x] V01–V03 against a commit holding the whole epic (AC-20)
+- [x] V04, V05 on a temporary GitHub Pages project-site range, each outward action confirmed with the user first; the user deletes the repository afterwards (AC-21; the deletion is the user's, still to do on 2026-10-24)
+- [x] At close-out: set OQ-016 to resolved with the verifying evidence
 
 ## 給使用者（zh-TW）
 
@@ -231,3 +231,128 @@ real but not data loss, so both were applied as P2 documentation:
   `git stash drop <commit id>` is refused ("not a stash reference").
 
 `pnpm vitest run tests/unit/site` → 395 passed after the change.
+
+### 2026-10-24 — end-to-end (stage 8)
+
+Commit under test: `f12aba221b48760399777ea584ad60f1cad671fb` on
+`tickets/T-0039/documents-and-epic-stage-8`, which holds every change of the epic (base `1c65ff4`,
+the squash of T-0030 to T-0038 and #47). PR
+[#48](https://github.com/BrowserLaboratory/wxl-platform/pull/48), auto-merge off until stage 8 ends.
+Scripts and logs are under `<scratch>/t0039/` and are not committed.
+
+**V01 — Cloudflare preview, short mode.** Surface: the PR's Cloudflare Pages deployment
+`https://6c433213.wxl-platform.pages.dev`, driven in the desktop app's built-in browser (1024 wide),
+whose profile stores Traditional Chinese; `localStorage['wxl-locale']` was set to `en` for the
+English pages and put back to `zh-TW` afterwards. `navigator.clipboard.writeText` was wrapped to
+record what a copy hands over (the built-in browser denies the clipboard).
+
+| Row | Result | Evidence |
+|---|---|---|
+| V01: the lists show short links whose origin is `SITE_ORIGIN` | pass | `/challenges`: `wxl.browserlab.online/c/{001,002,008,010}`; `/zh-TW/challenges`: `wxl.browserlab.online/zh/c/{001,002,008,010}`, each `title` the same with `https://`; `scrollWidth` 1024 = `innerWidth` |
+| V01: the lists copy them | pass | English row 4 → `https://wxl.browserlab.online/c/010`; Traditional Chinese row 1 → `https://wxl.browserlab.online/zh/c/001`, status 「已複製」 |
+| V01: the nav shows and copies them, Browser panel open | pass | `/zh-TW/challenge/selected-excerpts/` (reached through `/zh/c/010`): one shown URL text `wxl.browserlab.online/zh/c/010`, copied as `https://wxl.browserlab.online/zh/c/010`; `/challenge/door-is-open/` (reached through `/c/001`): `wxl.browserlab.online/c/001`, copied as `https://wxl.browserlab.online/c/001`. The panel's `iframe[srcdoc]` (611×616) rendered Kestrel Press and FileHub's sign-in page in the screenshots, after the runtime finished booting |
+| V01: a plain click on the URL text selects it (T-0037's request) | pass | a real click on the first Traditional Chinese row's and on the nav's URL text: `getSelection()` equals the whole text, `location.href` unchanged, 0 `pushState` calls, a page-load token still present |
+| V01: `/c/NNN` and `/zh/c/NNN` on the preview's host | pass | `curl -w '%{http_code} %{redirect_url}'`: `/c/001` → 302 `/challenge/door-is-open/`, `/c/010` → 302 `/challenge/selected-excerpts/`, `/zh/c/001` → 302 `/zh-TW/challenge/door-is-open/`, `/zh/c/010` → 302 `/zh-TW/challenge/selected-excerpts/`, `/c/door-is-open` → 302 `/challenge/door-is-open/`. The new header lines are read as comments; `/_redirects` itself is not served as a file |
+
+**V02 — local page-mode build.** `env -u CF_PAGES pnpm build` in this worktree (exit 0; the working
+tree clean afterwards, so the regenerated `_redirects` equals the committed one; `grep -rl
+__WXL_SHORT_LINKS__ .vitepress/dist` → 0 files), served by `pnpm docs:preview --port 4493
+--strictPort`, driven in agent-browser 0.29.1's own HeadlessChrome (`AGENT_BROWSER_SESSION=t0039`)
+with T-0037's V02 scripts (`<scratch>/t0039/v02/`, paths, session and port changed only): both lists
+and both `selected-excerpts` pages at 375×812 and 1280×800, the 375 challenge pages once more with
+`◀` clicked. `summarize.py` → 64 `PASS`, `FAILURES 0`: page URLs displayed (`REST`, 10) and copied
+from the real clipboard (`COPY`, 10; e.g. `https://wxl.browserlab.online/zh-TW/challenge/selected-excerpts/`);
+at 375 every URL text is cut with an ellipsis and its `title` is the whole URL; a plain click selects
+the whole text without leaving the page (`S03`, 20, at rest and while `copy_failed` shows); a click on
+a row's title opens it (`S06`, 4); no sideways scroll. The Browser panel rendered the challenge
+(`zh-selected-excerpts-1280x800-copied.png`). Afterwards the preview and the clipboard grant were
+stopped and the session closed; port 4493 free; the repository's stash list empty, as before.
+
+**V03 — temporary local clone.** `git clone --branch tickets/T-0039/documents-and-epic-stage-8` of
+this repository into `<scratch>/t0039/v03/clone`, `git switch -c throwaway/v03`, `pnpm install
+--frozen-lockfile` (installed the `simple-git-hooks` pre-commit hook), `pnpm wasm:build` (Rust
+available). Then `pnpm create:challenge --name v03-php-check --backend php --difficulty easy --title
+"V03 PHP check"` → exit 0, "Regenerated platform/public/_redirects"; `git add
+platform/challenge/v03-php-check` only; `git commit -F` with a message from the project's
+`/tw-emoji-commit` (sanitized) → the hook printed `[pre-commit] ✓ v03-php-check` and the commit
+`370863d` holds the challenge's three files and `platform/public/_redirects` (+`/c/011
+/challenge/v03-php-check/ 302`). The commit's `_redirects` equals `generate-redirects.ts --staged`'s
+output; the working tree was clean, and `redirects-generated.test.ts` with `redirects.test.ts` → 22
+passed on it. No step touched `_redirects` by hand. The clone was removed; nothing was pushed, and
+no `throwaway/*` branch exists in this repository. Separately, the PR's CI: all 10 checks passed
+(`build`, `test`, `site-smoke`, `challenge-verify`, `prose-audit`, the four `fork-init-cross-os`
+jobs, Cloudflare Pages), read once from `gh pr view 48`.
+
+**V04 — temporary GitHub Pages project-site range.** The five outward actions the user approved on
+2026-10-24 ran as listed. `CREATE_WXL_COMMIT=f12aba221b48760399777ea584ad60f1cad671fb npx -y
+create-wxl@3.0.0 range --author CXPhoenix --repo CXPhoenix/wxl-e2e-0007 --host github-pages
+--site-name "WXL e2e 0007" --lang en` → exit 0, CW-W04 printed for the override; one commit
+`1a4fc3f`; `range.json` names `f12aba2…`; `SITE_ORIGIN = "https://cxphoenix.github.io/wxl-e2e-0007"`;
+the committed `_redirects` carries E1. Then (1) `gh repo create CXPhoenix/wxl-e2e-0007 --public`,
+(2) `git push -u origin main`, (3) `POST repos/CXPhoenix/wxl-e2e-0007/pages` with
+`build_type=workflow`, (4) `gh workflow run deploy.yml` → run `40063040409` success. Driven in the
+built-in browser; the `cxphoenix.github.io` origin already stored `wxl-locale = en` (the owner's
+GitHub Pages ranges share it, OQ-018), so the English URLs were opened in a profile whose stored
+language is English (D6) and the value was left as found.
+
+| Row | Result | Evidence |
+|---|---|---|
+| V04: a URL copied from the list, Traditional Chinese | pass | `/zh-TW/challenges` row 2 copied `https://cxphoenix.github.io/wxl-e2e-0007/zh-TW/challenge/staff-only/` (status 「已複製」); opened, it shows 僅限員工 and the Browser panel renders Corkboard's sign-in page |
+| V04: a URL copied from the nav, Traditional Chinese | pass | reached `selected-excerpts` by its list title, the nav copied `https://cxphoenix.github.io/wxl-e2e-0007/zh-TW/challenge/selected-excerpts/`; after leaving for the home page, opening it shows 精選節錄 and the panel renders Kestrel Press |
+| V04: a URL copied from the list, English | pass | `/challenges` row 3 copied `https://cxphoenix.github.io/wxl-e2e-0007/challenge/just-a-preview/`; opened, the panel renders Corvid Labs' Prompt Library |
+| V04: a URL copied from the nav, English | pass | reached `door-is-open` by its list title, the nav copied `https://cxphoenix.github.io/wxl-e2e-0007/challenge/door-is-open/`; opened, the panel renders FileHub's sign-in page |
+
+Seen outside this epic: on the Traditional Chinese challenge pages of this origin, the attack-log
+toggle, the flag field's button and the export button read in English ("Attack logs for this
+challenge", "Submit Flag", "Export Attack Log") while the stored language is `en`.
+
+**V05 — the same repository.** In the range: `pnpm install --frozen-lockfile` (hook installed),
+`pnpm wasm:build`, `pnpm create:challenge --name v05-php-check --backend php --difficulty easy
+--title "V05 PHP check"` → exit 0; `git add platform/challenge/v05-php-check` only; `git commit -F`
+with a sanitized `/tw-emoji-commit` message → `[pre-commit] ✓ v05-php-check`, commit `26d2f66`
+holding the challenge and `_redirects` (+`/c/011 /challenge/v05-php-check/ 302`); (5) `git push
+origin main`, then `gh workflow run deploy.yml` → run `40063862631` success. The new challenge's page
+URL, copied from the deployed English list (row 5,
+`https://cxphoenix.github.io/wxl-e2e-0007/challenge/v05-php-check/`) and opened in the English
+profile, opens it; the panel renders the skeleton's page.
+
+The range's CI did not run: neither push created a Quality Gates run (`GET actions/runs` lists only
+the two `workflow_dispatch` deploys; `quality-gates.yml` is `active` with `push: branches: [main]`;
+the repository activity lists both pushes by `CXPhoenix`; githubstatus.com reported Actions
+operational). Locally in the range, on `26d2f66` with a clean tree, `redirects-generated.test.ts`,
+`redirects.test.ts` and `sentence-map.test.ts` → 28 passed, 14 skipped: the sentence-map cases skip
+in a range, as T04 requires.
+
+The cause, from the user's screenshot of the repository's Actions page: a banner "Workflows aren't
+being run on this repository. GitHub Actions is not currently enabled on this repository", with the
+button "Enable Actions on this repository", although `GET repos/CXPhoenix/wxl-e2e-0007/actions/permissions`
+returned `{"enabled":true,"allowed_actions":"all"}`. `workflow_dispatch` ran (both deploys); push
+created no run. A range a teacher creates the same way can meet the same banner after its first push,
+with CI silently not running, and create-wxl's next steps (N3–N5) do not mention it.
+
+After the user clicked "Enable Actions on this repository" (2026-10-24), an empty commit `dac53b2`
+(message from the project `/tw-emoji-commit`, sanitized; the user had chosen this re-trigger) was
+pushed to `main`, and the push created Quality Gates run `40081283163` → success: `test`, `build`,
+`site-smoke` and `challenge-verify` passed; `prose-audit` and `fork-init-cross-os` were skipped, as
+upstream-only jobs are on a range. In the `test` job's `Run tests` step (`pnpm test --run`), the log
+shows `✓ tests/unit/site/redirects-generated.test.ts (10 tests)` and `✓
+tests/unit/site/sentence-map.test.ts (20 tests | 14 skipped)`, then `Test Files 131 passed (131)`,
+`Tests 4518 passed | 23 skipped (4541)` (`gh run view 40081283163 --log`, saved as
+`<scratch>/t0039/v05-test-job.log`). A further Deploy run `40081246362` (`workflow_dispatch` on
+`26d2f66`, success) started just before the push; the parent did not trigger it. The missing banner
+in create-wxl's next steps is T-0051.
+
+| Row | Result | Evidence |
+|---|---|---|
+| V04 | pass | the table above |
+| V05 | pass | the commit through the hook, the range's CI with the guard test's case passing in `Run tests`, and the new challenge's copied page URL opening it, all above |
+
+Stage 8 box ticked: V01–V03 and V04, V05. The user deletes `CXPhoenix/wxl-e2e-0007`.
+
+### 2026-10-24 — landed (stage 9)
+
+PR [#48](https://github.com/BrowserLaboratory/wxl-platform/pull/48), squash-merged into `main` by
+the user as `cdaff71` on 2026-10-24 (04:54Z), from head `f12aba2`; auto-merge was not enabled. The
+PR's CI: 10 checks passing, none failing. The merge came before V05's CI part had run; that part ran
+afterwards against the same commit, as recorded above, and the retrospective's proposal 4 (a draft
+PR until stage 8 ends) comes from it. `git diff f12aba2 cdaff71` is empty. Frontmatter `status: done`.
