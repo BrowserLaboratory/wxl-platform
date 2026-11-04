@@ -2,7 +2,7 @@
 id: T-0053
 title: A not-found translation path falls back to the page that exists, with the missing-translation line
 epic: 0008-missing-translation-fallback
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -248,3 +248,12 @@ it was left empty afterwards.
 
 Pending, each with the user's approval (D12): delete the `stage8/T-0053` branch on `origin` (its
 preview alias goes with it), and delete `CXPhoenix/wxl-e2e-0008-t0053`.
+
+### 2026-11-05 — landed (stage 9)
+
+PR [#50](https://github.com/BrowserLaboratory/wxl-platform/pull/50), squash-merged into `main` as
+`d05976e` on 2026-11-04 (18:37Z), from head `36debe4`. The PR's CI: 10 checks passing, none failing
+(`site-smoke` and `challenge-verify` on `ubuntu-24.04`, see `quality-gates.yml`). The stage 8 cleanup
+is done: the `stage8/T-0053` branch is gone from `origin` and `CXPhoenix/wxl-e2e-0008-t0053` no
+longer exists; Cloudflare deployment `f5d8aafe` cannot be deleted from here and stays. T-0054 is
+unblocked. Frontmatter `status: done`.
