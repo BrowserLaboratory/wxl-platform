@@ -5,6 +5,7 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { extractMarkdownBody } from './challenge/plugin'
+import { pageListFromDir } from './pageList'
 
 // A site served from a sub-path needs a matching base or every asset/JS/WASM
 // URL 404s. The base is read once, here, from SITE_BASE: the GitHub Pages deploy
@@ -21,9 +22,12 @@ if (!/^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/.test(siteBase)) {
   throw new Error(`SITE_BASE must be "/" or a path like "/my-repo/", got ${JSON.stringify(siteBase)}`)
 }
 
+// The source directory, relative to the repository root. The page list below reads it too.
+const SRC_DIR = 'platform'
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  srcDir: "platform",
+  srcDir: SRC_DIR,
   // See siteBase above.
   base: siteBase,
   // Cloudflare Pages serves this site's pages without the extension:
@@ -74,6 +78,10 @@ export default defineConfig({
       // so the HTML as served and the hydrated page agree and nothing set at run time
       // switches it. The site base does not depend on it.
       __WXL_SHORT_LINKS__: process.env.CF_PAGES === '1' ? 'true' : 'false',
+      // The page list (spec 0008, seam S2): every published page as a base-less path, read
+      // from the source tree when this configuration is evaluated. The locale decisions
+      // consult it to ask whether a translation exists, instead of asking the network.
+      __WXL_PAGES__: JSON.stringify(pageListFromDir(resolve(__dirname, '..', SRC_DIR))),
     },
   },
 

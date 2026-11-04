@@ -55,6 +55,10 @@
     "progress_summary": "已完成 {completed} ／ 全部 {total}",
     "blocked_undecided": "開啟任一題目並回答沿用確認後，這裡會顯示你的完成進度。"
   },
+  "missing_translation": {
+    "notice": "這一頁沒有繁體中文版本，所以顯示英文版。",
+    "list_link": "前往繁體中文題目清單"
+  },
   "short_link": {
     "copy_label": "複製連結",
     "copied": "已複製",

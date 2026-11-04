@@ -653,6 +653,16 @@ Browser panel open. V02 is the kind of harness "Revisit when" asks for, for upst
 real browser driving build output that was never deployed. It does not yet drive a configured
 range's export, so this entry stays open.
 
+**A fourth override, on 2026-11-04 (spec 0008-missing-translation-fallback, D12).** 0008's stage 8
+needs an English-only challenge on the surface it drives, and the epic must not add one to `main`.
+So each ticket's stage 8 runs on a throwaway branch, `stage8/<ticket-id>` — the ticket branch plus
+one fixture commit adding that challenge, made with `/tw-emoji-commit` — and on its Cloudflare Pages preview, plus a temporary
+GitHub Pages range created from that commit. This overrides `docs/agents/workflow.md`'s "the
+preview deployment that Cloudflare Pages builds for the ticket branch" and the stage 8 gate in
+AGENTS.md's pipeline table for that epic only. The throwaway branch is not a ticket branch; pushing
+it, creating the temporary range and deleting both afterwards each need the user's approval. Hard
+rule 4 is not overridden. This entry stays open for the same reason as above.
+
 ---
 
 ## OQ-018 — Can GitHub Pages ranges under one owner be isolated from each other?
