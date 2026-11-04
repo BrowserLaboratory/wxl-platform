@@ -46,7 +46,7 @@ decisions of T-0054 and T-0055 to drive it.
 - [x] W5 (moved here from T-0054 by U12, 2026-11-05): the route watcher sets the interface locale and writes no stored preference on any client-side navigation (AC-11)
 - [x] D7 (moved here from T-0055 by U14, 2026-11-05): every page uses `LocaleSwitcher`, `USE_CUSTOM_LOCALE_SWITCHER` is removed, and VitePress's three built-in translation menus are hidden by a rule that needs no script (B4's hiding half; AC-3)
 - [x] Overridden contracts touched here change only as the traceability table states
-- [ ] Stage 8 (T4): V1c and V1k on the Cloudflare preview of `stage8/T-0053`; the GitHub Pages 404 part of V2 on a temporary GitHub Pages range; D12's approvals asked before each push, creation and deletion (AC-10)
+- [x] Stage 8 (T4): V1c and V1k on the Cloudflare preview of `stage8/T-0053`; the GitHub Pages 404 part of V2 on a temporary GitHub Pages range; D12's approvals asked before each push, creation and deletion (AC-10)
 
 ## 給使用者（zh-TW）
 
@@ -202,3 +202,49 @@ Checks, working tree on `5d3c173`: `npx vitest run` → 135 files, 4630 passed, 
 docs:build` → complete; `npx playwright test --config playwright.site.config.ts` → 75 passed;
 `npx vue-tsc --noEmit -p tsconfig.json` → 107 errors, unchanged, the two in this ticket's files being
 the pre-existing patterns.
+
+### 2026-11-05 — stage 8
+
+Surfaces, per D12 (the user approved each outward action on 2026-11-05): the throwaway branch
+`stage8/T-0053` = this ticket's `5e926bc` plus fixture commit `41b9dc7` (made with
+`/tw-emoji-commit`: `pnpm create:challenge --name stage8-english-only --backend fastapi`, number
+changed from the assigned 11 to 999, `_redirects` regenerated; English brief only). Driven in the
+host's built-in browser; the challenge page was checked with its Browser panel open.
+
+**V1 — Cloudflare Pages preview** `https://stage8-t-0053.wxl-platform.pages.dev` (deployment
+`f5d8aafe`, check run "Cloudflare Pages" on `41b9dc7`: success). `curl -s -o /dev/null -w
+'%{http_code} %{redirect_url}'` on the preview host: `/zh/c/stage8-english-only` → 302
+`/zh-TW/challenge/stage8-english-only/`; `/c/999` → 302 `/challenge/stage8-english-only/`;
+`/zh-TW/challenge/stage8-english-only/` → 404; `/challenge/stage8-english-only/` → 200;
+`/en/challenges` → 404.
+
+| Row | Stored value | Result |
+|---|---|---|
+| V1c: `/zh/c/stage8-english-only` | none | pass: ends at `/challenge/stage8-english-only/`; the line `lang="zh-TW"`, 「這一頁沒有繁體中文版本，所以顯示英文版。」, link 「前往繁體中文題目清單」 → `/zh-TW/challenges`; stored value still none |
+| V1c | `zh-TW` | pass: same landing and line; stored still `zh-TW` |
+| V1c | `en` | pass: same landing, line in `zh-TW` (the path named it); stored still `en` |
+| V1c: Browser panel | — | pass: the line sits directly below the nav, the Browser panel loads the fixture's app |
+| V1k: `/en/challenges` | none | pass: served 404, 「PAGE NOT FOUND」, no line; stored still none |
+| Spec F1 detour: `/reference/attack-log-export-format` | `zh-TW` | pass: ends on the English page with the line in `zh-TW`, stored still `zh-TW`; the custom switcher is present and `.VPNavBarTranslations` computes `display: none` |
+
+`/zh-TW/c/` rules arrive with T-0056, so V1c used `/zh/c/` only, as the test plan said.
+
+**V2 (GitHub Pages part) — temporary range** `CXPhoenix/wxl-e2e-0008-t0053`:
+`CREATE_WXL_COMMIT=41b9dc7ee82333f570c2ace5823239c4ed9af3bb npx -y create-wxl@3.0.0 range --author
+CXPhoenix --repo CXPhoenix/wxl-e2e-0008-t0053 --host github-pages --site-name "WXL e2e 0008 T-0053"
+--lang en` → one commit `66dbc5c`, `range.json` naming `41b9dc7…`, `SITE_ORIGIN =
+"https://cxphoenix.github.io/wxl-e2e-0008-t0053"`; then `gh repo create … --public`, `git push -u
+origin main`, `POST repos/CXPhoenix/wxl-e2e-0008-t0053/pages build_type=workflow` (Actions enabled:
+`true`), `gh workflow run deploy.yml` → run `41883505209` success. `curl`:
+`/wxl-e2e-0008-t0053/zh-TW/challenge/stage8-english-only/` → 404.
+
+| Row | Stored value | Result |
+|---|---|---|
+| C4, C6: cold load of `/wxl-e2e-0008-t0053/zh-TW/challenge/stage8-english-only/` (GitHub Pages' 404 page) | none | pass: ends at `/wxl-e2e-0008-t0053/challenge/stage8-english-only/` with the line in `zh-TW`, its link `/wxl-e2e-0008-t0053/zh-TW/challenges`; stored still none |
+| same, opened from `/wxl-e2e-0008-t0053/challenges` | `en` | pass: same landing and line; stored still `en`; Back returns to `/wxl-e2e-0008-t0053/challenges` (C7) |
+
+The `cxphoenix.github.io` origin held no stored value before (OQ-018: shared by the owner's ranges);
+it was left empty afterwards.
+
+Pending, each with the user's approval (D12): delete the `stage8/T-0053` branch on `origin` (its
+preview alias goes with it), and delete `CXPhoenix/wxl-e2e-0008-t0053`.
