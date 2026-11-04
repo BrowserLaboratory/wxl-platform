@@ -181,7 +181,10 @@ jobs:
     # with test/build/prose-audit (no needs:). NOT in the branch-protection
     # required-status-checks list — a failure here does not block merge. Job ID
     # is kept stable so a future change can promote it to a required check.
-    runs-on: ubuntu-latest
+    # Pinned to ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to 26.04, on which the
+    # project's Playwright (1.60) refuses to install Chromium ("Playwright does not support
+    # chromium on ubuntu26.04-x64"). Move back once Playwright supports it.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -239,7 +242,10 @@ jobs:
     # It drives the in-page runtime through __wxlDispatch against the dev
     # server, which the Playwright config starts; site-smoke drives the built
     # site through a preview server. Different preconditions, different job.
-    runs-on: ubuntu-latest
+    # Pinned to ubuntu-24.04, not ubuntu-latest: ubuntu-latest moved to 26.04, on which the
+    # project's Playwright (1.60) refuses to install Chromium ("Playwright does not support
+    # chromium on ubuntu26.04-x64"). Move back once Playwright supports it.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
