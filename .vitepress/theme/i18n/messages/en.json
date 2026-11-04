@@ -55,6 +55,10 @@
     "progress_summary": "Solved {completed} of {total}",
     "blocked_undecided": "Open any challenge and answer the shared-machine prompt to see your progress here."
   },
+  "missing_translation": {
+    "notice": "This page has no English version, so it is shown in Traditional Chinese.",
+    "list_link": "Go to the English challenge list"
+  },
   "short_link": {
     "copy_label": "Copy link",
     "copied": "Copied",

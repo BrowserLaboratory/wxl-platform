@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises, config } from '@vue/test-utils'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { defineComponent, h } from 'vue'
 
 // Mock vitepress useData and Content
@@ -1434,5 +1434,45 @@ describe('ChallengeLayout — clearing this challenge\'s attempts', () => {
     const wrapper = await open()
 
     expect((wrapper.find('[data-clear-open]').element as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+// Spec 0008, L3: the missing-translation line sits directly below the nav — and so above the
+// runtime-reset banner, which also follows the nav — and stays visible whichever way the
+// description panel is.
+describe('ChallengeLayout: the missing-translation line', () => {
+  async function mountWithLine(locale: 'en' | 'zh-TW' | null) {
+    const { MISSING_TRANSLATION_LOCALE } = await import('../../../.vitepress/theme/i18n/missingTranslation')
+    return mount(ChallengeLayout, {
+      global: { stubs: { Content: true }, provide: { [MISSING_TRANSLATION_LOCALE as symbol]: computed(() => locale) } },
+    })
+  }
+
+  it('is the element directly after the nav', async () => {
+    const wrapper = await mountWithLine('zh-TW')
+    const nav = wrapper.get('[data-merged-nav]').element
+    expect(nav.nextElementSibling?.hasAttribute('data-missing-translation')).toBe(true)
+    expect(wrapper.get('[data-missing-translation]').attributes('lang')).toBe('zh-TW')
+  })
+
+  it('sits above the runtime-reset banner when both show', async () => {
+    const wrapper = await mountWithLine('zh-TW')
+    ;(wrapper.vm as unknown as { runtimeWasReset: boolean }).runtimeWasReset = true
+    await flushPromises()
+    const line = wrapper.get('[data-missing-translation]').element
+    const banner = wrapper.get('[data-runtime-reset]').element
+    expect(line.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('stays visible with the description panel collapsed', async () => {
+    const wrapper = await mountWithLine('zh-TW')
+    await wrapper.find('[data-description-toggle]').trigger('click')
+    expect(wrapper.find('[data-description-panel]').classes()).toContain('collapsed')
+    expect(wrapper.get('[data-missing-translation]').isVisible()).toBe(true)
+  })
+
+  it('is absent when the layout decides there is nothing to say', async () => {
+    const wrapper = await mountWithLine(null)
+    expect(wrapper.find('[data-missing-translation]').exists()).toBe(false)
   })
 })

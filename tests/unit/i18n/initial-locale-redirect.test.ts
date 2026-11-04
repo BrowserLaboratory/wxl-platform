@@ -115,6 +115,9 @@ describe('redirectTargetForStoredLocale', () => {
  * a request and updates the preference; the default tree does not.
  */
 describe('shouldPersistOnColdLoad', () => {
+  // Spec 0008 (C5, W3): only a published page is an explicit request. The list is a fixture.
+  const PAGES = ['/', '/challenges', '/zh-TW/', '/zh-TW/guide/', '/zh-TW/challenges']
+
   it.each([
     ['/zh-TW/guide/', true],
     ['/zh-TW/', true],
@@ -122,11 +125,21 @@ describe('shouldPersistOnColdLoad', () => {
     ['/', false],
     ['/zh-TWfoo', false],
   ] as const)('%s -> %s', (path, expected) => {
-    expect(shouldPersistOnColdLoad(path, '/')).toBe(expected)
+    expect(shouldPersistOnColdLoad(path, '/', PAGES)).toBe(expected)
   })
 
   it('strips the site base before deciding', () => {
-    expect(shouldPersistOnColdLoad('/wxl/zh-TW/guide/', '/wxl/')).toBe(true)
-    expect(shouldPersistOnColdLoad('/wxl/challenges/', '/wxl/')).toBe(false)
+    expect(shouldPersistOnColdLoad('/wxl/zh-TW/guide/', '/wxl/', PAGES)).toBe(true)
+    expect(shouldPersistOnColdLoad('/wxl/challenges/', '/wxl/', PAGES)).toBe(false)
+  })
+
+  it('does not persist a prefixed path that is not a published page', () => {
+    expect(shouldPersistOnColdLoad('/zh-TW/no-such-page', '/', PAGES)).toBe(false)
+    expect(shouldPersistOnColdLoad('/zh-TW/reference/attack-log-export-format', '/', PAGES)).toBe(false)
+    expect(shouldPersistOnColdLoad('/wxl/zh-TW/no-such-page', '/wxl/', PAGES)).toBe(false)
+  })
+
+  it('does not throw on a path that fails to decode', () => {
+    expect(shouldPersistOnColdLoad('/zh-TW/%E0%A4%A', '/', PAGES)).toBe(false)
   })
 })

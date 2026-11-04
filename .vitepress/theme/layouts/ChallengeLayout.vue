@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, inject, onMounted, onUnmounted } from 'vue'
 import { useData, withBase } from 'vitepress'
 import { Content } from 'vitepress/client'
 import BrowserPanel from '../components/BrowserPanel.vue'
@@ -14,6 +14,8 @@ import DeleteAttemptsDialog from '../components/DeleteAttemptsDialog.vue'
 import type { ExportOptions } from '../lib/attackLogExport'
 import PersistenceWarning from '../components/PersistenceWarning.vue'
 import MergedNav from '../components/MergedNav.vue'
+import MissingTranslationLine from '../components/MissingTranslationLine.vue'
+import { MISSING_TRANSLATION_LOCALE } from '../i18n/missingTranslation'
 import SourceViewer from '../components/SourceViewer.vue'
 import NotesModal from '../components/NotesModal.vue'
 import { transportCookie } from '../composables/usePythonRuntime'
@@ -32,6 +34,10 @@ import type { CodeHistoryEntry } from '../composables/codeHistoryLabel'
 import { usePentestNotes } from '../composables/usePentestNotes'
 import { extractCustomSection } from '../composables/useWasmLoader'
 import { APP_KEY, SOURCE_DISPLAY_KEY, RESERVED_FS_KEYS } from '../../challenge/reserved-keys'
+
+// The missing-translation line (spec 0008, L3), decided by the theme's Layout. Absent when the
+// layout is mounted on its own, as in its tests.
+const missingTranslationLocale = inject(MISSING_TRANSLATION_LOCALE, null)
 
 // Module-level executionId for linking code_execution ↔ http_request events
 let currentExecutionId: string | null = null
@@ -842,6 +848,12 @@ onUnmounted(() => {
       @open-notes="notesModalVisible = true"
       @toggle-description="toggleDescription"
     />
+
+    <!--
+      Directly below the nav and above the runtime-reset banner, outside the description
+      panel, so it stays visible however the panel is (spec 0008, L3). It cannot be dismissed.
+    -->
+    <MissingTranslationLine v-if="missingTranslationLocale" :locale="missingTranslationLocale" class="shrink-0" />
 
     <!--
       A runaway execution took the runtime down and a fresh one replaced it. The

@@ -1,6 +1,7 @@
 import { createI18n } from 'vue-i18n'
 import en from './messages/en.json'
 import zhTW from './messages/zh-TW.json'
+import { isPublishedPath } from './pages'
 
 export type Locale = 'en' | 'zh-TW'
 
@@ -27,6 +28,11 @@ export const KNOWN_LOCALES: readonly Locale[] = ['en', 'zh-TW'] as const
 
 export function isKnownLocale(value: unknown): value is Locale {
   return value === 'en' || value === 'zh-TW'
+}
+
+/** The other of the two locales. The primary-locale epic replaces this with a locale list. */
+export function otherLocale(locale: Locale): Locale {
+  return locale === 'zh-TW' ? 'en' : 'zh-TW'
 }
 
 export const i18n = createI18n({
@@ -162,6 +168,31 @@ export function readStoredLocale(): Locale | null {
 }
 
 /**
+ * Whether a cold load should write its detected locale into the stored
+ * preference.
+ *
+ * **Only an explicitly prefixed path may.** Init-time used to persist whatever
+ * it detected, unconditionally. Under the URL-only rule that would write the
+ * default locale on every cold load of the unprefixed tree, wiping the very
+ * preference the cold-load redirect exists to honour — and wiping it *before*
+ * the redirect gets to read it, so the preference would be unobservable rather
+ * than merely ignored.
+ *
+ * A prefixed path is a request and updates the preference; the default tree is
+ * the absence of a request and leaves it alone.
+ *
+ * **Only a published page is a request (spec 0008, C5).** A prefixed path that is
+ * not in the page list — a missing translation, a mistyped link — is about to be
+ * sent elsewhere or shown as not found, and must not overwrite the learner's
+ * choice on its way through.
+ */
+export function shouldPersistOnColdLoad(pathname: string, base: string, pages: readonly string[]): boolean {
+  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
+  const bare = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname
+  return detectLocaleFromPath(bare) !== 'en' && isPublishedPath(pathname, base, pages)
+}
+
+/**
  * Where a cold load should be sent to honour the stored locale preference, or
  * `null` when it should stay put.
  *
@@ -182,26 +213,6 @@ export function readStoredLocale(): Locale | null {
  * Pure: takes the location parts and the base rather than reading globals, so it
  * is testable without a DOM and safe under SSR.
  */
-/**
- * Whether a cold load should write its detected locale into the stored
- * preference.
- *
- * **Only an explicitly prefixed path may.** Init-time used to persist whatever
- * it detected, unconditionally. Under the URL-only rule that would write the
- * default locale on every cold load of the unprefixed tree, wiping the very
- * preference the cold-load redirect exists to honour — and wiping it *before*
- * the redirect gets to read it, so the preference would be unobservable rather
- * than merely ignored.
- *
- * A prefixed path is a request and updates the preference; the default tree is
- * the absence of a request and leaves it alone.
- */
-export function shouldPersistOnColdLoad(pathname: string, base: string): boolean {
-  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
-  const bare = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname
-  return detectLocaleFromPath(bare) !== 'en'
-}
-
 export function redirectTargetForStoredLocale(
   location: { pathname: string; search?: string; hash?: string },
   base: string,

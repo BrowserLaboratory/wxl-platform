@@ -22,3 +22,10 @@ declare module 'php-wasm/PhpNode.mjs' {
  * as under vitest. Read it through `.vitepress/theme/linkMode.ts` only.
  */
 declare const __WXL_SHORT_LINKS__: boolean | undefined
+
+/**
+ * The page list (spec 0008, seam S2), as `vite.define` in `.vitepress/config.mts` hands it to
+ * the site bundle: every published page as a base-less path. Undefined where nothing replaces
+ * it, as under vitest. Read it through `.vitepress/theme/i18n/publishedPages.ts` only.
+ */
+declare const __WXL_PAGES__: readonly string[] | undefined

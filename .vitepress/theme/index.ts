@@ -10,7 +10,7 @@
 ;(globalThis as any).__VUE_OPTIONS_API__ = true
 ;(globalThis as any).__INTLIFY_PROD_DEVTOOLS__ = false
 
-import { computed, defineComponent, h, onMounted, onUnmounted, watch } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, provide, watch } from 'vue'
 import type { Theme } from 'vitepress'
 import { useData, useRoute, useRouter } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
@@ -23,59 +23,42 @@ import ChallengeList from './components/ChallengeList.vue'
 import HomeContent from './components/HomeContent.vue'
 import LocaleSwitcher from './components/LocaleSwitcher.vue'
 import SessionGate from './components/SessionGate.vue'
+import MissingTranslationLine from './components/MissingTranslationLine.vue'
 import { useSessionGate, hasGateDecision, shouldPresentGateHere } from './composables/useSessionGate'
 import {
   i18n,
   detectInitialLocale,
   detectLocaleFromPath,
   persistLocale,
-  redirectTargetForStoredLocale,
   shouldPersistOnColdLoad,
 } from './i18n'
-
-/**
- * Locale-switcher selection flag.
- *
- * - `false` (default): use VitePress's built-in `VPNavBarTranslations`
- *   dropdown on default-theme pages. A route watcher in the Layout setup
- *   syncs `i18n.global.locale.value` and `localStorage` whenever the URL
- *   prefix changes.
- * - `true`: use the custom `LocaleSwitcher.vue` component, mounted into
- *   the `nav-bar-content-before` slot. The built-in dropdown is hidden
- *   via CSS scoped to `body.use-custom-locale-switcher`.
- *
- * Challenge pages always render the custom LocaleSwitcher through
- * MergedNav.vue regardless of this flag — it only governs the default
- * theme nav.
- *
- * Flip this and rebuild; no spec change is required (the i18n-runtime
- * spec covers both modes).
- */
-const USE_CUSTOM_LOCALE_SWITCHER = false as boolean
+import { publishedPages } from './i18n/publishedPages'
+import { useArrivals } from './composables/useArrivals'
+import { MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
 
 export default {
   ...DefaultTheme,
   Layout: defineComponent({
     name: 'Layout',
     setup() {
-      const { frontmatter, site } = useData()
+      const { frontmatter, page, site } = useData()
       const isChallenge = computed(() => frontmatter.value.layout === 'challenge')
 
-      // Route watcher — syncs vue-i18n's `locale.value` and `localStorage`
-      // whenever the URL prefix crosses locale boundaries (SPA navigation,
-      // browser back/forward, or built-in dropdown selection). Idempotent:
-      // a no-op when the detected locale already matches. Reuses the
-      // single-sourced `detectLocaleFromPath` rule (mirrors LocaleSwitcher
-      // semantics) and `persistLocale` helper (SSR-safe).
       const route = useRoute()
       const router = useRouter()
+
+      // Route watcher — sets vue-i18n's `locale.value` whenever the URL prefix crosses
+      // locale boundaries (SPA navigation, browser back/forward, a redirect), because
+      // the URL decides the interface locale. It does not write the stored preference:
+      // only the learner's own choices do (spec 0008, D5) — a link followed into the
+      // other locale, Back, or a redirect the site made are not choices. Idempotent: a
+      // no-op when the detected locale already matches.
       const stopRouteWatch = watch(
         () => route.path,
         (newPath) => {
           const target = detectLocaleFromPath(newPath)
           if (i18n.global.locale.value === target) return
           i18n.global.locale.value = target
-          persistLocale(target)
         },
         // `flush: 'pre'` runs the watcher BEFORE child components update on
         // the same tick, so any component using `t()` re-renders with the
@@ -92,6 +75,20 @@ export default {
       // no site-wide download or upload, so outside the challenges there is nothing of a
       // previous learner's that a visitor could act on.
       const gate = useSessionGate()
+
+      // Arrivals and the missing-translation line (spec 0008): see `useArrivals`. The line
+      // on a page that puts the gate's choice on screen waits for the answer (C11), like
+      // the redirects do.
+      const arrivals = useArrivals({
+        route,
+        router,
+        page,
+        base: () => site.value.base,
+        holdLine: () => shouldPresentGateHere(isChallenge.value) && gate.decision.value === 'undecided' && !hasGateDecision(),
+      })
+      provide(MISSING_TRANSLATION_LOCALE, arrivals.lineLocale)
+      const renderLine = () =>
+        arrivals.lineLocale.value ? h(MissingTranslationLine, { locale: arrivals.lineLocale.value }) : null
 
       // The gate's answer can arrive after this layout is gone, and the watcher that
       // waits for it is created inside a promise continuation — outside the effect
@@ -112,10 +109,11 @@ export default {
         // `replace`, not push: pushing would leave the pre-redirect URL one step
         // back, so Back would return to it and be redirected again — a trap with
         // no way out.
-        const runLocaleRedirect = () => {
-          const target = redirectTargetForStoredLocale(window.location, site.value.base)
-          if (target) router.go(target, { replace: true })
-        }
+        //
+        // `useArrivals.release` runs it, and before it the not-found redirect (spec 0008):
+        // both wait for the gate as below.
+        const runLocaleRedirect = arrivals.release
+        arrivals.recordColdLoad()
 
         // Held until this session has a recorded decision; on a page that does not put
         // the choice on screen it is released as soon as the check settles (below). The
@@ -171,16 +169,11 @@ export default {
 
         // Challenge-specific global styles
         document.body.classList.toggle('challenge-page', isChallenge.value)
-        // Custom-switcher CSS scope — when true, scopes the CSS hide rule
-        // for `.VPNavBarTranslations` so the built-in dropdown disappears.
-        if (USE_CUSTOM_LOCALE_SWITCHER) {
-          document.body.classList.add('use-custom-locale-switcher')
-        }
       })
       onUnmounted(() => {
         document.body.classList.remove('challenge-page')
-        document.body.classList.remove('use-custom-locale-switcher')
         stopRouteWatch()
+        arrivals.stop()
         unmounted = true
         stopDecisionWatch?.()
         stopDecisionWatch = null
@@ -199,16 +192,22 @@ export default {
 
       return () => {
         if (isChallenge.value) return withGate(h(ChallengeLayout))
-        // Default-theme nav: when the flag is true, inject the custom
-        // LocaleSwitcher into the `nav-bar-content-before` slot. When
-        // false, render no slot — VitePress's built-in dropdown takes
-        // over and the route watcher above keeps vue-i18n in sync.
-        if (USE_CUSTOM_LOCALE_SWITCHER) {
-          return withGate(h(DefaultTheme.Layout, null, {
-            'nav-bar-content-before': () => h(LocaleSwitcher),
-          }))
+        // The missing-translation line on a default-theme page: in the top slot of
+        // whichever layout renders (L4).
+        const lineSlots = {
+          'doc-before': renderLine,
+          'page-top': renderLine,
+          'home-hero-before': renderLine,
         }
-        return withGate(h(DefaultTheme.Layout))
+        // Default-theme nav: the custom LocaleSwitcher in the `nav-bar-content-before`
+        // slot, the same control challenge pages have in MergedNav. It is the only locale
+        // menu (spec 0008, D7): VitePress's three built-in translation menus are hidden by
+        // `style.css`, and a choice made in it is the learner's, so it is stored — the
+        // route watcher above no longer stores anything.
+        return withGate(h(DefaultTheme.Layout, null, {
+          ...lineSlots,
+          'nav-bar-content-before': () => h(LocaleSwitcher),
+        }))
       }
     },
   }),
@@ -229,10 +228,12 @@ export default {
     // Persistence is CONDITIONAL. Writing the detected locale unconditionally
     // would store the default on every cold load of the unprefixed tree, wiping
     // the stored preference before the cold-load redirect below could read it.
+    // And only a published page is a request: a prefixed path that is not one is
+    // about to be sent elsewhere or shown as not found (spec 0008, C5).
     if (typeof window !== 'undefined') {
       const detected = detectInitialLocale()
       i18n.global.locale.value = detected
-      if (shouldPersistOnColdLoad(window.location.pathname, import.meta.env.BASE_URL ?? '/')) {
+      if (shouldPersistOnColdLoad(window.location.pathname, import.meta.env.BASE_URL ?? '/', publishedPages())) {
         persistLocale(detected)
       }
     }

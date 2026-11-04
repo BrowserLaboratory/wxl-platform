@@ -20,6 +20,7 @@ This is the complete list of the platform's known limitations. Every other page 
 | A banner says the challenge runtime was restarted | [The challenge runtime was restarted](#runtime-restarted) |
 | Everything resets when you come back to a challenge | [Leaving the challenge page shuts the runtime down](#leaving-the-page) |
 | The Repeater and the Network panel show different headers | [The Repeater looks out of sync with Network](#repeater-vs-network) |
+| A line says the page has no version in your language | [A page has no version in your language](#missing-translation) |
 | Panel text stays English with the interface set to Chinese | [Panel text and tab names stay English](#hardcoded-english) |
 
 ## Code panel
@@ -193,6 +194,14 @@ Any login or uploaded files from this challenge are gone.
 **What to do.** Work through a challenge in one visit where you can, and export the attack log before navigating away. Saved notes and your code draft are stored in the database and come back; the traffic log and the challenge's own state do not. Note text you have typed but not saved is lost when the notes panel closes.
 
 ## Interface language
+
+### A page has no version in your language {#missing-translation}
+
+**What you see.** At the top of a page — on a challenge page, directly below the navigation bar — one line says the page has no version in your language and is shown in the other one, followed by a link to the challenge list in your language.
+
+**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — and when a link takes you to a page that is only in the other language. It is not an error.
+
+**What to do.** Read the page as it is, or follow the link to the challenge list in your language. A tab left open while the site is updated keeps the list of pages it loaded: a translation added since then is still reported as missing until you reload, and a page removed since then shows the page-not-found screen; press Back to return.
 
 ### Panel text and tab names stay English {#hardcoded-english}
 

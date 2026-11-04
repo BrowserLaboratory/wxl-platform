@@ -17,8 +17,10 @@ const mockRoute = reactive({ path: '/' })
 const mockGo = vi.fn()
 const mockFrontmatter = ref<Record<string, unknown>>({})
 const mockBase = ref('/')
+// The page the router rendered (spec 0008 classifies arrivals by it): an ordinary page here.
+const mockPage = ref({ isNotFound: false, relativePath: 'index.md' })
 vi.mock('vitepress', () => ({
-  useData: () => ({ frontmatter: mockFrontmatter, site: { value: { base: mockBase.value } } }),
+  useData: () => ({ frontmatter: mockFrontmatter, page: mockPage, site: { value: { base: mockBase.value } } }),
   useRoute: () => mockRoute,
   useRouter: () => ({ go: mockGo }),
 }))
@@ -27,6 +29,11 @@ vi.mock('vitepress/theme', () => ({
 }))
 vi.mock('../../../.vitepress/theme/layouts/ChallengeLayout.vue', () => ({
   default: defineComponent({ setup: () => () => h('div', { 'data-challenge-layout': '' }) }),
+}))
+// The page list the build ships (spec 0008, seam S2). Only a published page is an explicit
+// request on a cold load, so the prefixed path below has to be one.
+vi.mock('../../../.vitepress/theme/i18n/publishedPages', () => ({
+  publishedPages: () => ['/', '/challenges', '/guide/', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/'],
 }))
 
 // ─── The shared-machine session gate ─────────────────────────────────────────
@@ -199,6 +206,26 @@ describe('the real Layout: route watcher', () => {
     setPath(path)
     await w.vm.$nextTick()
     expect(i18n.global.locale.value).toBe(expected)
+    w.unmount()
+  })
+
+  // Spec 0008, D5 and W5: a client-side navigation across locales — a link, Back, Forward —
+  // sets the interface locale and writes nothing. Only the learner's own choices write the
+  // stored preference.
+  it.each([
+    [null, '/zh-TW/guide/'],
+    ['en', '/zh-TW/guide/'],
+    ['zh-TW', '/zh-TW/guide/'],
+  ] as const)('with %s stored, navigating to %s writes no preference', async (stored, path) => {
+    if (stored) window.localStorage.setItem(LOCALE_STORAGE_KEY, stored)
+    const w = mountLayout()
+    setPath(path)
+    await w.vm.$nextTick()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(stored)
+    // Back to where it started: the other direction writes nothing either.
+    setPath('/')
+    await w.vm.$nextTick()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(stored)
     w.unmount()
   })
 

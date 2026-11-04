@@ -269,16 +269,14 @@ body.challenge-page {
   --vp-nav-height: 0px;
 }
 
-/* Hide VitePress's built-in translation dropdown ONLY when the project is
- * configured to use the custom `LocaleSwitcher` (i.e., when theme/index.ts
- * sets `USE_CUSTOM_LOCALE_SWITCHER = true`, which adds the body class
- * below). In the default mode (flag = false), the built-in dropdown is
- * the sole switcher and the route watcher in Layout's setup keeps
- * vue-i18n synchronised with the URL prefix.
- *
- * Flipping the flag is a one-line change in theme/index.ts and requires
- * no edits here — the body class toggle drives this rule. */
-body.use-custom-locale-switcher .VPNavBarTranslations,
-body.use-custom-locale-switcher .VPNavScreenTranslations {
+/* VitePress's built-in translation menus, all three of them: the dropdown at 1280
+ * and wider, the translations group inside the "…" menu from 768 to 1279, and the
+ * mobile screen's list. They link straight to the counterpart, whether or not it
+ * exists, and a choice made in them is never stored. Every page uses the custom
+ * `LocaleSwitcher` instead (spec 0008, D7), so they are hidden unconditionally — in
+ * the HTML as served too, not only once a script has run. */
+.VPNavBarTranslations,
+.VPNavBarExtra .translations,
+.VPNavScreenTranslations {
   display: none !important;
 }
