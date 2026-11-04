@@ -29,6 +29,16 @@ export function withoutBase(pathname: string, base: string): string | null {
 }
 
 /**
+ * The URL a redirect navigates to: a list entry with the site base put back in front, and the
+ * query and hash of the location the learner arrived at kept. Every redirect target is built
+ * here, from an entry, never from the URL's text (spec 0008, D16).
+ */
+export function targetUrl(entry: string, base: string, location: { search?: string; hash?: string }): string {
+  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
+  return prefix + entry + (location.search ?? '') + (location.hash ?? '')
+}
+
+/**
  * The page-list spellings a pathname could be, for a path the router could not render
  * (spec 0008, "Schema: page list", the lookup algorithm). Nothing here throws:
  *

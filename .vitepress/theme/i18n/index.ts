@@ -1,7 +1,8 @@
 import { createI18n } from 'vue-i18n'
 import en from './messages/en.json'
 import zhTW from './messages/zh-TW.json'
-import { isPublishedPath } from './pages'
+import type { Arrival } from './arrival'
+import { targetUrl } from './pages'
 
 export type Locale = 'en' | 'zh-TW'
 
@@ -168,71 +169,72 @@ export function readStoredLocale(): Locale | null {
 }
 
 /**
- * Whether a cold load should write its detected locale into the stored
- * preference.
+ * Whether a cold load writes `zh-TW` into the stored preference (spec 0008, W2–W4).
  *
- * **Only an explicitly prefixed path may.** Init-time used to persist whatever
- * it detected, unconditionally. Under the URL-only rule that would write the
- * default locale on every cold load of the unprefixed tree, wiping the very
- * preference the cold-load redirect exists to honour — and wiping it *before*
- * the redirect gets to read it, so the preference would be unobservable rather
- * than merely ignored.
+ * **Only an explicit request does (D5).** A cold load of a published page under
+ * `/zh-TW/` is one — also when a short link's server redirect or a reload
+ * brought the learner there (D13). The unprefixed tree is the absence of a
+ * request and leaves the preference alone: writing there would store the default
+ * on every cold load and wipe the very preference the cold-load redirect exists
+ * to honour.
  *
- * A prefixed path is a request and updates the preference; the default tree is
- * the absence of a request and leaves it alone.
- *
- * **Only a published page is a request (spec 0008, C5).** A prefixed path that is
- * not in the page list — a missing translation, a mistyped link — is about to be
- * sent elsewhere or shown as not found, and must not overwrite the learner's
- * choice on its way through.
+ * **Decided after the router resolves, from what it rendered (D16).** The arrival
+ * is classified first (`classifyArrival`): a prefixed path that is not a published
+ * page (a not-found arrival, about to be sent elsewhere or shown as not found) and
+ * the not-found page for a path that is one (a failed load) write nothing, and a
+ * page rendered from an alias URL counts as the page it is. The URL alone cannot
+ * tell these apart, which is why this is no longer decided in `enhanceApp`.
  */
-export function shouldPersistOnColdLoad(pathname: string, base: string, pages: readonly string[]): boolean {
-  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
-  const bare = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname
-  return detectLocaleFromPath(bare) !== 'en' && isPublishedPath(pathname, base, pages)
+export function shouldPersistOnColdLoad(arrival: Arrival): boolean {
+  return arrival.kind === 'page' && detectLocaleFromPath(arrival.entry) === 'zh-TW'
 }
 
 /**
  * Where a cold load should be sent to honour the stored locale preference, or
- * `null` when it should stay put.
+ * `null` when it should stay put (spec 0008, decision table A1–A7).
  *
  * The preference is expressed as a navigation rather than as an override of the
  * URL, so that the address bar and the rendered page always describe the same
  * locale — see `detectInitialLocale` for why the override was removed.
  *
- * **Only redirects out of the unprefixed tree.** A pathname that already carries
- * a locale prefix is an explicit request and outranks any stored preference;
+ * **Only a page arrival, and only out of the unprefixed tree.** A not-found arrival
+ * has its own decision and a failed load is left alone (D11). A page under a
+ * locale prefix is an explicit request and outranks any stored preference;
  * redirecting away from it would make a shared link resolve differently for
  * every reader depending on what they happen to have stored.
  *
- * **The locale segment goes inside the site base.** `location.pathname` carries
- * the base and `localizePath` requires a base-less path, so the base is stripped
- * before and restored after — the same ordering the locale switcher uses, and
- * the same ordering whose absence was a defect there.
+ * **Only to a translation that exists (stage 1 decision G6).** The target is the rendered page's
+ * counterpart, and only when that counterpart is in the page list; otherwise the
+ * learner stays and the missing-translation line says why (A2, A3).
  *
- * Pure: takes the location parts and the base rather than reading globals, so it
- * is testable without a DOM and safe under SSR.
+ * **The target is a list entry, never the URL's text (D16).** A page the router
+ * rendered from an alias — `.html`, `/index.html`, a trailing slash — is
+ * identified by its source file, so the target is spelled as the list spells it
+ * (`targetUrl`): the base is put back in front, the query and hash are kept, and
+ * the location's path is not read at all.
+ *
+ * Reads the stored value (`readStoredLocale`, which answers null without a
+ * `window`); everything else comes in as arguments: the location's query and
+ * hash, the base, the page list and what the router rendered.
  */
 export function redirectTargetForStoredLocale(
-  location: { pathname: string; search?: string; hash?: string },
+  location: { search?: string; hash?: string },
   base: string,
+  pages: readonly string[],
+  arrival: Arrival,
 ): string | null {
+  if (arrival.kind !== 'page') return null
   // No preference is not "no opinion about where to send them" — it is the case the
   // default exists for. An unreadable `localStorage` and a value naming no known locale
   // both arrive here as `null` from `readStoredLocale`, and both mean the same thing:
   // this visitor has expressed no preference the system can honour.
-  const target = readStoredLocale() ?? DEFAULT_VISITING_LOCALE
-
-  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
-  const bare = location.pathname.startsWith(prefix)
-    ? location.pathname.slice(prefix.length)
-    : location.pathname
-
-  if (detectLocaleFromPath(bare) === target) return null
-  // Explicit request in the URL wins; only leave the unprefixed tree.
-  if (detectLocaleFromPath(bare) !== 'en') return null
-
-  return prefix + localizePath(bare, target) + (location.search ?? '') + (location.hash ?? '')
+  const wanted = readStoredLocale() ?? DEFAULT_VISITING_LOCALE
+  // A learner who wants English is already in the unprefixed tree (A4); a page under a locale
+  // prefix is an explicit request and stays (A5).
+  if (wanted === 'en' || detectLocaleFromPath(arrival.entry) !== 'en') return null
+  const counterpart = localizePath(arrival.entry, wanted)
+  if (!pages.includes(counterpart)) return null
+  return targetUrl(counterpart, base, location)
 }
 
 export function persistLocale(locale: Locale): void {

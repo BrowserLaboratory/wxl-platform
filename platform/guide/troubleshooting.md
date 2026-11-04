@@ -199,9 +199,11 @@ Any login or uploaded files from this challenge are gone.
 
 **What you see.** At the top of a page — on a challenge page, directly below the navigation bar — one line says the page has no version in your language and is shown in the other one, followed by a link to the challenge list in your language.
 
-**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — and when a link takes you to a page that is only in the other language. It is not an error.
+**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — when a link takes you to a page that is only in the other language, and when you open such a page directly while the site remembers the other language, or remembers none (it then assumes Traditional Chinese). It is not an error.
 
 **What to do.** Read the page as it is, or follow the link to the challenge list in your language. A tab left open while the site is updated keeps the list of pages it loaded: a translation added since then is still reported as missing until you reload, and a page removed since then shows the page-not-found screen; press Back to return.
+
+**Which language the site remembers.** Two things change it: choosing a language with the locale switcher, and opening a page under `/zh-TW/` directly — typing or pasting its address, a short link, or reloading it — which sets Traditional Chinese. Following a link, pressing Back or Forward, and the site taking you to another page by itself once a page has opened change nothing, and opening a page without `/zh-TW/` directly does not set English. So after a link has taken you to a page under `/zh-TW/`, reloading that page sets Traditional Chinese.
 
 ### Panel text and tab names stay English {#hardcoded-english}
 

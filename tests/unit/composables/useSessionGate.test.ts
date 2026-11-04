@@ -159,8 +159,9 @@ describe('useSessionGate', () => {
   // ─── Keys the platform writes by itself are not evidence of anybody ─────────
 
   it('a fresh browser that cold-loaded a localised page is not asked', async () => {
-    // Measured: `enhanceApp` calls `persistLocale(detected)` for every non-`en` path, and
-    // it runs before the gate's `onMounted`. So on a brand-new machine the first cold
+    // Measured: a cold load of a published `/zh-TW/` page stores the locale as the Layout
+    // mounts (from `enhanceApp`, for every non-`en` path, until spec 0008), before the gate
+    // looks. So on a brand-new machine the first cold
     // load of a localised page already owns a key by the time the gate looks — and the
     // gate told that visitor this browser held saved work, offering only to inherit
     // nothing or to delete nothing.

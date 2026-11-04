@@ -25,14 +25,7 @@ import LocaleSwitcher from './components/LocaleSwitcher.vue'
 import SessionGate from './components/SessionGate.vue'
 import MissingTranslationLine from './components/MissingTranslationLine.vue'
 import { useSessionGate, hasGateDecision, shouldPresentGateHere } from './composables/useSessionGate'
-import {
-  i18n,
-  detectInitialLocale,
-  detectLocaleFromPath,
-  persistLocale,
-  shouldPersistOnColdLoad,
-} from './i18n'
-import { publishedPages } from './i18n/publishedPages'
+import { i18n, detectInitialLocale, detectLocaleFromPath } from './i18n'
 import { useArrivals } from './composables/useArrivals'
 import { MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
 
@@ -110,8 +103,11 @@ export default {
         // back, so Back would return to it and be redirected again — a trap with
         // no way out.
         //
-        // `useArrivals.release` runs it, and before it the not-found redirect (spec 0008):
-        // both wait for the gate as below.
+        // It goes only to a translation that exists, named by its page-list entry;
+        // otherwise the learner stays and the missing-translation line says why
+        // (spec 0008, A1–A3). `useArrivals.release` runs it, and before it the
+        // not-found redirect: both wait for the gate as below. `recordColdLoad`
+        // does not wait: it stores `zh-TW` for a published `/zh-TW/` page (W2).
         const runLocaleRedirect = arrivals.release
         arrivals.recordColdLoad()
 
@@ -221,21 +217,17 @@ export default {
 
     app.use(i18n)
 
-    // Client-only init: the URL alone decides the locale — the same rule the
-    // route watcher applies on every later navigation. Guarded so VitePress SSR
+    // Client-only init: the URL alone decides the interface locale — the same rule
+    // the route watcher applies on every later navigation. Guarded so VitePress SSR
     // rendering (which has no `window`) keeps the createI18n default ('en').
     //
-    // Persistence is CONDITIONAL. Writing the detected locale unconditionally
-    // would store the default on every cold load of the unprefixed tree, wiping
-    // the stored preference before the cold-load redirect below could read it.
-    // And only a published page is a request: a prefixed path that is not one is
-    // about to be sent elsewhere or shown as not found (spec 0008, C5).
+    // Nothing is written to the stored preference here (spec 0008, D5, D16): only the
+    // URL is known at bootstrap, and the URL cannot tell a published page from a
+    // missing translation or a failed load. The cold load's write — a reload and a
+    // short link's server redirect are cold loads too (D13) — is decided once the
+    // router has rendered the page (`useArrivals`).
     if (typeof window !== 'undefined') {
-      const detected = detectInitialLocale()
-      i18n.global.locale.value = detected
-      if (shouldPersistOnColdLoad(window.location.pathname, import.meta.env.BASE_URL ?? '/', publishedPages())) {
-        persistLocale(detected)
-      }
+      i18n.global.locale.value = detectInitialLocale()
     }
 
     // SourceViewer is used in challenge pages via markdown

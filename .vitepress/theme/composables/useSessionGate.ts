@@ -417,8 +417,8 @@ export function useSessionGate() {
       // Asking the object stores alone let the gate delete work it never asked about.
       //
       // `listLearnerEvidenceKeys` and not `listOwnedLocalStorageKeys`: ownership is the
-      // clear's question, not this one. The platform writes the locale from `enhanceApp`
-      // on every cold load of a localised path, before this runs, and the panel keys are
+      // clear's question, not this one. The platform writes the locale on every cold load
+      // of a published `/zh-TW/` page, as the Layout mounts and before this runs, and the panel keys are
       // written at their panels' setup at fixed defaults. Asking on the strength of those
       // told a brand-new visitor, on a machine holding nothing, that this browser already
       // held saved work — and offered only to inherit it or to delete it.
