@@ -38,7 +38,7 @@ site's own redirects. The interface locale still follows the URL.
 - [x] H3 (this ticket's part): the troubleshooting entry states D13, both languages (AC-9)
 - [x] H7 (AC-9)
 - [x] Overridden contracts touched here (`shouldPersistOnColdLoad`, `redirectTargetForStoredLocale`) change only as the traceability table states; the route watcher's was changed by T-0053
-- [ ] Stage 8 (T4): V1a, V1b, V1i, V1j on the Cloudflare preview of `stage8/T-0054` (AC-10)
+- [x] Stage 8 (T4): V1a, V1b, V1i, V1j on the Cloudflare preview of `stage8/T-0054` (AC-10) — V1j with `/zh/c/<slug>` until T-0056
 
 ## 給使用者（zh-TW）
 
@@ -219,3 +219,33 @@ S-1 (`%2F` alias) is added to Spec F14's record; S-4 to S-9 are recorded in the 
 Checks, working tree on `d05976e`: `npx vitest run` → 135 files, 4771 passed, 1 skipped; `pnpm
 docs:build` → complete; `npx playwright test --config playwright.site.config.ts` → 79 passed; `npx
 vue-tsc --noEmit -p tsconfig.json` → 107 errors, unchanged.
+
+### 2026-11-05 — stage 8
+
+Surface, per D12: the throwaway branch `stage8/T-0054` = this ticket's `2971056` plus fixture commit
+`e7590de` (made with `/tw-emoji-commit`: T-0053's `stage8-english-only` fixture, cherry-picked from
+`41b9dc7`, number 999, English brief only; `pnpm redirects:generate` gave the same `_redirects`).
+Pushing it was covered by the user's instruction to carry the ticket to the end (2026-11-05).
+Cloudflare Pages preview `https://stage8-t-0054.wxl-platform.pages.dev` (deployment `5ddd13e6`,
+check run "Cloudflare Pages" on `e7590de`: success). Driven in the host's built-in browser, reading
+the page with JavaScript after each load; the challenge page was checked with its Browser panel open.
+Each row cleared `localStorage` and `sessionStorage`, set the stored value, and loaded the page in
+full, so each was a cold load in a new session.
+
+`curl -s -o /dev/null -w '%{http_code} %{redirect_url}'` on the preview: `/challenge/stage8-english-only/`
+→ 200; `/zh/c/stage8-english-only` → 302 `/zh-TW/challenge/stage8-english-only/`;
+`/zh-TW/challenge/stage8-english-only/` → 404; `/c/999` → 302 `/challenge/stage8-english-only/`.
+
+| Row | Stored value | Result |
+|---|---|---|
+| V1a | none | pass: stays at `/challenge/stage8-english-only/`; the line `lang="zh-TW"`, 「這一頁沒有繁體中文版本，所以顯示英文版。」, link 「前往繁體中文題目清單」 → `/zh-TW/challenges` (L2); the line's previous sibling is `.merged-nav` (L3); the Browser panel loads the fixture's app (screenshot in the session); stored still none |
+| V1a | `zh-TW` | pass: the session gate asked (the previous row's Browser panel had left attack records in IndexedDB); no line while it asked; after 「Continue with this work」 the same line, same URL; stored still `zh-TW` |
+| V1b | `en` | pass: the gate asked; after continuing, no redirect, no line, interface `en-US`; stored still `en` (A4) |
+| V1i | none, with `pentest-draft-stage8-english-only` stored, new tab and session | pass: the gate asked and no line showed; after continuing, the line in `zh-TW`; stored still none (A6, L1) |
+| V1j | `en`; `/challenges`, then `/zh/c/stage8-english-only` in the same tab | pass: ends at `/challenge/stage8-english-only/` with the line in `zh-TW` (C1); Back (`history.back()`) → `/challenges`, no line; Forward → the fixture with no line (a later navigation asks with `en`: L5, L6); stored `en` throughout (W5) |
+
+Seen in passing: the first tab opened `/guide/` with nothing stored and ended at `/zh-TW/guide/`
+(A1 on the preview).
+
+Cleanup, under the same instruction: `git push origin --delete stage8/T-0054` and the local branch
+deleted (its preview alias goes with it); deployment `5ddd13e6` cannot be deleted from here and stays.
