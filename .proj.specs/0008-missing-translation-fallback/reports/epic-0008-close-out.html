@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0008 收尾報告</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --text: #1b2430;
+  --muted: #566273;
+  --line: #d5dce4;
+  --accent: #0d5c63;
+  --accent-soft: #e3f0f1;
+  --warn: #8a5a00;
+  --warn-soft: #fbf1dc;
+  --ok: #276234;
+  --code-bg: #eaeef2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161c;
+    --surface: #182029;
+    --text: #e3e8ee;
+    --muted: #9aa6b4;
+    --line: #2c3743;
+    --accent: #5fb8bf;
+    --accent-soft: #15303330;
+    --warn: #e0b45c;
+    --warn-soft: #2e2615;
+    --ok: #7cc98a;
+    --code-bg: #202a35;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.7 -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1.02rem; margin: 24px 0 8px; }
+p, li { color: var(--text); }
+.meta { color: var(--muted); font-size: .9rem; margin: 0 0 24px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.answer { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 16px 20px; margin: 8px 0 8px; }
+.answer p { margin: 6px 0; }
+.answer strong { color: var(--accent); }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); margin: 8px 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+.pass { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.gap { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier { white-space: nowrap; font-weight: 600; }
+.note { background: var(--warn-soft); border: 1px solid var(--line); padding: 12px 16px; margin: 12px 0; }
+ol.chain li { margin: 6px 0; }
+.decision { background: var(--surface); border: 1px solid var(--line); padding: 16px 20px; margin-top: 12px; }
+.decision ol { margin: 8px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0008 收尾報告</h1>
+<p class="meta">翻譯不存在時的保底（missing-translation fallback）。2026-11-06。範圍：<code>5d3c173</code> 到 <code>9ed47ef</code>。</p>
+
+<div class="answer">
+<p><strong>結論：epic 0008 已全部在 <code>main</code> 上，OQ-023 解決，可以宣告完成。只剩一件事要你動手：刪掉臨時靶場的 repository。</strong></p>
+<p>五張 ticket 都已合併。T-0057 的第 8 階段在 Cloudflare preview 與臨時 GitHub Pages 靶場上跑完整份 V 表，全部通過。串連分析的 23 條候選串連都經獨立反駁，沒有一條跨越受保護的信任邊界，所以不需要開 ticket。已知但未修的三組既有問題開成 pending ticket T-0058～T-0060。OQ-012 依建議保留 hold，並記下理由。</p>
+</div>
+
+<h2>要決定什麼</h2>
+<p>這個 epic 能不能收尾，取決於三件事：OQ-023 描述的情況是否在真實主機上消失、安全發現能否串成跨界的攻擊，以及已知未修的問題有沒有地方安放。你 2026-11-06 的常設指示是「以下後續問題都按照建議」，所以 OQ-012 的處置、pending ticket 與回顧的提案都已照建議處理。</p>
+
+<h2>交付內容</h2>
+<div class="scroll"><table>
+<thead><tr><th>Ticket</th><th>PR／合併 commit</th><th>做了什麼</th></tr></thead>
+<tbody>
+<tr><td>T-0053</td><td>#50 <code>d05976e</code></td><td>不存在的翻譯網址改走保底並顯示一行說明；語系偏好只在明確選擇時寫入</td></tr>
+<tr><td>T-0054</td><td>#52 <code>e5a1c36</code></td><td>冷載入只導向已發布的翻譯；偏好改在 router 解析出頁面後才寫入</td></tr>
+<tr><td>T-0056</td><td>#54 <code>95c05bc</code></td><td>短連結帶語系代碼（<code>/en/c/NNN</code>、<code>/zh-TW/c/NNN</code>），每題四條 redirect 規則</td></tr>
+<tr><td>T-0055</td><td>#56 <code>293678f</code></td><td>語系切換在沒有該語系版本時留在原頁並顯示說明，選單多一個回到頁面語系的選項</td></tr>
+<tr><td>T-0057</td><td>#58 <code>ef13b2b</code></td><td>每個語系的清單與首頁都列出每一道題目，未翻譯的題目帶語系標記；跑完整份 V 表</td></tr>
+</tbody></table></div>
+<p>每張票另有一個把 status 改成 <code>done</code> 的紀錄 PR（#51、#53、#55、#57、#59）。</p>
+
+<h2>OQ-023 在真實主機上的前後對照</h2>
+<p>用只有英文版的 fixture 題目 #999（<code>stage8-english-only</code>）驗證。fixture 只放在各張票的拋棄式分支 <code>stage8/&lt;ticket&gt;</code> 與本機來源分支 <code>stage8-fixture/english-only</code> 上，從未進入 <code>main</code>。</p>
+<div class="scroll"><table>
+<thead><tr><th>情境</th><th>epic 0008 之前</th><th>現在</th><th>V 列／表面</th></tr></thead>
+<tbody>
+<tr><td>沒有儲存值，打開英文題目網址</td><td>導向不存在的 <code>/zh-TW/</code> 頁，看到 404（儲存值為 <code>zh-TW</code> 時重現過；沒有儲存值的情況是讀碼推得）</td><td class="pass">留在英文頁，顯示繁中說明列</td><td>V1a（內建瀏覽器，Browser 面板開著）、V2</td></tr>
+<tr><td>打開 <code>/zh-TW/challenge/&lt;英文限定&gt;/</code></td><td>404</td><td class="pass">主機回 404 後由 client 換成英文頁，加說明列</td><td>V1c（Playwright）、V2（GitHub Pages，base <code>/wxl-e2e-0008-t0057/</code>）</td></tr>
+<tr><td>繁中題目清單與首頁</td><td>看不到這道題目</td><td class="pass">列出，帶「只有英文」標記，靜態 HTML 就有；首頁計數包含它</td><td>V1g（Playwright、<code>curl</code>）、V2</td></tr>
+<tr><td>短連結 <code>/c/999</code> 等四種形式</td><td>只有 <code>/c/NNN</code>；只有英文版的題目沒有繁中短連結</td><td class="pass">四種都開英文頁</td><td>V1d（<code>curl</code>、Playwright）</td></tr>
+<tr><td>語系切換到沒有翻譯的語系</td><td>導到 404</td><td class="pass">留在原頁，history 不變，說明列立即出現；再選回頁面語系即消失</td><td>V1l（375 寬，Browser 面板開著）、V3（三種寬度）</td></tr>
+</tbody></table></div>
+
+<h2>安全審查與串連分析</h2>
+<p>五份 ticket 安全審查都沒有確認漏洞；T-0057 的 S-1（frontmatter 不是字串時搜尋會拋例外）屬穩健度，已修。串連分析由兩位 finder 從不同角度提出 23 條候選串連，再由 23 位獨立反駁者逐條檢查，最後一位做完整性檢查。</p>
+<ol class="chain">
+<li>每一條候選串連的結果，不是落在某個邊界的「不保護」欄，就是停在同源、已發布的頁面上，而且沒有權限提升。例如任何連結都能把語言設成繁中，這是 B4 明文接受的。</li>
+<li>完整性檢查補上 9 項盤點遺漏與 5 條新串連，都沒有改變判定。</li>
+<li>完整性檢查也指出一個反駁理由的前提不成立：GitHub Pages 範本的部署不跑測試，hook 也要在 <code>pnpm install</code> 之後才安裝，所以「hook 與 CI 會擋下」並不完整（N-1）。結論不變，因為作者本來就能修改內容。</li>
+<li>parent 用 <code>curl</code> 在正式站確認：<code>/zh-TW%2Fchallenges</code> 直接回 200 的繁中清單；<code>/zh-TW/c/%2e%2e</code> 302 到 <code>/zh-TW/challenge/%2e%2e/</code>，依 Node 的 WHATWG URL 解析推論瀏覽器會正規化成 <code>/zh-TW/</code>；<code>/en/c/%2F%2Fevil.example</code> 仍導到站內路徑。這些結果都在 B4、B2 的預期之內。</li>
+</ol>
+
+<h2>收尾一併處理的事</h2>
+<div class="scroll"><table>
+<thead><tr><th>項目</th><th>處置</th></tr></thead>
+<tbody>
+<tr><td>OQ-023</td><td>resolved，附第 8 階段證據</td></tr>
+<tr><td>OQ-012（gate 詢問期間 hold 住導向的理由）</td><td>resolved：保留 hold。理由不是保護，而是學習者的回答決定接下來在哪一次載入上繼續：選 <code>cleared</code> 會重新載入網站根目錄，由那次載入自己導向，這一次的導向就跳過；其他回答在選擇離開畫面後才導向。提早放行會在問題還在畫面上時換掉底下的頁面。說明列另有自己的 hold。<code>theme/index.ts</code> 的註解同步更新</td></tr>
+<tr><td>T-0058（pending）</td><td>pre-commit hook：只有 <code>git rm -r --cached</code> 時 stash 中斷；整棵樹 untracked 時 W4 不列；W4 原樣印出控制字元</td></tr>
+<tr><td>T-0059（pending）</td><td>redirect 產生器不檢查 slug 文法；全數字 slug 被號碼規則遮蔽</td></tr>
+<tr><td>T-0060（pending）</td><td>繁中清單的工具列在 hydration 後仍是英文；placeholder 的部分 2026-10-10 就已記錄在 <code>ChallengeList.vue</code> 的註解裡</td></tr>
+<tr><td>回顧</td><td>六項提案：兩項提給 harness-agile；兩項排進下一個 epic；一項寫進 <code>platform-notes.md</code>；一項已開成 T-0060</td></tr>
+</tbody></table></div>
+
+<h2>為什麼可以收尾</h2>
+<ol class="chain">
+<li>五張 ticket 都已 squash 合併。T-0057 的第 8 階段驗證的是 <code>aae3d01</code>（加 fixture）；它與 PR head <code>74a5e5e</code> 只差 ticket 紀錄，而 <code>74a5e5e</code> 與合併結果 <code>ef13b2b</code> 的 tree 相同。</li>
+<li>整份 V 表都在含整個 epic 的 commit 上通過，涵蓋兩種主機。每一列都寫明驗證面，以及它驗證的是哪幾個 spec 列。</li>
+<li>串連分析沒有找到要開 ticket 的串連，依 <code>docs/agents/review.md</code> 不擋收尾。</li>
+<li>需要處理的既有問題開成 pending ticket T-0058～T-0060；其餘判定為只做記錄（例如串連分析的 N-2），留在串連分析與各張安全報告裡。</li>
+</ol>
+
+<h2>代價</h2>
+<ul>
+<li>英文清單會列出只有繁中的題目；在 page mode 下，它的複製控制給的是 <code>/zh-TW/</code> 網址，打開會把偏好寫成繁中（traceability 3.5 的 E3 解讀）。目前 committed tree 裡沒有這種題目。</li>
+<li>任何第三方連結都能把語言設成繁中，同一個 owner 底下的 GitHub Pages 靶場共用這個設定（B4、OQ-018），epic 0008 沒有改變這一點。</li>
+<li>每題四條 redirect 規則，Cloudflare 2,000 條靜態規則的容量從約 1,000 題降到 500 題，而且不強制檢查（spec 0008 Out of Scope）。</li>
+<li>第 8 階段的腳本還在 session 的 scratchpad 裡。要等下一個 epic 收進 repository，才能直接沿用。</li>
+<li>五個 Cloudflare preview deployment（<code>f5d8aafe</code>、<code>5ddd13e6</code>、<code>dfa548e3</code>、<code>5bd395d4</code>、<code>80e6588c</code>）無法從這邊刪除，仍留在 Pages 專案裡。</li>
+</ul>
+
+<h2>證據表</h2>
+<div class="scroll"><table>
+<thead><tr><th>主張</th><th>來源</th><th>層級</th></tr></thead>
+<tbody>
+<tr><td>五張 ticket 與紀錄 PR 的合併 commit</td><td><code>git log --oneline main</code>（<code>d05976e</code>…<code>9ed47ef</code>）</td><td class="tier">已驗證</td></tr>
+<tr><td>T-0057 合併 tree 與 PR head <code>74a5e5e</code> 相同；第 8 階段驗證的 <code>aae3d01</code> 與它只差 ticket 紀錄</td><td><code>git diff 74a5e5e ef13b2b</code> 輸出為空；<code>git diff --stat aae3d01 74a5e5e</code> 只列出 T-0057 的 ticket 檔</td><td class="tier">已驗證</td></tr>
+<tr><td>英文頁不再導到 404，留在原頁並顯示繁中說明列</td><td>T-0057 stage 8 的 V1a、V1d、V2 列（內建瀏覽器與 <code>v1-rows.cjs</code>）</td><td class="tier">已驗證</td></tr>
+<tr><td>epic 0008 之前，儲存值為 <code>zh-TW</code> 時英文網址會導到 404</td><td><code>OPEN-QUESTIONS.md</code> OQ-023 的 2026-10-24 重現段落</td><td class="tier">已驗證</td></tr>
+<tr><td>epic 0008 之前，沒有儲存值時也會導到 404</td><td>OQ-023 的同一段：讀碼推得，沒有在新的 profile 重現</td><td class="tier">推論</td></tr>
+<tr><td>繁中清單與首頁的「只有英文」在靜態 HTML 裡</td><td><code>curl -s …/zh-TW/challenges</code>、<code>…/zh-TW/</code> 各有一個 <code>data-locale-mark</code></td><td class="tier">已驗證</td></tr>
+<tr><td>GitHub Pages 上，base 不在根目錄時一樣成立</td><td>T-0057 stage 8 的 V2 列（<code>/wxl-e2e-0008-t0057/</code>）</td><td class="tier">已驗證</td></tr>
+<tr><td>三種寬度下，內建翻譯選單都隱藏，切換器的 B2、B5、B7 成立</td><td><code>v3-menus.cjs</code>、<code>v3-switch.cjs</code> 的輸出（T-0057 stage 8 的 V3 列）</td><td class="tier">已驗證</td></tr>
+<tr><td>測試從 131 個檔、4,559 個 case 增加到 136 個檔、4,853 個 case</td><td>T-0053 的基準、T-0057 的覆蓋率報告</td><td class="tier">已驗證</td></tr>
+<tr><td>23 條候選串連都沒有跨越受保護邊界</td><td>workflow <code>wf_b77cc044-d48</code> 的反駁結果；<code>review/chain-analysis.md</code></td><td class="tier">推論（由 agent 讀碼得出，parent 抽查了引用行號）</td></tr>
+<tr><td><code>/zh-TW%2Fchallenges</code> 在 Cloudflare 上回 200 的繁中清單</td><td><code>curl</code> 正式站，<code>&lt;html lang="zh-TW"&gt;</code>、<code>挑戰</code></td><td class="tier">已驗證</td></tr>
+<tr><td><code>%2e%2e</code> 會被正規化成 <code>/zh-TW/</code></td><td><code>node -e 'new URL(…)'</code>；真實瀏覽器沒有實測</td><td class="tier">推論（依 WHATWG URL 解析）</td></tr>
+<tr><td>GitHub Pages 範本的部署不跑測試，hook 要 <code>pnpm install</code> 後才安裝</td><td><code>scripts/templates/deploy.yml.template:98-105</code>、<code>package.json:41</code></td><td class="tier">已驗證</td></tr>
+<tr><td>在 GitHub 網頁介面 commit 不經過 hook</td><td>由上一列推得，沒有實際觀察</td><td class="tier">推論</td></tr>
+<tr><td>繁中清單的工具列在 hydration 後是英文，早於 T-0057</td><td><code>zh-ui.cjs</code> 在 preview、正式站、<code>stage8-t-0056</code> 上的結果相同；served HTML 的 <code>title="Grid mode"</code></td><td class="tier">已驗證</td></tr>
+<tr><td>placeholder 的部分早於本 epic，原因是 hydration 不重新套用 element prop</td><td><code>ChallengeList.vue:28-35</code> 的註解（「Measured on a real build」），<code>git blame</code> 為 2026-10-10，早於 <code>5d3c173</code></td><td class="tier">已驗證</td></tr>
+<tr><td><code>title</code> 屬性是同一個原因</td><td>T-0060 待確認</td><td class="tier">推論</td></tr>
+<tr><td><code>cleared</code> 跳過這一次到達的導向，由根目錄的新載入自己導向</td><td><code>.vitepress/theme/index.ts:164-169</code>、<code>SessionGate.vue:57</code></td><td class="tier">已驗證</td></tr>
+</tbody></table></div>
+
+<div class="note"><strong>本報告不主張的事：</strong>
+<ul>
+<li>不主張 GitHub Pages 對編碼路徑的行為與 Cloudflare 相同；只在 Cloudflare 上用 <code>curl</code> 查過。</li>
+<li>不主張相依套件沒有漏洞；這個 epic 沒有新增套件，也沒有做相依套件掃描。</li>
+<li>T-0058～T-0060 的優先順序沒有在這裡決定。</li>
+</ul></div>
+
+<h2>請你決定</h2>
+<div class="decision">
+<ol>
+<li>刪除臨時靶場 repository <code>CXPhoenix/wxl-e2e-0008-t0057</code>。這個 session 的 token 沒有 <code>delete_repo</code> 權限，要請你自己刪。</li>
+</ol>
+</div>
+</main>
+</body>
+</html>
