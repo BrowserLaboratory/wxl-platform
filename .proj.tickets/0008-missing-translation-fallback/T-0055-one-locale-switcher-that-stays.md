@@ -2,7 +2,7 @@
 id: T-0055
 title: One locale switcher on every page, which stays on the page when the chosen locale has no version
 epic: 0008-missing-translation-fallback
-status: review
+status: done
 blocked_by: [T-0054]
 ---
 
@@ -321,3 +321,16 @@ width. At 1280 the menu was operated with real clicks; at 1024 and 375 (and the 
 Cleanup, under the same authorization: the preview origin's `localStorage`, `sessionStorage` and
 IndexedDB (`challenge-tools`) cleared; `git push origin --delete stage8/T-0055` and the local branch
 deleted; deployment `5bd395d4` stays (not deletable from here). The viewport emulation was reset.
+
+### 2026-11-05 — landed (stage 9)
+
+PR [#56](https://github.com/BrowserLaboratory/wxl-platform/pull/56), squash-merged into `main` as
+`293678f` on 2026-11-05 (16:54Z), from head `24b1845`, with a squash message from the project
+`tw-emoji-commit` skill, under the user's advance authorization for this ticket's PRs. The PR's CI:
+10 checks passing after one rerun of the failed jobs. The first run had two failures, neither in this
+ticket's code: `challenge-verify` (`door-is-open.spec.ts` timed out after 120 s waiting for the
+runtime; `npx playwright test --config playwright.config.ts tests/challenges/door-is-open.spec.ts`
+passed locally in 6 s) and `fork-init-cross-os (windows-latest, 24)` (two `create-wxl` `bin.test.mjs`
+cases timed out at 5000 ms; `create-wxl/` is untouched here). `gh run rerun 42067759016 --failed` →
+both passed. The PR branch is deleted on `origin`. T-0057 is unblocked once this record lands.
+Frontmatter `status: done`.
