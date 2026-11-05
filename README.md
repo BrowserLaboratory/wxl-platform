@@ -229,6 +229,8 @@ const siteBase = process.env.SITE_BASE || '/'
 > **短連結只在 Cloudflare Pages 上有效。** 短連結是 `platform/public/_redirects` 裡的規則，只有 Cloudflare Pages 會讀這個檔，所以在 GitHub Pages 的靶場上，短連結開不到題目。每道題目旁的複製按鈕，只有在 Cloudflare Pages 建置的靶場上才會複製短連結；其他靶場複製的是題目頁的網址。題目改名之後這個網址就會失效；而且只有 `.vitepress/challenge/shortLink.ts` 的 `SITE_ORIGIN` 是靶場的網址時，它才會開到這個靶場。
 >
 > `platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
+>
+> 複製出來的短連結會在路徑開頭標明語系：在英文頁面或清單上是 `/en/c/NNN`，在繁體中文的是 `/zh-TW/c/NNN`。每道有永久編號的題目兩種都有；題目還沒有繁體中文翻譯時，`/zh-TW/c/NNN` 會開到英文頁。舊版發出的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開，只是不再發出。目前 `/en/c/NNN` 的效果和 `/c/NNN` 一樣：語系偏好是繁體中文、或還沒有語系偏好的學習者，在題目有繁體中文翻譯時會被帶到繁體中文翻譯。打開 `/zh-TW/` 底下的頁面，包括透過短連結或重新整理，都會把學習者的語系偏好設成繁體中文。從舊版升級到這一版的靶場，要重新產生 `_redirects` 才會有新的規則：CI 回報它過期時，執行 `pnpm redirects:generate` 再 commit 結果。
 
 不帶 `--host` 時，這一行只依 `--base` 改寫；沒帶 `--base` 就維持原狀，可能還是上游原本那一行，也可能是前一次 `--base` 留下的字面值。`--base /<repo>/` 把這段路徑寫死進 `.vitepress/config.mts`；`--base none` 寫成字面值 `const siteBase = '/'`（不是清掉這一行）。**用 `--base` 的靶場，CI 的 site smoke 與 challenge 測試會失敗**——這兩種測試都從 `/` 出發操作頁面，寫死的子路徑會讓它們 404；改用 `--host github-pages` 把 base 交給部署當下決定，本機與 CI 的每一次建置都停在 `/`，就不會遇到這個問題。
 

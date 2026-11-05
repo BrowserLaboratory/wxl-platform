@@ -36,8 +36,9 @@ import { useI18n } from 'vue-i18n'
 import { challengeLink, type ShortLinkLocale } from '../../challenge/shortLink'
 import { linkMode } from '../linkMode'
 
-// One control, used in the challenge list and beside the challenge title, so a
-// challenge presents one spelling of its link wherever the reader meets it.
+// One control, used in the challenge list and beside the challenge title. A challenge has one
+// link per locale (spec 0008): the list and the nav each give the one in their own locale, so
+// for one challenge they can differ, and both open it.
 //
 // The URL is rendered as selectable text and the button is only a shortcut. A
 // clipboard write can be refused — an insecure origin, a denied permission, an
@@ -55,12 +56,19 @@ const props = defineProps<{
    */
   slug?: string
   /**
-   * The locale of the page this sits on, not the vue-i18n runtime locale. The
-   * runtime instance starts at `en` and only reaches the right value after
-   * hydration, which would ship an English label into the static HTML of a
-   * zh-TW page — the same reason MergedNav takes its locale from the page.
+   * The locale of the list or page this sits on, not the vue-i18n runtime locale: the locale of
+   * the control's own text (label, copied, failed) and of the short link. The runtime instance
+   * starts at `en` and only reaches the right value after hydration, which would ship an English
+   * label into the static HTML of a zh-TW page — the same reason MergedNav takes its locale from
+   * the page.
    */
   locale: ShortLinkLocale
+  /**
+   * The locale of the challenge page this control's challenge opens: the entry's in the list, the
+   * page's own in the nav. Only the page URL follows it (spec 0008, F6, F10); a short link is in
+   * `locale`, whose redirect rule opens the page that exists.
+   */
+  entryLocale: ShortLinkLocale
 }>()
 
 const { t } = useI18n()
@@ -72,11 +80,11 @@ const mode = linkMode()
 /**
  * The link to show and copy, or null when there is none — a challenge without a number has no
  * link, and in page mode neither has one without a usable slug. A string number is converted
- * with `Number()` first.
+ * with `Number()` first. The short link is in `locale`, the page URL in `entryLocale`.
  */
 const link = computed(() => {
   const raw = typeof props.number === 'string' ? Number(props.number) : props.number
-  return challengeLink(mode, raw ?? undefined, props.slug, props.locale)
+  return challengeLink(mode, raw ?? undefined, props.slug, mode === 'short' ? props.locale : props.entryLocale)
 })
 
 const display = computed(() => link.value?.display ?? '')

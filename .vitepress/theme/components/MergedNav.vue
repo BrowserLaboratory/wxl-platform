@@ -162,7 +162,7 @@ const categoryBadge: Record<string, string> = {
           (`contents`, earlier `inline-flex`), and a plain `hidden` lost to it, so this control
           showed below md beside the mobile row's own. A media-query rule comes after both.
         -->
-        <ShortLinkShare class="max-md:hidden" :number="number" :slug="slug" :locale="locale" />
+        <ShortLinkShare class="max-md:hidden" :number="number" :slug="slug" :locale="locale" :entry-locale="locale" />
 
         <!--
           `tp`, not `$t`: the label follows the page locale like every other string in
@@ -285,7 +285,7 @@ const categoryBadge: Record<string, string> = {
         data-badge="category"
         :class="categoryBadge[category] ?? 'ch-badge'"
       >{{ category }}</span>
-      <ShortLinkShare :number="number" :slug="slug" :locale="locale" />
+      <ShortLinkShare :number="number" :slug="slug" :locale="locale" :entry-locale="locale" />
       <!--
         Never labelled, at any width this row renders at. The row has no free space to
         absorb a badge: the title and the URL text share what the other items leave, the

@@ -7,32 +7,47 @@ import { challengeLink } from '../../../.vitepress/challenge/shortLink'
 const WXL = 'https://wxl.browserlab.online'
 
 describe('challengeLink in short mode', () => {
-  it('gives X1: the English short link and its displayed text (L01)', () => {
+  // Spec 0008 F1, F2: the short link carries its locale code, `/en/c/` or `/zh-TW/c/`.
+  it('gives X1: the English short link and its displayed text (L01; 0008 F1, F8)', () => {
     expect(challengeLink('short', 1, 'door-is-open', 'en', WXL)).toEqual({
-      url: 'https://wxl.browserlab.online/c/001',
-      display: 'wxl.browserlab.online/c/001',
+      url: 'https://wxl.browserlab.online/en/c/001',
+      display: 'wxl.browserlab.online/en/c/001',
     })
   })
 
-  it('gives X2: the Traditional Chinese short link, 42 padded to 042 (L02, L03)', () => {
+  it('gives X2: the Traditional Chinese short link, 42 padded to 042 (L02, L03; 0008 F2, F8)', () => {
     expect(challengeLink('short', 42, 'door-is-open', 'zh-TW', WXL)).toEqual({
-      url: 'https://wxl.browserlab.online/zh/c/042',
-      display: 'wxl.browserlab.online/zh/c/042',
+      url: 'https://wxl.browserlab.online/zh-TW/c/042',
+      display: 'wxl.browserlab.online/zh-TW/c/042',
     })
   })
 
   it('leaves a number wider than three digits unchanged (L03)', () => {
     expect(challengeLink('short', 1234, 'door-is-open', 'en', WXL)).toEqual({
-      url: 'https://wxl.browserlab.online/c/1234',
-      display: 'wxl.browserlab.online/c/1234',
+      url: 'https://wxl.browserlab.online/en/c/1234',
+      display: 'wxl.browserlab.online/en/c/1234',
     })
   })
 
   it.each([undefined, '', 'My Chall'])('needs no slug and ignores it: slug %j (L11)', (slug) => {
     expect(challengeLink('short', 1, slug, 'en', WXL)).toEqual({
-      url: 'https://wxl.browserlab.online/c/001',
-      display: 'wxl.browserlab.online/c/001',
+      url: 'https://wxl.browserlab.online/en/c/001',
+      display: 'wxl.browserlab.online/en/c/001',
     })
+  })
+})
+
+describe('challengeLink never gives a short link without its locale code (0008 F9)', () => {
+  it.each(['short', 'page'] as const)('in %s mode, in both locales, for 1, 42 and 1234', (mode) => {
+    for (const locale of ['en', 'zh-TW'] as const) {
+      for (const n of [1, 42, 1234]) {
+        const link = challengeLink(mode, n, 'door-is-open', locale, WXL)!
+        for (const text of [link.url, link.display]) {
+          expect(text).not.toContain('/zh/c/')
+          expect(text).not.toMatch(/^(?:https:\/\/)?[^/]+\/c\//)
+        }
+      }
+    }
   })
 })
 

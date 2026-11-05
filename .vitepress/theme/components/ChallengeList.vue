@@ -14,9 +14,11 @@ const { localeIndex } = useData()
 
 // The short link's locale comes from the page, not from the vue-i18n runtime.
 // The runtime instance starts at `en` and only reaches the right value after
-// hydration, so reading it here would ship `/c/001` into the static HTML of the
-// zh-TW list and correct it to `/zh/c/001` on hydration — a visible flip, and
-// the wrong link for a reader who copies before that happens.
+// hydration, so reading it here would ship `/en/c/001` into the static HTML of the
+// zh-TW list and correct it to `/zh-TW/c/001` on hydration — a visible flip, and
+// the wrong link for a reader who copies before that happens. The list gives the
+// short link in its own locale: `/en/c/NNN` or `/zh-TW/c/NNN`, never `/c/` or
+// `/zh/c/`, which are kept only so links already handed out keep opening.
 const pageLocale = computed<ShortLinkLocale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
 
 /**
@@ -440,7 +442,7 @@ function toggleSortDir(): void {
           on this line, which wraps so the failure message can take a line below when it needs one.
         -->
         <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
-          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" />
+          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="pageLocale" />
         </div>
       </a>
     </div>
