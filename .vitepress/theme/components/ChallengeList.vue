@@ -8,6 +8,7 @@ import ChallengeDoneBadge from './ChallengeDoneBadge.vue'
 import { useChallengeProgress } from '../composables/useChallengeProgress'
 import { useProgressBlockReason } from '../composables/useSessionGate'
 import type { ShortLinkLocale } from '../../challenge/shortLink'
+import { linkMode } from '../linkMode'
 
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
@@ -93,6 +94,24 @@ onMounted(() => { void loadProgress() })
  * instruction withdrawn on the next tick.
  */
 const progressBlockReason = useProgressBlockReason()
+
+/**
+ * Spec 0008, S4: an entry borrowed from the other locale's brief (the list has none of its own).
+ * It carries the mark naming the locale it is in — resolved at the PAGE's locale, like every
+ * string here, so the HTML as served already says it — and its title and summary carry that
+ * locale's `lang`.
+ */
+const isBorrowed = (c: ChallengeData) => c.locale !== pageLocale.value
+const langOf = (c: ChallengeData) => (isBorrowed(c) ? c.locale : undefined)
+
+/**
+ * The copy control's link (F3, F6): in short mode the list's locale, `/<list locale>/c/NNN`, which
+ * the redirect rules send to the page that exists; in page mode the entry's own page. The English
+ * list has no short link for a challenge with only a Traditional Chinese brief: no `/en/c/NNN`
+ * rule exists for it (E3, G9). Its page URL, in page mode, opens.
+ */
+const mode = linkMode()
+const hasCopyControl = (c: ChallengeData) => !(mode === 'short' && pageLocale.value === 'en' && c.locale === 'zh-TW')
 
 /**
  * The key a challenge's progress is stored under, recovered from its URL.
@@ -363,18 +382,19 @@ function toggleSortDir(): void {
         <!-- Title line: ID + Title -->
         <div class="flex items-center gap-2 mb-2">
           <span class="font-mono text-[0.75em] color-[var(--ch-accent)] font-bold shrink-0">{{ paddedId(c) }}</span>
-          <span class="font-semibold text-[1.1em] color-[var(--ch-text-1)] leading-snug">{{ c.title }}</span>
+          <span :lang="langOf(c)" class="font-semibold text-[1.1em] color-[var(--ch-text-1)] leading-snug">{{ c.title }}</span>
         </div>
         <!-- Badges line -->
         <div class="flex gap-[6px] flex-wrap mb-3">
           <span v-if="c.difficulty" :class="difficultyBadge[c.difficulty] ?? 'ch-badge'">{{ c.difficulty }}</span>
           <span v-if="c.category" :class="categoryBadge[c.category] ?? 'ch-badge'">{{ c.category }}</span>
+          <span v-if="isBorrowed(c)" data-locale-mark class="ch-badge">{{ tp('missing_translation.mark') }}</span>
           <!-- The card's badge row wraps and truncates nothing, so it can afford the
                word at every width. -->
           <ChallengeDoneBadge v-if="isCompleted(c)" label-mode="always" :label="tp('challenge_progress.completed_badge')" />
         </div>
         <!-- Description block -->
-        <p v-if="c.description" class="m-0 mb-3 text-[0.85em] color-[var(--ch-text-2)] line-clamp-2 leading-relaxed">
+        <p v-if="c.description" :lang="langOf(c)" class="m-0 mb-3 text-[0.85em] color-[var(--ch-text-2)] line-clamp-2 leading-relaxed">
           {{ c.description }}
         </p>
         <!-- Footer: Tags + Date -->
@@ -399,9 +419,10 @@ function toggleSortDir(): void {
         <!-- Line 1: ID + Title + Badges + Date -->
         <div class="flex items-center gap-2 w-full">
           <span class="font-mono text-[0.75em] color-[var(--ch-accent)] font-bold shrink-0">{{ paddedId(c) }}</span>
-          <span data-row-title class="font-medium color-[var(--ch-text-1)] truncate">{{ c.title }}</span>
+          <span data-row-title :lang="langOf(c)" class="font-medium color-[var(--ch-text-1)] truncate">{{ c.title }}</span>
           <span v-if="c.difficulty" :class="difficultyBadge[c.difficulty] ?? 'ch-badge'" class="shrink-0">{{ c.difficulty }}</span>
           <span v-if="c.category" :class="categoryBadge[c.category] ?? 'ch-badge'" class="shrink-0">{{ c.category }}</span>
+          <span v-if="isBorrowed(c)" data-locale-mark class="ch-badge shrink-0">{{ tp('missing_translation.mark') }}</span>
           <!--
             Last of the badges, immediately before the `ml-auto` date, which holds the
             row's free space. Where that free space exists the badge's arrival comes out
@@ -426,7 +447,7 @@ function toggleSortDir(): void {
         </div>
         <!-- Line 2: Description + Tags -->
         <div class="flex items-center gap-2 w-full" v-if="c.description || (c.tags && c.tags.length > 0)">
-          <span v-if="c.description" class="text-[0.8em] color-[var(--ch-text-2)] truncate">{{ c.description }}</span>
+          <span v-if="c.description" :lang="langOf(c)" class="text-[0.8em] color-[var(--ch-text-2)] truncate">{{ c.description }}</span>
           <div v-if="c.tags && c.tags.length > 0" class="flex gap-1 shrink-0 ml-auto">
             <span v-for="tag in c.tags" :key="tag" class="ch-tag">{{ tag }}</span>
           </div>
@@ -442,7 +463,7 @@ function toggleSortDir(): void {
           on this line, which wraps so the failure message can take a line below when it needs one.
         -->
         <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
-          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="pageLocale" />
+          <ShortLinkShare v-if="hasCopyControl(c)" :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="c.locale" />
         </div>
       </a>
     </div>

@@ -1,4 +1,8 @@
 import { createContentLoader } from 'vitepress'
+import { mergeLocaleChallenges } from './mergeChallenges'
+
+/** A locale a challenge's page is in: the root locale `en`, or the `zh-TW` translation. */
+export type ChallengeLocale = 'en' | 'zh-TW'
 
 export interface ChallengeData {
   id?: number | string
@@ -13,6 +17,11 @@ export interface ChallengeData {
   number?: number
   title: string
   url: string
+  /**
+   * The locale of the page `url` points at (spec 0008, S4). Equal to the list's locale unless the
+   * challenge has no brief in it, in which case it is the locale whose brief the entry borrowed.
+   */
+  locale: ChallengeLocale
   difficulty?: 'easy' | 'medium' | 'hard' | 'mystery'
   category?: string
   date?: string | null
@@ -20,21 +29,13 @@ export interface ChallengeData {
   description?: string
 }
 
-export default createContentLoader('challenge/*/index.md', {
+// Every challenge in the English list, from both locale trees (spec 0008, S4): a challenge with
+// only a Traditional Chinese brief is borrowed, marked, and opens that page. The merge rules are
+// `mergeLocaleChallenges`'s, shared with the Traditional Chinese loader.
+export default createContentLoader(['challenge/*/index.md', 'zh-TW/challenge/*/index.md'], {
   excerpt: true,
   transform(raw): ChallengeData[] {
-    return raw
-      .map((page, idx) => ({
-        id: page.frontmatter.id ?? idx+1,
-        number: typeof page.frontmatter.number === 'number' ? page.frontmatter.number : undefined,
-        title: page.frontmatter.title ?? 'Web exploitation challenge',
-        url: page.url,
-        difficulty: page.frontmatter.difficulty ?? "mystery",
-        category: page.frontmatter.category ?? "General",
-        date: page.frontmatter.date ?? null,
-        tags: Array.isArray(page.frontmatter.tags) ? page.frontmatter.tags : [],
-        description: page.frontmatter.description ?? '',
-      }))
+    return mergeLocaleChallenges(raw, 'en')
   },
 })
 

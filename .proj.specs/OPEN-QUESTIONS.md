@@ -595,7 +595,8 @@ the host ignores, and the user-site case above closes too, since no `/c/` or `/z
 handed out there. The page URL still fails to open the range in these cases:
 - a `SITE_ORIGIN` that does not name the range's real address, which spec 0007 lists under B4;
 - a renamed challenge, under Q10 and Further Notes;
-- a learner redirected to a missing Traditional Chinese page (OQ-023), under B4.
+- a learner redirected to a missing Traditional Chinese page (OQ-023), under B4 — fixed by epic 0008;
+  OQ-023 closes when 0008 lands.
 
 Mode rule, link forms and rows M01–M04, L01–L21:
 `.proj.specs/0007-gh-pages-range-fixes/traceability.md`. At 0007's close-out, set the status to
@@ -613,9 +614,10 @@ holds the whole epic (`.proj.tickets/0007-gh-pages-range-fixes/T-0039-documents-
   an ellipsis at 375 wide with the whole URL as `title`.
 - On the Cloudflare preview (V01), short links are unchanged and `/c/NNN`, `/zh/c/NNN` still redirect.
 
-The three limits listed above remain as recorded. The first (a wrong `SITE_ORIGIN`) and the user-site
-remark are refined by 0007's chain analysis (`review/chain-analysis.md`, N-4 and N-5). The third
-(OQ-023) was reproduced on the same range and is the next epic.
+The first two limits listed above remain as recorded; the first (a wrong `SITE_ORIGIN`) and the
+user-site remark are refined by 0007's chain analysis (`review/chain-analysis.md`, N-4 and N-5). The
+third (OQ-023) was reproduced on the same range and is fixed by epic 0008 (T-0053–T-0057); it is no
+longer a live limit once 0008 lands.
 
 ---
 
@@ -704,6 +706,12 @@ only GitHub Pages range under an owner).
 
 **Revisit when.** A teacher reports storage from one GitHub Pages range appearing in another under
 the same owner, or isolating them is designed.
+
+**Update on 2026-11-06 (epic 0008).** Ranges under one owner still share the stored language
+preference, `wxl-locale`: a choice made on one range decides the cold-load redirect on another
+(spec 0008, trust boundary B3). Since epic 0008 a preference naming a translation the other range
+lacks no longer ends on a 404: the learner stays on the page that exists, with the line saying it
+has no version in that language. Nothing here isolates the ranges.
 
 ---
 
@@ -823,12 +831,12 @@ range's site results by reading the built files (`.vitepress/dist/`) rather than
 
 **Blocks.** Any claim that create-wxl's own CLI behaviour has been verified in a browser, or that a
 terminal-and-file-reads harness is adequate for the ranges create-wxl's downstream epics eventually
-expose through a browser UI (e.g. epic 0008's setup page).
+expose through a browser UI (e.g. the setup-page epic's page).
 
 **Not blocked.** The ranges create-wxl produces, which are still verified in the browser once built
 and deployed, the same as any other range.
 
-**Revisit when.** Epic 0006 (the upgrade) or epic 0008 (the setup page) adds a browser-facing
+**Revisit when.** Epic 0006 (the upgrade) or the setup-page epic adds a browser-facing
 surface of create-wxl's own, at which point that surface needs the usual browser-based stage 8.
 
 ---
@@ -836,7 +844,7 @@ surface of create-wxl's own, at which point that surface needs the usual browser
 ## OQ-023 — Should the language redirect send a learner to a Traditional Chinese page that does not exist?
 
 **Deferred on:** 2026-10-21
-**Status:** open
+**Status:** open — closes when epic 0008 (`.proj.specs/0008-missing-translation-fallback/`) lands
 
 **Reason.** Found in stage 3 of epic 0007 (round 1, finding C-1). The user decided on 2026-10-21
 (D6 in `.proj.specs/0007-gh-pages-range-fixes/traceability.md`) to record it here rather than fix it
@@ -885,6 +893,16 @@ authoring-environment epic; stage 1 (`/grill-with-docs`, user-invoked) chooses a
 above (redirect only to a page that exists, list English-only challenges in the Traditional Chinese
 list, scaffold a Traditional Chinese brief, or OQ-024's root-locale move).
 
+**Fixed by epic 0008 (T-0053–T-0057); closes when it lands.** At 0008's close-out, set the status to
+resolved and record the stage 8 evidence. The cold-load redirect and the locale switcher
+go only to a translation that is published; otherwise the learner stays on the page that exists and
+sees one line saying it has no version in the requested language. A not-found path whose counterpart
+exists is replaced by it (`/zh-TW/challenge/<english-only>/` opens the English page). Every locale's
+challenge list and home page show every challenge, an untranslated one with its own title and the mark
+`只有英文`. Short links carry their locale code (`/en/c/NNN`, `/zh-TW/c/NNN`), and every numbered
+challenge with an English brief has both, the Traditional Chinese one opening the English page while
+no translation exists. The scaffold
+still writes only the English brief: a translation is optional (stage 1 of 0008; ADR-0008).
 
 ---
 
@@ -900,25 +918,32 @@ an agent's token cost when authoring. Neither has been measured.
 
 **Evidence.** Verified by reading:
 - English is the root locale today: pages live under `platform/` (`challenge/`, `challenges.md`,
-  `guide/`, `reference/`), and the Traditional Chinese mirror under `platform/zh-TW/` (AGENTS.md,
-  "Repository layout").
+  `guide/`, `reference/`), and the Traditional Chinese translations under `platform/zh-TW/`
+  (AGENTS.md, "Repository layout"; it called them a mirror until epic 0008).
 - The site already sends a first-time visitor to `zh-TW`: `DEFAULT_VISITING_LOCALE` is `'zh-TW'`
   (`.vitepress/theme/i18n/index.ts:25`).
 - The hook, the generator and the tests key on both trees and on the English tree as the backing
   one: the orphan-brief refusal (D12, T-0033) and `redirects.test.ts` ("backs every translated slug
-  with a root-locale challenge"); short links `/c/NNN` and `/zh/c/NNN` (`platform/public/_redirects`).
-- `pnpm create:challenge` scaffolds only `platform/challenge/<slug>/` (OQ-023).
+  with a root-locale challenge"); short links, since epic 0008 `/c/`, `/en/c/`, `/zh/c/` and
+  `/zh-TW/c/` per challenge (`platform/public/_redirects`).
+- `pnpm create:challenge` scaffolds only `platform/challenge/<slug>/` (OQ-023, closed).
 
 Inferred, not measured: the move touches the VitePress locale config, every path in the hook,
 generator, guard and tests, the short-link rules, the create-wxl and fork:init templates, the
 challenge pipeline's skills, and every existing range's URLs (handouts with printed links).
 
-**Blocks.** Any epic that changes the locale layout or makes a bilingual brief optional. Options: move
-zh-TW to the root; keep the layout and make the English brief optional; keep both mandatory and have
-the authoring tools produce both.
+**Blocks.** Any epic that changes the locale layout or which locale is primary. Options: move zh-TW to
+the root; keep the layout and make the English brief optional; keep both mandatory and have the
+authoring tools produce both. (Epic 0008 settled that a translation is optional; see the update below.)
 
-**Not blocked.** OQ-023 (the language redirect to a missing zh-TW page) can be fixed under either
-layout. The teacher authoring-environment epic can start; its stage 1 should know this is open.
+**Not blocked.** OQ-023 (the language redirect to a missing zh-TW page), fixed by epic 0008 under
+the current layout. The teacher authoring-environment epic can start; its stage 1 should know this is
+open.
+
+**Update on 2026-11-06 (epic 0008).** A translation is optional: a page without one is complete, and
+the site shows the version it has (0008's stage 1 note; ADR-0008, which also decides that the build
+picks the primary locale). Moving the root locale — making Traditional Chinese the primary locale — is the
+primary-locale epic's, not 0008's; nothing in 0008 decides it.
 
 **Revisit when.** The authoring-environment epic reaches stage 1, or an experiment measures the token
 cost of authoring a bilingual challenge against a single-language one.

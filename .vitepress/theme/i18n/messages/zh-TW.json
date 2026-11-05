@@ -57,7 +57,8 @@
   },
   "missing_translation": {
     "notice": "這一頁沒有繁體中文版本，所以顯示英文版。",
-    "list_link": "前往繁體中文題目清單"
+    "list_link": "前往繁體中文題目清單",
+    "mark": "只有英文"
   },
   "short_link": {
     "copy_label": "複製連結",
