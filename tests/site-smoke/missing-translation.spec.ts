@@ -95,18 +95,6 @@ test('Back after the fallback returns to the page opened before it', async ({ pa
   await expect(page).toHaveURL(/\/challenges$/)
 })
 
-for (const stored of [null, 'zh-TW'] as const) {
-  test(`the detour through a missing translation keeps the stored language, stored ${stored ?? 'none'}`, async ({ page }) => {
-    // Today's cold-load redirect still sends this English-only page to its missing /zh-TW/
-    // counterpart; the not-found fallback brings the learner back. Neither leg is a choice.
-    await storeLocale(page, stored)
-    await page.goto(REFERENCE)
-    await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
-    await expect(page.locator('[data-missing-translation]')).toBeVisible()
-    expect(await storedLocale(page)).toBe(stored)
-  })
-}
-
 // D7: every page has one locale menu, the custom switcher; VitePress's three built-in
 // translation menus are hidden. Each width opens the menu that holds its built-in list, and
 // the list must exist before its hiding means anything.
@@ -145,5 +133,91 @@ test('a choice in the custom locale switcher on an article is stored', async ({ 
   await page.locator('[data-locale-switcher-toggle]').click()
   await page.locator('[data-locale-option="en"]').click()
   await expect(page).toHaveURL(/\/guide\/python$/)
+  expect(await storedLocale(page)).toBe('en')
+})
+
+// Spec 0008, T-0054: the cold-load redirect goes only to a translation that exists, and names it
+// by its page-list entry; only a cold load of a published /zh-TW/ page writes the preference,
+// decided once the router has rendered it.
+
+/** Records every URL the page's own script puts in the address bar. */
+async function recordNavigations(page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = []
+    ;(window as unknown as { __navigations: string[] }).__navigations = seen
+    for (const name of ['pushState', 'replaceState'] as const) {
+      const original = history[name].bind(history)
+      history[name] = (data: unknown, unused: string, url?: string | URL | null) => {
+        if (url != null) seen.push(String(url))
+        return original(data, unused, url)
+      }
+    }
+  })
+}
+const navigations = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __navigations: string[] }).__navigations)
+
+/** Waits until the app has mounted and the cold load's own requests have settled. */
+async function hydrated(page: Page) {
+  await page.waitForFunction(() => Boolean((document.querySelector('#app') as { __vue_app__?: unknown } | null)?.__vue_app__))
+  // As site-smoke.spec.ts waits: a page that never goes quiet must not hang the test.
+  await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined)
+}
+
+// T-0053's "the detour through a missing translation keeps the stored language" is folded in
+// here: the detour it allowed for is gone, and these cases assert the stored language too.
+for (const stored of [null, 'zh-TW'] as const) {
+  test(`a cold load of an English-only article stays put, with the line, stored ${stored ?? 'none'}`, async ({ page }) => {
+    await storeLocale(page, stored)
+    await recordNavigations(page)
+    await page.goto(REFERENCE)
+    await expect(page.locator('[data-missing-translation]')).toBeVisible()
+    await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', 'zh-TW')
+    await hydrated(page)
+    await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
+    // A3: no detour through the missing translation, not even one replaced straight back.
+    expect((await navigations(page)).filter((url) => url.includes('/zh-TW/'))).toEqual([])
+    expect(await storedLocale(page)).toBe(stored)
+  })
+}
+
+test('a cold load of an English-only article with en stored shows no line', async ({ page }) => {
+  await storeLocale(page, 'en')
+  await page.goto(REFERENCE)
+  await hydrated(page)
+  await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
+  await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+  expect(await storedLocale(page)).toBe('en')
+})
+
+test('a cold load of an alias goes to the counterpart\'s list entry, and writes nothing', async ({ page }) => {
+  await storeLocale(page, null)
+  // `/challenges.html` renders `challenges.md`; the target is its counterpart's entry. A guard,
+  // not a red-before case: the router drops `.html` when it navigates, so the old URL-text target
+  // looked the same here. A letter-case alias (`/Challenges`) is the not-found page on the built
+  // site, not a page. The unit cases in initial-locale-redirect.test.ts tell the two targets apart.
+  await page.goto('/challenges.html')
+  await expect(page).toHaveURL(/\/zh-TW\/challenges$/)
+  await hydrated(page)
+  expect(await storedLocale(page)).toBeNull()
+})
+
+test('a cold load of a published /zh-TW/ page stores zh-TW', async ({ page }) => {
+  await storeLocale(page, 'en')
+  await page.goto('/zh-TW/guide/')
+  await hydrated(page)
+  await expect.poll(() => storedLocale(page)).toBe('zh-TW')
+})
+
+// S-2: the not-found page for a path that is a published page — its chunk did not arrive — is a
+// failed load. The URL names a /zh-TW/ page, so only a decision taken after the router has
+// rendered can tell it is not one.
+test('a failed load of a /zh-TW/ page shows the not-found page and stores nothing', async ({ page }) => {
+  await storeLocale(page, 'en')
+  await page.route(/\/assets\/zh-TW_challenges\.md\.[^/]*\.js$/, (route) => route.abort())
+  await page.goto('/zh-TW/challenges')
+  await expect(page.getByText('PAGE NOT FOUND')).toBeVisible()
+  await hydrated(page)
+  await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
   expect(await storedLocale(page)).toBe('en')
 })

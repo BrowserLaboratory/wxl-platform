@@ -1,5 +1,13 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
-import { DEFAULT_VISITING_LOCALE, detectLocaleFromPath, readStoredLocale, redirectTargetForStoredLocale, type Locale } from '../i18n'
+import {
+  DEFAULT_VISITING_LOCALE,
+  detectLocaleFromPath,
+  persistLocale,
+  readStoredLocale,
+  redirectTargetForStoredLocale,
+  shouldPersistOnColdLoad,
+  type Locale,
+} from '../i18n'
 import { publishedPages } from '../i18n/publishedPages'
 import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, targetPath } from '../i18n/arrival'
 
@@ -8,19 +16,24 @@ import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, 
  * to the learner asked for, the redirects taken on the way, and the locale of the
  * missing-translation line.
  *
- * - **Cold load.** `recordColdLoad` notes the first arrival when the Layout mounts.
- *   `release` runs once the session gate lets the page go (A6, C11): a not-found arrival is
- *   replaced by its counterpart (C1, C2); otherwise a page gets today's cold-load redirect; a
- *   failed load is left alone (C8). Either redirect carries the arrival's requested locale to
- *   its landing (L6).
+ * - **Cold load.** `recordColdLoad` notes the first arrival when the Layout mounts, which is
+ *   after VitePress's router has rendered it. `release` runs once the session gate lets the
+ *   page go (A6, C11): a not-found arrival is replaced by its counterpart (C1, C2); a page is
+ *   sent to its counterpart's list entry only when that counterpart is published, and
+ *   otherwise stays with the line (A1–A4); a failed load is left alone (C8). Either redirect
+ *   carries the arrival's requested locale to its landing (L6).
  * - **Later arrivals.** A change of path — not of hash or query alone (L8) — is classified
  *   again; a not-found one is replaced the same way, once the first arrival has been released
  *   or when the not-found page itself is not held by the gate.
  * - **The line.** Shown on a page, once released, when the page has no version in the requested
  *   locale, and not while `holdLine` says the page's own session gate is still asking (C11).
  *
- * Nothing here writes the stored preference: the redirects are the site's, not the learner's
- * choices (D5).
+ * **The stored preference.** Written once, by the cold load of a published page under
+ * `/zh-TW/` — the learner's explicit request, also through a short link's redirect or a
+ * reload (W2, D13) — decided from the page the router rendered (D16), not from the URL, and
+ * without waiting for the gate: the gate's clear leaves `wxl-locale` alone. Nothing else here
+ * writes it: the redirects and later arrivals are the site's doing, not the learner's choices
+ * (D5, W3–W5).
  *
  * Client-only: the cold load and later arrivals read `window.location`, and nothing calls them
  * during SSR, so the line is absent from the static HTML (L7).
@@ -85,9 +98,18 @@ export function useArrivals(deps: {
     return true
   }
 
+  // The cold-load redirect belongs to the cold load's arrival only (L5). It is gone once any
+  // later arrival happened — a link, Back, even a return to the same path — and while a
+  // navigation the learner started is still loading (the address bar has its path already,
+  // the route does not yet).
+  let coldLoadCurrent = false
+  let coldLoadPathname: string | null = null
+
   const release = () => {
-    if (!replaceNotFound() && current().kind === 'page') {
-      const target = redirectTargetForStoredLocale(window.location, base())
+    if (!replaceNotFound() && coldLoadCurrent && window.location.pathname === coldLoadPathname) {
+      // Recorded again, so the redirect and the line both use the stored value current now,
+      // not the one read when the gate began to ask (A1–A4).
+      const target = redirectTargetForStoredLocale(window.location, base(), pages, record(true))
       if (target) redirect(target, requested.value)
     }
     released.value = true
@@ -97,6 +119,7 @@ export function useArrivals(deps: {
     () => route.path,
     (next, previous) => {
       if (typeof window === 'undefined' || !isArrival(previous, next)) return
+      coldLoadCurrent = false
       // A not-found page asks nothing of the gate itself, so it is replaced as soon as the
       // first arrival is released — or at once, when the page the learner came from is
       // the one still asking (spec 0008, C11).
@@ -110,8 +133,17 @@ export function useArrivals(deps: {
       ? null
       : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value }))
 
+  // The cold load's arrival, once the router has rendered it: a published page under a
+  // locale prefix is the learner's request, and is stored (W2); nothing else is (W3, W4).
+  const recordColdLoad = () => {
+    coldLoadCurrent = true
+    coldLoadPathname = window.location.pathname
+    const arrival = record(true)
+    if (shouldPersistOnColdLoad(arrival)) persistLocale('zh-TW')
+  }
+
   return {
-    recordColdLoad: () => record(true),
+    recordColdLoad,
     release,
     lineLocale: lineLocaleNow,
     stop,

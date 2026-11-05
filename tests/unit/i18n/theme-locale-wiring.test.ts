@@ -81,8 +81,23 @@ vi.mock('../../../.vitepress/theme/components/SessionGate.vue', () => ({
 import Theme from '../../../.vitepress/theme/index'
 import { i18n, LOCALE_STORAGE_KEY } from '../../../.vitepress/theme/i18n'
 
+// What the router renders for each path a test opens (spec 0008, D16 — a cold-load redirect
+// goes to that page's list entry, not to the URL's text). A path missing here is a mistake in
+// the test, not the home page.
+const RENDERED: Record<string, { isNotFound: boolean; relativePath: string }> = {
+  '/': { isNotFound: false, relativePath: 'index.md' },
+  '/challenges/': { isNotFound: false, relativePath: 'challenges.md' },
+  '/guide/': { isNotFound: false, relativePath: 'guide/index.md' },
+  '/zh-TW/': { isNotFound: false, relativePath: 'zh-TW/index.md' },
+  '/zh-TW/guide/': { isNotFound: false, relativePath: 'zh-TW/guide/index.md' },
+  '/zh-TW/no-such-page': { isNotFound: true, relativePath: 'zh-TW/no-such-page.md' },
+  '/wxl/challenges/': { isNotFound: false, relativePath: 'challenges.md' },
+}
 function setPath(p: string) {
+  const rendered = RENDERED[p]
+  if (!rendered) throw new Error(`setPath: add ${p} to RENDERED`)
   window.history.pushState({}, '', p)
+  mockPage.value = rendered
   mockRoute.path = p
 }
 
@@ -121,7 +136,7 @@ describe('the real Layout: cold-load redirect', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     setPath('/challenges/')
     const w = mountLayout()
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
     w.unmount()
   })
 
@@ -152,25 +167,57 @@ describe('the real Layout: cold-load redirect', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     setPath('/wxl/challenges/')
     const w = mountLayout()
-    expect(mockGo).toHaveBeenCalledWith('/wxl/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/wxl/zh-TW/challenges', { replace: true })
     w.unmount()
   })
 })
 
 describe('the real theme: cold-load persistence', () => {
-  // enhanceApp runs at app bootstrap, not on Layout mount, so mounting the
-  // Layout never reaches it — m5 (persist unconditionally) killed nothing until
-  // this block existed.
+  // Bootstrap (`enhanceApp`) sets the interface locale from the URL and writes nothing; the
+  // cold load's write happens as the Layout mounts, once the router has rendered the page
+  // (spec 0008, W2). So the cases here run bootstrap and, where the write is the question,
+  // mount the Layout too.
   function bootstrap() {
     const app = { use: vi.fn(), component: vi.fn(), config: { globalProperties: {} } }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Theme.enhanceApp?.({ app } as any)
   }
 
-  it('updates the stored preference from an explicitly prefixed path', () => {
+  // Spec 0008, W2 (overridden contract): the write is decided after the router resolves, from
+  // what it rendered (D16), so bootstrap — which sees only the URL — writes nothing.
+  it('writes nothing at bootstrap, even on a prefixed path, and still sets the interface locale', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     setPath('/zh-TW/guide/')
     bootstrap()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+    expect(i18n.global.locale.value).toBe('zh-TW')
+  })
+
+  it('updates the stored preference once the Layout mounts on a published prefixed page', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/zh-TW/guide/')
+    bootstrap()
+    mountLayout()
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+  })
+
+  // S-2: the not-found page for a path that is a published page is a failed load, not a
+  // request, though the URL alone would say it is one.
+  it('leaves the stored preference alone on a failed load of a prefixed page', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/zh-TW/guide/')
+    mockPage.value = { isNotFound: true, relativePath: 'zh-TW/guide/index.md' }
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+  })
+
+  it('leaves the stored preference alone on a prefixed path that is not a page', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/zh-TW/no-such-page')
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
   })
 
   // The load-bearing one: persisting unconditionally would write `en` here and
@@ -180,13 +227,31 @@ describe('the real theme: cold-load persistence', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     setPath('/challenges/')
     bootstrap()
+    mountLayout()
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
   })
 
   it('writes nothing at all on an unprefixed path with no prior preference', () => {
     setPath('/challenges/')
     bootstrap()
+    mountLayout()
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+  })
+
+  // W6: storage that refuses the write does not break the page, and the interface still
+  // follows the URL. (`persistLocale` swallows the failure; this guards the new write path.)
+  it('mounts without throwing when storage cannot be written', () => {
+    setPath('/zh-TW/guide/')
+    const spy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+    try {
+      bootstrap()
+      expect(() => mountLayout()).not.toThrow()
+      expect(i18n.global.locale.value).toBe('zh-TW')
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('sets the runtime locale from the URL alone', () => {
@@ -269,7 +334,7 @@ describe('the real Layout: the shared-machine session gate', () => {
     mountLayout()
     // Synchronous: no await between mount and the navigation, so the common path is
     // exactly what it was before the gate existed.
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
     expect(mockGateEvaluate).not.toHaveBeenCalled()
   })
 
@@ -304,7 +369,7 @@ describe('the real Layout: the shared-machine session gate', () => {
     gateShouldAsk.value = false
     gateDecision.value = 'kept'
     await new Promise(r => setTimeout(r, 0))
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
 
   it('does not redirect when the learner chooses to clear', async () => {
@@ -347,7 +412,7 @@ describe('the real Layout: the shared-machine session gate', () => {
     gateShouldAsk.value = false
     gateDecision.value = 'dismissed'
     await new Promise(r => setTimeout(r, 0))
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
 
   it('tells the gate which page it is on', () => {
@@ -376,7 +441,7 @@ describe('the real Layout: the shared-machine session gate', () => {
     await new Promise(r => setTimeout(r, 0))
 
     expect(mockGateEvaluate).toHaveBeenCalled()
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
 
   it('holds the redirect on any page while a clear is unconfirmed', async () => {
@@ -403,7 +468,7 @@ describe('the real Layout: the shared-machine session gate', () => {
     setPath('/challenges/')
     mountLayout()
     await new Promise(r => setTimeout(r, 0))
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/', { replace: true })
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
 })
 

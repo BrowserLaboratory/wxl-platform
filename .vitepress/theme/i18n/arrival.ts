@@ -1,4 +1,4 @@
-import { entryForSourcePath, isPublishedPath, withoutBase } from './pages'
+import { entryForSourcePath, isPublishedPath, targetUrl, withoutBase } from './pages'
 import { lookupNotFound } from './lookup'
 import { detectLocaleFromPath, localizePath, otherLocale, type Locale } from './index'
 
@@ -29,7 +29,9 @@ export type Arrival =
 
 /**
  * A rendered page is identified by its source file, so an alias URL the router also renders
- * (a different letter case) is the page it rendered (D16). The not-found page for a path that
+ * (`.html`, `/index.html`, a trailing slash) is the page it rendered (D16). A letter-case variant
+ * is not one on the built site: the router looks its page up in lower case but fetches the
+ * chunk with the case as typed, which the static host does not serve. The not-found page for a path that
  * is itself a published page is a failed load — a chunk that did not arrive — not a missing
  * translation, and nothing is done about it.
  */
@@ -51,9 +53,8 @@ export function notFoundRedirect(
 ): { target: string; entry: string; requested: Locale } | null {
   const entry = lookupNotFound(location.pathname, base, pages)
   if (entry === null) return null
-  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
   return {
-    target: prefix + entry + (location.search ?? '') + (location.hash ?? ''),
+    target: targetUrl(entry, base, location),
     entry,
     requested: otherLocale(detectLocaleFromPath(entry)),
   }

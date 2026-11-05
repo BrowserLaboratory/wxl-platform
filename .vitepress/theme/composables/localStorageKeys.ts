@@ -26,8 +26,8 @@ export type KeyMatcher =
  * and a key the platform writes by itself answers no to that.
  *
  * Reading one answer for both is a measured defect, not a hypothesis: `wxl-locale` is
- * written from `enhanceApp` on every cold load of a localised path, before the gate
- * looks, so a brand-new browser on an empty machine was asked whose saved work it held.
+ * written on every cold load of a published `/zh-TW/` page — by the Layout as it mounts,
+ * before the gate looks (from `enhanceApp` until spec 0008 moved it) — so a brand-new browser on an empty machine was asked whose saved work it held.
  * On a challenge page it was worse — the Repeater snapshots and the panel settings are
  * written at setup, at their defaults, and those panels are `v-show` rather than `v-if`,
  * so they mount whether or not the learner opens their tab.
@@ -123,8 +123,8 @@ export const REPEATER_SNAPSHOTS_DEFAULT = '[]'
  */
 export const OWNED_LOCAL_STORAGE_KEYS: readonly OwnedKey[] = [
   { kind: 'prefix', value: CODE_DRAFT_PREFIX, presence: { proves: 'learner-acted' }, clearing: 'remove' },
-  // Written by `enhanceApp` on every cold load of a localised path, and by the locale
-  // switcher. Every value it can hold is a locale code this platform chose, so there is
+  // Written on every cold load of a published `/zh-TW/` page (the Layout, as it mounts),
+  // and by the locale switcher. Every value it can hold is a locale code this platform chose, so there is
   // no changed value to detect either — the tag is `nothing`, not `only-if-changed`.
   //
   // And exempt from clearing, for the same reason read the other way round: the two

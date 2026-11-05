@@ -83,3 +83,7 @@
 | 單元測試 | 135 檔，4630 項通過 |
 | site-smoke | 75 項通過 |
 | `vue-tsc` | 錯誤數與修正前相同 |
+
+## 更正（2026-11-05，T-0054 第 6 階段）
+
+S-5 列在「誤報」的理由「VitePress 以小寫查詢」在 production bundle 上不成立。router 查 hash map 時會轉成小寫（`node_modules/vitepress/dist/client/app/utils.js:41`），但下載 chunk 時保留原本的大小寫（同檔 `:50`），靜態主機找不到那個檔。所以 `/Challenges` 在 `vitepress preview` 上回 404，顯示找不到頁面，冷載入導向根本不會執行。結論不變（不是漏洞），只是理由不同：大小寫變體在建置後網站上本來就不是頁面。重現方式與紀錄見 T-0054 ticket 的 stage 6 處置。

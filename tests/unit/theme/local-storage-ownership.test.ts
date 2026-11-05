@@ -243,8 +243,8 @@ describe('what a key presence proves', () => {
   })
 
   it('a key the platform writes by itself is not evidence of a learner', () => {
-    // Measured: the locale is written from `enhanceApp` on every cold load of a localised
-    // path, before this gate looks; the other three are written at panel setup, at their
+    // Measured: the locale is written on every cold load of a published `/zh-TW/` page, as
+    // the Layout mounts and before this gate looks; the other three are written at panel setup, at their
     // defaults, and two of those panels are `v-show` rather than `v-if`.
     expect(provesLearnerActed('wxl-locale', 'zh-TW')).toBe(false)
     expect(provesLearnerActed('wxl:editor-settings', JSON.stringify(DEFAULT_EDITOR_SETTINGS))).toBe(false)
