@@ -38,7 +38,7 @@ closed and the other open questions updated; AGENTS.md no longer calls `platform
 - [x] H5: AGENTS.md's Repository layout (AC-9)
 - [x] H7 across the whole epic's documents (AC-9)
 - [x] Overridden contracts touched here (`challenge-data-loaders.test.ts`; from traceability 3.5 the `ChallengeData` fixtures of `ChallengeList.test.ts` and `HomeContent.test.ts`, `ChallengeList.test.ts`'s N01/N02, N04 and SSR helper, `HomeContent.test.ts`'s harness, `site-smoke.spec.ts`'s `expectedUrlFor`) change only as the traceability table states
-- [ ] Stage 8 (T4): the full V table — V1a–V1l on the Cloudflare preview of `stage8/T-0057`, V2 on a temporary GitHub Pages range, V3 — after T-0053 to T-0056 have landed; then, with the user's approval, delete the throwaway branch, its preview and the temporary range (AC-10)
+- [x] Stage 8 (T4): the full V table — V1a–V1l on the Cloudflare preview of `stage8/T-0057`, V2 on a temporary GitHub Pages range, V3 — after T-0053 to T-0056 have landed; then, with the user's approval, delete the throwaway branch, its preview and the temporary range (AC-10)
 
 ## 給使用者（zh-TW）
 
@@ -244,3 +244,66 @@ English brief has none), S-3 and S-4 (a Traditional Chinese-only brief reaches t
 its `/zh-TW/` link writes `zh-TW` on a cold load — unreachable in a committed tree), S-5 (local
 drafts under `platform/zh-TW/challenge/` reach the English list too), S-11 (a borrowed entry's
 default title carries the other locale's `lang`).
+
+### 2026-11-06 — stage 8
+
+Surface, per D12: the throwaway branch `stage8/T-0057` = this ticket's `aae3d01` plus fixture commit
+`1532eea` (made with `/tw-emoji-commit`: `git checkout 41b9dc7 -- platform/challenge/stage8-english-only`,
+then `pnpm redirects:generate`; `grep 999 platform/public/_redirects` showed the four rules
+`/c/999`, `/en/c/999`, `/zh/c/999`, `/zh-TW/c/999`). Pushing and deleting it were authorized in
+advance for T-0055–T-0057. Cloudflare Pages preview `https://stage8-t-0057.wxl-platform.pages.dev`
+(deployment `80e6588c`, check run "Cloudflare Pages" on `1532eea`: success). T-0053 to T-0056 are on
+`main` (`c97e8ae`), which this branch is cut from.
+
+Scripts are in the session's scratchpad and run from the repository root with
+`@playwright/test`'s Chromium (headless): `v1-rows.cjs <origin>`, `v3-switch.cjs <origin>`,
+`v3-menus.cjs <origin> /reference/attack-log-export-format`. Each action opens a fresh browser
+context (a new tab and a new session) after setting `wxl-locale` on `/favicon.svg` of the same
+origin. The rows marked "built-in browser" ran in the host's built-in browser, each in a new tab
+after clearing `localStorage` and setting the stored value from a `/favicon.svg` tab; challenge
+pages there had the challenge's Browser panel open (screenshots in the session).
+
+**HTTP (`curl -s -o /dev/null -w '%{http_code} %{redirect_url}'`, the preview):** `/c/999`,
+`/en/c/999`, `/zh/c/999`, `/zh-TW/c/999` → 302 to `/challenge/stage8-english-only/` (G1, G3);
+`/zh/c/001`, `/zh-TW/c/001` → 302 to `/zh-TW/challenge/door-is-open/` (G2); `/c/001`, `/en/c/001`
+→ 302 to `/challenge/door-is-open/` (G1); `/zh-TW/c/stage8-english-only`, `/zh/c/stage8-english-only`
+→ 302 to `/zh-TW/challenge/stage8-english-only/`, which is 404; `/en/challenges` 404. Served HTML
+(`curl -s`): `/zh-TW/challenges` holds one `data-locale-mark` (`只有英文`, list view) and
+`wxl.browserlab.online/zh-TW/c/999`; `/zh-TW/` one `data-locale-mark` (`只有英文`); `/challenges`
+and `/` none, `/challenges` shows `wxl.browserlab.online/en/c/999`; no page holds
+`data-missing-translation` (L7).
+
+| Row | Stored | Surface | Result |
+|---|---|---|---|
+| V1a | none; `zh-TW` | built-in browser, 1024 wide, Browser panel open | pass: a cold load of `/challenge/stage8-english-only/` stays (A2) and shows the line `lang="zh-TW"`, "這一頁沒有繁體中文版本，所以顯示英文版。前往繁體中文題目清單", link `/zh-TW/challenges` (L2); the line is 1024 px wide at y 40–78, its previous sibling `.merged-nav`, visible with the description open and after "Collapse description" (L3; no runtime-reset banner was showing); stored unchanged |
+| V1b | `en` | Playwright | pass: A4, no line, stored `en` |
+| V1c | none; `zh-TW`; `en` | Playwright | pass, all six: `/zh-TW/c/stage8-english-only` and, in a new context, `/zh/c/stage8-english-only` land on `/challenge/stage8-english-only/` (C1, `history.length` 2: replaced) with the line `zh-TW`; stored unchanged in each (C5) |
+| V1d | none; `en` | Playwright | pass, all eight: the four short links land on the English page; none → the line `zh-TW` (A2); `en` → no line (A4); stored unchanged |
+| V1e | `en` | Playwright | pass: `/zh/c/001` and `/zh-TW/c/001` land on `/zh-TW/challenge/door-is-open/`, no line (A5), stored becomes `zh-TW` (W2) |
+| V1f | none; `en` | Playwright | pass: none → `/c/001` and `/en/c/001` redirect to `/zh-TW/challenge/door-is-open/` (A1), stored stays empty; `en` → stay on `/challenge/door-is-open/` (A4) |
+| V1g | `zh-TW` | Playwright | pass: `/zh-TW/challenges` list view — the fixture's row links `/challenge/stage8-english-only/`, mark `只有英文`, title and summary `lang="en"`, copy control `wxl.browserlab.online/zh-TW/c/999` labelled `複製連結` (F3, F10); clicking it shows `已複製` and the clipboard holds `https://wxl.browserlab.online/zh-TW/c/999`; grid view — the same mark and `lang`; one mark on the page in each view (E2, E6). `/zh-TW/`: one latest card with `只有英文`, linking the English page; `data-stat` total 5 = the four committed challenges plus #999 (E6, E7) |
+| V1h | `zh-TW` | Playwright | pass: clicking the fixture in `/zh-TW/challenges` lands on the English page with the line `zh-TW` (L5), stored still `zh-TW` (W5); the line's link opens `/zh-TW/challenges` |
+| V1i | none | built-in browser, new tab, Browser panel open | pass: with the fixture's stored records (IndexedDB `challenge-tools`) from V1a, a cold load shows the session gate and no line; after "Continue with this work" the line `zh-TW` appears (A6, L1); stored stays empty |
+| V1j | `en` | Playwright | pass: `/challenges`, then in the same tab `/zh-TW/c/stage8-english-only` → the English page with the line `zh-TW`, `history.length` 3 (C1 replaced the 404); Back → `/challenges` (C7); stored `en` throughout (W5); Forward → the English page with no line (L5/L6: the carry is gone) |
+| V1k | none | Playwright | pass: `/en/challenges` is the not-found page with no line (C3) |
+| V1l | `en` | built-in browser, 375×812 emulated, Browser panel open | pass: no line on the cold load (A4); 繁體中文 (labelled "Traditional Chinese") keeps the URL and `history.length`, shows the line (375 px wide, 63 px high) and stores `zh-TW` (B2); the menu then offers Traditional Chinese and English; English removes the line and stores `en` (B5). With the line shown, collapsing and reopening the description, the Browser panel (the fixture's app rendered full width when collapsed) and the Code tab ("Loading Python environment…") all work (D15) |
+| V2 | as below | built-in browser, `https://cxphoenix.github.io/wxl-e2e-0008-t0057/` | pass: none → `/wxl-e2e-0008-t0057/challenge/stage8-english-only/` stays with the line `zh-TW`, link `/wxl-e2e-0008-t0057/zh-TW/challenges` (A2, A7); none → `/wxl-e2e-0008-t0057/zh-TW/challenge/stage8-english-only/` is served 404 by GitHub Pages and lands on the English page, the line appearing after the session gate's "Continue" (C1, C4, C6, A6), stored still empty; `/wxl-e2e-0008-t0057/zh-TW/challenges` (page mode) shows #999 with `只有英文`, `lang="en"` and the copy control `cxphoenix.github.io/wxl-e2e-0008-t0057/challenge/stage8-english-only/` (F6); stored `en`, the reference page: 繁體中文 stays (`history.length` unchanged) with the line `zh-TW` linking `/wxl-e2e-0008-t0057/zh-TW/challenges`, English removes it (B2, B3, B5); stored `en`, `/wxl-e2e-0008-t0057/challenges`: 繁體中文 pushes `/wxl-e2e-0008-t0057/zh-TW/challenges` (B1, B3) |
+| V3 | `en`; `zh-TW` for B7 | Playwright | pass: `v3-switch.cjs` — at 1280, 1024 and 375 a cold load of the reference page has no line (A4); the menu offers one option, Traditional Chinese; choosing it keeps the URL and `history.length`, shows the line `zh-TW`, stores `zh-TW` (B2); the menu then offers two; English removes the line and stores `en` (B5). `/zh-TW/no-such-page`: the not-found page, the menu offers English, choosing it stays, no line, stores `en` (B7). `v3-menus.cjs` — the custom switcher is visible in all six runs; `.VPNavBarTranslations` (1280) and `.VPNavBarExtra .translations` (1024) are `display: none` with scripts disabled and hydrated; `.VPNavScreenTranslations` (375) is absent from the served HTML and `display: none` hydrated (B4) |
+
+The temporary range: `CREATE_WXL_COMMIT=1532eeaf28e49f70dedc492253203b5fd57d73ad npx -y create-wxl@3.0.0 range --author CXPhoenix --repo CXPhoenix/wxl-e2e-0008-t0057 --host github-pages --site-name …`,
+pushed to the public repository `CXPhoenix/wxl-e2e-0008-t0057` (commit `7206c84`; workflow "Deploy"
+run 42079017661: success); `curl`: `/zh-TW/challenge/stage8-english-only/` 404,
+`/zh-TW/reference/attack-log-export-format` 404, the English pages 200.
+
+Seen in passing, outside this ticket: on `/zh-TW/challenges` the list's controls that use the
+runtime `$t` — the search placeholder, the sort-direction and view-mode titles — read in English
+after hydration, with the stored value empty or `zh-TW` (`zh-ui.cjs`); the same on
+`https://wxl.browserlab.online` (`main`) and on `stage8-t-0056`, so it predates this ticket. Left for
+the user.
+
+Cleanup, under the same authorization: `cxphoenix.github.io` and the preview origin's
+`localStorage`, `sessionStorage` and IndexedDB (`challenge-tools`) cleared and checked empty;
+`git push origin --delete stage8/T-0057` and the local branch deleted; deployment `80e6588c` stays
+(not deletable from here). The viewport emulation was reset. The repository
+`CXPhoenix/wxl-e2e-0008-t0057` is the user's to delete (this session's token has no `delete_repo`
+scope).
