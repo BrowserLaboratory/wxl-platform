@@ -2,7 +2,7 @@
 id: T-0057
 title: Every locale's list shows every challenge, and the epic's full stage 8
 epic: 0008-missing-translation-fallback
-status: review
+status: done
 blocked_by: [T-0055, T-0056]
 ---
 
@@ -307,3 +307,13 @@ Cleanup, under the same authorization: `cxphoenix.github.io` and the preview ori
 (not deletable from here). The viewport emulation was reset. The repository
 `CXPhoenix/wxl-e2e-0008-t0057` is the user's to delete (this session's token has no `delete_repo`
 scope).
+
+### 2026-11-06 — landed (stage 9)
+
+PR [#58](https://github.com/BrowserLaboratory/wxl-platform/pull/58), squash-merged into `main` as
+`ef13b2b` on 2026-11-05 (18:17Z), from head `74a5e5e`, with a squash message from the project
+`tw-emoji-commit` skill, under the user's advance authorization for this ticket's PRs. The PR's CI:
+all 10 checks passed on the first run. `git diff 74a5e5e ef13b2b` is empty. The PR branch is deleted
+on `origin`. The epic's close-out (chain analysis, evidence report, retrospective, OQ-023's
+resolution with this ticket's stage 8 evidence) follows on `main`.
+Frontmatter `status: done`.
