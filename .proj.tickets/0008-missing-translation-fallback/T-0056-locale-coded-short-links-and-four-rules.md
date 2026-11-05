@@ -37,7 +37,7 @@ locale of its own text and of its link.
 - [x] H2: the README's short-link passage, both languages (AC-9)
 - [x] H7 (AC-9)
 - [x] Overridden contracts touched here (epic 0007's H01, H02, H14, H20, H37, H39, H40, vocabulary, X1–X2, L01–L02; `redirects.test.ts`, `redirects-generated.test.ts`, `pre-commit-sh.test.ts`, `shortLink.test.ts`, `ShortLinkShare.test.ts`, `ChallengeList.test.ts`, `MergedNav.test.ts`) change only as the traceability table states
-- [ ] Stage 8 (T4): V1c–V1f on the Cloudflare preview of `stage8/T-0056`, checking where each rule redirects (V1c for G4's slug rule to a missing translation); the copy control's string in both languages (AC-10)
+- [x] Stage 8 (T4): V1c–V1f on the Cloudflare preview of `stage8/T-0056`, checking where each rule redirects (V1c for G4's slug rule to a missing translation); the copy control's string in both languages (AC-10)
 
 ## 給使用者（zh-TW）
 
@@ -261,3 +261,54 @@ ticket or stated by the spec: S-1 (slugs reach `_redirects` without the slug gra
 one-segment paths below them), S-4 (an all-digit slug equal to another challenge's padded number is
 shadowed by that number's rules, now in four forms), S-5 (W4 echoes control characters of an
 untracked directory's name), S-6 (= stage 6 Spec F8).
+
+### 2026-11-05 — stage 8
+
+Surface, per D12: the throwaway branch `stage8/T-0056` = this ticket's `91035b0` plus fixture commit
+`3a924cf` (made with `/tw-emoji-commit`: `git checkout 41b9dc7 -- platform/challenge/stage8-english-only`,
+number 999, English brief only; then `pnpm redirects:generate`, and `grep 999 platform/public/_redirects`
+showed four rules, all at `/challenge/stage8-english-only/`). Pushing and deleting it were authorized
+in advance by the user for T-0055–T-0057 (2026-11-05). Cloudflare Pages preview
+`https://stage8-t-0056.wxl-platform.pages.dev` (deployment `dfa548e3`, check run "Cloudflare Pages" on
+`3a924cf`: success).
+
+Rules on the preview (HTTP surface), `curl -s -o /dev/null -w '%{http_code} %{redirect_url}' <preview><path>`:
+
+| Path | Result |
+|---|---|
+| `/c/999`, `/en/c/999`, `/zh/c/999`, `/zh-TW/c/999` | 302 `/challenge/stage8-english-only/` (G1, G3) |
+| `/c/001`, `/en/c/001` | 302 `/challenge/door-is-open/` (G1) |
+| `/zh/c/001`, `/zh-TW/c/001` | 302 `/zh-TW/challenge/door-is-open/` (G2) |
+| `/zh-TW/c/stage8-english-only`, `/zh/c/stage8-english-only` | 302 `/zh-TW/challenge/stage8-english-only/`, which is 404 (G4) |
+| `/en/c/stage8-english-only` | 302 `/challenge/stage8-english-only/` |
+
+Arrivals (browser surface): driven in the host's built-in browser, reading the page with JavaScript
+after each load. Each row cleared `localStorage` and `sessionStorage`, set the stored value, and loaded
+the path in full, so each was a cold load in a new session (one tab; the built-in browser's "new tab"
+was not used). The Browser panel was not opened: no V row of this ticket asks for it. From V1f on, the
+session gate asked on every page (door-is-open's app had saved work in IndexedDB during V1e); it was
+answered "Continue with this work" (a click on the button for V1f, the button's `click()` from
+JavaScript for V1c and the copy control).
+
+| Row | Stored value | Result |
+|---|---|---|
+| V1d | none | pass, all four paths: end at `/challenge/stage8-english-only/`, the line `lang="zh-TW"` 「這一頁沒有繁體中文版本，所以顯示英文版。」 with 「前往繁體中文題目清單」, stored still none (A2) |
+| V1d | `en` | pass, all four: same page, no line, `html lang="en-US"`, stored `en` (A4) |
+| V1e | `en` | pass, `/zh/c/001` and `/zh-TW/c/001`: end at `/zh-TW/challenge/door-is-open/`, `lang="zh-TW"`, no line, stored becomes `zh-TW` (A5, W2) |
+| V1f | none | pass, `/c/001` and `/en/c/001`: the gate asked and the page stayed English while it asked; after continuing, `/zh-TW/challenge/door-is-open/`, stored still none (A1, A6, D6) |
+| V1f | `en` | pass, both: stay at `/challenge/door-is-open/`, no line, stored `en` (A4) |
+| V1c | none; `zh-TW`; `en` | pass, all six (`/zh-TW/c/<slug>`, then `/zh/c/<slug>`, per value): end at `/challenge/stage8-english-only/` (C1); no line while the gate asked, then the line in `zh-TW` (L1); stored unchanged in each (C5) |
+
+Copy control (browser surface and served HTML, `curl -s <preview><path> \| grep -o 'data-short-link[^>]*>[^<]*'`):
+`/challenges` gives `wxl.browserlab.online/en/c/001` … `/en/c/999`, title the `https://` URL, label
+"Copy link"; `/zh-TW/challenges` gives `wxl.browserlab.online/zh-TW/c/001` … `/010`, label 「複製連結」;
+the nav's two controls on `/challenge/door-is-open/` give `…/en/c/001` and on
+`/zh-TW/challenge/door-is-open/` `…/zh-TW/c/001`. No `/zh/c/` and no bare `/c/` anywhere; served and
+hydrated texts match (F1, F2, F7, F8, F9, F10). #999 is not in the Traditional Chinese list yet: that is
+T-0057's (E rows, F3).
+
+Seen in passing: the first load, `/challenges` with nothing stored, ended at `/zh-TW/challenges` (A1).
+
+Cleanup, under the same authorization: the preview origin's `localStorage`, `sessionStorage` and
+IndexedDB (`challenge-tools`) cleared; `git push origin --delete stage8/T-0056` and the local branch
+deleted (its preview alias goes with it); deployment `dfa548e3` cannot be deleted from here and stays.
