@@ -2,7 +2,7 @@
 id: T-0056
 title: Short links name their locale, and every challenge gets four redirect rules
 epic: 0008-missing-translation-fallback
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -312,3 +312,16 @@ Seen in passing: the first load, `/challenges` with nothing stored, ended at `/z
 Cleanup, under the same authorization: the preview origin's `localStorage`, `sessionStorage` and
 IndexedDB (`challenge-tools`) cleared; `git push origin --delete stage8/T-0056` and the local branch
 deleted (its preview alias goes with it); deployment `dfa548e3` cannot be deleted from here and stays.
+
+### 2026-11-05 — landed (stage 9)
+
+PR [#54](https://github.com/BrowserLaboratory/wxl-platform/pull/54), squash-merged into `main` as
+`95c05bc` on 2026-11-05 (15:28Z), from head `e49dccf`, with a squash message from the project
+`tw-emoji-commit` skill. The user authorized in advance merging this ticket's PR once CI passed and
+the stage 8 record was written (2026-11-05). The PR's CI: 10 checks passing, none failing. The PR
+branch is deleted on `origin`. T-0055 can start; T-0057 stays blocked until T-0055 is `done` on
+`main`. Frontmatter `status: done`.
+
+For the user to review (recorded above, not acted on here): the two pre-existing hook defects in the
+coverage report (stash abort on a `--cached`-only removal; W4 silent on a fully untracked tree) and
+stage 7's S-1, S-2 and S-4.
