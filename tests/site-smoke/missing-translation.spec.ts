@@ -22,6 +22,14 @@ async function storeLocale(page: Page, value: 'en' | 'zh-TW' | null) {
 
 const storedLocale = (page: Page) => page.evaluate(() => window.localStorage.getItem('wxl-locale'))
 
+/** The vue-i18n runtime locale: the interface's, which a switcher choice that stays must not change. */
+const runtimeLocale = (page: Page) =>
+  page.evaluate(() => {
+    const app = (document.querySelector('#app') as { __vue_app__?: { config: { globalProperties: { $i18n?: { locale: unknown } } } } } | null)?.__vue_app__
+    const locale = app?.config.globalProperties.$i18n?.locale
+    return typeof locale === 'string' ? locale : (locale as { value?: string } | undefined)?.value
+  })
+
 test('the page list spelling matches the pages VitePress published', () => {
   // Both sides are built here: the source pages by the spelling rule, the published pages from
   // the built HTML. Equal sets mean the rule names exactly what the build serves.
@@ -127,12 +135,75 @@ test('the HTML as served already hides the built-in translation dropdown', async
   await context.close()
 })
 
-test('a choice in the custom locale switcher on an article is stored', async ({ page }) => {
+test('a choice in the custom locale switcher on an article is stored, and Back returns (B1)', async ({ page }) => {
   await storeLocale(page, 'zh-TW')
   await page.goto('/zh-TW/guide/python')
   await page.locator('[data-locale-switcher-toggle]').click()
   await page.locator('[data-locale-option="en"]').click()
   await expect(page).toHaveURL(/\/guide\/python$/)
+  expect(await storedLocale(page)).toBe('en')
+  // A switcher navigation is a push (spec 0008, B1): the page it left is one Back away.
+  await page.evaluate(() => history.back())
+  await expect(page).toHaveURL(/\/zh-TW\/guide\/python$/)
+})
+
+// Spec 0008, B2, B4, B5: on a page with no version in the chosen locale, the switcher stays — no
+// navigation, no history entry, the interface still in the page's locale — with the line at once
+// in the chosen locale, and the page's own locale, now offered too, takes the line away. At every
+// width the switcher shows at (the menus' hiding is the cases above).
+for (const { width, height } of BUILT_IN_MENUS) {
+  test(`at ${width} wide the switcher stays on an English-only article, and the way back removes the line`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height } })
+    const page = await context.newPage()
+    await storeLocale(page, 'en')
+    await page.goto(REFERENCE)
+    await hydrated(page)
+    const before = await page.evaluate(() => history.length)
+    await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+
+    await page.locator('[data-locale-switcher-toggle]:visible').click()
+    await page.locator('[data-locale-option="zh-TW"]:visible').click()
+    await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', 'zh-TW')
+    expect(new URL(page.url()).pathname).toBe(REFERENCE)
+    expect(await page.evaluate(() => history.length)).toBe(before)
+    expect(await page.evaluate(() => document.documentElement.lang)).toMatch(/^en/)
+    expect(await runtimeLocale(page)).toBe('en')
+    expect(await storedLocale(page)).toBe('zh-TW')
+
+    await page.locator('[data-locale-switcher-toggle]:visible').click()
+    await expect(page.locator('[data-locale-option]:visible')).toHaveCount(2)
+    await page.locator('[data-locale-option="en"]:visible').click()
+    await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+    expect(new URL(page.url()).pathname).toBe(REFERENCE)
+    expect(await storedLocale(page)).toBe('en')
+    await context.close()
+  })
+
+  test(`at ${width} wide the switcher in a challenge page's bar goes to the translation that exists (B1)`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height } })
+    const page = await context.newPage()
+    await storeLocale(page, 'en')
+    await page.goto('/challenge/selected-excerpts/')
+    await hydrated(page)
+    await page.locator('[data-locale-switcher-toggle]:visible').click()
+    await page.locator('[data-locale-option="zh-TW"]:visible').click()
+    await expect(page).toHaveURL(/\/zh-TW\/challenge\/selected-excerpts\/$/)
+    expect(await storedLocale(page)).toBe('zh-TW')
+    await context.close()
+  })
+}
+
+test('on the not-found page a choice with no counterpart is written and stays, with no line (B7)', async ({ page }) => {
+  await storeLocale(page, 'zh-TW')
+  await page.goto('/zh-TW/no-such-page')
+  await hydrated(page)
+  await page.locator('[data-locale-switcher-toggle]:visible').click()
+  await page.locator('[data-locale-option="en"]:visible').click()
+  // "Stays" is an absence; give a navigation the time it would take before checking for it.
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
+  await page.waitForTimeout(500)
+  expect(new URL(page.url()).pathname).toBe('/zh-TW/no-such-page')
+  await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
   expect(await storedLocale(page)).toBe('en')
 })
 

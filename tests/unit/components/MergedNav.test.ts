@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
 import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
@@ -42,6 +42,7 @@ const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
 vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
 
 import MergedNav from '../../../.vitepress/theme/components/MergedNav.vue'
+import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from '../../../.vitepress/theme/i18n/missingTranslation'
 import ShortLinkShare from '../../../.vitepress/theme/components/ShortLinkShare.vue'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
 
@@ -340,6 +341,25 @@ describe('MergedNav', () => {
   // the component standalone.
   it.each(['en', 'zh-TW'] as const)('in %s, the bar composes a locale switcher', (locale) => {
     expect(mountIn(locale).find('[data-locale-switcher-toggle]').exists()).toBe(true)
+  })
+
+  // Spec 0008, B4, B5: the switcher in a challenge page's bar reads the same provider as the one
+  // in the default-theme nav — the Layout's choice and the line — so it offers the way back while
+  // the line shows and hands the choice to the Layout.
+  it('the bar\'s switcher offers the way back while the line shows and hands the choice to the Layout', async () => {
+    const choose = vi.fn(() => 'stay' as const)
+    mockLocaleIndex.value = 'root'
+    const wrapper = mount(MergedNav, {
+      props: defaultProps,
+      global: {
+        plugins: [makeI18n('en')],
+        provide: { [LOCALE_CHOICE as symbol]: choose, [MISSING_TRANSLATION_LOCALE as symbol]: computed(() => 'zh-TW') },
+      },
+    })
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    expect(wrapper.findAll('[data-locale-option]').map((o) => o.attributes('data-locale-option'))).toEqual(['zh-TW', 'en'])
+    await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
+    expect(choose).toHaveBeenCalledWith('zh-TW')
   })
 
   // localizePath takes a BASE-LESS path; withBase wraps its output. Reversing

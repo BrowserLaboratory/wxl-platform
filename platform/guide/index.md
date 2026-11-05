@@ -63,4 +63,4 @@ Collapsing the description keeps a flag entry at the bottom. Stored completion a
 | Repeater | `Repeater` tab | A free-text `Raw HTTP Request` box, prefilled with a `GET /` request whose Host is `challenge-<slug>.localhost`, plus a Send button and a saved-snapshot sidebar. Expanding a row in the Network log offers `Send to Repeater`, which switches to this tab and overwrites whatever is in the box. See [Network and Repeater](./network). |
 | Pentest Notes | Nav bar button, opens a panel | Per-challenge notes with a Markdown preview, a search box and a newest/oldest sort toggle. The button carries a count badge once the challenge has at least one note. Text in the editor is saved only when you press Save. See [Pentest Notes](./notes). |
 
-The Network log lives in the page you are on. Navigating away or switching language empties it completely.
+The Network log lives in the page you are on. Navigating away empties it completely, and so does switching language when the page has a version in the other language, since the switcher then goes to that version.

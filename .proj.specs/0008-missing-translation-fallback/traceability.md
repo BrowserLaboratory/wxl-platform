@@ -3,6 +3,19 @@
 `{type × field × boundary} → {expected behaviour → acceptance criterion}`. The spec (`spec.en.md`)
 is derived from this file; a gap here is a gap there.
 
+Revision 3.4 (2026-11-05) names, before T-0055 changes them, the existing tests its approved test plan
+rewrites that the switcher contracts did not name: the rest of `locale-switcher.test.ts`'s `select`
+cases (the base cases, query and hash, the runtime-locale disagreement, the three EN/zh-TW path cases,
+`buildTargetPath`, the keyboard case, "closes the dropdown when an option is chosen"), and the
+harness of its whole "LocaleSwitcher UI" block: the `vitepress` mock (the switcher reads only the
+page's locale now), `mountAt` (mounted under the Layout's provider, with its `choose` and line
+fixtures) and the `setPathname` calls the component no longer reads; the `beforeEach` of
+`not-found-wiring.test.ts`, `initial-locale-redirect.test.ts` and `locale-switcher.test.ts`, which
+reset the choice D14 keeps in memory; the `LocaleSwitcher` stub in
+`not-found-wiring.test.ts`, which also hands the test the Layout's `choose`; and
+`missing-translation.spec.ts`'s "a choice in the custom locale switcher on an article is stored",
+which gains Back. No behaviour changes and the spec text is unchanged. See T-0055's record.
+
 Revision 3.3 (2026-11-05) names the tests T-0056 changes that the table did not name, found while
 its test plan was checked and in its stage 6 review: in the first overridden contract, the
 `pre-commit-sh.test.ts` cases that spell a challenge's rules ("exits 0 when entire challenge
@@ -276,7 +289,7 @@ other test the diff changes is named here.
 | The Layout route watcher persists the URL's locale on every cross-locale route change | `.vitepress/theme/index.ts` Layout setup and its comment; `route-locale-sync.test.ts` ("browser back … updates locale to en" and the stored-value assertions); `theme-locale-wiring.test.ts`, which keeps its own copy of the watcher | D5: it sets the interface locale only |
 | A cold load of any prefixed path persists its locale, decided in `enhanceApp` from the URL | `shouldPersistOnColdLoad` and its documentation; the `enhanceApp` comment; `initial-locale-redirect.test.ts` (its two-argument cases); `theme-locale-wiring.test.ts` ("enhanceApp runs at app bootstrap", the block "the real theme: cold-load persistence"); the comments that say where `wxl-locale` is written (`localStorageKeys.ts`, `useSessionGate.ts`, `useSessionGate.test.ts`, `local-storage-ownership.test.ts`) | D5, D16, W2/W3: decided after the router resolves, for a published page only |
 | The cold-load redirect takes no page list | `redirectTargetForStoredLocale`; `initial-locale-redirect.test.ts`; `theme-locale-wiring.test.ts` (the expected targets of its cold-load redirect and session-gate cases, and its `setPath` double, which now says what the router renders); `not-found-wiring.test.ts` ("shows no line on a page it is about to redirect away from", which pinned the cold-load detour through a missing translation) | S1 signature gains the page list and the router's result, and the location's path is no longer read: the target is the counterpart's list entry (D16), so `/challenges/` rendered from `challenges.md` goes to `/zh-TW/challenges`; an unprefixed page without a published counterpart stays (A2, A3) |
-| Switching from any path navigates to its counterpart; the menu lists only the locale the page is not in; choosing the page's own locale does nothing; the current-locale title is not interactive | `LocaleSwitcher`'s comments, `select` and its early return; `locale-switcher.test.ts` (cases switching from paths that are not pages, "offers exactly", the non-interactive title) | B1, B2, B5, B7 |
+| Switching from any path navigates to its counterpart; the menu lists only the locale the page is not in; choosing the page's own locale does nothing; the current-locale title is not interactive | `LocaleSwitcher`'s comments, `select` and its early return; `locale-switcher.test.ts` (cases switching from paths that are not pages, "offers exactly", the non-interactive title; from revision 3.4, every other `select` case — the base cases, query and hash, the runtime-locale disagreement, the three EN/zh-TW path cases, `buildTargetPath`, the keyboard case, "closes the dropdown when an option is chosen" — the harness of its "LocaleSwitcher UI" block — the `vitepress` mock, `mountAt` and its fixtures, the `setPathname` calls — and its `beforeEach`); from revision 3.4, `not-found-wiring.test.ts`'s `LocaleSwitcher` stub and `beforeEach`, `initial-locale-redirect.test.ts`'s `beforeEach`, and `missing-translation.spec.ts`'s "a choice in the custom locale switcher on an article is stored" | B1, B2, B5, B7 |
 | The switcher changes the runtime locale on choice | `LocaleSwitcher`'s comments and `select` | B2: not when it stays |
 | Flipping the switcher flag needs no spec change; the built-in menus are hidden by a class added on mount | `USE_CUSTOM_LOCALE_SWITCHER` comment; `style.css`'s rule and comment; the Layout's `onMounted` body class | D7: the comment names this spec; hiding does not depend on run time |
 | One content loader per locale tree; `id` falls back to the position in its own array | `tests/unit/site/challenge-data-loaders.test.ts` | The merge rules |

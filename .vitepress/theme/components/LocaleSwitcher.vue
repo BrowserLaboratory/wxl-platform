@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, useId } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useData, useRouter } from 'vitepress'
-import { localizePath, persistLocale, type Locale } from '../i18n'
+import { useData } from 'vitepress'
+import { rememberChoice, otherLocale, type Locale } from '../i18n'
+import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE, type ChoiceOutcome } from '../i18n/missingTranslation'
 
 const { t, locale } = useI18n()
-const { localeIndex, site } = useData()
-const router = useRouter()
+const { localeIndex } = useData()
+
+// Where a choice goes is the theme Layout's (spec 0008, B1–B7): it writes the choice, then
+// navigates to a published counterpart or stays with the line. Mounted with no Layout above it,
+// the switcher only remembers the choice.
+const choose = inject(LOCALE_CHOICE, (chosen: Locale): ChoiceOutcome => {
+  rememberChoice(chosen)
+  return 'stay'
+})
+const lineLocale = inject(MISSING_TRANSLATION_LOCALE, computed(() => null))
 
 // Everything DISPLAYED here is derived from the page locale, not from the
 // vue-i18n runtime locale. The runtime instance starts at `en` and is only
@@ -15,9 +24,9 @@ const router = useRouter()
 // was rewritten for exactly this reason in the same commit; round 1 of review
 // caught that this component was left on the old pattern.
 //
-// `locale` (the runtime ref) is still ASSIGNED in select(), because switching
-// the running app's language is precisely what it is for. Read from the page,
-// write to the runtime.
+// The runtime locale is ASSIGNED here only when a choice navigates (spec 0008, B2): the
+// interface follows the URL, and a choice that stays keeps both the URL and the interface in
+// the page's locale. Read from the page, write to the runtime.
 const pageLocale = computed<Locale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
 
 // Unique per mount: the heading's id is referenced by the listbox's
@@ -30,56 +39,22 @@ const open = ref(false)
 const rootEl = ref<HTMLElement | null>(null)
 
 const tp = (key: string) => t(key, {}, { locale: pageLocale.value })
+const labelOf = (l: Locale) => (l === 'zh-TW' ? tp('locale_switcher.tw_label') : tp('locale_switcher.english_label'))
 
-const currentLabel = computed(() =>
-  pageLocale.value === 'zh-TW' ? tp('locale_switcher.tw_label') : tp('locale_switcher.english_label')
-)
+const currentLabel = computed(() => labelOf(pageLocale.value))
 
-// The menu lists the locale the PAGE is not in. Both values derive from
-// `pageLocale`, so no CJK literal enters the template.
-const otherLocale = computed<Locale>(() => (pageLocale.value === 'zh-TW' ? 'en' : 'zh-TW'))
-const otherLabel = computed(() =>
-  otherLocale.value === 'zh-TW' ? tp('locale_switcher.tw_label') : tp('locale_switcher.english_label')
+// The menu (spec 0008, B5): its title is always the page's locale. It offers the locale the
+// page is not in; while the missing-translation line shows, it also offers the page's own
+// locale, the way back, which removes the line without navigating. Every label derives from a
+// locale code, so no CJK literal enters the template.
+const options = computed<Locale[]>(() =>
+  lineLocale.value ? [otherLocale(pageLocale.value), pageLocale.value] : [otherLocale(pageLocale.value)],
 )
 
 function select(target: Locale) {
   open.value = false
-  // Guard on the PAGE locale, because that is what the menu presented: the one
-  // offered entry is `otherLocale`, derived from `pageLocale`. Comparing the
-  // vue-i18n runtime ref here made the offered entry a no-op whenever the two
-  // disagreed — and they do disagree on a cold load of a non-prefixed URL when
-  // `wxl-locale` holds `zh-TW`, because detectInitialLocale lets the stored
-  // value win and the route watcher carries no `immediate`. Before the round-1
-  // fix moved display onto `pageLocale` this line was unreachable; the fix made
-  // it reachable and turned the switcher into a dead control.
-  if (pageLocale.value === target) return
-
-  locale.value = target
-  persistLocale(target)
-
-  if (typeof window !== 'undefined') {
-    // `window.location.pathname` INCLUDES the site base, and `localizePath`
-    // requires a base-less path — its docstring says so, and `MergedNav`'s
-    // `navLink` obeys it. Strip the base off, localise, put it back.
-    //
-    // A non-empty base is a supported configuration (`config.mts` reads
-    // `SITE_BASE`, which a GitHub Pages range's deploy workflow sets from its
-    // Pages configuration). Feeding the prefixed path in emitted
-    // `/zh-TW/<base>/...` — the locale segment outside the base — and, switching the other way, returned
-    // the path unchanged so the navigation silently did nothing while the
-    // runtime locale and localStorage had already been written.
-    //
-    // `router.go` needs the base back on: VitePress's loadPage recovers the
-    // relative path with `route.path.slice(site.base.length)`.
-    const base = site.value.base || '/'
-    const path = window.location.pathname
-    const bare = path.startsWith(base) ? path.slice(base.length - 1) : path
-    const nextPath =
-      base.slice(0, -1) + localizePath(bare, target) +
-      window.location.search +
-      window.location.hash
-    router.go(nextPath)
-  }
+  // The Layout decides and writes; the switcher only follows a navigation with the interface.
+  if (choose(target) === 'navigate') locale.value = target
 }
 
 function onDocumentClick(ev: MouseEvent) {
@@ -99,11 +74,6 @@ onUnmounted(() => {
     document.removeEventListener('click', onDocumentClick)
   }
 })
-
-// The exposed name is kept for the existing test surface, but it now points at
-// the single-sourced rule. A test asserts this identity: if anyone reinstates a
-// local copy of the prefixing logic, that assertion is the thing that goes red.
-defineExpose({ buildTargetPath: localizePath })
 </script>
 
 <template>
@@ -155,16 +125,18 @@ defineExpose({ buildTargetPath: localizePath })
         class="list-none m-0 pl-0"
       >
         <li
+          v-for="option in options"
+          :key="option"
           class="cursor-pointer px-3 py-1.5 text-[0.85em] color-[var(--ch-text-2)] hover:bg-[var(--ch-bg-soft)] hover:color-[var(--ch-accent)] whitespace-nowrap"
           role="option"
           :aria-selected="false"
           tabindex="0"
-          :data-locale-option="otherLocale"
-          @click="select(otherLocale)"
-          @keydown.enter.prevent="select(otherLocale)"
-          @keydown.space.prevent="select(otherLocale)"
+          :data-locale-option="option"
+          @click="select(option)"
+          @keydown.enter.prevent="select(option)"
+          @keydown.space.prevent="select(option)"
           @keydown.escape="open = false"
-        >{{ otherLabel }}</li>
+        >{{ labelOf(option) }}</li>
       </ul>
     </div>
   </div>

@@ -1,34 +1,49 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { computed, ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
 import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 
-const mockGo = vi.fn()
 // The component now DISPLAYS from the page-resolved locale and only WRITES to
 // the vue-i18n runtime locale, so tests must be able to set the two apart —
 // that divergence is exactly the SSR condition the fix addresses.
 const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
-// The production site base is '/', so a base-related bug is invisible unless the
-// double can return something else. Same reason MergedNav's test carries one.
-const mockBase = { value: '/' }
+// The switcher reads only the page's locale from VitePress (spec 0008): where a choice goes, the
+// site base and the location are the Layout's, through the provided choice.
 vi.mock('vitepress', () => ({
-  useRouter: () => ({ go: mockGo, route: { path: '/' } }),
-  useData: () => ({ localeIndex: mockLocaleIndex, site: { value: { base: mockBase.value } } }),
+  useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
 
 import LocaleSwitcher from '../../../.vitepress/theme/components/LocaleSwitcher.vue'
 import {
   detectInitialLocale,
   persistLocale,
-  localizePath,
+  readStoredLocale,
   LOCALE_STORAGE_KEY,
+  _resetRememberedChoiceForTests,
 } from '../../../.vitepress/theme/i18n'
+import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE, type ChoiceOutcome } from '../../../.vitepress/theme/i18n/missingTranslation'
 
-/** Mounts with the page locale and the runtime locale set independently. */
-function mountAt(pageLocale: 'en' | 'zh-TW', runtimeLocale: 'en' | 'zh-TW' = pageLocale) {
+// What the theme's Layout provides (spec 0008): the choice, which decides whether to navigate or
+// stay (tests/unit/i18n/not-found-wiring.test.ts drives the real one), and the line's locale. The
+// switcher shows the menu and hands the choice over.
+const line = ref<'en' | 'zh-TW' | null>(null)
+const chooseResult = { value: 'stay' as ChoiceOutcome }
+const choose = vi.fn((_locale: 'en' | 'zh-TW') => chooseResult.value)
+
+/**
+ * Mounts with the page locale and the runtime locale set independently, under the Layout's
+ * provider. Pass the i18n instance to read the runtime locale afterwards.
+ */
+function mountAt(pageLocale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW' | ReturnType<typeof makeI18n> = pageLocale) {
   mockLocaleIndex.value = pageLocale === 'zh-TW' ? 'zh-TW' : 'root'
-  return mount(LocaleSwitcher, { global: { plugins: [makeI18n(runtimeLocale)] } })
+  return mount(LocaleSwitcher, {
+    global: {
+      plugins: [typeof runtime === 'string' ? makeI18n(runtime) : runtime],
+      provide: { [LOCALE_CHOICE as symbol]: choose, [MISSING_TRANSLATION_LOCALE as symbol]: computed(() => line.value) },
+    },
+  })
 }
 
 function makeI18n(locale: 'en' | 'zh-TW' = 'en') {
@@ -48,9 +63,11 @@ function setPathname(p: string, search = '', hash = '') {
 }
 
 beforeEach(() => {
-  mockBase.value = '/'
-  mockGo.mockReset()
   window.localStorage.clear()
+  _resetRememberedChoiceForTests()
+  line.value = null
+  chooseResult.value = 'stay'
+  choose.mockClear()
   setPathname('/')
 })
 
@@ -111,15 +128,14 @@ describe('LocaleSwitcher UI', () => {
   })
 
   it('the current-locale title is not interactive at all', async () => {
-    setPathname('/')
     const wrapper = mountAt('en')
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
     await wrapper.find('[data-locale-current]').trigger('click')
-    expect(mockGo).not.toHaveBeenCalled()
+    expect(choose).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
-    // The discriminator: select() sets open=false before reaching its
-    // same-locale guard, so a guarded handler would close the menu. A truly
-    // inert heading leaves it open.
+    // The discriminator: select() closes the menu before handing the choice to the
+    // Layout, so a heading wired to it would close the menu. A truly inert heading
+    // leaves it open.
     expect(wrapper.find('[data-locale-switcher-menu]').exists()).toBe(true)
   })
 
@@ -136,30 +152,18 @@ describe('LocaleSwitcher UI', () => {
     expect(wrapper.find('[data-locale-switcher-menu]').attributes('aria-labelledby')).toBe(id)
   })
 
-  // Code review, high: `window.location.pathname` INCLUDES the site base, and it
-  // was being handed straight to `localizePath` — the exact input the function's
-  // own docstring forbids ("takes a base-less path; callers wrap the OUTPUT").
-  // MergedNav's navLink obeys the contract; this, the only other call site, did
-  // not. A non-empty base is a supported configuration: config.mts reads
-  // SITE_BASE, which a GitHub Pages range's deploy workflow sets.
-  //
-  // Under `/wxl/`, switching to zh-TW emitted `/zh-TW/wxl/...` — the locale
-  // segment outside the base — and switching back emitted the path unchanged,
-  // so the navigation silently did nothing while the runtime locale and
-  // localStorage had already been written.
+  // Spec 0008: where a choice goes — the counterpart's list entry under the site base, or nowhere
+  // — is `switcherDecision`'s (tests/unit/i18n/arrival.test.ts) and the Layout's `choose`
+  // (not-found-wiring.test.ts). The switcher hands over the locale chosen and nothing else.
   it.each([
-    ['/wxl/', '/wxl/challenges/foo', 'zh-TW', '/wxl/zh-TW/challenges/foo'],
-    ['/wxl/', '/wxl/zh-TW/challenges/foo', 'en', '/wxl/challenges/foo'],
-    ['/wxl/', '/wxl/', 'zh-TW', '/wxl/zh-TW/'],
-    ['/', '/challenges/foo', 'zh-TW', '/zh-TW/challenges/foo'],
-  ] as const)('under base %s, %s -> %s yields %s', async (base, from, target, expected) => {
-    mockBase.value = base
-    setPathname(from)
-    mockLocaleIndex.value = from.includes('/zh-TW/') ? 'zh-TW' : 'root'
-    const wrapper = mount(LocaleSwitcher, { global: { plugins: [makeI18n(target === 'zh-TW' ? 'en' : 'zh-TW')] } })
+    ['en', 'zh-TW'],
+    ['zh-TW', 'en'],
+  ] as const)('on a %s page hands %s to the provided choice', async (page, other) => {
+    const wrapper = mountAt(page)
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
-    await wrapper.find(`[data-locale-option="${target}"]`).trigger('click')
-    expect(mockGo).toHaveBeenCalledWith(expected)
+    await wrapper.find(`[data-locale-option="${other}"]`).trigger('click')
+    expect(choose).toHaveBeenCalledTimes(1)
+    expect(choose).toHaveBeenCalledWith(other)
   })
 
   // Round 3: four of the five ARIA affordances on this control had no assertion.
@@ -179,7 +183,6 @@ describe('LocaleSwitcher UI', () => {
   // a keyboard user could open the listbox (aria-expanded flipped) and never
   // reach the entry inside it.
   it('is operable from the keyboard', async () => {
-    setPathname('/')
     const wrapper = mountAt('en')
     const toggle = wrapper.find('[data-locale-switcher-toggle]')
 
@@ -190,7 +193,7 @@ describe('LocaleSwitcher UI', () => {
     const option = wrapper.find('[role="option"]')
     expect(option.attributes('tabindex')).toBe('0')
     await option.trigger('keydown', { key: 'Enter' })
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/')
+    expect(choose).toHaveBeenCalledWith('zh-TW')
   })
 
   it('closes on Escape from either the trigger or the option', async () => {
@@ -208,7 +211,6 @@ describe('LocaleSwitcher UI', () => {
   // listener registered in onMounted, so nothing short of dispatching a real
   // document event exercises it.
   it('closes the dropdown when an option is chosen', async () => {
-    setPathname('/')
     const wrapper = mountAt('en')
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
     expect(wrapper.find('[data-locale-switcher-menu]').exists()).toBe(true)
@@ -217,7 +219,6 @@ describe('LocaleSwitcher UI', () => {
   })
 
   it('closes the dropdown on a click outside, and leaves it open on a click inside', async () => {
-    setPathname('/')
     const wrapper = mount(LocaleSwitcher, {
       global: { plugins: [makeI18n('en')] },
       attachTo: document.body,
@@ -242,34 +243,17 @@ describe('LocaleSwitcher UI', () => {
     wrapper.unmount()
   })
 
-  // Round 3: the query string and hash are appended AFTER localizePath, and
-  // nothing asserted they survive a switch.
-  it('preserves the query string and hash across a switch', async () => {
-    setPathname('/challenges/', '?tab=network', '#flag')
-    const wrapper = mountAt('en')
-    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
-    await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/?tab=network#flag')
-  })
-
-  // Round 2, R2-01: the round-1 fix moved DISPLAY onto the page locale but left
-  // select()'s early-return comparing the vue-i18n RUNTIME locale. Before that
-  // fix both derived from the same ref, so the guard was unreachable dead code;
-  // after it, the two can disagree and the single offered option becomes a
-  // no-op — the switcher is dead. The divergent state is producible in the
-  // product: detectInitialLocale returns a stored `zh-TW` for a non-prefixed
-  // URL, and the route watcher has no `immediate`, so a cold load of an English
-  // URL after ever visiting a zh-TW one lands exactly here.
+  // Round 2, R2-01: an early return in select() once compared the vue-i18n RUNTIME
+  // locale, so whenever the runtime and the page disagreed the offered option was a
+  // no-op and the switcher was dead. select() has no early return now (spec 0008: the
+  // Layout decides, and choosing the page's own locale is the way back, B5); this keeps
+  // the divergent state, which the product can produce, handing the choice over.
   it('switches even when the runtime locale disagrees with the page locale', async () => {
-    setPathname('/challenges/')
-    const i18n = makeI18n('zh-TW')
-    mockLocaleIndex.value = 'root'
-    const wrapper = mount(LocaleSwitcher, { global: { plugins: [i18n] } })
+    const wrapper = mountAt('en', 'zh-TW')
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
     // The menu offers the locale the PAGE is not in.
     await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/')
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+    expect(choose).toHaveBeenCalledWith('zh-TW')
   })
 
   // Round 1, F25: display must follow the PAGE locale, not the vue-i18n runtime
@@ -288,43 +272,34 @@ describe('LocaleSwitcher UI', () => {
     },
   )
 
-  // The one assertion that enforces "the prefix rule has a single home".
-  // A future copy-paste back into the component is invisible without it.
-  it('delegates path building to the single-sourced localizePath', () => {
-    const wrapper = mountAt('en')
-    expect((wrapper.vm as unknown as { buildTargetPath: unknown }).buildTargetPath).toBe(localizePath)
+  // Spec 0008, B2 (overridden contract: the switcher changed the runtime locale on every choice):
+  // the interface follows the URL, so it changes only when the choice navigates.
+  it.each([
+    ['en', 'zh-TW'],
+    ['zh-TW', 'en'],
+  ] as const)('on a %s page, a choice of %s that navigates switches the runtime locale', async (page, other) => {
+    chooseResult.value = 'navigate'
+    const i18n = makeI18n(page)
+    const wrapper = mountAt(page, i18n)
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    await wrapper.find(`[data-locale-option="${other}"]`).trigger('click')
+    expect(i18n.global.locale.value).toBe(other)
   })
 
-  it('switching EN → zh-TW from /challenges/door-is-open/ navigates with /zh-TW prefix, persists, and updates locale', async () => {
-    setPathname('/challenges/door-is-open/')
+  it('a choice that stays leaves the runtime locale alone (B2)', async () => {
     const i18n = makeI18n('en')
-    mockLocaleIndex.value = 'root'
-    const wrapper = mount(LocaleSwitcher, { global: { plugins: [i18n] } })
+    const wrapper = mountAt('en', i18n)
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
     await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
-    expect(i18n.global.locale.value).toBe('zh-TW')
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges/door-is-open/')
-  })
-
-  it('switching zh-TW → EN from /zh-TW/guide/ navigates without /zh-TW prefix', async () => {
-    setPathname('/zh-TW/guide/')
-    const i18n = makeI18n('zh-TW')
-    mockLocaleIndex.value = 'zh-TW'
-    const wrapper = mount(LocaleSwitcher, { global: { plugins: [i18n] } })
-    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
-    await wrapper.find('[data-locale-option="en"]').trigger('click')
+    expect(choose).toHaveBeenCalledWith('zh-TW')
     expect(i18n.global.locale.value).toBe('en')
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
-    expect(mockGo).toHaveBeenCalledWith('/guide/')
   })
 
-  it('switching from / to zh-TW yields /zh-TW/', async () => {
-    setPathname('/')
+  it('chooses the other locale with Space too', async () => {
     const wrapper = mountAt('en')
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
-    await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
-    expect(mockGo).toHaveBeenCalledWith('/zh-TW/')
+    await wrapper.find('[data-locale-option="zh-TW"]').trigger('keydown', { key: ' ' })
+    expect(choose).toHaveBeenCalledWith('zh-TW')
   })
 
 })
@@ -381,5 +356,61 @@ describe('localStorage SecurityError fallback', () => {
       throw new DOMException('blocked', 'SecurityError')
     })
     expect(() => persistLocale('zh-TW')).not.toThrow()
+  })
+})
+
+// Spec 0008, B5: while the line shows, the menu also offers the page's own locale, the way back.
+describe('LocaleSwitcher with the line showing', () => {
+  it.each([
+    ['en', 'zh-TW', 'English'],
+    ['zh-TW', 'en', '繁體中文'],
+  ] as const)('on a %s page offers %s, then the page\'s own locale, under the page\'s title', async (page, other, title) => {
+    line.value = other
+    const wrapper = mountAt(page)
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    const options = wrapper.findAll('[role="option"]')
+    expect(options.map((o) => o.attributes('data-locale-option'))).toEqual([other, page])
+    for (const option of options) expect(option.attributes('aria-selected')).toBe('false')
+    expect(wrapper.find('[data-locale-current]').text()).toBe(title)
+  })
+
+  it('chooses the page\'s own locale with a click and closes the menu', async () => {
+    line.value = 'zh-TW'
+    const wrapper = mountAt('en')
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    await wrapper.find('[data-locale-option="en"]').trigger('click')
+    expect(choose).toHaveBeenCalledWith('en')
+    expect(wrapper.find('[data-locale-switcher-menu]').exists()).toBe(false)
+  })
+
+  it.each(['Enter', ' '])('chooses the page\'s own locale with %j and closes the menu', async (key) => {
+    line.value = 'zh-TW'
+    const wrapper = mountAt('en')
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    const own = wrapper.find('[data-locale-option="en"]')
+    expect(own.attributes('tabindex')).toBe('0')
+    await own.trigger('keydown', { key })
+    expect(choose).toHaveBeenCalledWith('en')
+    expect(wrapper.find('[data-locale-switcher-menu]').exists()).toBe(false)
+  })
+
+  it('offers only the other locale again once the line is gone', async () => {
+    line.value = 'zh-TW'
+    const wrapper = mountAt('en')
+    line.value = null
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    expect(wrapper.findAll('[role="option"]').map((o) => o.attributes('data-locale-option'))).toEqual(['zh-TW'])
+  })
+})
+
+// Mounted alone, with no Layout above it: no line, and a choice is only remembered.
+describe('LocaleSwitcher without the Layout\'s provider', () => {
+  it('offers the other locale and remembers the choice', async () => {
+    mockLocaleIndex.value = 'root'
+    const wrapper = mount(LocaleSwitcher, { global: { plugins: [makeI18n('en')] } })
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(1)
+    await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
+    expect(readStoredLocale()).toBe('zh-TW')
   })
 })

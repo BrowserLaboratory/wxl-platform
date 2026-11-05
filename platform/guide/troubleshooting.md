@@ -148,7 +148,7 @@ Response objects carry `status_code`, `headers`, `content` / `text`, `url`, `req
 - The Network panel is not gated on readiness. It is clickable while the rest of the challenge is still loading, so an empty panel at that point only means nothing has been sent yet.
 - Requests sent by `requests` from the Code panel are recorded, and so are Browser panel navigations.
 - Back and Forward in the Browser panel replay a stored view and send no request, so they add no rows.
-- The log lives only on the current challenge page instance. Navigating away — including switching locale — empties it. See [Leaving the challenge page shuts the runtime down](#leaving-the-page).
+- The log lives only on the current challenge page instance. Navigating away — including switching locale to the challenge's version in the other language — empties it. See [Leaving the challenge page shuts the runtime down](#leaving-the-page).
 - `Clear` empties the log and restarts the numbering at 1, so a row `#1` is not necessarily the first request of the visit.
 
 ### The Repeater looks out of sync with Network {#repeater-vs-network}
@@ -189,7 +189,7 @@ Any login or uploaded files from this challenge are gone.
 
 **What you see.** You navigate away from a challenge and come back to find everything starting over: the runtime reloads, the Browser panel login is gone, and the Network panel is empty.
 
-**Why.** Leaving the challenge page destroys the challenge runtime, and the traffic log exists only on that page instance. Switching locale counts as leaving: the locale switcher navigates to the other locale's URL, which is a full page change.
+**Why.** Leaving the challenge page destroys the challenge runtime, and the traffic log exists only on that page instance. Switching locale counts as leaving when the challenge has a version in the language you choose: the locale switcher goes to that version, which is a different page. When it has none, the switcher stays on the page and nothing is lost (see [A page has no version in your language](#missing-translation)).
 
 **What to do.** Work through a challenge in one visit where you can, and export the attack log before navigating away. Saved notes and your code draft are stored in the database and come back; the traffic log and the challenge's own state do not. Note text you have typed but not saved is lost when the notes panel closes.
 
@@ -199,9 +199,9 @@ Any login or uploaded files from this challenge are gone.
 
 **What you see.** At the top of a page — on a challenge page, directly below the navigation bar — one line says the page has no version in your language and is shown in the other one, followed by a link to the challenge list in your language.
 
-**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — when a link takes you to a page that is only in the other language, and when you open such a page directly while the site remembers the other language, or remembers none (it then assumes Traditional Chinese). It is not an error.
+**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — when a link takes you to a page that is only in the other language, when you open such a page directly while the site remembers the other language, or remembers none (it then assumes Traditional Chinese), and when you choose a language with the locale switcher on a page that has no version in it: the switcher then stays on the page instead of leaving it. It is not an error.
 
-**What to do.** Read the page as it is, or follow the link to the challenge list in your language. A tab left open while the site is updated keeps the list of pages it loaded: a translation added since then is still reported as missing until you reload, and a page removed since then shows the page-not-found screen; press Back to return.
+**What to do.** Read the page as it is, or follow the link to the challenge list in your language. While the line shows, the locale switcher also offers the page's own language: choosing it removes the line and remembers that language. A tab left open while the site is updated keeps the list of pages it loaded: a translation added since then is still reported as missing until you reload, and a page removed since then shows the page-not-found screen; press Back to return.
 
 **Which language the site remembers.** Two things change it: choosing a language with the locale switcher, and opening a page under `/zh-TW/` directly — typing or pasting its address, a short link, or reloading it — which sets Traditional Chinese. Following a link, pressing Back or Forward, and the site taking you to another page by itself once a page has opened change nothing, and opening a page without `/zh-TW/` directly does not set English. So after a link has taken you to a page under `/zh-TW/`, reloading that page sets Traditional Chinese.
 
