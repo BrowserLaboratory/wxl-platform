@@ -222,7 +222,7 @@ Any login or uploaded files from this challenge are gone.
 
 **What to do.** Nothing — switching locale will not change any of it.
 
-Two related differences between the two languages are worth knowing:
+Two things about the two languages' challenge lists are worth knowing:
 
-- The Chinese and English challenge lists are built from separate content directories, so the two lists can hold different challenges.
-- The `#NNN` number in front of a challenge is its position in load order, not an identifier chosen by the author. The two lists number independently, and the numbers shift when challenges are added or their folders renamed.
+- Both challenge lists hold every challenge. A challenge written in only one language appears in the other list with its title and description in the language it has, a locale mark saying so — in the Traditional Chinese list, an English-only challenge is marked 只有英文 ("English only") — and a link to the page it has.
+- The `#NNN` number in front of a challenge is its permanent number, which the author assigns once: it is the same in both lists and does not change when other challenges are added or a folder is renamed. A challenge that has none yet shows a provisional number instead, which is not permanent and can change or repeat another challenge's: do not refer to a challenge by it.

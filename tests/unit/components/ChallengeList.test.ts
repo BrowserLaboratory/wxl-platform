@@ -65,9 +65,21 @@ function progress(slug: string, firstCompletedAt: number | null) {
 // this fixture reports the same error, so the count grows with the number of mounts
 // rather than with the number of mistakes.
 const mockChallenges: ChallengeData[] = [
-  { id: 1, number: 1, title: 'SQL Injection Demo', url: '/challenge/sqli-demo', difficulty: 'easy', category: 'web' },
-  { id: 2, number: 2, title: 'PHP File Inclusion Demo', url: '/challenge/php-demo', difficulty: 'easy', category: 'web' },
-  { id: 3, number: 3, title: 'Hard Challenge', url: '/challenge/hard', difficulty: 'hard', category: 'web' },
+  { id: 1, number: 1, title: 'SQL Injection Demo', url: '/challenge/sqli-demo', locale: 'en', difficulty: 'easy', category: 'web' },
+  { id: 2, number: 2, title: 'PHP File Inclusion Demo', url: '/challenge/php-demo', locale: 'en', difficulty: 'easy', category: 'web' },
+  { id: 3, number: 3, title: 'Hard Challenge', url: '/challenge/hard', locale: 'en', difficulty: 'hard', category: 'web' },
+]
+
+// Spec 0008, S4: a list holding a borrowed entry, as the Traditional Chinese loader gives it.
+const BORROWED: ChallengeData[] = [
+  { id: 1, number: 1, title: '知的必要', url: '/zh-TW/challenge/door-is-open/', locale: 'zh-TW', difficulty: 'easy', category: 'web', description: '繁中摘要' },
+  { id: 5, number: 5, title: 'PHP Check', url: '/challenge/v05-php-check/', locale: 'en', difficulty: 'hard', category: '綜合', description: 'Checks a PHP form', tags: ['php'] },
+  { id: 6, title: 'Unnumbered', url: '/challenge/unnumbered/', locale: 'en', difficulty: 'easy', category: '綜合' },
+]
+// And the English list holding a challenge with only a Traditional Chinese brief (E3).
+const CHINESE_ONLY: ChallengeData[] = [
+  { id: 1, number: 1, title: 'Need to Know', url: '/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
+  { id: 7, number: 7, title: '只有中文', url: '/zh-TW/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
 ]
 
 let ChallengeList: typeof import('../../../.vitepress/theme/components/ChallengeList.vue').default
@@ -241,8 +253,8 @@ describe.each(['short', 'page'] as const)('ChallengeList URL text clicks in %s m
 })
 
 // What each row's control is given (N01, N02): its number, the row slug, and the page's locale,
-// which differs here from the runtime locale tests/setup.ts installs (zh-TW), for both its text
-// and the entry's page (every entry here is in the list's locale; untranslated entries are T-0057's).
+// which differs here from the runtime locale tests/setup.ts installs (zh-TW), for its text, and
+// the entry's own locale for the page it opens (spec 0008, F6; these fixtures are English pages).
 describe('ChallengeList copy controls', () => {
   it.each([
     ['root', 'en'],
@@ -254,9 +266,9 @@ describe('ChallengeList copy controls', () => {
     const controls = wrapper.findAllComponents(ShortLinkShare)
 
     expect(controls.map((c) => c.props())).toEqual([
-      { number: 1, slug: 'sqli-demo', locale, entryLocale: locale },
-      { number: 2, slug: 'php-demo', locale, entryLocale: locale },
-      { number: 3, slug: 'hard', locale, entryLocale: locale },
+      { number: 1, slug: 'sqli-demo', locale, entryLocale: 'en' },
+      { number: 2, slug: 'php-demo', locale, entryLocale: 'en' },
+      { number: 3, slug: 'hard', locale, entryLocale: 'en' },
     ])
   })
 })
@@ -286,7 +298,7 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
   }
 
   it.each(['/challenge/sqli-demo', '/challenge/sqli-demo/'])('copies the page URL for the fixture url %s', async (url) => {
-    const { copied, href, shown } = await copiedFrom([{ id: 1, number: 1, title: 'SQL', url, difficulty: 'easy', category: 'web' }])
+    const { copied, href, shown } = await copiedFrom([{ id: 1, number: 1, title: 'SQL', url, locale: 'en', difficulty: 'easy', category: 'web' }])
     expect(copied).toBe(`${SITE_ORIGIN}/challenge/sqli-demo/`)
     expect(shown).toBe(`${DISPLAY_ORIGIN}/challenge/sqli-demo/`)
     expect(href).toBe(`/my-range${url}`)
@@ -294,7 +306,7 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
 
   it('copies the Traditional Chinese page URL from a zh-TW row', async () => {
     const { copied, href } = await copiedFrom(
-      [{ id: 3, number: 3, title: '摘錄', url: '/zh-TW/challenge/selected-excerpts/', difficulty: 'easy', category: 'web' }],
+      [{ id: 3, number: 3, title: '摘錄', url: '/zh-TW/challenge/selected-excerpts/', locale: 'zh-TW', difficulty: 'easy', category: 'web' }],
       'zh-TW',
     )
     expect(copied).toBe(`${SITE_ORIGIN}/zh-TW/challenge/selected-excerpts/`)
@@ -592,16 +604,32 @@ describe('ChallengeList when progress cannot be read', () => {
 // whose progress could be known. The static list is the same file for every reader,
 // so a marker in it would be some other learner's answer.
 describe('ChallengeList server rendering', () => {
-  async function ssr() {
+  /** The list rendered on the server; the runtime locale can be set apart from the page's. */
+  async function ssr(challenges: ChallengeData[] = mockChallenges, runtime: 'en' | 'zh-TW' = 'zh-TW') {
     const { createSSRApp, h } = await import('vue')
     const { renderToString } = await import('@vue/server-renderer')
-    const app = createSSRApp({ render: () => h(ChallengeList, { challenges: mockChallenges }) })
+    const app = createSSRApp({ render: () => h(ChallengeList, { challenges }) })
     app.use(createI18n({
-      legacy: false, locale: 'zh-TW', fallbackLocale: 'en', globalInjection: true,
+      legacy: false, locale: runtime, fallbackLocale: 'en', globalInjection: true,
       messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false,
     }))
     return await renderToString(app)
   }
+
+  it('ships the mark of a borrowed entry in the page\'s locale, whatever the runtime locale (0008 E6)', async () => {
+    mockLocaleIndex.value = 'zh-TW'
+    const html = await ssr(BORROWED, 'en')
+    expect(html).toContain('只有英文')
+    expect(html).not.toContain('Traditional Chinese only')
+    expect(html).toMatch(/lang="en"[^>]*>PHP Check</)
+  })
+
+  it('ships the English list\'s mark in the page\'s locale with a Traditional Chinese runtime (0008 E6)', async () => {
+    mockLocaleIndex.value = 'root'
+    const html = await ssr(CHINESE_ONLY, 'zh-TW')
+    expect(html).toContain('Traditional Chinese only')
+    expect(html).not.toContain('只有英文')
+  })
 
   it('ships no completion marker, even for a challenge that is completed', async () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
@@ -647,8 +675,8 @@ describe('ChallengeList progress keys', () => {
     const wrapper = mount(ChallengeList, {
       props: {
         challenges: [
-          { id: 1, number: 1, title: 'The Door Is Open', url: '/challenge/door-is-open/', difficulty: 'easy', category: 'web' },
-          { id: 2, number: 2, title: 'Staff Only', url: '/challenge/staff-only/', difficulty: 'easy', category: 'web' },
+          { id: 1, number: 1, title: 'The Door Is Open', url: '/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
+          { id: 2, number: 2, title: 'Staff Only', url: '/challenge/staff-only/', locale: 'en', difficulty: 'easy', category: 'web' },
         ] as ChallengeData[],
       },
     })
@@ -756,5 +784,125 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
 
     expect(wrapper.get('[data-progress-error]').exists()).toBe(true)
     expect(wrapper.find('[data-progress-blocked]').exists()).toBe(false)
+  })
+})
+
+// Spec 0008, E2, E3, E6, E8–E10, F3, F6, F10: an entry borrowed from the other locale carries the
+// mark named in the page's locale and its own language, opens the page it has, and gives the
+// list's short link or that page's URL. The runtime locale is set apart from the page's, so only
+// the page's locale can explain the mark.
+describe('ChallengeList with an untranslated entry', () => {
+  const rowOf = (wrapper: ReturnType<typeof mount>, title: string) =>
+    wrapper.findAll('a.ch-list-row').find((r) => r.text().includes(title))!
+  const cardOf = (wrapper: ReturnType<typeof mount>, title: string) =>
+    wrapper.findAll('[data-challenge-card]').find((r) => r.text().includes(title))!
+  async function toGrid(wrapper: ReturnType<typeof mount>) {
+    // The button's title follows the runtime locale, which these cases set apart from the page's.
+    const titles = [en.challenge_list.view_mode_grid, zhTW.challenge_list.view_mode_grid]
+    await wrapper.findAll('button').find((b) => titles.includes(b.attributes('title') ?? ''))!.trigger('click')
+  }
+  const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW', runtime: 'en' | 'zh-TW') => {
+    mockLocaleIndex.value = page
+    return mount(ChallengeList, { props: { challenges }, global: { plugins: [runtimeI18n(runtime)] } })
+  }
+
+  it('marks a borrowed entry 只有英文 in list and grid view, with lang="en", and opens the English page (E2, E6)', async () => {
+    const wrapper = mountList(BORROWED, 'zh-TW', 'en')
+    const row = rowOf(wrapper, 'PHP Check')
+    expect(row.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('en')
+    expect(row.findAll('[lang="en"]').map((e) => e.text())).toContain('Checks a PHP form')
+    expect(row.attributes('href')).toBe('/challenge/v05-php-check/')
+    await toGrid(wrapper)
+    const card = cardOf(wrapper, 'PHP Check')
+    expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
+  })
+
+  it('puts no mark and no lang on a translated entry', async () => {
+    const wrapper = mountList(BORROWED, 'zh-TW', 'en')
+    const row = rowOf(wrapper, '知的必要')
+    expect(row.find('[data-locale-mark]').exists()).toBe(false)
+    expect(row.find('[lang]').exists()).toBe(false)
+  })
+
+  it('gives the list\'s short link in short mode and the English page in page mode, its texts in zh-TW (F3, F6, F10)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    mockMode.value = 'short'
+    let row = rowOf(mountList(BORROWED, 'zh-TW', 'en'), 'PHP Check')
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
+    expect(row.get('[data-copy-link]').attributes('aria-label')).toBe(zhTW.short_link.copy_label)
+    await row.get('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/zh-TW/c/005`)
+    expect(row.get('[data-copy-status]').text()).toBe(zhTW.short_link.copied)
+    mockMode.value = 'page'
+    row = rowOf(mountList(BORROWED, 'zh-TW', 'en'), 'PHP Check')
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/challenge/v05-php-check/`)
+    mockMode.value = 'short'
+  })
+
+  it('gives an unnumbered borrowed entry no short link in either mode (E10)', () => {
+    for (const mode of ['short', 'page'] as const) {
+      mockMode.value = mode
+      expect(rowOf(mountList(BORROWED, 'zh-TW', 'en'), 'Unnumbered').find('[data-short-link]').exists()).toBe(false)
+    }
+    mockMode.value = 'short'
+  })
+
+  it('marks a Traditional Chinese-only entry in the English list, with no short link, and its page in page mode (E3)', () => {
+    mockMode.value = 'short'
+    const row = rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文')
+    expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
+    expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
+    expect(row.find('[data-short-link]').exists()).toBe(false)
+    expect(row.text()).not.toContain('/en/c/007')
+    mockMode.value = 'page'
+    expect(rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文').get('[data-short-link]').text())
+      .toBe(`${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`)
+    mockMode.value = 'short'
+  })
+
+  it('marks a Traditional Chinese-only entry in the English list\'s grid view too (E3, E6)', async () => {
+    const wrapper = mountList(CHINESE_ONLY, 'root', 'zh-TW')
+    await toGrid(wrapper)
+    expect(cardOf(wrapper, '只有中文').get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+  })
+
+  it('finds a borrowed entry by its English title and summary, and keeps it under its filters and counts (E8)', async () => {
+    const wrapper = mountList(BORROWED, 'zh-TW', 'en')
+    expect(wrapper.text()).toContain(`3 ${en.challenge_list.count_suffix}`)
+    const search = wrapper.get('input[type="text"]')
+    // The list debounces the query by 300 ms; fake timers before the keystroke, as above.
+    vi.useFakeTimers()
+    try {
+      for (const q of ['php check', 'checks a php']) {
+        await search.setValue(q)
+        vi.advanceTimersByTime(300)
+        await flushPromises()
+        expect(wrapper.findAll('a.ch-list-row').map((r) => r.text())).toEqual([expect.stringContaining('PHP Check')])
+      }
+      await search.setValue('')
+      vi.advanceTimersByTime(300)
+      await flushPromises()
+    } finally {
+      vi.useRealTimers()
+    }
+    const [difficulty, category] = wrapper.findAll('select')
+    await difficulty.setValue('hard')
+    await category.setValue('綜合')
+    expect(wrapper.findAll('a.ch-list-row').map((r) => r.text())).toEqual([expect.stringContaining('PHP Check')])
+  })
+
+  it('shows the solved badge on a borrowed entry by its slug, in list and grid view, and counts it (E9)', async () => {
+    mockListAllProgress.mockResolvedValue([progress('v05-php-check', 1756000000000)])
+    const wrapper = mountList(BORROWED, 'zh-TW', 'en')
+    await flushPromises()
+    expect(rowOf(wrapper, 'PHP Check').find('[data-challenge-done]').exists()).toBe(true)
+    expect(wrapper.text()).toContain(zhTW.challenge_progress.progress_summary.replace('{completed}', '1').replace('{total}', '3'))
+    await toGrid(wrapper)
+    expect(cardOf(wrapper, 'PHP Check').find('[data-challenge-done]').exists()).toBe(true)
   })
 })

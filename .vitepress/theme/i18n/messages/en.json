@@ -57,7 +57,8 @@
   },
   "missing_translation": {
     "notice": "This page has no English version, so it is shown in Traditional Chinese.",
-    "list_link": "Go to the English challenge list"
+    "list_link": "Go to the English challenge list",
+    "mark": "Traditional Chinese only"
   },
   "short_link": {
     "copy_label": "Copy link",

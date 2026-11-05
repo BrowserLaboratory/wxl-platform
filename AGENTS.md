@@ -95,7 +95,7 @@ Document language and bilingual sync rules: [docs/agents/language.md](docs/agent
 ```
 platform/                         the VitePress site (srcDir): pages, challenges, public assets
   challenge/<slug>/               one challenge: index.md brief + src/ application
-  zh-TW/                          the Traditional Chinese mirror of every page
+  zh-TW/                          Traditional Chinese translations; a page without one is shown in English
 tests/challenges/<slug>.spec.ts   a challenge's exploit spec (Playwright)
 .vitepress/                       site config, theme, workers
 chall-wasm/                       Rust crates compiled to the challenge runtimes' WASM

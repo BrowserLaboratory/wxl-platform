@@ -1,21 +1,13 @@
 import { createContentLoader } from 'vitepress'
 import type { ChallengeData } from './challenges.data'
+import { mergeLocaleChallenges } from './mergeChallenges'
 
-export default createContentLoader('zh-TW/challenge/*/index.md', {
+// Every challenge in the Traditional Chinese list, from both locale trees (spec 0008, S4): a
+// challenge written only in English is borrowed, marked `只有英文`, and opens the English page.
+export default createContentLoader(['challenge/*/index.md', 'zh-TW/challenge/*/index.md'], {
   excerpt: true,
   transform(raw): ChallengeData[] {
-    return raw
-      .map((page, idx) => ({
-        id: page.frontmatter.id ?? idx+1,
-        number: typeof page.frontmatter.number === 'number' ? page.frontmatter.number : undefined,
-        title: page.frontmatter.title ?? '網站攻防挑戰',
-        url: page.url,
-        difficulty: page.frontmatter.difficulty ?? "mystery",
-        category: page.frontmatter.category ?? "綜合",
-        date: page.frontmatter.date ?? null,
-        tags: Array.isArray(page.frontmatter.tags) ? page.frontmatter.tags : [],
-        description: page.frontmatter.description ?? '',
-      }))
+    return mergeLocaleChallenges(raw, 'zh-TW')
   },
 })
 

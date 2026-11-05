@@ -3,6 +3,19 @@
 `{type × field × boundary} → {expected behaviour → acceptance criterion}`. The spec (`spec.en.md`)
 is derived from this file; a gap here is a gap there.
 
+Revision 3.5 (2026-11-06) names, before T-0057 changes them, the existing tests its approved test plan
+changes beyond `challenge-data-loaders.test.ts`: every `ChallengeData` fixture in
+`ChallengeList.test.ts` and `HomeContent.test.ts` (they gain the new `locale` field);
+`ChallengeList.test.ts`'s N01/N02 and N04 cases and its SSR helper (the runtime locale set apart
+from the page's); `HomeContent.test.ts`'s harness, which now mounts the component; and
+`site-smoke.spec.ts`'s `expectedUrlFor`, whose expected page URL follows the row's own link (F6)
+rather than the list's locale. The overridden contract's "Now" column says which link follows which
+locale. It also records how E3's "no short link" reads in page mode, a gap no F row covered: the
+English list's copy control for a challenge with only a Traditional Chinese brief gives that page's
+URL, which opens, and shows nothing in short mode (taken on the recommendation, under the user's
+standing instruction of 2026-11-06). No behaviour changes beyond that reading, and the spec text is
+unchanged. See T-0057's record.
+
 Revision 3.4 (2026-11-05) names, before T-0055 changes them, the existing tests its approved test plan
 rewrites that the switcher contracts did not name: the rest of `locale-switcher.test.ts`'s `select`
 cases (the base cases, query and hash, the runtime-locale disagreement, the three EN/zh-TW path cases,
@@ -292,7 +305,7 @@ other test the diff changes is named here.
 | Switching from any path navigates to its counterpart; the menu lists only the locale the page is not in; choosing the page's own locale does nothing; the current-locale title is not interactive | `LocaleSwitcher`'s comments, `select` and its early return; `locale-switcher.test.ts` (cases switching from paths that are not pages, "offers exactly", the non-interactive title; from revision 3.4, every other `select` case — the base cases, query and hash, the runtime-locale disagreement, the three EN/zh-TW path cases, `buildTargetPath`, the keyboard case, "closes the dropdown when an option is chosen" — the harness of its "LocaleSwitcher UI" block — the `vitepress` mock, `mountAt` and its fixtures, the `setPathname` calls — and its `beforeEach`); from revision 3.4, `not-found-wiring.test.ts`'s `LocaleSwitcher` stub and `beforeEach`, `initial-locale-redirect.test.ts`'s `beforeEach`, and `missing-translation.spec.ts`'s "a choice in the custom locale switcher on an article is stored" | B1, B2, B5, B7 |
 | The switcher changes the runtime locale on choice | `LocaleSwitcher`'s comments and `select` | B2: not when it stays |
 | Flipping the switcher flag needs no spec change; the built-in menus are hidden by a class added on mount | `USE_CUSTOM_LOCALE_SWITCHER` comment; `style.css`'s rule and comment; the Layout's `onMounted` body class | D7: the comment names this spec; hiding does not depend on run time |
-| One content loader per locale tree; `id` falls back to the position in its own array | `tests/unit/site/challenge-data-loaders.test.ts` | The merge rules |
+| One content loader per locale tree; `id` falls back to the position in its own array | `tests/unit/site/challenge-data-loaders.test.ts`; from revision 3.5, the `ChallengeData` fixtures of `ChallengeList.test.ts` and `HomeContent.test.ts`, `ChallengeList.test.ts`'s N01/N02, N04 and SSR helper, `HomeContent.test.ts`'s harness, and `site-smoke.spec.ts`'s `expectedUrlFor` | The merge rules; an entry's page link and, in page mode, its copied URL follow its `locale` (F6); the short link stays in the list's locale (F3) |
 
 ## Matrix
 
@@ -386,7 +399,7 @@ exist), and is still decided the same way.
 |---|---|---|---|
 | E1 | `zh-TW` list, translated challenge | Entry from the Traditional Chinese brief, `locale: 'zh-TW'`, `id` per the merge rules. | AC-6 |
 | E2 | `zh-TW` list, untranslated challenge | Entry per the merge rules from the English brief, `locale: 'en'`, `url` the English page, mark `只有英文`; its title and summary carry `lang="en"`. | AC-6 |
-| E3 | `en` list, challenge with only a Traditional Chinese brief | Entry from it, mark `Traditional Chinese only`, `lang="zh-TW"`, no short link. Unreachable in a committed tree today (the hook and CI refuse such a brief); covered at S4 with its own fixture entry. | AC-6 |
+| E3 | `en` list, challenge with only a Traditional Chinese brief | Entry from it, mark `Traditional Chinese only`, `lang="zh-TW"`, no short link. Unreachable in a committed tree today (the hook and CI refuse such a brief); covered at S4 with its own fixture entry. In page mode its copy control gives its Traditional Chinese page URL (revision 3.5). | AC-6 |
 | E4 | Order and `id` | Both lists hold the same challenges with the same `id`s, per the merge rules; the default display order is therefore the same. | AC-6 |
 | E5 | Defaults | A field the borrowed brief leaves out takes the list locale's default. | AC-6 |
 | E6 | Where the mark shows | List view, grid view, and the home page's latest-challenge cards, resolved in the page's locale so the static HTML carries it. | AC-6 |

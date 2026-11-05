@@ -206,11 +206,16 @@ async function shownUrlTexts(page: Page) {
   )
 }
 
-/** The copied URL a shown URL text has to carry: the row's challenge in a list, else this page's. */
+/**
+ * The copied URL a shown URL text has to carry: the row's challenge in a list, else this page's.
+ * A row's page is in the locale its own link names, which for an untranslated challenge is not the
+ * list's (spec 0008, F6), so the locale is read from the link, not from the list.
+ */
 function expectedUrlFor(target: SitePage, rowHref: string | null): string {
   if (!target.challenge && rowHref) {
-    const slug = rowHref.replace(/\.html$/, '').replace(/\/+$/, '').split('/').pop() ?? ''
-    return pageUrlOf(target.locale, slug)
+    const path = rowHref.replace(/\.html$/, '').replace(/\/+$/, '')
+    const slug = path.split('/').pop() ?? ''
+    return pageUrlOf(path.includes('/zh-TW/') ? 'zh-TW' : 'en', slug)
   }
   return pageUrlOf(target.locale, 'selected-excerpts')
 }
