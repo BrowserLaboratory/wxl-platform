@@ -41,7 +41,7 @@ the not-found page it navigates to an existing counterpart or only writes the ch
 - [x] H3 (this ticket's part): troubleshooting's passages on switching locale and the traffic log, on the switcher navigating to the other locale's URL; the guide index's sentence on the Network log; `guide/network.md`'s sentence; both languages (AC-9)
 - [x] H7 (AC-9)
 - [x] Overridden contracts touched here (the switcher's menu, `select` and its early return, its runtime-locale change; the flag comment and the hiding rule changed with T-0053) change only as the traceability table states
-- [ ] Stage 8 (T4): V3 at 1280, 1024 and 375 wide, including the static HTML with scripts disabled, and V1l with the Browser panel open, on the Cloudflare preview of `stage8/T-0055` (AC-10)
+- [x] Stage 8 (T4): V3 at 1280, 1024 and 375 wide, including the static HTML with scripts disabled, and V1l with the Browser panel open, on the Cloudflare preview of `stage8/T-0055` (AC-10)
 
 ## 給使用者（zh-TW）
 
@@ -285,3 +285,39 @@ analysis: S-3 (a choice writes and shows its line while the gate asks — D17), 
 not-found path offers 繁體中文 and lands on the English page, writing `zh-TW` — within B4), S-5 (the
 kept choice outranks a newer value another tab wrote — D14), S-7 (a choice during a navigation still
 loading can be decided from the old page).
+
+### 2026-11-05 — stage 8
+
+Surface, per D12: the throwaway branch `stage8/T-0055` = this ticket's `f2cf401` plus fixture commit
+`d076fca` (made with `/tw-emoji-commit`: `git checkout 41b9dc7 -- platform/challenge/stage8-english-only`,
+then `pnpm redirects:generate`; `grep 999 platform/public/_redirects` showed four rules). Pushing and
+deleting it were authorized in advance for T-0055–T-0057. Cloudflare Pages preview
+`https://stage8-t-0055.wxl-platform.pages.dev` (deployment `5bd395d4`, check run "Cloudflare Pages" on
+`d076fca`: success).
+
+**V3, B4's hiding half (headless Chromium, `@playwright/test`'s browser):**
+`node <scratchpad>/v3-menus.cjs https://stage8-t-0055.wxl-platform.pages.dev /reference/attack-log-export-format`
+opens the page at 1280, 1024 and 375 wide, once with `javaScriptEnabled: false` (the HTML as served)
+and once hydrated (opening the "…" menu at 1024 and the hamburger at 375), and reads each built-in
+menu's computed `display` and the custom switcher's visibility. Result: `.VPNavBarTranslations` (1280)
+and `.VPNavBarExtra .translations` (1024) are `display: none` in both; `.VPNavScreenTranslations`
+(375) is absent from the served HTML (the mobile screen renders only once opened) and `display: none`
+after hydration; the custom switcher is visible in all six.
+
+**V3, B2/B5/B7, and the fixture (the host's built-in browser):** each row cleared `localStorage` and
+`sessionStorage`, set the stored value and loaded the page in full; the viewport was emulated per
+width. At 1280 the menu was operated with real clicks; at 1024 and 375 (and the fixture at 1024 and
+1280) with `click()` on the visible element from the page's script.
+
+| Row | Width | Result |
+|---|---|---|
+| V3 A4 | 1280, 1024, 375 | pass: stored `en`, a cold load of the reference page stays with no line |
+| V3 B2 | 1280, 1024, 375 | pass: choosing 繁體中文 (labelled "Traditional Chinese" on the English page) keeps the URL, adds no history entry (`history.length` unchanged), shows the line `lang="zh-TW"`; `html lang="en-US"` and the vue-i18n runtime locale stay `en`; stored becomes `zh-TW` |
+| V3 B5 | 1280, 1024, 375 | pass: the menu then offers two options (`zh-TW`, `en`); choosing English removes the line, keeps the URL and history, stores `en` |
+| V3 B7 | 1280 | pass: on `/zh-TW/no-such-page` (served 404, the not-found page) the menu offers only English; choosing it stays, shows no line, stores `en` |
+| fixture B2/B5 | 1280, 1024 | pass: on `/challenge/stage8-english-only/`, stored `en`, the same as V3; the line's previous sibling is `.merged-nav` |
+| V1l | 375 | pass, with the Browser panel open on the fixture's app (screenshot in the session): real clicks; choosing Traditional Chinese keeps the URL and history, shows the line below the nav (full width, 63 px high) and stores `zh-TW`; with the line shown, "Collapse description" works and the Code tab opens (D15); choosing English then removes the line and stores `en` |
+
+Cleanup, under the same authorization: the preview origin's `localStorage`, `sessionStorage` and
+IndexedDB (`challenge-tools`) cleared; `git push origin --delete stage8/T-0055` and the local branch
+deleted; deployment `5bd395d4` stays (not deletable from here). The viewport emulation was reset.
