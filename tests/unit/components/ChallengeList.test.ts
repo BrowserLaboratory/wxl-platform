@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { ChallengeData } from '../../../platform/shared/challenges.data'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
+import { createI18n } from 'vue-i18n'
+import en from '../../../.vitepress/theme/i18n/messages/en.json'
+import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
+
+/** A vue-i18n instance whose runtime locale is `locale`, for a case that sets it apart from the page's. */
+function runtimeI18n(locale: 'en' | 'zh-TW') {
+  return createI18n({ legacy: false, locale, messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false })
+}
 
 // T70/AC-C1: built from SITE_ORIGIN with plain string operations, not shortLinkDisplay, so this
 // file tests the component's own output against the real origin.
@@ -19,8 +27,8 @@ vi.mock('vitepress', () => ({
   withBase: vi.fn((path: string) => `${mockWithBase.prefix}${path}`),
   // The list takes its locale from the page, not from the vue-i18n runtime:
   // the runtime instance starts at `en` and only reaches the right value after
-  // hydration, so a zh-TW page would ship `/c/001` into its static HTML and
-  // correct it to `/zh/c/001` on hydration.
+  // hydration, so a zh-TW page would ship `/en/c/001` into its static HTML and
+  // correct it to `/zh-TW/c/001` on hydration.
   useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
 
@@ -134,8 +142,21 @@ describe('ChallengeList short links', () => {
   it('shows each row its own short link', () => {
     const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
     const links = wrapper.findAll('[data-short-link]').map((el) => el.text())
-    expect(links).toContain(`${DISPLAY_ORIGIN}/c/001`)
-    expect(links).toContain(`${DISPLAY_ORIGIN}/c/003`)
+    expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/001`)
+    expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/003`)
+  })
+
+  it('gives the Traditional Chinese list its own locale-coded links, whatever the runtime locale (0008 F2, F9)', () => {
+    mockLocaleIndex.value = 'zh-TW'
+    const wrapper = mount(ChallengeList, {
+      props: { challenges: mockChallenges },
+      // The runtime locale is English, so only the page's locale can explain a zh-TW link.
+      global: { plugins: [runtimeI18n('en')] },
+    })
+    const links = wrapper.findAll('[data-short-link]').map((el) => el.text())
+    expect(links).toContain(`${DISPLAY_ORIGIN}/zh-TW/c/001`)
+    expect(links.some((l) => l.includes('/zh/c/'))).toBe(false)
+    expect(wrapper.find('[data-copy-link]').attributes('aria-label')).toBe(zhTW.short_link.copy_label)
   })
 
   it('does not navigate when the copy control is activated', async () => {
@@ -158,7 +179,7 @@ describe('ChallengeList short links', () => {
 
     await row!.find('[data-copy-link]').trigger('click')
 
-    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/001`)
     expect(onRowClick).not.toHaveBeenCalled()
   })
 })
@@ -220,7 +241,8 @@ describe.each(['short', 'page'] as const)('ChallengeList URL text clicks in %s m
 })
 
 // What each row's control is given (N01, N02): its number, the row slug, and the page's locale,
-// which differs here from the runtime locale tests/setup.ts installs (zh-TW).
+// which differs here from the runtime locale tests/setup.ts installs (zh-TW), for both its text
+// and the entry's page (every entry here is in the list's locale; untranslated entries are T-0057's).
 describe('ChallengeList copy controls', () => {
   it.each([
     ['root', 'en'],
@@ -232,9 +254,9 @@ describe('ChallengeList copy controls', () => {
     const controls = wrapper.findAllComponents(ShortLinkShare)
 
     expect(controls.map((c) => c.props())).toEqual([
-      { number: 1, slug: 'sqli-demo', locale },
-      { number: 2, slug: 'php-demo', locale },
-      { number: 3, slug: 'hard', locale },
+      { number: 1, slug: 'sqli-demo', locale, entryLocale: locale },
+      { number: 2, slug: 'php-demo', locale, entryLocale: locale },
+      { number: 3, slug: 'hard', locale, entryLocale: locale },
     ])
   })
 })
@@ -573,10 +595,6 @@ describe('ChallengeList server rendering', () => {
   async function ssr() {
     const { createSSRApp, h } = await import('vue')
     const { renderToString } = await import('@vue/server-renderer')
-    const { createI18n } = await import('vue-i18n')
-    const en = (await import('../../../.vitepress/theme/i18n/messages/en.json')).default
-    const zhTW = (await import('../../../.vitepress/theme/i18n/messages/zh-TW.json')).default
-
     const app = createSSRApp({ render: () => h(ChallengeList, { challenges: mockChallenges }) })
     app.use(createI18n({
       legacy: false, locale: 'zh-TW', fallbackLocale: 'en', globalInjection: true,

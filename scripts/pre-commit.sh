@@ -27,7 +27,13 @@
 # 4. Generates _redirects over the staged snapshot, restricted to the index
 #    slugs: per tree, the slugs whose <tree>/<slug>/index.md is in the index.
 #    A page counts only when its own tree lists its slug, so ignored and
-#    untracked challenge directories are left out.
+#    untracked challenge directories are left out: an English one gets no
+#    rules, and a Traditional Chinese one leaves its challenge's two
+#    Traditional Chinese rules pointing at the English page. Every challenge
+#    with an English page gets four rules: /en/c/ and /zh-TW/c/, which the copy
+#    control gives, and /c/ and /zh/c/, kept for links already handed out. So
+#    adding or deleting a Traditional Chinese brief re-points its two
+#    Traditional Chinese rules; it never adds or removes a rule.
 # 5. Writes and stages _redirects only after validation and generation
 #    succeeded. Afterwards the working tree's _redirects equals the staged one,
 #    even if it held an unstaged change before (D3).
@@ -524,7 +530,9 @@ if teachers "$INDEX_BLOB" || teachers "$WT_BLOB"; then
   echo "[pre-commit] platform/public/_redirects: replaced your version with the one generated from the staged challenges. It is generated; do not edit it by hand." >&2
   while IFS= read -r dir; do
     [ -n "$dir" ] || continue
-    echo "[pre-commit] $dir is untracked, so _redirects leaves it out. To include it, git add it and commit again." >&2
+    effect="leaves it out"
+    case "$dir" in platform/zh-TW/challenge/*) effect="does not use it: its challenge's Traditional Chinese short links open the English page, if there is one" ;; esac
+    echo "[pre-commit] $dir is untracked, so _redirects $effect. To include it, git add it and commit again." >&2
   done <<< "$UNTRACKED_DIRS"
 fi
 

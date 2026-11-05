@@ -460,7 +460,7 @@ describe('MergedNav', () => {
 describe('MergedNav short link', () => {
   it('shows the challenge short link beside the title', () => {
     const wrapper = mountIn('en')
-    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/001`)
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/001`)
   })
 
   it('keeps the short link visible while the description panel is collapsed', () => {
@@ -472,10 +472,10 @@ describe('MergedNav short link', () => {
   it('follows the page locale, not the runtime locale', () => {
     // Same rule as every label in this bar: the runtime instance starts at `en`
     // and only reaches the right value after hydration, so a zh-TW page would
-    // otherwise ship `/c/001` into its static HTML.
+    // otherwise ship `/en/c/001` into its static HTML.
     mockLocaleIndex.value = 'zh-TW'
     const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n('en')] } })
-    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh/c/001`)
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh-TW/c/001`)
   })
 
   it('shows no short link for a challenge that carries no number', () => {
@@ -485,7 +485,8 @@ describe('MergedNav short link', () => {
 })
 
 // N03: both places the nav puts a control (desktop and mobile row) get the challenge's number,
-// its slug and the page's locale, which differs here from the runtime locale.
+// its slug and the page's locale, for both its text and the page it opens (the nav sits on that
+// page), which differs here from the runtime locale.
 describe('MergedNav copy controls', () => {
   it.each([
     ['en', 'zh-TW'],
@@ -496,7 +497,7 @@ describe('MergedNav copy controls', () => {
     const controls = wrapper.findAllComponents(ShortLinkShare)
     expect(controls).toHaveLength(2)
     for (const control of controls) {
-      expect(control.props()).toEqual({ number: 1, slug: 'sqli-demo', locale: page })
+      expect(control.props()).toEqual({ number: 1, slug: 'sqli-demo', locale: page, entryLocale: page })
     }
   })
 })

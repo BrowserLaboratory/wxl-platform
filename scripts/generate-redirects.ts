@@ -25,7 +25,9 @@
  * ignored directories stay on disk, so the pages are restricted to the index
  * slugs: per locale tree, the slugs whose `<tree>/<slug>/index.md` is in git's
  * index. A page counts only when its own tree lists its slug, so an ignored or
- * untracked directory is never included, in either tree. The output goes to
+ * untracked directory is never included, in either tree: an English one gets
+ * no rules, and a Traditional Chinese one leaves its challenge's two
+ * Traditional Chinese rules pointing at the English page. The output goes to
  * stdout; the hook writes and stages it only once generation succeeded.
  * Before calling it, the hook refuses an orphan brief (D12): a Traditional
  * Chinese brief whose slug the English tree's index slugs lack, which
@@ -46,11 +48,28 @@ import {
   isChallengeNumber,
 } from './challenge-numbers.ts'
 
-/** The two parameterised rules. Unchanged by this change, and always last. */
-const PARAMETERISED: ReadonlyArray<[string, string]> = [
-  ['/c/:slug', '/challenge/:slug/'],
-  ['/zh/c/:slug', '/zh-TW/challenge/:slug/'],
+/**
+ * The four short-link forms, in the order each challenge's rules are written. `/en/c/` and
+ * `/zh-TW/c/` are what the copy control gives; `/c/` and `/zh/c/`, given out before spec 0008,
+ * are kept so links already handed out keep opening. A Traditional Chinese form targets the
+ * Traditional Chinese page.
+ */
+const FORMS: ReadonlyArray<{ prefix: string; chinese: boolean }> = [
+  { prefix: '/c/', chinese: false },
+  { prefix: '/en/c/', chinese: false },
+  { prefix: '/zh/c/', chinese: true },
+  { prefix: '/zh-TW/c/', chinese: true },
 ]
+
+/**
+ * The four parameterised rules, one per form and in the same order, always last. `/zh/c/` and
+ * `/zh-TW/c/` cannot fall back to the English page: a slug rule does not know whether the
+ * translation exists, and the site's not-found handling takes a missing one there.
+ */
+const PARAMETERISED: ReadonlyArray<[string, string]> = FORMS.map(({ prefix, chinese }) => [
+  `${prefix}:slug`,
+  chinese ? '/zh-TW/challenge/:slug/' : '/challenge/:slug/',
+])
 
 const STATUS = '302'
 
@@ -63,7 +82,9 @@ const HEADER = `# Cloudflare Pages redirect rules. This file is copied verbatim 
 #
 # Syntax: <from> <to> <status>. \`:name\` captures one path segment and is
 # substituted on the right. First matching rule wins, so put specific rules
-# above general ones. Cloudflare caps this file at 2100 rules.
+# above general ones. Cloudflare Pages allows 2,000 static and 100 dynamic
+# rules. Every numbered challenge takes four static rules and the slug links
+# are four dynamic ones, so a range holds at most 500 numbered challenges.
 #
 # \`platform/public/_redirects\` is generated from the challenges; do not edit it
 # by hand. \`pnpm create:challenge\` and the pre-commit hook regenerate it when
@@ -74,17 +95,21 @@ const HEADER = `# Cloudflare Pages redirect rules. This file is copied verbatim 
 # \`pnpm build\` rewrites it too. The CI check is
 # tests/unit/site/redirects-generated.test.ts.`
 
-const NUMERIC_SECTION = `# Numbered short links, one pair per challenge. A number is assigned once and
+const NUMERIC_SECTION = `# Numbered short links, four per challenge. A number is assigned once and
 # never reused, so a link printed on a handout keeps pointing at the same
-# challenge even after the challenge is renamed.
+# challenge even after the challenge is renamed. The copy control gives
+# /en/c/NNN and /zh-TW/c/NNN; /c/NNN and /zh/c/NNN are kept so links already
+# handed out keep opening. The two Traditional Chinese rules open the English
+# page while the challenge has no Traditional Chinese page.
 #
 # These come first on purpose: Cloudflare takes the first match and \`/c/:slug\`
 # matches any single segment, a number included. A numeric rule placed after it
 # would never run, and nothing about that would be visible at deploy time.`
 
-const PARAMETERISED_SECTION = `# Slug short links for classroom use — students can be given /c/<slug> to type
-# or paste rather than the full /challenge/<slug>/ path. Parameterised, so they
-# follow a rename; the numbered rules above are what survives one.`
+const PARAMETERISED_SECTION = `# Slug short links for classroom use — students can be given /en/c/<slug> or
+# /zh-TW/c/<slug> to type or paste rather than the full /challenge/<slug>/ path;
+# /c/<slug> and /zh/c/<slug> keep working. Parameterised, so they follow a
+# rename; the numbered rules above are what survives one.`
 
 interface NumericRule {
   number: number
@@ -111,20 +136,30 @@ export interface GenerateOptions {
    * - The pre-commit hook (`--staged`) passes the index slugs, per tree: a page
    *   counts only when its own tree's `<slug>/index.md` is in the index. The
    *   hook has already refused a snapshot whose Traditional Chinese index slugs
-   *   are not all English ones (D12), so no brief here lacks its page. On a
-   *   clean checkout, as in CI, both give the same file.
+   *   are not all English ones (D12), so no brief here lacks its page. A
+   *   Traditional Chinese page left out this way re-points its challenge's two
+   *   Traditional Chinese rules at the English page. On a clean checkout, as in
+   *   CI, both give the same file.
    */
   includeSlug?: (slug: string, locale: string) => boolean
 }
 
 /**
- * The numeric rules the tree calls for, ordered by number.
+ * The numeric rules the tree calls for, ordered by number, then `/c/`, `/en/c/`,
+ * `/zh/c/`, `/zh-TW/c/`.
  *
- * A challenge gets a Traditional Chinese rule only when it has a Traditional
- * Chinese page. Translation is optional by design — `redirects.test.ts` asserts
- * the subset direction and not equality — and emitting a rule whose target is
- * known not to exist would 302 a reader into a 404 while looking correct in the
- * file.
+ * Every challenge with an included English page gets all four. Translation is
+ * optional by design — `redirects.test.ts` asserts the subset direction and not
+ * equality — so a challenge's Traditional Chinese short links exist whether or
+ * not it has a Traditional Chinese page: they point at that page when it is
+ * included and at the English page otherwise, rather than at a page known not
+ * to exist. Adding or deleting a Traditional Chinese brief, or leaving its
+ * directory untracked or ignored, re-points those two rules; it never adds or
+ * removes them.
+ *
+ * A challenge with only an included Traditional Chinese page, which the hook and
+ * CI's tree check refuse (D12) but `--no-verify` can commit, gets only its two
+ * Traditional Chinese rules, pointing at that page.
  */
 function numericRules(root: string, options: GenerateOptions = {}): NumericRule[] {
   const include = options.includeSlug ?? (() => true)
@@ -138,22 +173,31 @@ function numericRules(root: string, options: GenerateOptions = {}): NumericRule[
     )
   }
 
-  const rules: NumericRule[] = []
+  // One challenge per slug, with the locale trees its included pages sit in.
+  const bySlug = new Map<string, { number: number; locales: Set<string> }>()
   for (const entry of entries) {
     if (!isChallengeNumber(entry.value)) continue // unreachable: checked above
-    const padded = padChallengeNumber(entry.value)
-    rules.push(
-      entry.locale === 'root'
-        ? { number: entry.value, from: `/c/${padded}`, to: `/challenge/${entry.slug}/` }
-        : { number: entry.value, from: `/zh/c/${padded}`, to: `/zh-TW/challenge/${entry.slug}/` },
-    )
+    const challenge = bySlug.get(entry.slug) ?? { number: entry.value, locales: new Set<string>() }
+    challenge.locales.add(entry.locale)
+    bySlug.set(entry.slug, challenge)
   }
 
-  // By number, then root locale before the translation — the order a reader of
-  // the file expects, and stable so a regeneration produces no spurious diff.
-  return rules.sort((a, b) =>
-    a.number !== b.number ? a.number - b.number : a.from.length - b.from.length,
-  )
+  const rules: NumericRule[] = []
+  for (const [slug, { number, locales }] of bySlug) {
+    const padded = padChallengeNumber(number)
+    const english = `/challenge/${slug}/`
+    // The Traditional Chinese page when it is included, the English page otherwise (G3).
+    const chinese = locales.has('zh-TW') ? `/zh-TW/challenge/${slug}/` : english
+    for (const form of FORMS) {
+      // Without an included English page only the Traditional Chinese forms are written (G9).
+      if (!form.chinese && !locales.has('root')) continue
+      rules.push({ number, from: `${form.prefix}${padded}`, to: form.chinese ? chinese : english })
+    }
+  }
+
+  // By number; within a number the form order above, which `sort` keeps. Stable, so a
+  // regeneration produces no spurious diff.
+  return rules.sort((a, b) => a.number - b.number)
 }
 
 /** Lay the three fields out in columns, the way the hand-written file did. */

@@ -21,7 +21,7 @@ describe('the link mode with the build constant undefined (L19)', () => {
     const writeText = vi.fn(() => Promise.resolve())
     Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
     const wrapper = mount(ShortLinkShare, {
-      props: { number: 1, slug: 'door-is-open', locale: 'en' },
+      props: { number: 1, slug: 'door-is-open', locale: 'en', entryLocale: 'en' },
       global: {
         plugins: [createI18n({ legacy: false, locale: 'en', messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false })],
       },

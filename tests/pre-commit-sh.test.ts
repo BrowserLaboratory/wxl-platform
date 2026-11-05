@@ -13,8 +13,10 @@
  * handed the hook, which the recording shim copied before the hook ran: for
  * `-p` and `-i` that `index.lock` is the only index holding the staged
  * snapshot. A case that ends in O2 also pins its rule lines with literals: the
- * whole of FIXTURE_RULES where the staged challenges are the fixture's, or
- * else the lines its change adds or removes. H05, H24 and H43 pin HEAD's
+ * whole of FIXTURE_RULES where the staged challenges are the fixture's, the
+ * whole list built from the literal parts below where its change moves a
+ * challenge's four rules (spec 0008), or else the lines its change adds or
+ * removes. H05, H24 and H43 pin HEAD's
  * committed bytes instead, which do not come from the oracle.
  */
 
@@ -72,14 +74,40 @@ import {
 
 const TIMEOUT = 60_000
 
-/** The rule lines of the fixture's committed `_redirects`, as a literal: the retired #3 has none. */
-const FIXTURE_RULES = [
-  '/c/001 /challenge/test-chall/',
-  '/c/002 /challenge/door/',
-  '/zh/c/002 /zh-TW/challenge/door/',
+/** The parameterised rule lines, always last (spec 0008, G4). */
+const PARAMETERISED_RULES = [
   '/c/:slug /challenge/:slug/',
+  '/en/c/:slug /challenge/:slug/',
   '/zh/c/:slug /zh-TW/challenge/:slug/',
+  '/zh-TW/c/:slug /zh-TW/challenge/:slug/',
 ]
+
+/** test-chall's four rule lines: English-only, so its Traditional Chinese rules open the English page (G3). */
+const TEST_CHALL_RULES = [
+  '/c/001 /challenge/test-chall/',
+  '/en/c/001 /challenge/test-chall/',
+  '/zh/c/001 /challenge/test-chall/',
+  '/zh-TW/c/001 /challenge/test-chall/',
+]
+
+/** door's four rule lines once its brief is gone or not counted: all at its English page (G3). */
+const DOOR_RULES_AT_ENGLISH = [
+  '/c/002 /challenge/door/',
+  '/en/c/002 /challenge/door/',
+  '/zh/c/002 /challenge/door/',
+  '/zh-TW/c/002 /challenge/door/',
+]
+
+/** door's four rule lines, translated (G2). */
+const DOOR_RULES = [
+  '/c/002 /challenge/door/',
+  '/en/c/002 /challenge/door/',
+  '/zh/c/002 /zh-TW/challenge/door/',
+  '/zh-TW/c/002 /zh-TW/challenge/door/',
+]
+
+/** The rule lines of the fixture's committed `_redirects`, from the literal parts above: the retired #3 has none. */
+const FIXTURE_RULES = [...TEST_CHALL_RULES, ...DOOR_RULES, ...PARAMETERISED_RULES]
 
 /** W3: the hook replaced a version of `_redirects` the teacher made. */
 const W3 = /platform\/public\/_redirects[^\n]*replaced|replaced[^\n]*platform\/public\/_redirects/
@@ -216,11 +244,9 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    const rules = rulesOf(expected)
-    expect(rules.some((r) => r.startsWith('/c/001 '))).toBe(false)
-    // door and the retired challenge remain, so the numbered section stays.
-    expect(rules).toContain('/c/002 /challenge/door/')
-    expect(rules).toContain('/zh/c/002 /zh-TW/challenge/door/')
+    // None of test-chall's four rules stays; door and the retired challenge remain, so the
+    // numbered section stays.
+    expect(rulesOf(expected)).toEqual([...DOOR_RULES, ...PARAMETERISED_RULES])
   }, TIMEOUT)
 
   it('exits 1 when only index.md is deleted (incomplete challenge)', () => {
@@ -285,12 +311,20 @@ function expectH02H14(bash: string): void {
   const run = runHook(repo, {}, bash)
 
   expectO2(run, before, snapshot(repo), expected)
-  expect(rulesOf(expected)).toContain('/zh/c/001 /zh-TW/challenge/test-chall/')
+  // Re-pointed from the English page, not added (G2, G3).
+  expect(rulesOf(expected)).toEqual([
+    '/c/001 /challenge/test-chall/',
+    '/en/c/001 /challenge/test-chall/',
+    '/zh/c/001 /zh-TW/challenge/test-chall/',
+    '/zh-TW/c/001 /zh-TW/challenge/test-chall/',
+    ...DOOR_RULES,
+    ...PARAMETERISED_RULES,
+  ])
   expect(readRecord(log)).toEqual([])
 }
 
 describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
-  it('H01: a new challenge gains its /c/NNN rule, with no W3', () => {
+  it('H01: a new challenge gains its four rules, the Traditional Chinese ones at its English page, with no W3', () => {
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
     git(repo, ['add', 'platform/challenge/new-chall'])
     const expected = expectedRedirects(repo)
@@ -299,7 +333,15 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toContain('/c/004 /challenge/new-chall/')
+    expect(rulesOf(expected)).toEqual([
+      ...TEST_CHALL_RULES,
+      ...DOOR_RULES,
+      '/c/004 /challenge/new-chall/',
+      '/en/c/004 /challenge/new-chall/',
+      '/zh/c/004 /challenge/new-chall/',
+      '/zh-TW/c/004 /challenge/new-chall/',
+      ...PARAMETERISED_RULES,
+    ])
     expectNoW3W4(run)
   }, TIMEOUT)
 
@@ -317,11 +359,11 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     expectNoW3W4(run)
   }, TIMEOUT)
 
-  it('H02, H14: only a Traditional Chinese brief gains its /zh/c/NNN rule, and the validator never runs', () => {
+  it('H02, H14: only a Traditional Chinese brief re-points its two Traditional Chinese rules at it, and the validator never runs', () => {
     expectH02H14('bash')
   }, TIMEOUT)
 
-  it('H03: deleting a challenge in both trees loses both its rules', () => {
+  it('H03: deleting a challenge in both trees loses all four of its rules', () => {
     git(repo, ['rm', '-rq', 'platform/challenge/door', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
@@ -329,11 +371,10 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected).filter((r) => r.includes('door'))).toEqual([])
-    expect(rulesOf(expected)).toContain('/c/001 /challenge/test-chall/')
+    expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...PARAMETERISED_RULES])
   }, TIMEOUT)
 
-  it('H04: renaming a challenge in both trees points both rules at the new slug', () => {
+  it('H04: renaming a challenge in both trees points all four of its rules at the new slug', () => {
     const log = validatorLog()
     git(repo, ['mv', 'platform/challenge/door', 'platform/challenge/gate'])
     git(repo, ['mv', 'platform/zh-TW/challenge/door', 'platform/zh-TW/challenge/gate'])
@@ -343,14 +384,15 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    const rules = rulesOf(expected)
-    expect(rules).toContain('/c/002 /challenge/gate/')
-    expect(rules).toContain('/zh/c/002 /zh-TW/challenge/gate/')
-    expect(rules.filter((r) => r.includes('door'))).toEqual([])
+    expect(rulesOf(expected)).toEqual([
+      ...TEST_CHALL_RULES,
+      ...DOOR_RULES.map((r) => r.replace('/door/', '/gate/')),
+      ...PARAMETERISED_RULES,
+    ])
     expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/gate/index.md')
   }, TIMEOUT)
 
-  it('H40: deleting only the Traditional Chinese brief loses /zh/c/NNN and keeps /c/NNN', () => {
+  it('H40: deleting only the Traditional Chinese brief keeps all four rules and re-points the Traditional Chinese ones at the English page', () => {
     git(repo, ['rm', '-rq', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
@@ -358,9 +400,24 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    const rules = rulesOf(expected)
-    expect(rules.some((r) => r.startsWith('/zh/c/002 '))).toBe(false)
-    expect(rules).toContain('/c/002 /challenge/door/')
+    expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...DOOR_RULES_AT_ENGLISH, ...PARAMETERISED_RULES])
+  }, TIMEOUT)
+
+  it('0008 G3: a Traditional Chinese brief left untracked keeps its challenge’s four rules, the Traditional Chinese ones at the English page', () => {
+    git(repo, ['rm', '-rq', '--cached', 'platform/zh-TW/challenge/door'])
+    // With the removal from the index as the only staged change, the hook's stash push stops
+    // partway and the run ends in O5, before generation (a hook defect predating spec 0008,
+    // recorded in T-0056). An English change staged beside it reaches generation.
+    stageDoorChange()
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toContain('?? platform/zh-TW/challenge/door/index.md')
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...DOOR_RULES_AT_ENGLISH, ...PARAMETERISED_RULES])
+    expectNoW3W4(run)
   }, TIMEOUT)
 
   it('H05: an application-only change keeps HEAD’s bytes', () => {
@@ -408,7 +465,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     expect(argv).not.toContain(index)
   }, TIMEOUT)
 
-  it('H23: un-retiring a challenge brings its rule back', () => {
+  it('H23: un-retiring a challenge brings its four rules back, the Traditional Chinese ones at its English page', () => {
     const log = validatorLog()
     git(repo, ['mv', '.archive/challenge/old-chall', 'platform/challenge/old-chall'])
     const expected = expectedRedirects(repo)
@@ -417,7 +474,12 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toContain('/c/003 /challenge/old-chall/')
+    expect(rulesOf(expected).filter((r) => r.includes('/003 '))).toEqual([
+      '/c/003 /challenge/old-chall/',
+      '/en/c/003 /challenge/old-chall/',
+      '/zh/c/003 /challenge/old-chall/',
+      '/zh-TW/c/003 /challenge/old-chall/',
+    ])
     expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/old-chall/index.md')
   }, TIMEOUT)
 
@@ -452,18 +514,38 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
 
     expectO2(run, before, snapshot(repo), expected)
     const rules = rulesOf(expected)
-    expect(rules).toContain('/c/006 /challenge/tmp/')
-    expect(rules.some((r) => r.startsWith('/zh/c/006 '))).toBe(false)
+    // tmp's ignored brief does not count: its Traditional Chinese rules open the English page.
+    expect(rules.filter((r) => r.includes('/006 '))).toEqual([
+      '/c/006 /challenge/tmp/',
+      '/en/c/006 /challenge/tmp/',
+      '/zh/c/006 /challenge/tmp/',
+      '/zh-TW/c/006 /challenge/tmp/',
+    ])
     expect(rules.filter((r) => r.includes('logs'))).toEqual([])
   }, TIMEOUT)
 })
 
 // ─── W3, W4 and the teacher's other work (AC-12, AC-14) ─────────────────────
 
+/** A string matched literally inside a RegExp. */
+function escapeRe(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** W4 for one untracked directory. */
 function w4(dir: string): RegExp {
-  const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const escaped = escapeRe(dir)
   return new RegExp(`${escaped}[^\\n]*git add|git add[^\\n]*${escaped}`)
+}
+
+/** W4's wording for an untracked English directory: left out of the file. */
+function w4LeftOut(dir: string): RegExp {
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects leaves it out\\.`)
+}
+
+/** W4's wording for an untracked Traditional Chinese directory (spec 0008, H1a): its rules open the English page. */
+function w4EnglishPage(dir: string): RegExp {
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects does not use it: its challenge's Traditional Chinese short links open the English page, if there is one\\.`)
 }
 
 const DOOR_APP = 'platform/challenge/door/src/app.py'
@@ -633,7 +715,30 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     expect(run.stderr).toMatch(W3)
     expect(run.stderr).toMatch(w4('platform/challenge/draft/'))
     expect(run.stderr).toMatch(w4('platform/zh-TW/challenge/draft/'))
+    // W4 says what each tree's untracked directory does to the file (spec 0008, H1a).
+    expect(run.stderr).toMatch(w4LeftOut('platform/challenge/draft/'))
+    expect(run.stderr).toMatch(w4EnglishPage('platform/zh-TW/challenge/draft/'))
     expect(run.stderr).not.toContain('logs')
+  }, TIMEOUT)
+
+  it('H10, Traditional Chinese tree: an untracked brief beside a tracked English page is named as re-pointing to the English page, with W3', () => {
+    // test-chall's brief, never added; door's stays tracked, so git names the directory
+    // rather than the whole Traditional Chinese tree.
+    writeBrief(repo, 'test-chall', 1)
+    stageDoorChange()
+    // A version of the teacher's own, so that W3, and with it W4, is printed.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}/c/999  /challenge/hand-edit/  302\n`)
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).toMatch(w4('platform/zh-TW/challenge/test-chall/'))
+    expect(run.stderr).toMatch(w4EnglishPage('platform/zh-TW/challenge/test-chall/'))
+    expect(run.stderr).not.toMatch(w4LeftOut('platform/zh-TW/challenge/test-chall/'))
   }, TIMEOUT)
 
   it('H19: a staged hunk with an overlapping unstaged change comes back with its unstaged bytes', () => {
@@ -852,10 +957,10 @@ describe('pre-commit.sh: orphan briefs (D12)', () => {
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
-  /** The rule lines once door is retired with its brief: both of door's rules are gone. */
-  const RETIRED_DOOR_RULES = ['/c/001 /challenge/test-chall/', '/c/:slug /challenge/:slug/', '/zh/c/:slug /zh-TW/challenge/:slug/']
+  /** The rule lines once door is retired with its brief: all four of door's rules are gone. */
+  const RETIRED_DOOR_RULES = [...TEST_CHALL_RULES, ...PARAMETERISED_RULES]
 
-  it('H39: retiring door together with its brief ends in O2, and both its rules go', () => {
+  it('H39: retiring door together with its brief ends in O2, and all four of its rules go', () => {
     git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
     git(repo, ['rm', '-rq', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
@@ -869,7 +974,7 @@ describe('pre-commit.sh: orphan briefs (D12)', () => {
     expect(run.stderr).not.toContain('platform/zh-TW/challenge/door/')
   }, TIMEOUT)
 
-  it('H39 boundary: a brief removed only from the index stays on disk untracked, is no orphan, and both rules go', () => {
+  it('H39 boundary: a brief removed only from the index stays on disk untracked, is no orphan, and all four of its rules go', () => {
     git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
     git(repo, ['rm', '-rq', '--cached', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
@@ -1071,7 +1176,7 @@ function expectHookEntryOnTop(stashLog: string, before: Snapshot): void {
   expect(rest).toEqual(ids)
 }
 
-/** Commit a stale `_redirects` (door's two rules removed) with `--no-verify`. */
+/** Commit a stale `_redirects` (door's four rules removed) with `--no-verify`. */
 function commitStaleRedirects(): void {
   const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
   const stale = head.split('\n').filter((l) => !l.includes('/challenge/door/') && !l.includes('/zh-TW/challenge/door/')).join('\n')
@@ -1276,7 +1381,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     expectNoW3W4(run)
   }, TIMEOUT)
 
-  it('H37 boundary: git commit -i of a challenge directory removed from the working tree commits its deletion, and its rule goes', () => {
+  it('H37 boundary: git commit -i of a challenge directory removed from the working tree commits its deletion, and its rules go', () => {
     rmSync(join(repo.dir, 'platform/challenge/test-chall'), { recursive: true })
     write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not named")\n')
     const shim = recordingShim(repo)
@@ -1287,7 +1392,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
     expect(git(repo, ['ls-tree', '-r', '--name-only', 'HEAD', 'platform/challenge/test-chall'])).toBe('')
     expect(git(repo, ['diff', '--name-only'])).toBe(`${DOOR_APP}\n`)
-    expect(rulesOf(expected)).toEqual(FIXTURE_RULES.filter((r) => !r.startsWith('/c/001 ')))
+    expect(rulesOf(expected)).toEqual([...DOOR_RULES, ...PARAMETERISED_RULES])
     expectNoW3W4(run)
   }, TIMEOUT)
 
@@ -1416,12 +1521,13 @@ describe('pre-commit.sh: the restore writes nothing outside platform/ (B2)', () 
     expect(readdirSync(outside).sort().map((name) => [name, readFileSync(join(outside, name)).toString('base64')])).toEqual(outsideBefore)
     expectO2(run, before, snapshot(repo), expected)
     expect(rulesOf(expected)).toEqual([
-      '/c/001 /challenge/test-chall/',
-      '/c/002 /challenge/door/',
-      '/zh/c/002 /zh-TW/challenge/door/',
+      ...TEST_CHALL_RULES,
+      ...DOOR_RULES,
       '/c/004 /challenge/linked/',
-      '/c/:slug /challenge/:slug/',
-      '/zh/c/:slug /zh-TW/challenge/:slug/',
+      '/en/c/004 /challenge/linked/',
+      '/zh/c/004 /challenge/linked/',
+      '/zh-TW/c/004 /challenge/linked/',
+      ...PARAMETERISED_RULES,
     ])
     expect(run.stderr).toContain(`${src}/app.py`)
     expect(run.stderr).toContain(`${src}/flag.txt`)
@@ -2070,7 +2176,7 @@ describe('pre-commit.sh: a first commit (H27, H28)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(['/c/001 /challenge/test-chall/', '/c/:slug /challenge/:slug/', '/zh/c/:slug /zh-TW/challenge/:slug/'])
+    expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...PARAMETERISED_RULES])
     expect(git(repo, ['diff', '--cached', '--name-status', '--', REDIRECTS])).toBe(`A\t${REDIRECTS}\n`)
     expectNoW3W4(run)
   }, TIMEOUT)

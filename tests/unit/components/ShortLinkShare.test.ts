@@ -39,12 +39,22 @@ function i18nFor(locale: 'en' | 'zh-TW') {
   })
 }
 
-/** Mounts the control; the number is 1 unless one is passed, `undefined` included. */
-function mountShare(locale: 'en' | 'zh-TW', ...args: [number?: unknown, slug?: string]) {
+/** The two message files, by locale, for the expected texts. */
+const messages = { en, 'zh-TW': zhTW }
+
+/**
+ * Mounts the control; the number is 1 unless one is passed, `undefined` included. The entry's
+ * page is in the same locale as the control's text unless `entryLocale` says otherwise.
+ */
+function mountShare(
+  locale: 'en' | 'zh-TW',
+  ...args: [number?: unknown, slug?: string, entryLocale?: 'en' | 'zh-TW']
+) {
   const number = args.length === 0 ? 1 : args[0]
   const slug = args[1]
+  const entryLocale = args[2] ?? locale
   return mount(ShortLinkShare, {
-    props: { number: number as number, locale, slug },
+    props: { number: number as number, locale, entryLocale, slug },
     global: { plugins: [i18nFor(locale)] },
   })
 }
@@ -73,7 +83,7 @@ describe('ShortLinkShare', () => {
   })
 
   it('shows the host and path without the scheme', () => {
-    expect(mountShare('en').find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/001`)
+    expect(mountShare('en').find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/001`)
   })
 
   it('copies the absolute URL, scheme included', async () => {
@@ -82,27 +92,27 @@ describe('ShortLinkShare', () => {
 
     await wrapper.find('[data-copy-link]').trigger('click')
 
-    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/c/001`)
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/001`)
   })
 
   it('shows and copies the localised path in Traditional Chinese', async () => {
     const writeText = stubClipboard('resolve')
     const wrapper = mountShare('zh-TW')
 
-    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh/c/001`)
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh-TW/c/001`)
     await wrapper.find('[data-copy-link]').trigger('click')
-    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/zh/c/001`)
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/zh-TW/c/001`)
   })
 
   it('pads the number to three digits and leaves a wider one alone', () => {
-    expect(mountShare('en', 42).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/042`)
-    expect(mountShare('en', 1234).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/c/1234`)
+    expect(mountShare('en', 42).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/042`)
+    expect(mountShare('en', 1234).find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/1234`)
   })
 
   it('carries the copied URL as the URL text\'s title (L08)', () => {
-    expect(mountShare('en').find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/c/001`)
-    expect(mountShare('zh-TW', 42).find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/zh/c/042`)
-    expect(mountShare('en', 1234).find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/c/1234`)
+    expect(mountShare('en').find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/en/c/001`)
+    expect(mountShare('zh-TW', 42).find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/zh-TW/c/042`)
+    expect(mountShare('en', 1234).find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}/en/c/1234`)
   })
 
   it('SITE_ORIGIN matches the origin grammar (traceability.md)', () => {
@@ -190,7 +200,7 @@ describe('ShortLinkShare', () => {
     // A challenge with no number has no short link. Rendering `/c/000` would be
     // a link that resolves to nothing while looking exactly like one that works.
     const wrapper = mount(ShortLinkShare, {
-      props: { number: undefined, locale: 'en' },
+      props: { number: undefined, locale: 'en', entryLocale: 'en' },
       global: { plugins: [i18nFor('en')] },
     })
     expect(wrapper.find('[data-short-link]').exists()).toBe(false)
@@ -248,7 +258,7 @@ describe.each(['short', 'page'] as const)('ShortLinkShare in %s mode renders not
   it('converts the string "7" with Number() and renders it as 7 (L09)', () => {
     const text = mountShare('en', '7', 'door-is-open').find('[data-short-link]')
     expect(text.text()).toBe(
-      m === 'short' ? `${DISPLAY_ORIGIN}/c/007` : `${DISPLAY_ORIGIN}/challenge/door-is-open/`,
+      m === 'short' ? `${DISPLAY_ORIGIN}/en/c/007` : `${DISPLAY_ORIGIN}/challenge/door-is-open/`,
     )
   })
 })
@@ -283,11 +293,10 @@ describe.each(['short', 'page'] as const)('ShortLinkShare copy behaviour in %s m
   /** Runtime locale and page locale set apart, so only one of them can explain the strings. */
   function mountAt(pageLocale: 'en' | 'zh-TW', runtimeLocale: 'en' | 'zh-TW') {
     return mount(ShortLinkShare, {
-      props: { number: 1, slug: 'door-is-open', locale: pageLocale },
+      props: { number: 1, slug: 'door-is-open', locale: pageLocale, entryLocale: pageLocale },
       global: { plugins: [i18nFor(runtimeLocale)] },
     })
   }
-  const messages = { en, 'zh-TW': zhTW }
 
   it('shows short_link.copied and is empty again once 2000 ms pass (L12)', async () => {
     vi.useFakeTimers()
@@ -363,7 +372,7 @@ describe.each(['short', 'page'] as const)('ShortLinkShare copy behaviour in %s m
     // reader off the page they were copying from.
     stubClipboard('resolve')
     const Host = defineComponent({
-      render: () => h('a', { href: '#elsewhere' }, [h(ShortLinkShare, { number: 1, slug: 'door-is-open', locale: 'en' })]),
+      render: () => h('a', { href: '#elsewhere' }, [h(ShortLinkShare, { number: 1, slug: 'door-is-open', locale: 'en', entryLocale: 'en' })]),
     })
     const wrapper = mount(Host, { attachTo: document.body, global: { plugins: [i18nFor('en')] } })
     try {
@@ -401,7 +410,7 @@ describe.each([
   })
 
   function mountIn(host: 'alone' | 'anchor') {
-    const share = () => h(ShortLinkShare, { number: n, slug, locale })
+    const share = () => h(ShortLinkShare, { number: n, slug, locale, entryLocale: locale })
     const Host = defineComponent({
       render: () => (host === 'anchor' ? h('a', { href: '#elsewhere' }, [share()]) : h('div', [share()])),
     })
@@ -457,5 +466,49 @@ describe.each([
         wrapper.unmount()
       }
     }
+  })
+})
+
+// Spec 0008 F10: the control's own text follows the list's or page's locale (`locale`); the link
+// follows it too in short mode, and in page mode the locale of the page the entry opens
+// (`entryLocale`). The crossed pairs are the ones where only one input can explain the result.
+describe.each(['short', 'page'] as const)('ShortLinkShare with two locales in %s mode (0008 F10)', (m) => {
+  beforeEach(() => {
+    mode.value = m
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // The expected path in each mode, written out: short follows `locale`, page follows `entryLocale`.
+  it.each([
+    ['en', 'en', '/en/c/001', '/challenge/door-is-open/'],
+    ['zh-TW', 'zh-TW', '/zh-TW/c/001', '/zh-TW/challenge/door-is-open/'],
+    ['zh-TW', 'en', '/zh-TW/c/001', '/challenge/door-is-open/'],
+    ['en', 'zh-TW', '/en/c/001', '/zh-TW/challenge/door-is-open/'],
+  ] as const)('text in %s, entry page in %s', async (locale, entryLocale, shortPath, pagePath) => {
+    const writeText = stubClipboard('resolve')
+    const wrapper = mount(ShortLinkShare, {
+      props: { number: 1, slug: 'door-is-open', locale, entryLocale },
+      // The runtime locale is the other one, so it cannot explain any string.
+      global: { plugins: [i18nFor(locale === 'en' ? 'zh-TW' : 'en')] },
+    })
+    const path = m === 'short' ? shortPath : pagePath
+
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}${path}`)
+    expect(wrapper.find('[data-short-link]').attributes('title')).toBe(`${SITE_ORIGIN}${path}`)
+    const button = wrapper.find('[data-copy-link]')
+    expect(button.attributes('aria-label')).toBe(messages[locale].short_link.copy_label)
+    expect(button.attributes('title')).toBe(messages[locale].short_link.copy_label)
+
+    await button.trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}${path}`)
+    expect(wrapper.find('[data-copy-status]').text()).toBe(messages[locale].short_link.copied)
+
+    stubClipboard('reject')
+    await button.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-copy-status]').text()).toBe(messages[locale].short_link.copy_failed)
   })
 })

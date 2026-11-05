@@ -14,8 +14,9 @@
  * is also what a handout prints. Every other build gives the challenge page's
  * URL: a GitHub Pages build, a Cloudflare Direct Upload or Workers build, and a
  * build served by any other host, including one that reads `_redirects`.
- * In either mode a challenge has one canonical link: what is copied is that
- * URL, and what is shown is the same URL without its scheme.
+ * In either mode a challenge has one link per locale: what is copied is that
+ * URL, and what is shown is the same URL without its scheme. The list and the
+ * nav can give different locales for one challenge (spec 0008, F7).
  */
 
 /** Minimum width of the decimal spelling used in URLs and on screen. */
@@ -53,13 +54,19 @@ export function padChallengeNumber(n: number): string {
   return String(n).padStart(NUMBER_PAD_WIDTH, '0')
 }
 
-/** The locale segment a short link carries, if any. */
+/**
+ * The locale a link is built in: a short link's locale segment (`/en/`, `/zh-TW/`), which every
+ * short link carries; and for a page URL, `/zh-TW` before the page path or nothing for English.
+ */
 export type ShortLinkLocale = 'en' | 'zh-TW'
 
-/** The path a redirect rule maps: `/c/001`, or `/zh/c/001` in Traditional Chinese. */
+/**
+ * The path a redirect rule maps, carrying its locale code: `/en/c/001`, or `/zh-TW/c/001` in
+ * Traditional Chinese. Only these two are given out. `/c/001` and `/zh/c/001`, given out before
+ * spec 0008, keep their rules so links already handed out keep opening.
+ */
 export function shortLinkPath(n: number, locale: ShortLinkLocale): string {
-  const padded = padChallengeNumber(n)
-  return locale === 'zh-TW' ? `/zh/c/${padded}` : `/c/${padded}`
+  return `/${locale}/c/${padChallengeNumber(n)}`
 }
 
 /** What is copied: the absolute URL, scheme included, because it is pasted into a message. */
@@ -97,7 +104,9 @@ export interface ChallengeLink {
  *
  * Takes the mode as an argument rather than reading the build's constant: the build scripts
  * import this module under Node, where that constant does not exist. The origin is appended
- * to as given, not normalised.
+ * to as given, not normalised. The link is built in `locale` whatever the mode; which locale
+ * that is, is the caller's: `ShortLinkShare` passes its list's or page's locale in short mode
+ * and the entry page's in page mode (spec 0008, F10).
  */
 export function challengeLink(
   mode: LinkMode,
