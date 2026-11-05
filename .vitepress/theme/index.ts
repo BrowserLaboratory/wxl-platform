@@ -27,7 +27,7 @@ import MissingTranslationLine from './components/MissingTranslationLine.vue'
 import { useSessionGate, hasGateDecision, shouldPresentGateHere } from './composables/useSessionGate'
 import { i18n, detectInitialLocale, detectLocaleFromPath } from './i18n'
 import { useArrivals } from './composables/useArrivals'
-import { MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
+import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
 
 export default {
   ...DefaultTheme,
@@ -70,8 +70,10 @@ export default {
       const gate = useSessionGate()
 
       // Arrivals and the missing-translation line (spec 0008): see `useArrivals`. The line
-      // on a page that puts the gate's choice on screen waits for the answer (C11), like
-      // the redirects do.
+      // of a cold load or a not-found arrival, on a page that puts the gate's choice on
+      // screen, waits for the answer (C11), like the redirects do; the line of a locale
+      // switcher choice does not (D17). The switcher, in the nav slot below and in
+      // MergedNav, makes its choice through `LOCALE_CHOICE`.
       const arrivals = useArrivals({
         route,
         router,
@@ -80,6 +82,7 @@ export default {
         holdLine: () => shouldPresentGateHere(isChallenge.value) && gate.decision.value === 'undecided' && !hasGateDecision(),
       })
       provide(MISSING_TRANSLATION_LOCALE, arrivals.lineLocale)
+      provide(LOCALE_CHOICE, arrivals.choose)
       const renderLine = () =>
         arrivals.lineLocale.value ? h(MissingTranslationLine, { locale: arrivals.lineLocale.value }) : null
 
@@ -199,7 +202,8 @@ export default {
         // slot, the same control challenge pages have in MergedNav. It is the only locale
         // menu (spec 0008, D7): VitePress's three built-in translation menus are hidden by
         // `style.css`, and a choice made in it is the learner's, so it is stored — the
-        // route watcher above no longer stores anything.
+        // route watcher above no longer stores anything. It goes to the chosen locale's
+        // version only when that version is published, and otherwise stays (B1, B2).
         return withGate(h(DefaultTheme.Layout, null, {
           ...lineSlots,
           'nav-bar-content-before': () => h(LocaleSwitcher),

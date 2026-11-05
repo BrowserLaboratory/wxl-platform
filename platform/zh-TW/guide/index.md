@@ -63,4 +63,4 @@ Service Worker 註冊與 Pyodide 下載是最常讓面板卡住的兩件事。�
 | Repeater | `Repeater` 分頁 | 一整塊可自由改寫的 `Raw HTTP Request` 純文字編輯區，預先填好一份 Host 為 `challenge-<題目 slug>.localhost` 的 `GET /` 請求，右側是已存 snapshot 的側欄，另有 Send 按鈕。在 Network 記錄展開某一列時會出現 `Send to Repeater`，按下會切到這個分頁並覆蓋編輯區原本的內容。見 [Network 與 Repeater](./network)。 |
 | Pentest Notes | 導覽列按鈕，點了才開啟面板 | 每題各自獨立的筆記，含 Markdown 預覽、搜尋框，以及新→舊／舊→新的排序切換。該題至少有一篇筆記時，按鈕上才會出現數字徽章。編輯區的文字只有在按下「儲存」的那一刻才會被存下來。見 [滲透筆記](./notes)。 |
 
-Network 的流量記錄只活在你目前這個頁面上，換頁或切換語系之後會整份清空。
+Network 的流量記錄只活在你目前這個頁面上，換頁之後會整份清空；這一頁有另一個語系的版本時，切換語系會前往那個版本，記錄也會清空。

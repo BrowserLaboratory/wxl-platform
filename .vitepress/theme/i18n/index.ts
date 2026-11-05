@@ -90,8 +90,9 @@ export function detectLocaleFromPath(path: string): Locale {
  * `locale`: the `/zh-TW` segment is added for `'zh-TW'` and removed for
  * `'en'`.
  *
- * **The rule lives here and nowhere else.** `LocaleSwitcher` and `MergedNav`
- * both derive their paths from this function rather than from a local copy,
+ * **The rule lives here and nowhere else.** The switcher's decision
+ * (`switcherDecision` in `arrival.ts`), the not-found lookup and `MergedNav`
+ * derive their paths from this function rather than from a local copy,
  * because `detectLocaleFromPath()` above documents that adding a third locale
  * requires editing it — a warning that must not need posting in two places.
  *
@@ -154,11 +155,22 @@ export function detectInitialLocale(): Locale {
 }
 
 /**
+ * A switcher choice that storage refused, kept for the rest of this tab (spec 0008, D14). It lives
+ * only as long as this module does: a reload starts without it.
+ */
+let rememberedChoice: Locale | null = null
+
+/**
  * Reads the stored locale preference, or null when there is none, it is not a
  * known locale code, or `localStorage` is unreachable (private browsing raises
  * a SecurityError). Never throws.
+ *
+ * A switcher choice that could not be written is read first: it is "used as the
+ * stored value for the rest of that tab's arrivals" (D14), even where storage still
+ * holds an older value.
  */
 export function readStoredLocale(): Locale | null {
+  if (rememberedChoice !== null) return rememberedChoice
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY)
@@ -244,4 +256,26 @@ export function persistLocale(locale: Locale): void {
   } catch {
     // localStorage unavailable; silently ignore
   }
+}
+
+/**
+ * Remembers a locale switcher choice (spec 0008, W1, W6, D14): writes the stored preference, and
+ * when storage refuses, keeps the choice in memory for the tab instead. Never throws. A later
+ * successful write drops the kept choice, since storage then holds the newer one.
+ */
+export function rememberChoice(locale: Locale): void {
+  // A click handler's function: there is no choice to remember during SSR, and module state
+  // there would be shared by every render.
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+    rememberedChoice = null
+  } catch {
+    rememberedChoice = locale
+  }
+}
+
+/** Drops the kept choice. Tests only: module state outlives a test within one file. */
+export function _resetRememberedChoiceForTests(): void {
+  rememberedChoice = null
 }

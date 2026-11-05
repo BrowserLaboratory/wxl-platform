@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   DEFAULT_VISITING_LOCALE,
   LOCALE_STORAGE_KEY,
+  readStoredLocale,
+  rememberChoice,
+  _resetRememberedChoiceForTests,
   redirectTargetForStoredLocale,
   shouldPersistOnColdLoad,
 } from '../../../.vitepress/theme/i18n'
@@ -24,6 +27,7 @@ function loc(pathname: string, search = '', hash = '') {
 
 beforeEach(() => {
   window.localStorage.clear()
+  _resetRememberedChoiceForTests()
 })
 
 // Spec 0008 (overridden contract): the redirect takes the page list and what the router
@@ -230,5 +234,75 @@ describe('shouldPersistOnColdLoad', () => {
     ['a failed load of a Traditional Chinese page (W3)', false, { kind: 'failed-load' }],
   ] as const)('%s: written %s', (_label, expected, arrival) => {
     expect(shouldPersistOnColdLoad(arrival)).toBe(expected)
+  })
+})
+
+// Spec 0008, W1, W6, B6, D14: a switcher choice is always remembered. When the stored preference
+// cannot be written, the choice is kept in memory for the tab and read as the stored value for the
+// rest of the tab's arrivals. Storage spies are restored by their own handles: under happy-dom
+// `vi.restoreAllMocks()` does not restore a spy on `window.localStorage`.
+describe('rememberChoice', () => {
+  it('writes the choice, and it is read back', () => {
+    rememberChoice('zh-TW')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+    expect(readStoredLocale()).toBe('zh-TW')
+  })
+
+  it('does not throw when storage refuses the write, and the choice holds for the tab', () => {
+    const set = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    try {
+      expect(() => rememberChoice('zh-TW')).not.toThrow()
+      expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+      expect(readStoredLocale()).toBe('zh-TW')
+    } finally {
+      set.mockRestore()
+    }
+  })
+
+  it('reads the kept choice before an older value storage still holds', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    const set = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError') })
+    try {
+      rememberChoice('zh-TW')
+    } finally {
+      set.mockRestore()
+    }
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+    expect(readStoredLocale()).toBe('zh-TW')
+  })
+
+  it('reads the kept choice when storage cannot be read either', () => {
+    const set = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError') })
+    const get = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError') })
+    try {
+      rememberChoice('en')
+      expect(readStoredLocale()).toBe('en')
+    } finally {
+      set.mockRestore()
+      get.mockRestore()
+    }
+  })
+
+  it('drops the kept choice once a later write succeeds', () => {
+    const set = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    try {
+      rememberChoice('zh-TW')
+    } finally {
+      set.mockRestore()
+    }
+    rememberChoice('en')
+    window.localStorage.clear()
+    expect(readStoredLocale()).toBeNull()
+  })
+
+  it('the tests\' reset drops the kept choice, so one case cannot leak into the next', () => {
+    const again = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    try {
+      rememberChoice('zh-TW')
+    } finally {
+      again.mockRestore()
+    }
+    _resetRememberedChoiceForTests()
+    expect(readStoredLocale()).toBeNull()
   })
 })

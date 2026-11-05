@@ -5,11 +5,13 @@ import {
   persistLocale,
   readStoredLocale,
   redirectTargetForStoredLocale,
+  rememberChoice,
   shouldPersistOnColdLoad,
   type Locale,
 } from '../i18n'
 import { publishedPages } from '../i18n/publishedPages'
-import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, targetPath } from '../i18n/arrival'
+import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, switcherDecision, targetPath } from '../i18n/arrival'
+import type { ChoiceOutcome } from '../i18n/missingTranslation'
 
 /**
  * The theme Layout's arrivals (spec 0008, seam S1 wired to the router): what each page shown
@@ -25,26 +27,32 @@ import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, 
  * - **Later arrivals.** A change of path — not of hash or query alone (L8) — is classified
  *   again; a not-found one is replaced the same way, once the first arrival has been released
  *   or when the not-found page itself is not held by the gate.
- * - **The line.** Shown on a page, once released, when the page has no version in the requested
- *   locale, and not while `holdLine` says the page's own session gate is still asking (C11).
+ * - **A switcher choice.** `choose` is an arrival of its own, asking for the chosen locale: it
+ *   navigates to a published counterpart, or stays, with no history entry, the URL and the
+ *   interface unchanged, and the line at once (B1–B7, D17). It ends the cold load's claim to a
+ *   redirect (L5).
+ * - **The line.** Shown on a page when the page has no version in the requested locale: for a
+ *   switcher choice that stayed, at once; otherwise once released, and not while `holdLine` says
+ *   the page's own session gate is still asking (C11).
  *
- * **The stored preference.** Written once, by the cold load of a published page under
- * `/zh-TW/` — the learner's explicit request, also through a short link's redirect or a
- * reload (W2, D13) — decided from the page the router rendered (D16), not from the URL, and
- * without waiting for the gate: the gate's clear leaves `wxl-locale` alone. Nothing else here
- * writes it: the redirects and later arrivals are the site's doing, not the learner's choices
- * (D5, W3–W5).
+ * **The stored preference.** Written by the learner's explicit acts only: a switcher choice
+ * (W1; kept in memory for the tab when storage refuses, D14), and the cold load of a published
+ * page under `/zh-TW/` — also through a short link's redirect or a reload (W2, D13) — decided
+ * from the page the router rendered (D16), not from the URL, and without waiting for the gate:
+ * the gate's clear leaves `wxl-locale` alone. Nothing else here writes it: the redirects and
+ * later arrivals are the site's doing, not the learner's choices (D5, W3–W5).
  *
- * Client-only: the cold load and later arrivals read `window.location`, and nothing calls them
- * during SSR, so the line is absent from the static HTML (L7).
+ * Client-only: the cold load, later arrivals and a switcher choice read `window.location`, and
+ * nothing calls them during SSR, so the line is absent from the static HTML (L7).
  */
 export function useArrivals(deps: {
   route: { path: string }
   router: { go: (to: string, options?: { replace?: boolean }) => unknown }
   page: Ref<{ isNotFound?: boolean; relativePath: string }>
   base: () => string
-  /** True while the session gate is asking on the current page: the line waits, and so does a
-   * not-found redirect from a page whose first arrival has not been released. */
+  /** True while the session gate is asking on the current page: the line of a cold load or a
+   * not-found arrival waits (a switcher choice's does not, D17), and so does a not-found redirect
+   * from a page whose first arrival has not been released. */
   holdLine: () => boolean
 }) {
   const { route, router, page, base, holdLine } = deps
@@ -54,6 +62,9 @@ export function useArrivals(deps: {
   const requested = ref<Locale | null>(null)
   // False until the session gate releases the first arrival.
   const released = ref(false)
+  // True while the arrival on screen is a switcher choice that stayed: its line shows at once,
+  // whatever the gate and the first release (D17).
+  const lineAtOnce = ref(false)
 
   const current = () =>
     classifyArrival({
@@ -67,6 +78,7 @@ export function useArrivals(deps: {
   // to it, else, on a cold load of a prefixed page, that prefix, else the stored preference or
   // the default (the requested-locale table).
   const record = (coldLoad: boolean) => {
+    lineAtOnce.value = false
     const arrival = current()
     if (arrival.kind !== 'page') {
       carry.discard()
@@ -129,9 +141,34 @@ export function useArrivals(deps: {
   )
 
   const lineLocaleNow: ComputedRef<Locale | null> = computed(() =>
-    requested.value === null || holdLine()
+    requested.value === null || (!lineAtOnce.value && holdLine())
       ? null
-      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value }))
+      // A choice that stayed counts as released for its own line.
+      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value || lineAtOnce.value }))
+
+  // A locale switcher choice (B1–B7) is an arrival of its own, asking for the chosen locale. It
+  // is written (W1, kept for the tab when storage refuses: D14), and it ends the cold load's claim
+  // to a redirect (L5). It navigates to a published counterpart — a push, so Back returns — or
+  // stays, adding no history entry and keeping the URL and the interface locale, with the line
+  // at once in the chosen locale (B2, D17). On the not-found page the line never shows (B7).
+  const choose = (locale: Locale): ChoiceOutcome => {
+    rememberChoice(locale)
+    coldLoadCurrent = false
+    const arrival = current()
+    const decision = switcherDecision({ chosen: locale, arrival, location: window.location, base: base(), pages })
+    // Whatever it does, a choice is the newest request: a redirect's carry still waiting for its
+    // landing must not outrank it (L6).
+    carry.discard()
+    if (decision.kind === 'navigate') {
+      router.go(decision.target)
+      return 'navigate'
+    }
+    if (arrival.kind === 'page') {
+      requested.value = locale
+      lineAtOnce.value = true
+    }
+    return 'stay'
+  }
 
   // The cold load's arrival, once the router has rendered it: a published page under a
   // locale prefix is the learner's request, and is stored (W2); nothing else is (W3, W4).
@@ -145,6 +182,7 @@ export function useArrivals(deps: {
   return {
     recordColdLoad,
     release,
+    choose,
     lineLocale: lineLocaleNow,
     stop,
   }

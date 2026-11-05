@@ -49,7 +49,7 @@ The Browser panel, the Repeater, and the Code editor all dispatch through the sa
 
 The table does not label which panel produced an entry. The originating panel is recorded, but only into the exportable attack session, not into the row you see. To line an entry up with the action that produced it, use its sequence number and its position in capture order.
 
-The log rendered in the panel lives in the page's memory. There is no entry limit and no truncation — it grows until you clear it. It is scoped to the challenge page you are on: navigating away, reloading, or switching locale clears the whole log, because switching locale navigates to the other locale's URL and reloads the page.
+The log rendered in the panel lives in the page's memory. There is no entry limit and no truncation — it grows until you clear it. It is scoped to the challenge page you are on: navigating away, reloading, or switching locale to the page's version in the other language clears the whole log, because the switcher then goes to that version, which is a different page. When the page has no version in the language you choose, the switcher stays on the page and the log stays.
 
 The full content of each entry, headers and both bodies included, is also copied into the challenge's attack session and written to IndexedDB. That copy survives a reload and can be read back from an exported session even though the on-screen list is gone.
 

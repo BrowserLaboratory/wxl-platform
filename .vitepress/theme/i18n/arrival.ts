@@ -61,6 +61,32 @@ export function notFoundRedirect(
 }
 
 /**
+ * Where a locale switcher choice goes (rows B1–B3, B5, B7): `navigate` to a target built from a
+ * list entry (D16), with the location's query and hash kept, or `stay`. On a page, the chosen
+ * locale's counterpart of the page's entry when the list has it; the page's own locale, or a
+ * counterpart the list lacks, stays. On the not-found page or a failed load, the lookup
+ * algorithm's counterpart of the path, whatever was chosen: the menu there offers only the other
+ * locale, since the line never shows on the not-found page.
+ */
+export function switcherDecision(input: {
+  chosen: Locale
+  arrival: Arrival
+  location: { pathname: string; search?: string; hash?: string }
+  base: string
+  pages: readonly string[]
+}): { kind: 'navigate'; target: string } | { kind: 'stay' } {
+  const { chosen, arrival, location, base, pages } = input
+  let entry: string | null
+  if (arrival.kind === 'page') {
+    const counterpart = localizePath(arrival.entry, chosen)
+    entry = detectLocaleFromPath(arrival.entry) !== chosen && pages.includes(counterpart) ? counterpart : null
+  } else {
+    entry = lookupNotFound(location.pathname, base, pages)
+  }
+  return entry === null ? { kind: 'stay' } : { kind: 'navigate', target: targetUrl(entry, base, location) }
+}
+
+/**
  * The locale the missing-translation line is written in, or null when it does not show (L1):
  * on a page, once the arrival is released, when the requested locale is not the page's and the
  * page has no version in it.
