@@ -455,7 +455,7 @@ against a baseline.
 ## OQ-012 — What should the locale redirect's hold guard while the session-gate choice is open?
 
 **Deferred on:** 2026-10-14
-**Status:** open
+**Status:** resolved
 
 **Reason.** The redirect to the stored locale waits until the browser session has a decision, on a
 page that puts the choice on screen. Its comment used to say the clear deletes `wxl-locale`; the key is exempt
@@ -474,6 +474,22 @@ record its reason.
 
 **Revisit when.** The locale redirect or the gate's decision values change.
 
+**Resolved on 2026-11-06 (0008's close-out): keep the hold, with this reason.** The revisit
+condition was met when T-0054 rebuilt the locale redirect. The Evidence above dates from 2026-10-14:
+the hold's comment now starts at `.vitepress/theme/index.ts:117` and its watcher is at `:164-169`.
+Epic 0008 made the hold part of the spec: the cold-load redirect, the not-found redirect and the
+missing-translation line wait for the gate's decision (spec 0008 B5, traceability A6 and C11), while
+a switcher choice does not (D17). The reason is not protection: `wxl-locale` is exempt from the
+clear, and the gate is a notice, not access control (ADR-0006). It is that the answer decides which
+load the learner continues on. `cleared` replaces the page with a fresh load of the site root
+(`SessionGate.vue:57`), which makes its own cold-load redirect, so this arrival's redirect is
+skipped; every other value, `kept` and `dismissed` included, runs it (`index.ts:164-169`).
+Releasing the redirect while the choice is open would swap the URL and the page under an open
+question, since the gate is rendered beside every layout and stays on screen across the router's
+navigation (`index.ts:185-193`), and in the `cleared` case would add a navigation the reload then
+throws away. The line does not depend on this hold: it has its own (`holdLine`,
+`composables/useArrivals.ts:143-147`). Recorded under the user's standing instruction of
+2026-11-06 to follow the recommendations; the comment above the hold now states this reason.
 ---
 
 ## OQ-013 — Should the gate's two untested defensive guards get tests?
@@ -592,11 +608,11 @@ configuration reads `CF_PAGES` at build time (`1` only on Cloudflare Pages' own 
 control shows and copies the short link in that case and the challenge page's URL otherwise. A
 GitHub Pages range's button therefore no longer hands out an address that depends on redirect rules
 the host ignores, and the user-site case above closes too, since no `/c/` or `/zh/c/` path is
-handed out there. The page URL still fails to open the range in these cases:
+handed out there. When this was resolved, the page URL still failed to open the range in these cases:
 - a `SITE_ORIGIN` that does not name the range's real address, which spec 0007 lists under B4;
 - a renamed challenge, under Q10 and Further Notes;
 - a learner redirected to a missing Traditional Chinese page (OQ-023), under B4 — fixed by epic 0008;
-  OQ-023 closes when 0008 lands.
+  OQ-023 resolved on 2026-11-06.
 
 Mode rule, link forms and rows M01–M04, L01–L21:
 `.proj.specs/0007-gh-pages-range-fixes/traceability.md`. At 0007's close-out, set the status to
@@ -617,7 +633,7 @@ holds the whole epic (`.proj.tickets/0007-gh-pages-range-fixes/T-0039-documents-
 The first two limits listed above remain as recorded; the first (a wrong `SITE_ORIGIN`) and the
 user-site remark are refined by 0007's chain analysis (`review/chain-analysis.md`, N-4 and N-5). The
 third (OQ-023) was reproduced on the same range and is fixed by epic 0008 (T-0053–T-0057); it is no
-longer a live limit once 0008 lands.
+longer a live limit (OQ-023, resolved on 2026-11-06).
 
 ---
 
@@ -844,7 +860,7 @@ surface of create-wxl's own, at which point that surface needs the usual browser
 ## OQ-023 — Should the language redirect send a learner to a Traditional Chinese page that does not exist?
 
 **Deferred on:** 2026-10-21
-**Status:** open — closes when epic 0008 (`.proj.specs/0008-missing-translation-fallback/`) lands
+**Status:** resolved
 
 **Reason.** Found in stage 3 of epic 0007 (round 1, finding C-1). The user decided on 2026-10-21
 (D6 in `.proj.specs/0007-gh-pages-range-fixes/traceability.md`) to record it here rather than fix it
@@ -893,16 +909,34 @@ authoring-environment epic; stage 1 (`/grill-with-docs`, user-invoked) chooses a
 above (redirect only to a page that exists, list English-only challenges in the Traditional Chinese
 list, scaffold a Traditional Chinese brief, or OQ-024's root-locale move).
 
-**Fixed by epic 0008 (T-0053–T-0057); closes when it lands.** At 0008's close-out, set the status to
-resolved and record the stage 8 evidence. The cold-load redirect and the locale switcher
+**Fixed by epic 0008 (T-0053–T-0057).** The cold-load redirect and the locale switcher
 go only to a translation that is published; otherwise the learner stays on the page that exists and
 sees one line saying it has no version in the requested language. A not-found path whose counterpart
 exists is replaced by it (`/zh-TW/challenge/<english-only>/` opens the English page). Every locale's
 challenge list and home page show every challenge, an untranslated one with its own title and the mark
-`只有英文`. Short links carry their locale code (`/en/c/NNN`, `/zh-TW/c/NNN`), and every numbered
+`只有英文` in the Traditional Chinese list (`Traditional Chinese only` in the English one). Short links carry their locale code (`/en/c/NNN`, `/zh-TW/c/NNN`), and every numbered
 challenge with an English brief has both, the Traditional Chinese one opening the English page while
 no translation exists. The scaffold
 still writes only the English brief: a translation is optional (stage 1 of 0008; ADR-0008).
+
+**Resolved on 2026-11-06 (0008's close-out).** Epic 0008 landed as `d05976e`, `e5a1c36`, `95c05bc`,
+`293678f` and `ef13b2b` (#50, #52, #54, #56, #58). Verified in T-0057's stage 8 with the
+English-only fixture challenge #999 (`stage8-english-only`) on `1532eea`, which is T-0057's `aae3d01`
+plus the fixture commit (`git diff aae3d01 74a5e5e` touches only the ticket's record, and `74a5e5e`
+is the head that merged as `ef13b2b`). Surfaces: the Cloudflare preview of `stage8/T-0057` in
+headless Chromium (Playwright) and, for V1a, V1i and V1l, the host's built-in browser; the temporary
+GitHub Pages range `CXPhoenix/wxl-e2e-0008-t0057`, created with create-wxl 3.0.0 from `1532eea`, in
+the built-in browser and with `curl` (V2):
+- With no stored preference, the English page URL stays on the English page and shows the line in
+  Traditional Chinese (V1a, V2). Before 0008 it redirected to a 404 with the stored value `zh-TW`
+  (reproduced on 2026-10-24, above); with none, by reading the code.
+- `/zh-TW/challenge/stage8-english-only/` (404 on both hosts) lands on the English page with the line:
+  opened directly on GitHub Pages under the base `/wxl-e2e-0008-t0057/` (V2), and reached through the
+  `/zh-TW/c/<slug>` and `/zh/c/<slug>` redirects on the preview (V1c).
+- `/zh-TW/challenges` and `/zh-TW/` list #999 with `只有英文`, already in the served HTML; the home
+  page counts it (V1g, V2).
+- `/c/999`, `/en/c/999`, `/zh/c/999` and `/zh-TW/c/999` all open the English page (V1d).
+Record: T-0057's stage 8 section. The scaffold still writes only the English brief, as decided.
 
 ---
 

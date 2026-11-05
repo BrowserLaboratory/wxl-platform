@@ -118,7 +118,11 @@ export default {
         // the choice on screen it is released as soon as the check settles (below). The
         // hold is not about the preference itself: `wxl-locale` is exempt from the clear
         // (`localStorageKeys.ts`), so a clear leaves the value this redirect reads as it
-        // was. What the hold should guard while the choice is open is not settled.
+        // was. It holds because the answer decides which load the learner continues on:
+        // `cleared` reloads the site root, which makes its own redirect, so this one is
+        // skipped; any other answer runs it once the choice leaves the screen. Released
+        // early, it would swap the page under the open question (spec 0008 B5, A6, C11).
+        // The line has its own hold; a switcher choice does not wait (D17). OQ-012.
         //
         // The marker is read synchronously, so the ordinary path — this session has
         // already answered — navigates in the same tick it always did, with no await

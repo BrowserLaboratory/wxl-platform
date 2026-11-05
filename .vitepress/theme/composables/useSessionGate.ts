@@ -49,8 +49,7 @@ export const CLEAR_STARTED = 'started'
  * - `cleared` — a site-wide clear confirmed success and the page is being reloaded.
  *
  * The locale redirect in `index.ts` waits on this on a page that puts the choice on
- * screen; the comment there says when it is held and what that hold does and does not
- * protect. Every value
+ * screen; the comment there says when it is held and why. Every value
  * other than `cleared` leaves the page in place and therefore releases it; `cleared` is
  * the one that does not, because a full page load is already coming.
  */
