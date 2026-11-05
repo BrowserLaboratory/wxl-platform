@@ -2,7 +2,7 @@
 id: T-0054
 title: The cold-load redirect goes only to a translation that exists, and only explicit choices write the preference
 epic: 0008-missing-translation-fallback
-status: review
+status: done
 blocked_by: [T-0053]
 ---
 
@@ -249,3 +249,12 @@ Seen in passing: the first tab opened `/guide/` with nothing stored and ended at
 
 Cleanup, under the same instruction: `git push origin --delete stage8/T-0054` and the local branch
 deleted (its preview alias goes with it); deployment `5ddd13e6` cannot be deleted from here and stays.
+
+### 2026-11-05 — landed (stage 9)
+
+PR [#52](https://github.com/BrowserLaboratory/wxl-platform/pull/52), squash-merged into `main` as
+`e5a1c36` on 2026-11-05 (13:44Z), from head `240e4c7`, with a squash message from the project
+`tw-emoji-commit` skill; the user approved the merge order ("依序合併"). PR #51 (T-0053 → `done`)
+was merged first as `c7c2e30`, so T-0054's blocker was `done` on `main` before it landed. The PR's
+CI: 10 checks passing, none failing. Both PR branches are deleted on `origin`. T-0055 is unblocked.
+Frontmatter `status: done`.
