@@ -4,7 +4,7 @@ title: The pre-commit hook handles a cached-only removal and names an untracked 
 epic: 0008-missing-translation-fallback
 status: pending
 blocked_by: []
-pending_reason: "The first two found while testing T-0056 (stage 5), the third read from the code in its stage 7 security review (S-5); recorded for the user as predating that ticket and raised again as N-4 by 0008's chain analysis. The user's standing instruction of 2026-11-06 (follow the recommendations) opens it as a pending ticket."
+pending_reason: "The first two found while testing T-0056 (stage 5), the third read from the code in its stage 7 security review (S-5); recorded for the user as predating that ticket and raised again as N-4 by 0008's chain analysis. Opened as pending under the user's standing instruction of 2026-11-06; the user confirmed on 2026-11-06 that it stays pending until they schedule it."
 pending_evidence: "T-0056's coverage report, 'Found while testing, outside this ticket', with reproductions; review/security-T-0056.md S-5 and S-6 (= stage 6 Spec F8); review/chain-analysis.md N-4 and C-10. The stash code is not in T-0056's diff; the untracked-directory listing predates it (T-0056 coverage report); W4's echo was reworded in T-0056's stage 6 and printed the directory name as it is before that too (S-5)."
 pending_on: 2026-11-06
 revisit_when: "The next change to scripts/pre-commit.sh, or a teacher reports the O5 stash message after removing a challenge from the index."
