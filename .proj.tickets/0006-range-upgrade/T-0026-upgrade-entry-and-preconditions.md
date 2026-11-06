@@ -2,7 +2,7 @@
 id: T-0026
 title: Upgrade entry, preconditions and base resolution
 epic: 0006-range-upgrade
-status: processing
+status: review
 blocked_by: [T-0025]
 ---
 
@@ -29,27 +29,27 @@ builds both pristine ranges, and removes its temporary directories.
 
 ## Acceptance criteria
 
-- [ ] U01: `upgrade --from 3.0.0`, `--from <40 hex>`, `--lang en upgrade` → accepted (AC-1)
-- [ ] U02: each grammar error of the row → CW-E02, nothing written (AC-1)
-- [ ] U03: not a repository / a subdirectory / the root through a symbolic link → UP-E01 / UP-E01 / accepted (AC-2)
-- [ ] U04: `runGit` rejects `ENOENT`; git 2.19.0 → UP-E02, exit 1 (AC-2)
-- [ ] U05: each unclean case of the row → UP-E03 with its token, exit 1, nothing written (AC-2)
-- [ ] U06: valid `range.json` → base = its commit and version (AC-3)
-- [ ] U07: absent, no `--from` → UP-E04 (AC-3)
-- [ ] U08: absent with `--from <version>` / `--from <commit>` → base from `--from`, version given / from the base archive's manifest (its display in R1 is verified in T-0027, U26) (AC-3)
-- [ ] U09: valid + `--from`; other repository + `--from`; unparsable + `--from` → `--from` wins / wins / UP-E06 `not-json` (AC-3)
-- [ ] U10: each J1, J3, J4 breakage without `--from` → UP-E06 with the token (AC-3)
-- [ ] U11: repository differs / differs only in case → UP-E05 / accepted (AC-3)
-- [ ] U12: base commit = target commit → UP-I01, exit 0, no download, nothing written (AC-4)
-- [ ] U13: base version > target → UP-E07 before any download (AC-4)
-- [ ] U14: equal versions, different commits → with override proceeds past step 7 with CW-W04 / without, UP-I01 (AC-4)
-- [ ] U15: either archive rejected, hostile, or lacking a P1/P2 marker → the 0005 code, exit 1, nothing written, no `create-wxl-upgrade-` entry under `tmpRoot` (AC-5)
-- [ ] U16: `--from <version>` tag archive `comment` absent or not 40 hex → UP-E08 (AC-5)
-- [ ] U30: the root manifest's `range:upgrade` script exactly as specified, checked by a create-wxl test (AC-12)
-- [ ] U31: `create-wxl upgrade` takes the upgrade path; `create-wxl <dir>` unchanged (AC-12)
-- [ ] U50: base 2.9.9 from `range.json`, and `--from 2.9.9` → UP-E10 before any download (AC-4)
-- [ ] U51: `--from <commit>` whose archive version is above / equal-with-target-commit / below 3.0.0 → UP-E07 / UP-I01 / UP-E10 after download, nothing written (AC-4)
-- [ ] U52: `--from <version>` resolving to the target's commit → UP-I01, nothing written (AC-4)
+- [x] U01: `upgrade --from 3.0.0`, `--from <40 hex>`, `--lang en upgrade` → accepted (AC-1)
+- [x] U02: each grammar error of the row → CW-E02, nothing written (AC-1)
+- [x] U03: not a repository / a subdirectory / the root through a symbolic link → UP-E01 / UP-E01 / accepted (AC-2)
+- [x] U04: `runGit` rejects `ENOENT`; git 2.19.0 → UP-E02, exit 1 (AC-2)
+- [x] U05: each unclean case of the row → UP-E03 with its token, exit 1, nothing written (AC-2)
+- [x] U06: valid `range.json` → base = its commit and version (AC-3)
+- [x] U07: absent, no `--from` → UP-E04 (AC-3)
+- [x] U08: absent with `--from <version>` / `--from <commit>` → base from `--from`, version given / from the base archive's manifest (its display in R1 is verified in T-0027, U26) (AC-3)
+- [x] U09: valid + `--from`; other repository + `--from`; unparsable + `--from` → `--from` wins / wins / UP-E06 `not-json` (AC-3)
+- [x] U10: each J1, J3, J4 breakage without `--from` → UP-E06 with the token (AC-3)
+- [x] U11: repository differs / differs only in case → UP-E05 / accepted (AC-3)
+- [x] U12: base commit = target commit → UP-I01, exit 0, no download, nothing written (AC-4)
+- [x] U13: base version > target → UP-E07 before any download (AC-4)
+- [x] U14: equal versions, different commits → with override proceeds past step 7 with CW-W04 / without, UP-I01 (AC-4)
+- [x] U15: either archive rejected, hostile, or lacking a P1/P2 marker → the 0005 code, exit 1, nothing written, no `create-wxl-upgrade-` entry under `tmpRoot` (AC-5)
+- [x] U16: `--from <version>` tag archive `comment` absent or not 40 hex → UP-E08 (AC-5)
+- [x] U30: the root manifest's `range:upgrade` script exactly as specified, checked by a create-wxl test (AC-12)
+- [x] U31: `create-wxl upgrade` takes the upgrade path; `create-wxl <dir>` unchanged (AC-12)
+- [x] U50: base 2.9.9 from `range.json`, and `--from 2.9.9` → UP-E10 before any download (AC-4)
+- [x] U51: `--from <commit>` whose archive version is above / equal-with-target-commit / below 3.0.0 → UP-E07 / UP-I01 / UP-E10 after download, nothing written (AC-4)
+- [x] U52: `--from <version>` resolving to the target's commit → UP-I01, nothing written (AC-4)
 
 ## 給使用者（zh-TW）
 
@@ -154,3 +154,133 @@ Rows added to the approved table (decision (1) of 2026-10-17 and D3):
 |---|---|---|---|---|
 | 0005-S1（bin） | 打包的 `bin` 把 `os.tmpdir()` 當作 `deps.tmpRoot` 傳給 `run` | 擴充既有 `create-wxl/test/bin.test.mjs`，比照該檔讀 `bin` 原始碼的作法（T-0025 的 C-08 一類），斷言 deps 物件帶 `tmpRoot: tmpdir()`（`node:os`） | 決定 (1)，traceability.md:37 | 綠燈：`bin` 的 deps 帶 `tmpRoot`，值來自 `os.tmpdir()`。預期紅燈：目前 `create-wxl/bin/create-wxl.mjs:94-122` 的 deps 沒有 `tmpRoot` |
 | 0006-S1 | step 7 在 `tmpRoot` 底下的檔案系統錯誤 → CW-E09，暫存資料夾全部清掉 | `upgrade-target.test.mjs` 新增 `describe('file-system errors in step 7')`：(a) `deps.tmpRoot` 指向一個不存在的路徑（`mkdtemp` 失敗）；(b) 用既有 `fail-at` 注入，讓 target 的解壓寫入在第一個檔案失敗；(c) 同樣注入，讓 base 的 P3（`package.json`）寫入失敗 | D3 / AC-5 | 三案皆 exit 1、stderr 以 `CW-E09` 開頭並帶路徑；`withoutRootMtime(snapshotTree(tmpRoot))` 前後一致（(a) 為 tmpRoot 不存在）；fixture range 的 snapshot（含 `.git`）不變。預期紅燈：同總則，`CW-E02` token `"upgrade"` |
+
+### 2026-11-07 — sub-cases added to the approved table
+
+The increment plan's independent check found approved behaviour without a test. The user approved
+on 2026-11-07 these sub-cases, which test decisions already made and change no behaviour:
+
+- U02: `['--from','3.0.0','upgrade']` → CW-E02 token `--from` (decision (2)); `['--author','x','upgrade']`
+  → CW-E02 token `--author` (a create-only flag before `upgrade`; the three C02 cases of
+  `run-preflight.test.mjs:247-249` depend on it).
+- U31: `['range','--from','3.0.0','--no-setup']` → CW-E02 token `--from` (AC-12: `--from` exists only
+  on the upgrade path, so the create path is unchanged).
+- U51 (d): a base archive from `--from <commit>` whose `package.json` `version` is missing or not
+  X.Y.Z → UP-E10, nothing written, no `create-wxl-upgrade-` entry left (decision (3)).
+- U09 (e): the symbolic-link sub-case is skipped on win32, like U03's third case and U10's J1 case.
+
+### 2026-11-07 — increment plan confirmed
+
+The increment plan was drafted by the executor role and checked by the reviewer role (32 problems,
+"approve with corrections"), revised to apply every one of them and the sub-cases the user approved,
+then gated by a second reviewer pass. The gate confirmed all 32 applied and raised one blocking point
+(D3's fault injection matched a `/`-separated path, which never fires on windows-latest) and six
+minor ones. The main session confirmed the plan with seven amendments: the injection matches the file
+name only; step 6's checks are repeated for every base after both archives are validated and before
+any `mkdtemp` (traceability.md:89); `rev-parse` output is trimmed and `--git-dir` resolved against
+`deps.cwd`; U03 (2)'s subdirectory need not be committed; the tag fixture's prefix directory carries
+mode `0o755`; **UP-I01 carries the base's version and commit** (traceability.md:176 says only "the
+version and commit"; the base is the range's current state); until increment 18 the one fall-through
+uses decision (4)'s CW-E14 wording, unasserted. 22 increments and five behaviour-preserving
+refactors (R1 before increment 1, R2 before 10, R5 before 14, R3 before 18, R4 before 21; each with
+the whole create-wxl suite green before and after).
+
+### 2026-11-07 — red → green log
+
+Run by the executor role in five sequential segments, each ending with the whole create-wxl suite
+(`pnpm --dir create-wxl exec vitest run`): 464, 481, 507, 528, 535 tests passing. Each increment's
+red was observed before its production change; "red" below quotes what was seen. U15 is confirmed
+green inside increment 19 (D3's shared cleanup), as the plan states.
+
+| # | Row | Red observed | Files |
+|---|---|---|---|
+| 0 | R1 refactor | N/A (not a red/green cycle; this is a behaviour-preserving move) — baseline before: 'Test Files 21 passed (21)' / 'Tests 437 passed (437)' | create-wxl/src/patterns.mjs, create-wxl/src/run-shared.mjs, create-wxl/src/run.mjs |
+| 1 | bin tmpRoot row | 1 failed \| 14 passed (15) — AssertionError on `expect(source).toMatch(/\{\s*tmpdir\s*\}\s*=\s*await import\(\s*['\"]node:os['\"]\s*\)/)`: bin source had no node:os import and no tmpRoot in deps | create-wxl/bin/create-wxl.mjs, create-wxl/test/bin.test.mjs |
+| 2 | U30 | 1 failed — AssertionError: expected undefined to be 'npx --yes create-wxl@latest upgrade' (pkg.scripts['range:upgrade'] was undefined) | package.json, create-wxl/test/upstream-archive.test.mjs |
+| 3 | U31 | 1 failed \| 2 passed (3) — (a): AssertionError: expected 'CW-E02: "upgrade" is not a valid argument.\n' to match /^UP-E01/m; (b) and (c) passed from the start as guards | create-wxl/src/argv.mjs, create-wxl/src/run.mjs, create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-grammar.test.mjs, create-wxl/test/run-preflight.test.mjs |
+| 4 | U01 | 3 failed \| 5 passed (8) — the three --from forms got CW-E02 naming "--from"/"--from=3.0.0" instead of UP-E01; the two --lang forms were already green (confirmations) | create-wxl/src/argv.mjs, create-wxl/test/upgrade-grammar.test.mjs |
+| 5 | U02 | 11 failed \| 14 passed (25) — the 11 new cases (v3.0.0, 39-hex, 41-hex, uppercase-40, 'extra', the five create-only flags after upgrade, and ['--author','x','upgrade']) all got UP-E01 instead of CW-E02; the 6 confirmations (mis… | create-wxl/src/argv.mjs, create-wxl/test/upgrade-grammar.test.mjs |
+| 6 | U12 | AssertionError: expected 1 to be +0 // Object.is equality (exit code 1, decision-(4) CW-E14 fall-through, instead of 0) — both case (a) and case (b) | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-target.test.mjs, create-wxl/test/helpers/fixture-range.mjs |
+| 7 | U03 | AssertionError: expected 'CW-E14: an unexpected error happened: "ENOENT: no such file or directory, open '.../docs/range.json'".\n' to match /^UP-E01/m | create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-preconditions.test.mjs |
+| 8 | U04 | (1) AssertionError: expected 'CW-E14: an unexpected error happened: "spawn git ENOENT".\n' to match /^UP-E02/m; (2) AssertionError: expected 'CW-E14: an unexpected error happened: "ENOENT: no such file or directory, realpath ''… | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-preconditions.test.mjs |
+| 9 | U05 | AssertionError: expected +0 to be 1 // Object.is equality (exit code 0 with UP-I01 on stdout, instead of exit 1 with UP-E03) — all 8 sub-cases | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-preconditions.test.mjs, create-wxl/test/helpers/fixture-range.mjs |
+| 10 | U06 | AssertionError: expected [] to include '1111111111111111111111111111111111111111' (fetchArchive.mock.calls empty: the run takes the decision-(4) fall-through without downloading) | create-wxl/src/run-shared.mjs, create-wxl/src/run.mjs, create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-base.test.mjs, create-wxl/test/helpers/ref-fetch-archive.mjs |
+| 11 | U07 | AssertionError: expected 'CW-E14: an unexpected error happened: "ENOENT: no such file or directory, open '.../range.json'".\n' to match /^UP-E04/m | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-base.test.mjs |
+| 12 | U08 | (a) AssertionError: expected [ undefined ] to include 'refs/tags/v3.1.0' (fetchArchive was called once with ref=undefined, not the planned '0 calls' -- documented as a deviation below); (b) passed at the start as its own confir… | create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-base.test.mjs |
+| 13 | U09 | (a)(b)(d) green at the start (confirmations); (c) and (e): AssertionError: expected 'CW-E14: an unexpected error happened: "the upgrade merge is not implemented yet".\n' to match /^UP-E06/m -- exactly the plan's expected red | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/helpers/fixture-range.mjs, create-wxl/test/upgrade-base.test.mjs |
+| 0 | R5 refactor | n/a | create-wxl/src/upgrade.mjs |
+| 14 | U10 | 16 failed \| 9 skipped (25); every case got CW-E14 instead of UP-E06 -- the directory case showed EISDIR, the JSON-shape cases showed SyntaxError/TypeError text, and the shape cases that type-check downstream fields showed 'the… | create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-base.test.mjs |
+| 15 | U11 | (a) AssertionError: expected 'CW-E14: an unexpected error happened: "the upgrade merge is not implemented yet".\n' to match /^UP-E05/m (fetchArchive was in fact called, as the plan predicted); (b) passed at the start as its own… | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-base.test.mjs |
+| 16 | U13 | AssertionError: expected 'CW-E14: an unexpected error happened: "the upgrade merge is not implemented yet".\n' to match /^UP-E07/m — fetchArchive had in fact been called (download happened), matching the plan's predicted red ex… | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-target.test.mjs |
+| 17 | U50 | Both (a) and (b): AssertionError: expected 'CW-E14: an unexpected error happened: ...' to match /^UP-E10/m — both downloaded and fell through to decision-(4) CW-E14, matching the plan. | create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-target.test.mjs |
+| 18 | U14 | (a) AssertionError: expected false to be true — checkpoint('step-8') was never called with the upgrade path, so the synchronous inspection never ran (inspected stayed false). (b) AssertionError: expected 1 to be +0 — exit code … | create-wxl/src/run-shared.mjs, create-wxl/src/run.mjs, create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-target.test.mjs |
+| 19 | D3 | Only case (b) failed: 'expected [object with create-wxl-upgrade-KQ8YTF entry and its built files] to equal [snapshot without it]' — the base's fully-built create-wxl-upgrade-* directory was left behind under tmpRoot when the ta… | create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-target.test.mjs, create-wxl/test/helpers/ref-fetch-archive.mjs |
+| 20 | U16 | 'no pax global header' case: AssertionError expected CW-E14 text to match /^UP-E08/m (rule 2 passed vacuously since undefined===undefined, run fell through to decision-4). Other 4 cases: AssertionError expected 'CW-E08: the arc… | create-wxl/src/run-shared.mjs, create-wxl/src/upgrade.mjs, create-wxl/src/messages.mjs, create-wxl/test/upgrade-target.test.mjs, create-wxl/test/helpers/ref-fetch-archive.mjs |
+| 21 | U51（含 2026-11-07 補的子案 | 5 failed \| 23 skipped (28)。(a)(c)(d1)(d2) 四案：'expected CW-E14: an unexpected error happened: "the upgrade merge is not implemented yet". to match /^UP-E07/m（或 /^UP-E10/m）'；(b) 案：'expected 1 to be +0'（exit code 1 而非 0）。五案都走到 de… | create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-target.test.mjs |
+| 22 | U52 | 2 failed \| 28 skipped (30)：'expected 1 to be +0 // Object.is equality'（兩案皆 exit 1 而非預期的 exit 0），與預期紅燈一致：inc 20 只驗證 tag comment、沒有指派 baseCommit，inc 21 的 recheck 因 baseCommit 仍是 undefined 而不觸發 commit-equal 分支，於是繼續跑到 decision-(4)… | create-wxl/src/run-shared.mjs, create-wxl/src/upgrade.mjs, create-wxl/test/upgrade-target.test.mjs |
+
+Recorded, not plan deviations: in increment 3 the executor first wrote the production edits before
+the test, noticed it before running anything, reverted them to the post-increment-2 state, confirmed
+the suite green, and then ran the cycle test-first. In increment 7 the first draft of U03 (1) used
+`makeDeps`'s default env without `PATH`, so the red came from an unexpected cause; the env was
+corrected within the same cycle as the Notes require. In increment 12 the observed red differed in
+mechanism from the plan's wording (a version-form `--from` reached `fetchArchive` with `ref`
+undefined) but was red for the right row. The refactor R3 helpers return `null`/`false` for the
+conditions they report themselves and rethrow only `SignalAbort` or unknown errors.
+
+Edited 0005 test bodies: only the three C02 cases of `create-wxl/test/run-preflight.test.mjs:247-249`
+(token `'upgrade'` → `'--no-setup'`), as the Notes allow; `bin.test.mjs` gains one `it`.
+
+### 2026-11-07 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0006-S1 | `upgrade-grammar.test.mjs`, `upgrade-preconditions.test.mjs`, `upgrade-base.test.mjs`, `upgrade-target.test.mjs` (98 tests added in all with the rows below) | not measured: no coverage provider is installed in create-wxl (as for T-0020–T-0025) | U01–U16, U31, U50–U52, D3 | symbolic-link sub-cases on win32 (U03 (3), U09 (e), U10 J1) are skipped there; U14 (a) observes `deps.checkpoint('step-8')`, which 0006-S1's observable list does not name (the approved table's choice); the end state after step 7 is decision (4)'s CW-E14 until T-0027 |
+| 0005-S3 | `upstream-archive.test.mjs` `range:upgrade script` | not measured | U30 | — |
+| 0005-S1 (bin source) | `bin.test.mjs` (1 added) | not measured | decision (1) | the packed `bin` against a terminal: T-0027's stage 8 (0006-S2) |
+
+Checks at HEAD of the working tree on 2026-11-07: `pnpm --dir create-wxl test` → `Test Files 25 passed (25) / Tests 535 passed (535)`;
+root `pnpm test --run` → `Test Files 136 passed (136) / Tests 4854 passed | 1 skipped (4855)`;
+`python3 scripts/verify-project.py` → `PASS`. Acceptance criteria ticked; status set to `review` for stage 6.
+
+### 2026-11-07 — stage 6 review and disposition (fixes not yet applied)
+
+`/code-review` on the staged change (base `ea0de55` = merge-base, HEAD `69bd4a0`, staged layer;
+packet captured before review, no drift after). Two independent `harness-reviewer` passes, one axis
+each. Standards: 19 documented-standard findings (A1–A17, B1–B2) and 19 smells (S1–S19). Spec: 26
+findings (F01–F26). Both reports, verbatim, are kept locally in
+`.proj.research/2026-11-07-T-0026-stage6-review.md` (gitignored). Worst per axis: A1 (D3 (b)'s
+`toContain(tmpRoot)` is not escaped through `jsonValue`, so it fails on windows-latest) and F01
+(step 4 ignores the exit codes of `git status`, `git ls-files -v` and `git rev-parse --git-dir`, so a
+failing git reads as a clean tree; after T-0027 that could let R5's `git clean -fd` remove a
+teacher's untracked files).
+
+The user approved this disposition on 2026-11-07 ("照建議處置"):
+
+- **Behaviour fixes, each test-first with a new sub-case (approved):**
+  - **D6** (F01, B1): in step 4, a non-zero or `null` exit of any of the three git commands stops the
+    run with CW-E14 naming the command and its stderr (fail closed); exit 1, nothing written.
+  - **F02, A2:** the upgrade path calls `deps.checkpoint('step-N')` then `guard.throwIfRaised()` at
+    the start of its steps 3–7 (the existing `checkpoint('step-8')` stays); sub-case: SIGINT at
+    `step-4` → exit 130, nothing written, no `create-wxl-upgrade-` entry, no download.
+  - **F03, A3:** J4 and decision (3) require a string before the regex; sub-cases: array `version` /
+    `commit` in `range.json` → UP-E06 with its token; array base `version` → UP-E10.
+  - **F17:** UP-E10 for a present but invalid version says it is not valid (en, zh-TW).
+  - **F14:** cleanup removes every temporary directory even if one `rm` fails and never rejects the
+    run; sub-case with an injected `rm` failure.
+  - **F22:** sub-case: `--from <version>` equal to the target version whose tag resolves to another
+    commit → UP-I01 after the download with the base's version and commit.
+- **Test and tidy fixes, within the approved scope:** A1/F04, A4/F08, A5/F13, F05, F06, F09, F12,
+  F21, F23, A10 (in a new test file; `language.test.mjs` is not edited), A6 (one constant for the
+  3.0.0 floor in messages), A7 (UP-E05 says the upstream repository, not "engine"), A9 (zh-TW
+  wording), A17/F16/S9 (stale comments; refactor tags R1–R5 removed from comments).
+- **Mutation checks** for rows whose red was never observed (F10, F11): U15, U11 (b), U09 (b), U09 (d).
+- **Record fixes by the main session:** A12 (untruncated reds, line references pinned to a commit),
+  A13 (OS and surface of each verification), A15 (the zh-TW section), F24 (revision 2.1).
+- **Recorded, not changed:** A11 and A14 (precedent), A16 (frozen spec), A8 (base/target are the
+  spec's vocabulary), B2, F07, F18, F19 (CW-E09 printed before cleanup, as 0005 does), F20, F25 (a
+  spec gap: `range.json`'s claimed version is not cross-checked against the archive; candidate open
+  question), F26 (do not publish to npm between T-0026 and T-0027), S1–S19 (optional quality
+  cleanup, not stage 6).
+
+Status stays `review`. The fixes above are the next step.

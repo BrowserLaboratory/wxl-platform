@@ -1,0 +1,250 @@
+// 0006-S1 step 3-4 preconditions (traceability.md "Step order" rows 3-4): location, git tool and
+// clean-tree checks, built against a committed fixture range (test/helpers/fixture-range.mjs).
+
+import { describe, it, expect, vi } from 'vitest'
+import { rm, mkdir, symlink, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { run } from '../src/run.mjs'
+import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
+import { makeIo } from './helpers/io.mjs'
+import { makeTmpRoot } from './helpers/tmp.mjs'
+import { makeFixtureRange } from './helpers/fixture-range.mjs'
+import { snapshotTree } from './helpers/snapshot.mjs'
+import { createSpawnGitRunner } from '../src/git-runner.mjs'
+import { makeGitStub } from './helpers/git-stub.mjs'
+import { verifyGit } from './helpers/real-git.mjs'
+import * as engineModule from '../../scripts/fork-init.ts'
+
+const SYMLINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir'
+
+async function makeIsolatedEnv() {
+  const home = await makeTmpRoot('create-wxl-upgrade-home-')
+  return { HOME: home, PATH: process.env.PATH, XDG_CONFIG_HOME: join(home, '.config'), LANG: 'en_US.UTF-8' }
+}
+
+function noOpRangeJson() {
+  return { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.0.0', commit: FIXED_COMMIT } }
+}
+
+describe('location', () => {
+  it('(1) not a git repository -> UP-E01, fetchArchive not called, nothing written', async () => {
+    const cwd = await makeTmpRoot('create-wxl-upgrade-cwd-')
+    const env = await makeIsolatedEnv()
+    try {
+      const deps = makeDeps({ cwd, env, runGit: vi.fn(createSpawnGitRunner()) })
+      const before = await snapshotTree(cwd)
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(cwd)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^UP-E01/m)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+      await rm(env.HOME, { recursive: true, force: true })
+    }
+  })
+
+  it('(2) a subdirectory of the range -> UP-E01, fetchArchive not called, nothing written', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const docsDir = join(fixture.root, 'docs')
+      await mkdir(docsDir)
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: docsDir, env: fixture.env, runGit: vi.fn(createSpawnGitRunner()) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^UP-E01/m)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    '(3) the range reached through a symbolic link to its root -> accepted (UP-I01), fetchArchive not called',
+    async () => {
+      const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+      const outside = await makeTmpRoot('create-wxl-upgrade-link-')
+      const linkPath = join(outside, 'range-link')
+      try {
+        await symlink(fixture.root, linkPath, SYMLINK_TYPE)
+        const before = await snapshotTree(fixture.root)
+        const deps = makeDeps({ cwd: linkPath, env: fixture.env, runGit: vi.fn(createSpawnGitRunner()) })
+        const ioHelper = makeIo()
+        const exitCode = await run(['upgrade'], ioHelper.io, deps)
+        const after = await snapshotTree(fixture.root)
+
+        expect(exitCode).toBe(0)
+        expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
+        expect(deps.fetchArchive).not.toHaveBeenCalled()
+        expect(after).toEqual(before)
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+        await rm(fixture.root, { recursive: true, force: true })
+        await rm(fixture.env.HOME, { recursive: true, force: true })
+      }
+    },
+  )
+})
+
+describe('git tool', () => {
+  it('(1) runGit cannot be spawned (PATH empty) -> UP-E02, exit 1', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const env = { ...fixture.env, PATH: '' }
+      const deps = makeDeps({ cwd: fixture.root, env, runGit: vi.fn(createSpawnGitRunner()) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^UP-E02/m)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+
+  it('(2) git --version reports 2.19.0 -> UP-E02 naming the version found, exit 1', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const { runGit } = makeGitStub({ version: { code: 0, stdout: 'git version 2.19.0\n', stderr: '' } })
+      const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^UP-E02/m)
+      expect(ioHelper.stderrText).toContain('2.19.0')
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+
+  it('(3) git --version reports 2.20.0 (the inclusive lower bound) -> not UP-E02, proceeds', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const real = createSpawnGitRunner()
+      const { runGit } = makeGitStub({
+        version: { code: 0, stdout: 'git version 2.20.0\n', stderr: '' },
+        unknown: (args, opts) => real(args, opts),
+      })
+      const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(ioHelper.stderrText).not.toContain('UP-E02')
+      expect(exitCode).toBe(0)
+      expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('clean check', () => {
+  const UNCLEAN_CASES = [
+    [
+      'a modified tracked file',
+      'changes',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await writeFile(join(fixture.root, 'README.md'), '# fixture (modified)\n')
+      },
+    ],
+    [
+      'an untracked file',
+      'changes',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await writeFile(join(fixture.root, 'untracked.txt'), 'x\n')
+      },
+    ],
+    [
+      'a staged change',
+      'changes',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await writeFile(join(fixture.root, 'README.md'), '# fixture (staged)\n')
+        await verifyGit(['add', 'README.md'], { cwd: fixture.root, env: fixture.env })
+      },
+    ],
+    ['no commit yet', 'no-head', () => makeFixtureRange({ rangeJson: noOpRangeJson(), commit: false }), async () => {}],
+    [
+      'assume-unchanged',
+      'assume-unchanged',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await verifyGit(['update-index', '--assume-unchanged', 'README.md'], { cwd: fixture.root, env: fixture.env })
+      },
+    ],
+    [
+      'skip-worktree',
+      'skip-worktree',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await verifyGit(['update-index', '--skip-worktree', 'README.md'], { cwd: fixture.root, env: fixture.env })
+      },
+    ],
+    [
+      'MERGE_HEAD present',
+      'in-progress',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await writeFile(join(fixture.root, '.git', 'MERGE_HEAD'), `${FIXED_COMMIT}\n`)
+      },
+    ],
+    [
+      'global status.showUntrackedFiles=no with an untracked file',
+      'changes',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await writeFile(join(fixture.env.HOME, '.gitconfig'), '[status]\n\tshowUntrackedFiles = no\n')
+        await writeFile(join(fixture.root, 'untracked.txt'), 'x\n')
+      },
+    ],
+  ]
+
+  it.each(UNCLEAN_CASES)('%s -> UP-E03 token %s', async (_label, token, makeFixture, mutate) => {
+    const fixture = await makeFixture()
+    try {
+      const env = { ...fixture.env, GIT_CONFIG_NOSYSTEM: '1' }
+      await mutate(fixture)
+
+      if (_label.startsWith('global')) {
+        // Control assertion (ticket Notes): without the production call's explicit
+        // `--untracked-files=all`, the isolated HOME's global config really does suppress the
+        // untracked file -- otherwise a missing `--untracked-files=all` in the implementation
+        // could still pass this case by accident.
+        const control = await verifyGit(['status', '--porcelain'], { cwd: fixture.root, env })
+        expect(control.stdout).toBe('')
+      }
+
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: fixture.root, env, runGit: vi.fn(createSpawnGitRunner()) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^UP-E03/m)
+      expect(ioHelper.stderrText).toContain(token)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+})

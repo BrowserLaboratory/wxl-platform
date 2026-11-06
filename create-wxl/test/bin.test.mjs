@@ -200,6 +200,15 @@ describe('bin', () => {
     expect(source).toMatch(/signals:\s*process\b/)
   })
 
+  // 0006 decision (1) (ticket Comments, "increment plan: user decisions"): the bin passes
+  // `deps.tmpRoot = os.tmpdir()`, read through the bin's own dynamic-import convention (step 1
+  // must run before any project-local module loads), not a static import.
+  it("passes deps.tmpRoot from node:os's tmpdir(), via a dynamic import like its other post-version-check imports", async () => {
+    const source = await readFile(BIN_SOURCE_PATH, 'utf8')
+    expect(source).toMatch(/\{\s*tmpdir\s*\}\s*=\s*await import\(\s*['"]node:os['"]\s*\)/)
+    expect(source).toMatch(/tmpRoot:\s*tmpdir\(\)/)
+  })
+
   it('main() is wrapped in a .catch that prints CW-E14 and sets exitCode, instead of leaving an outer error unhandled', async () => {
     const source = await readFile(BIN_SOURCE_PATH, 'utf8')
     expect(source).toMatch(/main\(\)\s*\.catch\(/)
