@@ -794,6 +794,15 @@ next numbers when their specs are written. The settings half and the setup page 
 and 0008: each takes the next free number when it is scheduled. Where this entry says 0007 or 0008
 above, read "the settings-half epic" and "the setup-page epic".
 
+**Update on 2026-11-06 (primary-locale stage 1).** One setting goes ahead of the settings half: the
+primary locale, as a top-level `"primaryLocale"` key in `range.json` (absent means `zh-TW`). The
+primary-locale layout epic reads it at build time, and the upgrade writes `"primaryLocale": "en"`
+when it moves a range off the old layout; 0006 already keeps every key other than `upstream`
+(`.proj.specs/0006-range-upgrade/traceability.md:254`, U24). The epic after it lets fork:init write a
+`range.json` holding only that key, which revises 0005's R2 ("fork:init never does") and makes
+`upstream` optional. Every other setting stays with this entry. Decisions R4, R11 and R13 of
+`.proj.research/2026-11-02-primary-locale-grill.md` (local, not committed).
+
 ---
 
 ## OQ-021 — Do `npm create wxl -- <flags>` and `pnpm range:upgrade` work through the registry on the npm and pnpm versions teachers use?
@@ -978,6 +987,17 @@ open.
 the site shows the version it has (0008's stage 1 note; ADR-0008, which also decides that the build
 picks the primary locale). Moving the root locale — making Traditional Chinese the primary locale — is the
 primary-locale epic's, not 0008's; nothing in 0008 decides it.
+
+**Update on 2026-11-06 (primary-locale stage 1).** The question is decided; the change has not been
+built. Every locale gets its own folder (`platform/en/`, `platform/zh-TW/`); `range.json`'s
+`primaryLocale` picks the root at build time; upstream's primary locale is `zh-TW` (Q1, Q8, Q12).
+Every page upstream ships exists in every locale create-wxl offers, so upstream adds the Traditional
+Chinese reference page (Q16). The token cost no longer blocks: `pnpm create:challenge` writes only the
+primary-locale brief, and a translation is made on request by a separate command (Q17). The work
+follows epic 0006 and is split in two: the layout epic (folders, build, upgrade move) and then the
+tools epic (create-wxl's question, fork:init's flag, the translation command). Close this entry when
+the layout epic lands. Decisions are in `.proj.research/2026-11-02-primary-locale-grill.md` (local,
+not committed), section "2026-11-06 重新確認".
 
 **Revisit when.** The authoring-environment epic reaches stage 1, or an experiment measures the token
 cost of authoring a bilingual challenge against a single-language one.
