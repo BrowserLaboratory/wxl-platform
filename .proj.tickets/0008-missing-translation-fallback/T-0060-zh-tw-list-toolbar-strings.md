@@ -4,10 +4,10 @@ title: The Traditional Chinese challenge list's toolbar reads in Traditional Chi
 epic: 0008-missing-translation-fallback
 status: pending
 blocked_by: []
-pending_reason: "Seen in passing in T-0057's stage 8; the placeholder part has been recorded in ChallengeList.vue's comment since 2026-10-10, before epic 0008, with no ticket. A learner on the default-language list sees English controls. The user's standing instruction of 2026-11-06 (follow the recommendations) opens it as a pending ticket."
+pending_reason: "Seen in passing in T-0057's stage 8; the placeholder part has been recorded in ChallengeList.vue's comment since 2026-10-10, before epic 0008, with no ticket. A learner on the default-language list sees English controls. Opened as pending under the user's standing instruction of 2026-11-06; on 2026-11-06 the user chose to take it into the next epic, the primary locale (ADR-0008), whose stage 1 brings it into scope."
 pending_evidence: "T-0057's stage 8 record, 'Seen in passing, outside this ticket' (zh-ui.cjs, headless Chromium; the same on https://wxl.browserlab.online and on stage8-t-0056). New observations, 2026-11-06: in the same run the dates read 2026年4月2日 while the placeholder and titles stay English; `curl -s https://wxl.browserlab.online/zh-TW/challenges | grep -o 'title=\"[^\"]*\"\\|placeholder=\"[^\"]*\"'` prints placeholder=\"Search challenges, descriptions, tags…\", title=\"Ascending\", title=\"Grid mode\". ChallengeList.vue:25-35 (git blame 2026-10-10) records the placeholder as measured on a real build."
 pending_on: 2026-11-06
-revisit_when: "The next change to ChallengeList.vue's toolbar or to how the theme resolves interface strings at the page locale."
+revisit_when: "Stage 1 of the primary-locale epic (ADR-0008): the toolbar's strings join that epic's scope, and this ticket is replaced by, or rewritten as, a ticket of its spec."
 ---
 
 ## Context
@@ -38,3 +38,9 @@ after hydration, and the English list's in English, whatever the stored value.
 繁中題目清單的工具列（搜尋框的提示文字、排序方向與檢視模式按鈕的說明）在 JavaScript 載入後仍是英文，日期則是繁中。搜尋框的部分 2026-10-10 就記錄在元件的註解裡，比 epic 0008 更早：Vue 在 hydration 時不會重新套用元素屬性。這張票先確認按鈕說明也是同一個原因，再讓工具列改用頁面語系的文字。
 
 ## Comments
+
+### 2026-11-06 — the user's decision
+
+Asked why the close-out's three tickets are pending, the user chose to take this one into the next
+epic, the primary locale (ADR-0008); T-0058 and T-0059 stay pending. It stays `pending` until that
+epic's stage 1: it has no spec rows of its own, and `todo` is set by `/to-tickets` from a spec.

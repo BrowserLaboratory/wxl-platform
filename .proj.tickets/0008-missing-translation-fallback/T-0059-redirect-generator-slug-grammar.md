@@ -4,7 +4,7 @@ title: The redirect generator refuses a slug outside the grammar or shadowed by 
 epic: 0008-missing-translation-fallback
 status: pending
 blocked_by: []
-pending_reason: "Recorded by T-0056's security review (S-1, S-4) as predating that ticket, widened from two rule forms to four; raised as N-3 by 0008's chain analysis. The user's standing instruction of 2026-11-06 (follow the recommendations) opens it as a pending ticket."
+pending_reason: "Recorded by T-0056's security review (S-1, S-4) as predating that ticket, widened from two rule forms to four; raised as N-3 by 0008's chain analysis. Opened as pending under the user's standing instruction of 2026-11-06; the user confirmed on 2026-11-06 that it stays pending until they schedule it."
 pending_evidence: "review/security-T-0056.md S-1 and S-4; review/chain-analysis.md C-4 and N-3. Of the tools that write _redirects, none checks the slug grammar; create:challenge (scripts/create-challenge.ts:96, with the regex at :39) and the copy control (.vitepress/challenge/shortLink.ts:91) do. generate-redirects.ts and challenge-numbers.ts take directory names as they are. On wxl.browserlab.online, /en/c/%2F%2Fevil.example redirects to the same-origin /challenge/%2F%2Fevil.example/ (curl, 2026-11-06)."
 pending_on: 2026-11-06
 revisit_when: "The next change to scripts/generate-redirects.ts or scripts/challenge-numbers.ts, or a challenge directory created by hand instead of by create:challenge."
