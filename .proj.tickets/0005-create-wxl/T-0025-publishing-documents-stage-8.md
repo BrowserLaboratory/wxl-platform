@@ -235,3 +235,22 @@ after the merge; it was found on 2026-11-07, when the primary-locale stage 1 put
 T-0026's `blocked_by: [T-0025]` was checked. Epic 0005's close-out (chain analysis, evidence report,
 retrospective) has not been run.
 Frontmatter `status: done`.
+
+### 2026-11-07 — correction to the record above
+
+Two statements above are wrong. On 2026-10-17 the main session had already set this ticket to `done`
+and written a landing record, with epic 0005's chain analysis, as commit `4cadb4f` on a local branch
+that was never pushed (kept locally as `archive/T-0026-2026-10-17`); `main` never received them. So
+the status was not left at `review` by oversight in the record, only by the missing push; and the
+chain analysis was run: `.proj.specs/0005-create-wxl/review/chain-analysis.md`, brought to `main`
+by this change unaltered (`git show archive/T-0026-2026-10-17:.proj.specs/0005-create-wxl/review/chain-analysis.md`).
+It finds no chain inside the model crossing a trust boundary, two spec accuracy gaps (B1 against
+entry rule 3; B7's "G4 runs without hooks") and optional hardening, left for the user to schedule.
+The evidence report and the retrospective of epic 0005 have not been written.
+
+That record also says that, after #31 merged with the Windows job failing (the job was not a
+required check then), the user had the four `fork-init-cross-os` jobs and `site-smoke` added to the
+"Protect main" ruleset's required checks. Verified on 2026-11-07:
+`gh api repos/BrowserLaboratory/wxl-platform/rulesets/24843091 --jq '.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`
+lists `test`, `build`, `prose-audit`, `challenge-verify`, the four `fork-init-cross-os` jobs and
+`site-smoke`.
