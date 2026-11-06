@@ -2,7 +2,7 @@
 id: T-0025
 title: Publishing gate, documents and the epic's stage 8
 epic: 0005-create-wxl
-status: review
+status: done
 blocked_by: [T-0024]
 ---
 
@@ -222,3 +222,16 @@ C48 and C49 ticked. The tarball, the ranges and the temporary folders were remov
 
 PR #31's first CI run failed six create-wxl tests on `fork-init-cross-os (windows-latest, 24)`, the first time these tests ran on Windows. All six were test assumptions, not product defects: five took file names out of paths with `split('/')`, `endsWith('/' + …)`, `startsWith(target + '/')` or a `/`-joined suffix (T-0024's C30, C65, C53 (empty directory), C54 (entry write) and the stranded-rollback signal case), so on Windows the injected failure never triggered or the comparison never matched; one (T-0023's case-insensitive `Path` lookup) spawned a `#!/bin/sh` script named `git.exe`, which Windows cannot execute (`spawn UNKNOWN`). Fixed with `path.basename`, `path.dirname` and `path.join`, and by copying the real git binary as `git.exe`; the same `split('/')` pattern in C31's second-move case, which passed on Windows only by coincidence, was fixed too. Changing these T-0023/T-0024 test bodies for platform neutrality was decided by the main session; what each test proves is unchanged. Paths that are not file-system paths (the `owner/name` slug, tar header paths, `git ls-files` output, snapshot keys) keep `/`. `pnpm --dir create-wxl test` → `Test Files 21 passed (21) / Tests 434 passed (434)` on macOS; Windows is verified by the CI rerun.
 
+### 2026-11-07 — landed (stage 9)
+
+PR [#31](https://github.com/BrowserLaboratory/wxl-platform/pull/31), squash-merged into `main` as
+`9a21710` on 2026-10-16 (22:00Z), from head `9bf0251`; its CI had 9 of 10 checks passing, with
+`fork-init-cross-os (windows-latest, 24)` failing as the comment above records. PR
+[#32](https://github.com/BrowserLaboratory/wxl-platform/pull/32) fixed those tests and was
+squash-merged as `fcdbb98` the same day (22:23Z), from head `5b52586`, with all 10 checks passing.
+`git diff` between each head and its squash commit is empty. create-wxl 3.0.0 was published to npm
+from `52192fa` (tag `v3.0.0`, after T-0029's #34), which contains both. The status stayed `review`
+after the merge; it was found on 2026-11-07, when the primary-locale stage 1 put epic 0006 first and
+T-0026's `blocked_by: [T-0025]` was checked. Epic 0005's close-out (chain analysis, evidence report,
+retrospective) has not been run.
+Frontmatter `status: done`.
