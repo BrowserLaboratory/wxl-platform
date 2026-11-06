@@ -108,7 +108,7 @@ Drafted and independently checked by a workflow (two rounds: draft and check, th
   - `test/helpers/git-home.mjs` 的 `buildGitconfig`：新增 `merge.conflictStyle` 選項（只加參數，不改既有預設行為、不改 `makeGitHomeWithHook`／`makeGitHomeWithExcludes`／`makeEmptyGitHome` 既有呼叫）。
   - 新增一個 0006 專用、只含身分、不開 `commit.gpgsign`、不裝 template hook 的 home builder（全新函式）：現有 `makeGitHomeWithHook` 的 `commit.gpgsign=true` 指向不存在的 gpg，會讓 range-repo 的初始 commit 與 U61 的 commit 失敗（`git-home.mjs:26-29`）。
 - **要建的 fixture／helper：**
-  - `test/helpers/range-repo.mjs`（新檔）：在暫存資料夾 `git init` 一個乾淨、已有一個 commit 的靶場 fixture，`deps.env` 為 `{ HOME, PATH, XDG_CONFIG_HOME }`（`git-runner.mjs:19-20,75` 只從 `env.PATH` 找 git；`deps.mjs:50` 的預設 env 只有 `{LANG, HOME}`，缺了會變成 `UP-E02`，照 `run-git.test.mjs:62` 的作法補齊），`deps.runGit` 用 `src/git-runner.mjs` 的 `createSpawnGitRunner()`。
+  - `test/helpers/range-repo.mjs`（新檔）：在暫存資料夾 `git init` 一個乾淨、已有一個 commit 的靶場 fixture，`deps.env` 為 `{ HOME, PATH, XDG_CONFIG_HOME }`（`git-runner.mjs:19-20,75` 只從 `env.PATH` 找 git；`deps.mjs:50` 的預設 env 只有 `{LANG, HOME}`，缺了會變成 `UP-E02`，照 `run-git.test.mjs:65` 的作法補齊），`deps.runGit` 用 `src/git-runner.mjs` 的 `createSpawnGitRunner()`。
   - `upgrade-fixtures.mjs`（新檔）：同時產生 o（commit 進靶場 repo）、b、t 三邊內容，覆蓋 U17 的 13 個分支，並能逐案抽換成 U18–U62 需要的單一變體；anchor files（Vocabulary 九個）預設在三邊相等（落在 M4），M5-updated 分支固定取用 `README.md`，供 U26／U59 使用。
   - 所有 fixture／測試一律不拼出上游 repository slug，改 import `UPSTREAM_SLUG`（`scripts/fork-init.ts`）。
 - **對前序 ticket 的假設：** T-0025 先 merge 進 `main`；T-0026 在那之後開工，落地 `upgrade` 文法、preconditions（step 3–4）、base 解析（J1–J5、`--from`）、no-op／降版／3.0.0 下限的兩次檢查、下載並以 0005 的 P1–P4 建出 base／target 兩份原廠靶場、以及 `UP-E01`–`UP-E08`、`UP-I01`、`UP-E10`、`CW-W04` 的訊息表項目，並 merge 進 `main`；T-0027 才在其上開工。T-0027 只新增 step 8–10（規劃、套用、報告）與對應的 `UP-A*`／`UP-E09`／`UP-E11`／`UP-A12` 訊息、以及 0006-S2 的 stage 8 runbook。
@@ -135,3 +135,29 @@ Drafted and independently checked by a workflow (two rounds: draft and check, th
 #### User decisions (2026-10-17)
 
 - U62: option (a). A path holding an ANSI escape in T is rejected by 0005's entry rule 3 while the target archive is checked, so it never reaches the report; U62 verifies that the upgrade path rejects it with CW-E08, the path printed as an escaped JSON literal, exit 1, nothing written. The deviation is recorded here and in `.proj.specs/0006-range-upgrade/traceability.md`.
+
+### 2026-11-07 — resumed on `main` `ea0de55`; decision D4; row added
+
+The approved table and its notes came from the unpushed local branch of 2026-10-17 (now
+`archive/T-0026-2026-10-17`), cherry-picked to T-0026's branch unchanged except one line reference
+(`run-git.test.mjs:62` is `:65` on `main`). This ticket starts after T-0026 lands.
+
+Decision confirmed by the user on 2026-11-07:
+
+- **D4.** M12 reads `git merge-file -p`'s output from stdout, but the real runner decodes stdout as
+  UTF-8 (`create-wxl/src/git-runner.mjs:93-104`), so a text file that is not valid UTF-8 (for
+  example Big5) would be written back with U+FFFD in place of its bytes. `runGit` gains an option
+  that returns stdout as bytes; only `merge-file` uses it, so every git command still goes through
+  `runGit`. A `merge-file` ended by a signal closes with `code` `null`, which is outside 0–127:
+  UP-E11.
+
+Known, left to the primary-locale layout epic: the anchor-file list (Vocabulary) names
+`platform/index.md` and `platform/zh-TW/index.md`; ADR-0008 moves them, and that epic's spec updates
+the list. The spec's stale wording (the withdrawn deadline, "OQ-017" for the stage 8 override that
+is OQ-022, the 0007/0008 epic numbers, 0005 being revision 2.1) is recorded here, not revised.
+
+Row added to the approved table (D4):
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0006-S1 | M12 乾淨合併一個不是 UTF-8 的文字檔時，寫回的位元組完全正確 | `upgrade-merge.test.mjs`（本表 U17 的檔案）新增一案：o、b、t 是同一個 Big5 編碼文字檔的三個版本（不含 NUL），變更落在不同行；真的 `createSpawnGitRunner()` | D4 / AC-6 | 綠燈：寫回的檔案位元組等於以 Big5 位元組手寫的預期合併結果（literal Buffer），不含 `EF BF BD`；R2 計為 updated。預期紅燈：以 UTF-8 解碼後寫回，檔案含 `EF BF BD` |

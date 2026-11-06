@@ -2,7 +2,7 @@
 id: T-0026
 title: Upgrade entry, preconditions and base resolution
 epic: 0006-range-upgrade
-status: todo
+status: processing
 blocked_by: [T-0025]
 ---
 
@@ -97,7 +97,7 @@ Drafted and independently checked by a workflow (two rounds: draft and check, th
 - **要改 body 的既有測試（需使用者核准）：** `create-wxl/test/run-preflight.test.mjs:247-249`（`GRAMMAR_CASES` 裡的 `'upgrade as positional'`、`'--no-setup upgrade'`、`'--no-setup -- upgrade'` 三筆）在 0006 文法下，三筆的 argv 都含 `--no-setup`，而 `--no-setup` 是 create-only 參數，衝突的是 U02「create-only 參數」規則，不是 U31；因此這三筆的 `token` 要從 `'upgrade'` 改成 `'--no-setup'`，而不是整段移除。第 249 行（`--no-setup -- upgrade`）的改法取決於 Q2 的決議：依 Q2 決議（first positional 的字面涵蓋 `--` 之後的 `upgrade`），這一筆仍是 `CW-E02` token `--no-setup`，與另兩筆同一個改法。同檔第 281-289 行「`Upgrade`（不同大小寫）仍被接受」的既有測試不需要改。AC-12 明文允許改動「C02's `upgrade` cases」。除此之外沒有找到其他需要改 body 的既有測試。
 - **要建的 fixture／helper：**
   - 一個「已 commit 的乾淨 fixture range」builder（待建）：`makeTmpRoot()` 建資料夾、`git init`、寫入最小範圍的檔案樹加一份可控的 `range.json`、以 `verifyGit` 搭配 `-c user.name=... -c user.email=... -c commit.gpgsign=false` 隔離身分 commit——不要直接沿用 `test/helpers/git-home.mjs` 的 `makeGitHomeWithHook()`，因為它把全域 `commit.gpgsign` 設成 `true` 又指向一個不存在的 gpg（`git-home.mjs:26-29`），會讓這個 builder 自己的 commit 失敗。要能參數化出 U05 的八種骯髒狀態與 U10 的十六種 `range.json` 損壞形狀。
-  - 不建 `GIT_CONFIG_GLOBAL` 隔離 helper：`create-wxl/src/git-env.mjs:6-13` 的 `buildGitEnv` 會濾掉所有以 `GIT_` 開頭的變數，`GIT_CONFIG_GLOBAL` 也在其中，寫了也讀不到。U05 全域 `showUntrackedFiles=no` 的那一案改成把設定寫進隔離 `HOME` 的 `.gitconfig`（必要時再加 `XDG_CONFIG_HOME/git/config`），比照 0005 既有隔離慣例（`create-wxl/test/run-git.test.mjs:62`；`git-home.mjs:51` 把設定寫進 `HOME/.gitconfig`）。
+  - 不建 `GIT_CONFIG_GLOBAL` 隔離 helper：`create-wxl/src/git-env.mjs:6-13` 的 `buildGitEnv` 會濾掉所有以 `GIT_` 開頭的變數，`GIT_CONFIG_GLOBAL` 也在其中，寫了也讀不到。U05 全域 `showUntrackedFiles=no` 的那一案改成把設定寫進隔離 `HOME` 的 `.gitconfig`（必要時再加 `XDG_CONFIG_HOME/git/config`），比照 0005 既有隔離慣例（`create-wxl/test/run-git.test.mjs:65`；`git-home.mjs:51` 把設定寫進 `HOME/.gitconfig`）。
   - 一個以 `ref`（commit 字串或 `refs/tags/v<version>`）為鍵的 `fetchArchive` stub，分開控制 base／target 兩次呼叫各自回的 archive、pax `comment`，重用 `test/helpers/archive.mjs` 的 `buildArchive`/`buildArchiveRaw`；U16 的 tag archive 需改用 `buildArchiveRaw` 自組 `<repo>-<version>/` 前綴，因為 `buildArchive`（`archive.mjs:132`）把前綴寫死成 `<repo>-<commit>/`，對 tag 下載的真實形狀不準——記為共用 helper 的已知簡化，本計畫在 U16 自行繞開，不改動該共用檔案本身。
   - U04 的 ENOENT 案改用真的 `createSpawnGitRunner()` 搭配 `PATH: ''`，不自寫 stub；2.19.0／2.20.0 案用既有 `makeGitStub({ version: {...} })`。
   - 所有用到真 git 的列明寫 `runGit: createSpawnGitRunner()`，`deps.env` 明寫 `{ HOME, PATH: process.env.PATH, XDG_CONFIG_HOME, LANG }`（U05 另加 `GIT_CONFIG_NOSYSTEM: '1'`），絕不省略讓測試落回 `deps.mjs` 預設的全成功 stub（該預設對 `rev-parse` 一律回 `{ code: 0, stdout: '' }`，見 `git-stub.mjs:15,26`，會讓「進了 step 3」這個訊號本身未定義）。
@@ -126,3 +126,31 @@ Drafted and independently checked by a workflow (two rounds: draft and check, th
 
 The increment plan and its independent check are drafted (approve with corrections; the corrections are applied when work resumes). The user decided the four points the spec leaves open, following the recommendations: (1) the `bin` passing `deps.tmpRoot = os.tmpdir()` (traceability's dependency list, claimed by no ticket) belongs to this ticket, with one test row added to the approved table; (2) `--from` before `upgrade` (for example `--from 3.0.0 upgrade`) is CW-E02, as the grammar draws `--from` after `upgrade` only; (3) a base archive from `--from <commit>` whose `package.json` version is missing or not X.Y.Z is UP-E10, since the 3.0.0 floor cannot be established; (4) until T-0027, a run that has downloaded and built both pristine ranges ends with CW-E14 whose message says the upgrade merge is not implemented yet, after removing both temporary folders. The user then paused the work on 2026-10-17 to prepare the workshop; status stays `todo` until it resumes.
 
+
+### 2026-11-07 — resumed on `main` `ea0de55`; decisions D3 and D5; rows added
+
+The work resumed after T-0025 landed (#63). The approved table, its notes and the decisions above
+came from the unpushed local branch of 2026-10-17 (now `archive/T-0026-2026-10-17`, commits `9b3b2f8`
+and `37d1967`, cherry-picked unchanged except one line reference: `run-git.test.mjs:62` is `:65` on
+`main`). The note "Assumptions about earlier tickets" describes the checkout of 2026-10-17; the
+baseline is now `main` at `ea0de55`, which holds T-0025, T-0029, epics 0007 and 0008. The increment
+plan drafted on 2026-10-17 was not kept, so it is drafted again before the first test. A drift audit
+of traceability revision 2.1 against `main` (2026-11-07) found every function, code and path this
+ticket relies on still accurate (`create-wxl/src/run.mjs:67`, `argv.mjs:17,57-59,82`,
+`archive-rules.mjs:119-123`, `pristine.mjs:49-103`, `git-version.mjs:9`, `messages.mjs:172-323`).
+
+Decisions confirmed by the user on 2026-11-07:
+
+- **D3.** A file-system error under `deps.tmpRoot` in step 7 (the `mkdtemp`, the extraction, a P-rule's
+  read or write other than the missing file P1/P2 report as CW-E10) prints CW-E09 with the path and
+  detail, as 0005's steps 8–9 do (`create-wxl/src/run.mjs:363-381,403-405`), after removing every
+  temporary directory the run created; exit 1, nothing written in the range.
+- **D5.** CW-E02's usage line stays `create-wxl <directory>` on the upgrade path too: changing it would
+  change 0005's message tests, which AC-12 keeps unchanged. Recorded, not fixed.
+
+Rows added to the approved table (decision (1) of 2026-10-17 and D3):
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0005-S1（bin） | 打包的 `bin` 把 `os.tmpdir()` 當作 `deps.tmpRoot` 傳給 `run` | 擴充既有 `create-wxl/test/bin.test.mjs`，比照該檔讀 `bin` 原始碼的作法（T-0025 的 C-08 一類），斷言 deps 物件帶 `tmpRoot: tmpdir()`（`node:os`） | 決定 (1)，traceability.md:37 | 綠燈：`bin` 的 deps 帶 `tmpRoot`，值來自 `os.tmpdir()`。預期紅燈：目前 `create-wxl/bin/create-wxl.mjs:94-122` 的 deps 沒有 `tmpRoot` |
+| 0006-S1 | step 7 在 `tmpRoot` 底下的檔案系統錯誤 → CW-E09，暫存資料夾全部清掉 | `upgrade-target.test.mjs` 新增 `describe('file-system errors in step 7')`：(a) `deps.tmpRoot` 指向一個不存在的路徑（`mkdtemp` 失敗）；(b) 用既有 `fail-at` 注入，讓 target 的解壓寫入在第一個檔案失敗；(c) 同樣注入，讓 base 的 P3（`package.json`）寫入失敗 | D3 / AC-5 | 三案皆 exit 1、stderr 以 `CW-E09` 開頭並帶路徑；`withoutRootMtime(snapshotTree(tmpRoot))` 前後一致（(a) 為 tmpRoot 不存在）；fixture range 的 snapshot（含 `.git`）不變。預期紅燈：同總則，`CW-E02` token `"upgrade"` |
