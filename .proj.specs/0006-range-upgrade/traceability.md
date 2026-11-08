@@ -15,6 +15,10 @@ plan (option (a)): 0005's entry rule 3 rejects a path holding a control characte
 archive is checked, so such a path never reaches the upgrade report; U62 now verifies that rejection
 on the upgrade path. The report's own escaping of outside values still follows 0005's rule.
 
+Revision 2.2 (2026-11-09) applies decision D7, made by the user during T-0026's stage 7 security
+review: step 4's in-progress markers add `sequencer` (left by a multi-commit cherry-pick or revert
+that stopped, even after the stopped commit was made), and row U05 gains that case.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -26,6 +30,7 @@ Decisions this file relies on, in short (full record: the local research note
 | R5 | No `range.json` → stop, unless `--from` names the base; inferring it from git history is deferred |
 | R6 | When unsure, keep the teacher's version and list it; the lockfile takes upstream's on conflict; `range.json` updated with the merge; no downgrade |
 | R10 | Stage 8: a real upgrade between two pushed commits |
+| D7 | Step 4 also refuses a repository whose `git rev-parse --git-dir` holds `sequencer` (an unfinished multi-commit cherry-pick or revert): UP-E03 `in-progress` (2026-11-09, T-0026 stage 7) |
 | D2 | ⑦ `--diff3`; ⑧ ignored paths untouched and listed; ⑨ list fork:init-derived changes and advise rerunning `pnpm fork:init`; ⑩ oldest base v3.0.0; ⑪ CRLF normalised before comparing; ⑫ exit 0 when attention items exist; ⑬ case-only renames and file/directory swaps detected in planning; ⑭ restore with `git clean -fd` then `git checkout -- .`; ⑮ override warning |
 
 One correction to R6 ⑦'s wording, a fact: an upgrade can add files, which are untracked, so restoring
@@ -83,7 +88,7 @@ upgrade code (R4).
 | 1 | Node version (0005 step 1) | CW-E01 |
 | 2 | Parse argv; `CREATE_WXL_COMMIT` grammar; package source record (0005 step 2) | CW-E02, CW-E13 |
 | 3 | Git and location: `git --version` reports 2.20 or later; `git rev-parse --show-toplevel` and `deps.cwd`, each resolved with `realpath` and with `\` turned into `/`, are equal | UP-E02, UP-E01 |
-| 4 | Clean repository: `git rev-parse --verify HEAD` succeeds; `git --no-optional-locks status --porcelain=v1 --untracked-files=all --ignore-submodules=none` prints nothing; `git ls-files -v` shows no lowercase tag (assume-unchanged) and no `S` (skip-worktree); none of `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply` exists under `git rev-parse --git-dir` | UP-E03 (with a reason token) |
+| 4 | Clean repository: `git rev-parse --verify HEAD` succeeds; `git --no-optional-locks status --porcelain=v1 --untracked-files=all --ignore-submodules=none` prints nothing; `git ls-files -v` shows no lowercase tag (assume-unchanged) and no `S` (skip-worktree); none of `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer` (D7) exists under `git rev-parse --git-dir` | UP-E03 (with a reason token) |
 | 5 | Base: `--from` if given; otherwise `range.json` (below) | UP-E04, UP-E05, UP-E06 |
 | 6 | Target: the source record's commit, or `CREATE_WXL_COMMIT` (CW-W04). Before any download: if the base commit is known and equals the target commit → UP-I01; if the base version is known: lower than 3.0.0 → UP-E10, higher than the target version → UP-E07, equal with a different commit and no `CREATE_WXL_COMMIT` → UP-I01 | UP-I01, UP-E07, UP-E10 |
 | 7 | Download (0005 step 6) the base — by commit, or for `--from <version>` the URL `https://codeload.github.com/<repository>/tar.gz/refs/tags/v<version>` whose pax `comment` gives the base commit — and the target by commit; validate (0005 entry rules; for the tag download, rule 2's comparison is replaced by "the `comment` is 40 lowercase hex"); now that both are known, repeat step 6's checks (the base version for `--from <commit>` is the base archive's `package.json` `version` before P3); extract each into its own `mkdtemp` directory under `deps.tmpRoot` with prefix `create-wxl-upgrade-`; apply P1–P4 | CW-E07, CW-E08, CW-E10, UP-E08, UP-I01, UP-E07, UP-E10 |
@@ -237,7 +242,7 @@ and the files of the fixture commit.
 | U02 | argv | `--from` without value; `--from v3.0.0`; short or uppercase SHA; a second positional; unknown or repeated flag; `upgrade --repo x/y` | grammar | CW-E02, nothing written | AC-1 |
 | U03 | repo | not a git repository; a subdirectory of the range; the range reached through a symbolic link to its root | location | UP-E01 / UP-E01 / accepted | AC-2 |
 | U04 | repo | `runGit` rejects `ENOENT`; `git --version` reports 2.19.0 | tool | UP-E02, exit 1 | AC-2 |
-| U05 | repo | a modified tracked file; an untracked file; a staged change; no commit yet; a file marked assume-unchanged; one marked skip-worktree; `MERGE_HEAD` present; global `status.showUntrackedFiles=no` with an untracked file | clean | UP-E03 with token `changes` / `changes` / `changes` / `no-head` / `assume-unchanged` / `skip-worktree` / `in-progress` / `changes`, exit 1, nothing written | AC-2 |
+| U05 | repo | a modified tracked file; an untracked file; a staged change; no commit yet; a file marked assume-unchanged; one marked skip-worktree; `MERGE_HEAD` present; global `status.showUntrackedFiles=no` with an untracked file; `sequencer` present without `CHERRY_PICK_HEAD` (D7) | clean | UP-E03 with token `changes` / `changes` / `changes` / `no-head` / `assume-unchanged` / `skip-worktree` / `in-progress` / `changes` / `in-progress`, exit 1, nothing written | AC-2 |
 | U06 | record | valid `range.json` | base | base = its commit and version | AC-3 |
 | U07 | record | absent, no `--from` | J2 | UP-E04 | AC-3 |
 | U08 | record | absent, `--from <version>` / `--from <commit>` | base | base from `--from`; version = given / the base archive's manifest `version` before P3, shown in R1 | AC-3 |

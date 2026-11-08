@@ -18,7 +18,7 @@ Deadline (decision R1, 2026-10-16): if this epic has not landed by 2026-10-16 23
 to `pending` with its reason and evidence and ships after the workshop as 3.0.x (decision of
 2026-10-16, Q2 option A). Withdrawn by the user at 23:39 on 2026-10-16; see Comments.
 
-Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.1, seam 0006-S1; "Command grammar",
+Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.2 (D7, 2026-11-09), seam 0006-S1; "Command grammar",
 "Step order" 1–7, "Base from `range.json`".
 
 ## Deliverable
@@ -33,7 +33,7 @@ builds both pristine ranges, and removes its temporary directories.
 - [x] U02: each grammar error of the row → CW-E02, nothing written (AC-1)
 - [x] U03: not a repository / a subdirectory / the root through a symbolic link → UP-E01 / UP-E01 / accepted (AC-2)
 - [x] U04: `runGit` rejects `ENOENT`; git 2.19.0 → UP-E02, exit 1 (AC-2)
-- [x] U05: each unclean case of the row → UP-E03 with its token, exit 1, nothing written (AC-2)
+- [x] U05: each unclean case of the row, including D7's `sequencer` → UP-E03 with its token, exit 1, nothing written (AC-2)
 - [x] U06: valid `range.json` → base = its commit and version (AC-3)
 - [x] U07: absent, no `--from` → UP-E04 (AC-3)
 - [x] U08: absent with `--from <version>` / `--from <commit>` → base from `--from`, version given / from the base archive's manifest (its display in R1 is verified in T-0027, U26) (AC-3)
@@ -376,3 +376,38 @@ Checks after the follow-up, macOS (darwin arm64, Node v24.13.0), 2026-11-09:
 create-wxl vitest in Node); `pnpm test --run` → `Test Files 136 passed (136) / Tests 4854 passed | 1
 skipped (4855)` (root vitest); `python3 scripts/verify-project.py` → `PASS`. windows-latest and the
 other CI runners: pending, on the pull request.
+
+### 2026-11-09 — stage 7 security review and fixes
+
+The project `security-review` skill ran on `git diff ea0de55...HEAD` at `0c82c5b` (two candidate
+lenses, one independent `harness-reviewer` false-positive check per candidate). Report:
+`.proj.specs/0006-range-upgrade/review/security-T-0026.md`. 28 candidates; none reached the reporting
+threshold. One low true positive (candidate 13) and hardening items 03/14, 22 and 15.
+
+The user decided on 2026-11-09: fix 13, 03/14 and 22 in this ticket with the sub-cases proposed, and
+**D7** — step 4's in-progress markers add `sequencer` (traceability revision 2.2, rows step 4 and U05).
+The executor applied them test-first; macOS (darwin arm64, Node v24.13.0), surface: create-wxl vitest
+in Node.
+
+| Item | Test | Red observed | Green |
+|---|---|---|---|
+| 候選13：git 子程序途中收到訊號 | create-wxl/test/upgrade-preconditions.test.mjs 的 'signal guard (F02/A2)' 群組新增 it.each 兩案：runGit stub 對其他指令轉給真的 runner，對 (a) rev-parse --show-toplevel、(b) status 這一次呼叫在 deps.signals 上送出 SIGINT 後回傳 { code: null, stdout: '', stderr: '' } | upgrade-preconditions.test.mjs:363:24 — AssertionError: expected 1 to be 130 // Object.is equality（兩案皆同，-Expected 130 / +Received 1） | pnpm exec vitest run test/upgrade-preconditions.test.mjs → Test Files 1 passed (1) / Tests 22 passed（含新增兩案，當時尚未加候選03/14與D7案） |
+| 候選03/14：lstat fail-open | upgrade-preconditions.test.mjs 新增 describe('in-progress marker check...')：deps.fs.lstat 用 recordingFs + failAt 覆寫，對檔名（basename）為 MERGE_HEAD 的路徑丟 EACCES，其餘轉給真的 lstat | upgrade-preconditions.test.mjs:285:24 — AssertionError: expected +0 to be 1 // Object.is equality（目前把任何 lstat 錯誤都當成「不存在」，fail-open 走到 UP-I01、exit 0） | pnpm exec vitest run test/upgrade-preconditions.test.mjs → Test Files 1 passed (1) / Tests 22 passed |
+| 候選22(a)：非字串 base 版本下載後判定（upgrade-target.test.mjs U51 子案） | U51 的 DOWNLOAD_AFTER_CASES 新增 (d4)：base package.json 的 version 為 { toString: 1 }，--from <commit> | upgrade-target.test.mjs:467:33 — AssertionError: expected 'CW-E14: an unexpected error happened: "Cannot convert object to primitive value".\n' to match /^UP-E10/m | pnpm exec vitest run test/upgrade-messages.test.mjs test/upgrade-target.test.mjs → Test Files 2 passed (2) / Tests 42 passed |
+| 候選22(b)：UP-E10 訊息表（en/zh-TW） | upgrade-messages.test.mjs 新增 describe('UP-E10 wording (candidate 22)...')：陣列 ['3.1.0'] 須含 '["3.1.0"]' 且不含量化成字串的 '"3.1.0" is not valid'；物件 {toString:1} 呼叫不丟例外 | upgrade-messages.test.mjs:72:20 — AssertionError: expected 'UP-E10: the base version "3.1.0" is...' to contain '["3.1.0"]'；upgrade-messages.test.mjs:83:42 — AssertionError: expected [Function] to not throw an error but 'TypeError: Cannot convert object to primitive value' was thrown | pnpm exec vitest run test/upgrade-messages.test.mjs test/upgrade-target.test.mjs → Test Files 2 passed (2) / Tests 42 passed |
+| D7（候選15）：IN_PROGRESS_MARKERS 補 sequencer | upgrade-preconditions.test.mjs 的 U05 UNCLEAN_CASES 新增一案：.git/sequencer/todo 存在、無 CHERRY_PICK_HEAD | upgrade-preconditions.test.mjs:269:24 — AssertionError: expected +0 to be 1 // Object.is equality（目前清單沒有 sequencer，會放行到 UP-I01、exit 0） | pnpm exec vitest run test/upgrade-preconditions.test.mjs → Test Files 1 passed (1) / Tests 23 passed（本案為最後加入，含前面所有候選的子案） |
+
+An independent read-only verifier confirmed 13, 03/14 and D7 as applied, each test failing if its fix
+were reverted, and every guard (no 0005 test body or `language.test.mjs` changed, no raw-path
+assertion, no extra sub-case, Taiwan usage, `jsonValue` unchanged). It found 22 partly applied: the new
+`jsonStringifyEscaped` kept `JSON.stringify`'s short escapes `\t` `\r` `\b` `\f`, where D10 writes
+`\uXXXX`; and a zh-TW negative regex could never match. The main session added the assertion
+(`en['UP-E10']({ version: ['a\tb', 'c\\td'] })` contains `["a\u0009b","c\\td"]`), saw it red
+(`AssertionError: expected 'UP-E10: the base version ["a\tb","c\\…' to contain '["a\u0009b","c\\td"]'`,
+`create-wxl/test/upgrade-messages.test.mjs`), turned the four short escapes into `\uXXXX` in
+`create-wxl/src/text.mjs` (`\n` keeps D10's `\n`), and fixed the regex.
+
+Checks, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --dir create-wxl test` → `Test Files 26
+passed (26) / Tests 558 passed (558)` (create-wxl vitest in Node); `pnpm test --run` → `Test Files 136
+passed (136) / Tests 4854 passed | 1 skipped (4855)` (root vitest); `python3 scripts/verify-project.py`
+→ `PASS`.
