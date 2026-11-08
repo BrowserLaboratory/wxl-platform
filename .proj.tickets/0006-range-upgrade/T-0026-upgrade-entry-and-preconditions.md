@@ -2,7 +2,7 @@
 id: T-0026
 title: Upgrade entry, preconditions and base resolution
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: [T-0025]
 ---
 
@@ -432,3 +432,12 @@ Surface, as the approved Notes require: create-wxl's vitest in Node (0006-S1, `r
 
 Stage 6 finding A1 (D3 (b) failing on windows-latest) is confirmed fixed by the windows-latest job.
 Status stays `review` until the pull request lands; the landed record follows on `main`.
+
+### 2026-11-09 — landed (stage 9)
+
+PR [#65](https://github.com/BrowserLaboratory/wxl-platform/pull/65), squash-merged into `main` as
+`f0ff741` on 2026-11-08 (19:32Z), from head `cc41139`, with all 10 checks passing. `git diff cc41139
+f0ff741` shows only the two files of #64 (`.proj.specs/0005-create-wxl/review/chain-analysis.md` and
+T-0025's ticket), which reached `main` after this branch was cut from `ea0de55`. create-wxl is not
+published: until T-0027 lands, an upgradable range ends with CW-E14 (decision (4)), so nothing is
+released to npm between the two tickets (stage 6 finding F26). Frontmatter `status: done`.
