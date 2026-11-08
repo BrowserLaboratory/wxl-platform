@@ -19,6 +19,10 @@ Revision 2.2 (2026-11-09) applies decision D7, made by the user during T-0026's 
 review: step 4's in-progress markers add `sequencer` (left by a multi-commit cherry-pick or revert
 that stopped, even after the stopped commit was made), and row U05 gains that case.
 
+Revision 2.3 (2026-11-09) applies decision D8, made by the user while confirming T-0027's increment
+plan: a signal that arrives in step 10, after step 9 has finished, does not stop the report; R1–R5
+are printed in full and the run exits 130. Row U28 gains that case.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -30,6 +34,7 @@ Decisions this file relies on, in short (full record: the local research note
 | R5 | No `range.json` → stop, unless `--from` names the base; inferring it from git history is deferred |
 | R6 | When unsure, keep the teacher's version and list it; the lockfile takes upstream's on conflict; `range.json` updated with the merge; no downgrade |
 | R10 | Stage 8: a real upgrade between two pushed commits |
+| D8 | A signal in step 10 (after step 9 finished): R1–R5 still printed in full, then exit 130 (2026-11-09, T-0027) |
 | D7 | Step 4 also refuses a repository whose `git rev-parse --git-dir` holds `sequencer` (an unfinished multi-commit cherry-pick or revert): UP-E03 `in-progress` (2026-11-09, T-0026 stage 7) |
 | D2 | ⑦ `--diff3`; ⑧ ignored paths untouched and listed; ⑨ list fork:init-derived changes and advise rerunning `pnpm fork:init`; ⑩ oldest base v3.0.0; ⑪ CRLF normalised before comparing; ⑫ exit 0 when attention items exist; ⑬ case-only renames and file/directory swaps detected in planning; ⑭ restore with `git clean -fd` then `git checkout -- .`; ⑮ override warning |
 
@@ -99,7 +104,8 @@ upgrade code (R4).
 Steps 1–8 write nothing in the range. The temporary directories under `tmpRoot` are removed in every
 case, by their own paths. Exit code: 0 when the run completed (attention items or not), and for
 UP-I01; 1 on any error; 130 on a signal. A signal during step 9 prints UP-E09 with the restore
-commands. Signals are 0005's three, handled from step 3.
+commands. A signal in step 10 lets the report finish, then exits 130 (D8). Signals are 0005's three,
+handled from step 3.
 
 ### Base from `range.json`
 
@@ -265,7 +271,7 @@ and the files of the fixture commit.
 | U25 | exit | attention empty / non-empty | code | 0 / 0 | AC-10 |
 | U26 | report | the run of U17 | output | R1–R5 in order with their ids, in the run's language; every UP code exists in both message tables | AC-10 |
 | U27 | failure | `fs.rename` injected to fail on the 2nd write of step 9 | partial | UP-E09 naming the path, exit 1; after `git clean -fd && git checkout -- .` the porcelain status is empty and every tracked file equals `HEAD` | AC-11 |
-| U28 | signal | `SIGINT` at the checkpoint of step 7; `SIGTERM` during step 9 | signal | exit 130; step 7: nothing written; step 9: UP-E09 with the signal; no temporary directory left | AC-11 |
+| U28 | signal | `SIGINT` at the checkpoint of step 7; `SIGTERM` during step 9; `SIGINT` at the checkpoint of step 10 (D8) | signal | exit 130; step 7: nothing written; step 9: UP-E09 with the signal; step 10: R1–R5 printed in full; no temporary directory left | AC-11 |
 | U29 | restore | after the run of U17 | revert | `git clean -fd && git checkout -- .` gives an empty porcelain status and `HEAD`'s files; ignored files byte-identical to before the run | AC-11 |
 | U30 | entry | upstream manifest | script | `range:upgrade` exactly as specified (checked by a create-wxl test reading the root manifest) | AC-12 |
 | U31 | 0005 | `create-wxl upgrade` | grammar | the upgrade path; `create-wxl <dir>` unchanged | AC-12 |

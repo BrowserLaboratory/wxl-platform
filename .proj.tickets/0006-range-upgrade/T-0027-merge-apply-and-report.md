@@ -17,9 +17,9 @@ with the simulation branch as a recorded exception to hard rule 1.
 
 Deadline (decision R1, 2026-10-16): if this epic has not landed by 2026-10-16 23:59, this ticket is set
 to `pending` with its reason and evidence and ships after the workshop as 3.0.x (decision of
-2026-10-16, Q2 option A).
+2026-10-16, Q2 option A). Withdrawn by the user at 23:39 on 2026-10-16; see Comments.
 
-Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2, seams 0006-S1, 0006-S2; "Step order"
+Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.3 (D7, D8), seams 0006-S1, 0006-S2; "Step order"
 8–10, "Pre-checks", "Merge table", "Fork:init-derived content", "`range.json` after the plan", "Report",
 "Stage 8 simulation".
 
@@ -58,7 +58,7 @@ with `git clean -fd` then `git checkout -- .`.
 
 ## 給使用者（zh-TW）
 
-0006 的核心：三方合併 base、老師的靶場與 target。上游改了而老師沒改的就更新；兩邊都改的文字檔用 `--diff3` 標出衝突；拿不準時保留老師的版本並列入注意清單。不 commit，結束碼 0，報告列出計數、注意項目與下一步；`git clean -fd` 加 `git checkout -- .` 可完整還原。第 8 階段用兩個推上去的 commit 實際升級一次。23:59 前沒落地就改 pending。
+0006 的核心：三方合併 base、老師的靶場與 target。上游改了而老師沒改的就更新；兩邊都改的文字檔用 `--diff3` 標出衝突；拿不準時保留老師的版本並列入注意清單。不 commit，結束碼 0，報告列出計數、注意項目與下一步；`git clean -fd` 加 `git checkout -- .` 可完整還原。第 8 階段用兩個推上去的 commit 實際升級一次。在報告印出期間收到訊號時，報告照樣印完，再以 130 結束（D8）。
 
 ## Comments
 
@@ -161,3 +161,61 @@ Row added to the approved table (D4):
 | Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
 |---|---|---|---|---|
 | 0006-S1 | M12 乾淨合併一個不是 UTF-8 的文字檔時，寫回的位元組完全正確 | `upgrade-merge.test.mjs`（本表 U17 的檔案）新增一案：o、b、t 是同一個 Big5 編碼文字檔的三個版本（不含 NUL），變更落在不同行；真的 `createSpawnGitRunner()` | D4 / AC-6 | 綠燈：寫回的檔案位元組等於以 Big5 位元組手寫的預期合併結果（literal Buffer），不含 `EF BF BD`；R2 計為 updated。預期紅燈：以 UTF-8 解碼後寫回，檔案含 `EF BF BD` |
+
+### 2026-11-09 — increment plan confirmed; user decisions; D8
+
+The increment plan was drafted by the executor role, reviewed by the reviewer role (7 blocking,
+12 major, 21 minor), revised twice and gated twice (the second gate: 1 blocking, 10 major, 13 minor,
+most of them the wording of predicted reds). Under the frozen-ruler rule the main session stopped the
+loop there and confirmed the plan (revision 3) with the amendments below, as for T-0026. The plan and
+the three reviews are kept locally (gitignored scratch). The approved table's "現狀紅燈 CW-E02" is
+stale: after T-0026 every upgradable fixture reaches step 8 and ends with decision (4)'s CW-E14, which
+is the red each row now expects first.
+
+User decisions on 2026-11-09:
+
+- **Existing T-0026 test bodies (approved):** `create-wxl/test/upgrade-messages.test.mjs`'s `UP_ARGS`
+  gains one entry per new code, at the increment adding it; the F14 case in
+  `create-wxl/test/upgrade-target.test.mjs` expects exit 0 (its title follows), because with the merge
+  in place its fixture completes; the `upgradeMergeNotImplemented` test is removed with decision (4)'s
+  fall-through. The Notes' "T-0027 本身沒有需要改 body 的既有測試" did not foresee these three.
+- **Readings of approved rows (approved):** U17's "R3 恰好 6 筆" is six per-path lines; the
+  `UP-A12` line that `README.md` (an anchor file) adds is counted by U59 and U26. U53 on a
+  case-insensitive file system (macOS, Windows): only `Guide.md` exists before and after, unchanged,
+  `guide.md` is never created, and R3 has one `UP-A8` for each of the two paths. U20's fourth case
+  also reports `UP-A7` (four in all; P-3 does not tell an existing path from a new one). U32 runs as
+  traceability's "Stage 8 simulation" states: B is the upstream commit on `sim/0006-upgrade`; the
+  teacher's edits inside `sim` are a plain fixture commit. The row's wording ("用 commit skill 做
+  commit B" for the teacher's edits) is an erratum, kept as approved.
+- **Sub-cases added (approved):** an existing `0755` file updated by M5 keeps `0755` (with U23);
+  an M12 clean merge whose o has CRLF line ends merges on LF-normalised inputs (M12); `merge-file`
+  closing with `code` `null` → UP-E11, nothing written (with U57; D4 already states it);
+  `git ls-files -z` exiting non-zero and `git check-ignore` exiting other than 0 or 1 → CW-E14
+  naming the command, nothing written (fail closed, as D6).
+- **D8:** a signal in step 10, after step 9 has finished, lets R1–R5 print in full, then the run
+  exits 130. Traceability revision 2.3; U28 gains the case: `SIGINT` at the checkpoint of step 10.
+
+Main-session amendments to revision 3:
+
+1. U28 (b) sends `SIGTERM` right after step 9's first rename, as the approved row states (ticket
+   Notes); deletions come first in step 9, so the signal follows them and the first write.
+2. U17's fixture names the table's 13 branches: P-2; M4 both absent; M4 both equal; M5 updated;
+   M5 added; M6–M11; M12 clean; M12 conflict. When a fixture names M5-updated, `README.md` is b ≢ t;
+   otherwise anchor files are equal on all sides. `upgrade-fixtures.mjs` builds only the branches a
+   row names and lets a row swap one variant (Notes, "逐案抽換").
+3. `≡` is decided per path: binary (NUL in the first 8000 bytes on any present side) compares byte
+   for byte; text compares after CRLF → LF. M12's inputs are written, LF-normalised, into a
+   merge-inputs directory created at the first M12 path only, so F14's `mkdtemp` count stays 2;
+   `range.json` and other writes use a temporary file in the destination directory, not `mkdtemp`.
+4. U57's `merge-file` stub returns `{ code: 255, stdout: <bytes>, stderr: '' }`.
+5. R1's tool version and target version (both `3.1.0` by the table's settings) are told apart by
+   their position in the rendered text, not by spying on an internal function.
+6. The 0006 home builder is a new function that calls `buildGitconfig` with a new optional
+   `merge.conflictStyle` parameter (defaults unchanged), which satisfies Notes lines on both.
+7. A predicted red names the expected failure; the executor quotes the observed red in full. A red
+   with another message but caused by this row's missing behaviour is recorded as a deviation (as
+   T-0026's increment 12); a test green before its change, or red for an unrelated reason, stops the
+   loop and is reported.
+8. Step 9 opens with `checkpoint('step-9')` and `guard.throwIfRaised()`; `merge-apply` checks the
+   guard after each operation (a raised signal → UP-E09 with the signal, exit 130); step 10 checks
+   the guard only after the report is printed (D8).
