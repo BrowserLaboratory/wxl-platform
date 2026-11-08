@@ -411,3 +411,24 @@ Checks, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --dir create-wxl 
 passed (26) / Tests 558 passed (558)` (create-wxl vitest in Node); `pnpm test --run` → `Test Files 136
 passed (136) / Tests 4854 passed | 1 skipped (4855)` (root vitest); `python3 scripts/verify-project.py`
 → `PASS`.
+
+### 2026-11-09 — stage 8 end-to-end
+
+Surface, as the approved Notes require: create-wxl's vitest in Node (0006-S1, `run()` with argv
+`upgrade`), not a terminal and not a browser. The packed `bin` against a terminal is T-0027's stage 8
+(0006-S2, U32). Commit `2049077`.
+
+- macOS (darwin arm64, Node v24.13.0), local: `pnpm --dir create-wxl test` → `Test Files 26 passed
+  (26) / Tests 558 passed (558)`.
+- CI, Quality Gates run <https://github.com/BrowserLaboratory/wxl-platform/actions/runs/42509168408>,
+  job `fork-init-cross-os`, step "Run create-wxl tests":
+  - ubuntu-latest, Node 22 (job 128818266284): `Tests 558 passed (558)`
+  - ubuntu-latest, Node 24 (job 128818266329): `Tests 558 passed (558)`
+  - macos-latest, Node 24 (job 128818266395): `Tests 558 passed (558)`
+  - windows-latest, Node 24 (job 128818266286): `Tests 542 passed | 15 skipped (557)`; the skips are
+    the win32-only symlink and execute-bit cases (0005's and this ticket's U03 (3), U09 (e), U10 J1).
+- The other required checks of that run passed: build, test, challenge-verify, site-smoke,
+  prose-audit, and the Cloudflare Pages preview.
+
+Stage 6 finding A1 (D3 (b) failing on windows-latest) is confirmed fixed by the windows-latest job.
+Status stays `review` until the pull request lands; the landed record follows on `main`.
