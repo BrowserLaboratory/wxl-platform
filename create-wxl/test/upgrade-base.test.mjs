@@ -1,5 +1,8 @@
-// 0006-S1 step 7 (traceability.md "Step order" row 7): when `range.json` names a base distinct
-// from the target, both the base and the target archives are downloaded.
+// 0006-S1 step 5's base resolution (traceability.md "Step order" row 5): a valid `range.json`
+// names the base (U06), its absence without `--from` is UP-E04 (U07), `--from <version>`/
+// `--from <commit>` resolve the base directly whether or not `range.json` exists and `--from`
+// wins when both are present (U08, U09), every J1/J3/J4 shape failure of `range.json` without
+// `--from` is UP-E06 with its token (U10), and J5's repository comparison (U11).
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, writeFile, symlink, mkdir } from 'node:fs/promises'
@@ -157,6 +160,7 @@ describe('--from overrides range.json', () => {
     })
     const refs = fetchArchive.mock.calls.map((call) => call[1])
     expect(refs).toContain('refs/tags/v3.1.0')
+    expect(refs).not.toContain(OTHER_COMMIT) // F12 (stage 6 disposition)
   })
 
   it('(c) range.json is broken JSON -> UP-E06 not-json, fetchArchive not called', async () => {
@@ -173,6 +177,7 @@ describe('--from overrides range.json', () => {
     })
     const refs = fetchArchive.mock.calls.map((call) => call[1])
     expect(refs).toContain('refs/tags/v3.1.0')
+    expect(refs).not.toContain(OTHER_COMMIT) // F12 (stage 6 disposition)
   })
 
   it.skipIf(process.platform === 'win32')(
@@ -222,7 +227,7 @@ describe('U10: J1/J3/J4 failures, without --from', () => {
         },
       },
     ],
-    ['J3: BOM', 'not-json', { rangeJsonRaw: '﻿{"a":1}\n' }],
+    ['J3: BOM', 'not-json', { rangeJsonRaw: '\uFEFF{"a":1}\n' }], // F21 (stage 6 disposition): the escape, not a literal invisible character
     ['J3: not valid JSON', 'not-json', { rangeJsonRaw: '{not json' }],
     ['J3: a JSON array', 'not-object', { rangeJsonRaw: '[]\n' }],
     ['J3: literal null', 'not-object', { rangeJsonRaw: 'null\n' }],
@@ -268,13 +273,26 @@ describe('U10: J1/J3/J4 failures, without --from', () => {
       'upstream.commit',
       { rangeJson: { upstream: { repository: VALID_REPO, version: '3.0.0', commit: `${'1'.repeat(39)}A` } } },
     ],
+    [
+      'J4 (F03/A3): version is an array ["3.0.0"], not a string',
+      'upstream.version',
+      { rangeJson: { upstream: { repository: VALID_REPO, version: ['3.0.0'], commit: VALID_COMMIT } } },
+    ],
+    [
+      'J4 (F03/A3): commit is an array [<40 hex>], not a string',
+      'upstream.commit',
+      { rangeJson: { upstream: { repository: VALID_REPO, version: '3.0.0', commit: [VALID_COMMIT] } } },
+    ],
   ]
 
   it.each(CASES)('%s -> UP-E06 %s', async (_label, token, fixtureArgs) => {
     const { exitCode, ioHelper, fetchArchive, before, after } = await runCase(fixtureArgs)
     expect(exitCode).toBe(1)
     expect(ioHelper.stderrText).toMatch(/^UP-E06/m)
-    expect(ioHelper.stderrText).toContain(token)
+    // F05 (stage 6 disposition): the full token, through `jsonValue` (the message's own
+    // rendering) -- `toContain(token)` alone would also pass for e.g. 'upstream' when the actual
+    // token printed is 'upstream.repository'.
+    expect(ioHelper.stderrText).toContain(jsonValue(token))
     expect(fetchArchive).not.toHaveBeenCalled()
     expect(after).toEqual(before)
   })
@@ -349,6 +367,9 @@ describe('U07: no range.json, no --from -> UP-E04', () => {
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E04/m)
+      // F23 (stage 6 disposition): the message names both --from forms (traceability.md Codes).
+      expect(ioHelper.stderrText).toContain('--from <version>')
+      expect(ioHelper.stderrText).toContain('--from <commit>')
       expect(deps.fetchArchive).not.toHaveBeenCalled()
       expect(after).toEqual(before)
     } finally {

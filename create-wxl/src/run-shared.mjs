@@ -1,7 +1,10 @@
-// Shared run helpers (moved unchanged from run.mjs, R1/R3): the one place every "print a failure
-// line, then remove the temporary directory this run created, then fail" sequence lives, the
-// file-system-vs-bug error classifier, and (R3) the archive-read/mkdtemp/extract/pristine-apply
-// window steps 7-9 (0005) and the upgrade path (0006) share.
+// Shared run helpers, moved out of run.mjs so steps 6-9 (0005) and the upgrade path's step 7
+// (0006) can call the same functions: the one place every "print a failure line, then remove the
+// temporary directory this run created, then fail" sequence lives, the file-system-vs-bug error
+// classifier, the download window (`downloadArchive`, now taking the repository/ref to download
+// instead of being tied to `deps.source`/`commit`), and the archive-read/mkdtemp/extract/
+// pristine-apply window (`readArchiveEntries` also gained the optional `tag` parameter here, for
+// 0006's U16 tag-mode base).
 
 import { join } from 'node:path'
 import { SignalAbort } from './signals.mjs'
@@ -33,7 +36,7 @@ export function isFileSystemError(err) {
   return typeof err?.code === 'string' && !err.code.startsWith('ERR_')
 }
 
-/** R2 (step 7 refactor): the URL, `AbortController`, timeout, the `fetchArchive` race and CW-E07
+/** The URL, `AbortController`, timeout, the `fetchArchive` race and CW-E07
  * for a rejection, a timeout or a non-200 status -- the whole window 0005's step 6 (`runSteps`)
  * and 0006's step 7 (`upgrade.mjs`) share, now taking the repository/ref to download instead of
  * being tied to `deps.source`/`commit`. Returns `{ body }`, or `null` after CW-E07 is already
@@ -81,7 +84,7 @@ export async function downloadArchive({ io, deps, t2, guard, repository, ref }) 
   return { body }
 }
 
-/** R3 (step 7/8 refactor); U16 (inc 20) adds the optional `tag`: parses `body` (CW-E08 on a parse
+/** With an optional `tag` (U16): parses `body` (CW-E08 on a parse
  * failure) and validates its entries against the archive entry rules (CW-E08 for a broken rule),
  * returning the enriched entry list, or `null` after the message is already printed -- never
  * throwing for either of those two conditions; anything else (a bug) is rethrown. Without `tag`,
@@ -125,7 +128,7 @@ export async function readArchiveEntries({ io, t2, body, commit, tag }) {
   }
 }
 
-/** R3: `deps.fs.mkdtemp(join(parent, prefix))`, reporting CW-E09 naming `parent` for a
+/** `deps.fs.mkdtemp(join(parent, prefix))`, reporting CW-E09 naming `parent` for a
  * file-system error (mkdtemp itself failed: nothing was created, nothing to clean up), or
  * rethrowing a bug. Returns the new directory's path, or `null` after the message is printed. */
 export async function makeTmpDir({ io, deps, t2, parent, prefix }) {
@@ -140,7 +143,7 @@ export async function makeTmpDir({ io, deps, t2, parent, prefix }) {
   }
 }
 
-/** R3: extracts `entries` into `tmpDir` (S-19's `{ stopped: true }` turned into the same
+/** Extracts `entries` into `tmpDir` (S-19's `{ stopped: true }` turned into the same
  * `SignalAbort` every other window throws), reporting CW-E09 through `failWithCleanup` for a
  * file-system error. Returns `true` on success, `false` after `failWithCleanup` already printed
  * the message and removed `tmpDir`; a `SignalAbort` or a bug is rethrown, uncaught. */
@@ -159,7 +162,7 @@ export async function extractInto({ io, deps, t2, guard, entries, tmpDir }) {
   return true
 }
 
-/** R3: P1-P4 against `tmpDir`, with the guard checked in between each write (decision 6: a signal
+/** P1-P4 against `tmpDir`, with the guard checked in between each write (decision 6: a signal
  * mid-step-9 stops before the next P-rule's write); `record` is P4's `{ repository, version,
  * commit }`. CW-E10 for a `PristineError`, CW-E09 for a file-system error, each through
  * `failWithCleanup`; anything else (including a `SignalAbort` from `guard.throwIfRaised()`) is

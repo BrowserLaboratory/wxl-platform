@@ -12,6 +12,7 @@ import { COMMIT_RE, VERSION_RE } from './patterns.mjs'
 import { parseGitVersion, isGitVersionOk, MINIMUM_GIT_VERSION } from './git-version.mjs'
 import { downloadArchive, readArchiveEntries, makeTmpDir, extractInto, applyPristine, removeTmpDir } from './run-shared.mjs'
 import { isAtLeast } from './numeric-version.mjs'
+import { MINIMUM_BASE_VERSION } from './base-version.mjs'
 
 /** `version`'s numeric parts (always `X.Y.Z` here: either `VERSION_RE`-checked already, or a
  * literal like `deps.source.version`), for `isAtLeast`'s own comparison (S-11). */
@@ -25,9 +26,6 @@ function isHigherVersion(a, b) {
   const partsB = versionParts(b)
   return isAtLeast(partsA, partsB) && !isAtLeast(partsB, partsA)
 }
-
-/** D2 (10): the oldest base this tool upgrades (traceability.md "Decisions", "Step order" row 6). */
-const MINIMUM_BASE_VERSION = [3, 0, 0]
 
 /** `\` is Windows' own path separator; `git rev-parse --show-toplevel`'s own output always uses
  * `/`, so comparing after turning `\` into `/` on both sides (traceability.md "Step order" row 3)
@@ -56,7 +54,17 @@ function lsFilesTag(line) {
 
 const IN_PROGRESS_MARKERS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply']
 
-/** R5 (refactor before inc 14): J1 (`lstat`: absent, or a regular file) then J3 (parses as JSON,
+/** D6 (F01/B1, stage 6 disposition): a non-zero OR `null` exit (killed by a signal) from any of
+ * step 4's three git commands is never treated as "no output, therefore clean" -- it stops the
+ * run with CW-E14 naming the command and the stderr git reported, through the same bug/signal
+ * catch `runUpgrade` already has (fail closed). */
+function requireGitSuccess(command, result) {
+  if (result.code !== 0) {
+    throw new Error(`git ${command} failed (exit code ${result.code}): ${result.stderr}`)
+  }
+}
+
+/** J1 (`lstat`: absent, or a regular file) then J3 (parses as JSON,
  * and is an object) for `range.json` at `deps.cwd` -- the shape increment 13's `--from` branch and
  * increment 14's no-`--from` branch both need. Returns `{ absent: true }` when there is no
  * `range.json`, `{ token }` for a J1/J3 failure (`not-a-file`/`not-json`/`not-object`), or
@@ -86,11 +94,26 @@ async function readRangeJson(deps) {
  * removed is harmless. Used at every early return in step 7 after the first `makeTmpDir`, so an
  * earlier, already-built range is never left behind when a later one fails. */
 async function cleanupTmpDirs(deps, tmpDirs) {
-  for (const dir of tmpDirs) await removeTmpDir(deps, dir)
+  for (const dir of tmpDirs) {
+    try {
+      await removeTmpDir(deps, dir)
+    } catch {
+      // F14 (stage 6 disposition): one directory's own `rm` failure must not stop the rest of
+      // this list from being removed, and must never replace the exit code the run was already
+      // going to return with a rejection of its own.
+    }
+  }
 }
 
 async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride, overrideRaw }, tmpDirs) {
   const gitEnv = buildGitEnv(deps.env)
+
+  // F02/A2 (stage 6 disposition): every step 3-7 opens with the same `checkpoint`/`throwIfRaised`
+  // pair 0005's own steps use (run.mjs:203,217-218,...), so a signal during any of them is never
+  // silently absorbed into an unrelated exit code -- the existing `checkpoint('step-8')` after
+  // step 7 (below) is unchanged, marking the start of step 8 (T-0027's).
+  deps.checkpoint('step-3')
+  guard.throwIfRaised()
 
   // Step 3 (traceability.md "Step order" row 3): `git --version` must report 2.20 or later
   // before anything else -- a rejection (git cannot be spawned, U04(1)) and an unparsable or too
@@ -128,6 +151,9 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return 1
   }
 
+  deps.checkpoint('step-4')
+  guard.throwIfRaised()
+
   // Step 4 (traceability.md "Step order" row 4): a clean repository, checked in this order so a
   // missing HEAD (no-head) is never misreported through the other checks' own behaviour on a
   // headless repository.
@@ -140,11 +166,13 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'],
     { cwd: deps.cwd, env: gitEnv },
   )
+  requireGitSuccess('status', statusResult)
   if (statusResult.stdout !== '') {
     io.stderr.write(t2['UP-E03']({ reason: 'changes' }) + '\n')
     return 1
   }
   const lsFilesResult = await deps.runGit(['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv })
+  requireGitSuccess('ls-files -v', lsFilesResult)
   for (const line of lsFilesResult.stdout.split('\n')) {
     if (line === '') continue
     const tag = lsFilesTag(line)
@@ -158,6 +186,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     }
   }
   const gitDirResult = await deps.runGit(['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv })
+  requireGitSuccess('rev-parse --git-dir', gitDirResult)
   const gitDir = parseGitDirStdout(deps, gitDirResult.stdout)
   for (const marker of IN_PROGRESS_MARKERS) {
     try {
@@ -169,6 +198,9 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return 1
   }
 
+  deps.checkpoint('step-5')
+  guard.throwIfRaised()
+
   // Step 5 (bare, inc 6; U08, inc 12; U09, inc 13): `--from <commit>` names the base commit
   // directly; `--from <version>` sets only `baseVersion`, leaving `baseCommit` unknown until step
   // 7's download resolves the tag; either way `range.json`'s own commit/version is never read
@@ -176,7 +208,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // (`lstat`: absent, or a regular file) and J3 (parses as JSON, and is an object); J2, J4 and J5
   // do not apply with `--from` (U09). Absent `--from`, read the base from `range.json`. J2 (inc
   // 11): an absent `range.json` without `--from` is UP-E04, not a bug. Full J1/J3/J4 validation
-  // of the no-`--from` path (U10) is a later increment.
+  // of the no-`--from` path (U10) is the `else` branch below.
   let baseCommit
   let baseVersion
   if (parsed.from !== undefined) {
@@ -209,9 +241,9 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       j4Token = 'upstream'
     } else if (typeof upstream.repository !== 'string') {
       j4Token = 'upstream.repository'
-    } else if (!VERSION_RE.test(upstream.version)) {
+    } else if (typeof upstream.version !== 'string' || !VERSION_RE.test(upstream.version)) {
       j4Token = 'upstream.version'
-    } else if (!COMMIT_RE.test(upstream.commit)) {
+    } else if (typeof upstream.commit !== 'string' || !COMMIT_RE.test(upstream.commit)) {
       j4Token = 'upstream.commit'
     }
     if (j4Token !== undefined) {
@@ -229,7 +261,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     baseVersion = upstream.version
   }
 
-  // Step 6 (refactor R4, before inc 21): gathers the checks written by increments 6 (commit
+  // Step 6: gathers the checks written by increments 6 (commit
   // equal), 17 (U50's floor), 16 (U13's downgrade) and 18 (U14's equal-version no-op) into one
   // function, callable again in step 7 once the base's version/commit are actually known
   // (amendment 2, U51/U52). Prints and returns an exit code, or `null` to go on. Amendment 6:
@@ -257,6 +289,9 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return null
   }
 
+  deps.checkpoint('step-6')
+  guard.throwIfRaised()
+
   // The target commit is resolved -- the override, when given, prints CW-W04 once, before any of
   // the checks above run.
   const targetCommit = hasOverride ? overrideRaw : deps.source.commit
@@ -266,12 +301,16 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   const preDownloadResult = checkBaseAgainstTarget({ baseCommit, baseVersion })
   if (preDownloadResult !== null) return preDownloadResult
 
+  deps.checkpoint('step-7')
+  guard.throwIfRaised()
+
   // Step 7 (bare, inc 10; U08, inc 12; U14, inc 18): download the base -- by commit, or for a
   // version-form base, from its tag -- then the target (traceability.md "Step order" row 7);
-  // validate both, then build each into its own pristine range under `deps.tmpRoot` (R3's shared
-  // functions), base fully before target. The tag-mode comment rule (U16) and repeating step 6's
-  // checks with the now-known base version/commit (amendment 2, U51/U52) are later increments; a
-  // null/failing result here returns 1 after the shared function's own message and own cleanup.
+  // validate both, then build each into its own pristine range under `deps.tmpRoot` (`run-shared.mjs`'s
+  // shared functions), base fully before target. The tag-mode comment rule (U16, below) and
+  // repeating step 6's checks with the now-known base version/commit (amendment 2, U51/U52,
+  // below) both apply here; a null/failing result here returns 1 after the shared function's own
+  // message and own cleanup.
   const baseRef = baseCommit ?? `refs/tags/v${baseVersion}`
   const baseDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: baseRef })
   if (!baseDownload) return 1
@@ -307,7 +346,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
         rawVersion = undefined
       }
     }
-    if (rawVersion === undefined || !VERSION_RE.test(rawVersion)) {
+    if (rawVersion === undefined || typeof rawVersion !== 'string' || !VERSION_RE.test(rawVersion)) {
       io.stderr.write(t2['UP-E10']({ version: rawVersion }) + '\n')
       return 1
     }

@@ -3,11 +3,14 @@
 // (AC-18): argument/target/download checks, strict parse and entry rules 1-5 (CW-E08), pristine
 // rule failures (CW-E10), setup questions (S1-S6's prompts, reasons and summary lines, CW-E05,
 // CW-E06, CW-E12, CW-E15), git steps (CW-W01-W03), "Next steps" lines (N1-N8), and the failure
-// and signal paths (CW-E09, CW-E11, CW-E14, CW-W05).
+// and signal paths (CW-E09, CW-E11, CW-E14, CW-W05). Every UP-* text (0006's upgrade path:
+// UP-E01-E08, UP-E10, UP-I01) likewise begins with its code, in both tables.
 
 import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar } from './text.mjs'
 import { printedForms } from './git-steps.mjs'
 import { MINIMUM_GIT_VERSION } from './git-version.mjs'
+import { MINIMUM_BASE_VERSION_TEXT } from './base-version.mjs'
+import { VERSION_RE } from './patterns.mjs'
 
 /** CW-W01's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
  * own default), not a hardcoded "2.20" repeated in both language tables. */
@@ -192,14 +195,19 @@ export const en = {
     `UP-E04: no range.json was found and no --from was given; pass --from <version> or --from <commit>, ` +
     `or run this in a range made with create-wxl, which always has a range.json.`,
   'UP-E05': ({ rangeRepository, sourceRepository }) =>
-    `UP-E05: range.json's upstream.repository ${jsonValue(rangeRepository)} does not match this engine's own repository ${jsonValue(sourceRepository)}.`,
+    `UP-E05: range.json's upstream.repository ${jsonValue(rangeRepository)} does not match the upstream repository ${jsonValue(sourceRepository)}.`,
   'UP-E06': ({ reason }) => `UP-E06: range.json is invalid (${jsonValue(reason)}).`,
   'UP-E07': ({ baseVersion, targetVersion }) =>
     `UP-E07: the range's base version ${jsonValue(baseVersion)} is higher than the target version ${jsonValue(targetVersion)}; downgrading is not supported.`,
-  'UP-E10': ({ version }) =>
-    version !== undefined
-      ? `UP-E10: the base version ${jsonValue(version)} is lower than 3.0.0; a range from before 3.0.0 cannot be upgraded by this tool.`
-      : `UP-E10: the base version could not be read; a range from before 3.0.0 cannot be upgraded by this tool.`,
+  'UP-E10': ({ version }) => {
+    if (version === undefined) {
+      return `UP-E10: the base version could not be read; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
+    }
+    if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+      return `UP-E10: the base version ${jsonValue(version)} is not valid; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
+    }
+    return `UP-E10: the base version ${jsonValue(version)} is lower than ${MINIMUM_BASE_VERSION_TEXT}; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
+  },
   'UP-E08': ({ tag }) =>
     `UP-E08: the tag ${jsonValue(tag)}'s archive comment is not 40 lowercase hexadecimal characters; the base commit could not be resolved.`,
   'CW-E01': ({ running, minimum }) =>
@@ -280,7 +288,7 @@ export const en = {
 }
 
 export const zhTW = {
-  'UP-E01': ({ path }) => `UP-E01：${jsonValue(path)} 不是 git 工作樹的頂層；請在靶場自己的根目錄執行 upgrade。`,
+  'UP-E01': ({ path }) => `UP-E01：${jsonValue(path)} 不是 git 工作目錄的頂層；請在靶場自己的根目錄執行 upgrade。`,
   'UP-I01': ({ version, commit }) => `UP-I01：不需要升級；靶場目前已經是版本 ${jsonValue(version)}（commit ${jsonValue(commit)}）。`,
   'UP-E02': ({ version }) =>
     `UP-E02：git 無法執行，或版本低於 ${MINIMUM_GIT_VERSION_TEXT}` +
@@ -291,15 +299,20 @@ export const zhTW = {
     `UP-E04：找不到 range.json，也沒有帶 --from；請帶上 --from <version> 或 --from <commit>，` +
     `或是在用 create-wxl 建出來的靶場（一定會有 range.json）裡執行。`,
   'UP-E05': ({ rangeRepository, sourceRepository }) =>
-    `UP-E05：range.json 的 upstream.repository ${jsonValue(rangeRepository)} 與這個引擎自己的 repository ${jsonValue(sourceRepository)} 不一致。`,
+    `UP-E05：range.json 的 upstream.repository ${jsonValue(rangeRepository)} 與上游的 repository ${jsonValue(sourceRepository)} 不一致。`,
   'UP-E06': ({ reason }) => `UP-E06：range.json 不合法（${jsonValue(reason)}）。`,
   'UP-E07': ({ baseVersion, targetVersion }) =>
     `UP-E07：靶場目前的 base 版本 ${jsonValue(baseVersion)} 比 target 版本 ${jsonValue(targetVersion)} 還新，不支援降版。`,
-  'UP-E10': ({ version }) =>
-    version !== undefined
-      ? `UP-E10：base 版本 ${jsonValue(version)} 低於 3.0.0；3.0.0 之前的靶場無法用這個工具升級。`
-      : `UP-E10：無法讀出 base 版本；3.0.0 之前的靶場無法用這個工具升級。`,
-  'UP-E08': ({ tag }) => `UP-E08：tag ${jsonValue(tag)} 的壓縮檔 comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。`,
+  'UP-E10': ({ version }) => {
+    if (version === undefined) {
+      return `UP-E10：無法讀出 base 版本；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
+    }
+    if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+      return `UP-E10：base 版本 ${jsonValue(version)} 格式不正確；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
+    }
+    return `UP-E10：base 版本 ${jsonValue(version)} 低於 ${MINIMUM_BASE_VERSION_TEXT}；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
+  },
+  'UP-E08': ({ tag }) => `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。`,
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>

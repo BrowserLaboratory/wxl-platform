@@ -1,4 +1,4 @@
-// Shared patterns (moved unchanged from run.mjs, R1): the package source record's version and
+// Shared patterns (moved unchanged from run.mjs): the package source record's version and
 // commit shapes, reused by the upgrade path (traceability.md "Command grammar", "Base from
 // range.json").
 

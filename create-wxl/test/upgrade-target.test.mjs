@@ -1,11 +1,13 @@
-// 0006-S1 step 6's no-op check (traceability.md "Step order" row 6): a known base commit equal to
-// the target's prints UP-I01 and downloads nothing, whether the base comes from `range.json` or
-// `--from <commit>`.
+// 0006-S1 steps 6-7 against known or resolved base/target commits (traceability.md "Step order"
+// rows 6-7): the no-op check (U12-U14, U50-U52), file-system errors building the two pristine
+// ranges under `deps.tmpRoot` (D3), `cleanupTmpDirs` not stopping on one directory's own `rm`
+// failure (F14), the tag-mode comment rule (U16), and the 0005 archive-rule/pristine-rule codes
+// once both archives are downloaded (U15).
 
 import { describe, it, expect, vi } from 'vitest'
-import { rm } from 'node:fs/promises'
+import { rm, mkdtemp as fsMkdtemp } from 'node:fs/promises'
 import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -15,7 +17,7 @@ import { snapshotTree } from './helpers/snapshot.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { jsonValue } from '../src/text.mjs'
 import { makeRefFetchArchive, pristineArchive, tagArchive } from './helpers/ref-fetch-archive.mjs'
-import { CHANGELOG_PRISTINE, PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
+import { CHANGELOG_PRISTINE, OPEN_QUESTIONS_PRISTINE, PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
 import { recordingFs } from './helpers/fs-recorder.mjs'
 import { failAt, fsError } from './helpers/fail-at.mjs'
 import { withoutRootMtime } from './helpers/snapshot.mjs'
@@ -159,12 +161,23 @@ describe('U14: equal versions, different commits', () => {
         if (name !== 'step-8') return
         const entries = readdirSync(tmpRoot).filter((entryName) => entryName.startsWith('create-wxl-upgrade-'))
         expect(entries.length).toBe(2)
+        const seenCommits = []
         for (const entry of entries) {
           const dir = join(tmpRoot, entry)
           expect(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8')).toBe(CHANGELOG_PRISTINE)
+          // F09 (stage 6 disposition): P2 as well as P1.
+          expect(readFileSync(join(dir, '.proj.specs/OPEN-QUESTIONS.md'), 'utf8')).toBe(OPEN_QUESTIONS_PRISTINE)
           const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
           expect(pkg.version).toBe('0.1.0')
+          // F09 (stage 6 disposition): P4 -- each pristine range's own range.json records its own
+          // version and commit, not the other range's. The base's directory is the one whose
+          // range.json names BASE_COMMIT; the target's is the one whose range.json names
+          // OVERRIDE_COMMIT (this case's resolved target commit, via CREATE_WXL_COMMIT).
+          const rangeJson = JSON.parse(readFileSync(join(dir, 'range.json'), 'utf8'))
+          seenCommits.push(rangeJson.upstream.commit)
+          expect(rangeJson.upstream.version).toBe('3.0.0')
         }
+        expect(seenCommits.sort()).toEqual([BASE_COMMIT, OVERRIDE_COMMIT].sort())
         inspected = true
       })
       const deps = makeDeps({
@@ -291,7 +304,10 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^CW-E09/m)
-      expect(ioHelper.stderrText).toContain(tmpRoot)
+      // A1/F04 (stage 6 disposition): the failing path is inside a freshly-`mkdtemp`-ed
+      // directory this test never learns the name of (Windows-neutral: a file name, not a raw
+      // path under `tmpRoot`, which `jsonValue` would otherwise escape `\` within).
+      expect(ioHelper.stderrText).toContain('0-target-only.txt')
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
     } finally {
@@ -316,7 +332,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const writeFile = failAt('writeFile', (count, args) =>
         args[1].includes('"version": "0.1.0"') && args[1].includes('wxl-base') ? fsError('EACCES') : null,
       )
-      const { fs } = recordingFs({ writeFile })
+      const { fs, calls } = recordingFs({ writeFile })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
@@ -336,8 +352,64 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^CW-E09/m)
+      // A5/F13 (stage 6 disposition): the message carries the failing path -- by file name
+      // (Windows-neutral), since the failing directory's own name is not known to this test.
+      expect(ioHelper.stderrText).toContain('package.json')
+      // F13 (stage 6 disposition): the target directory is never created, checked directly --
+      // only the base's own `mkdtemp` ran before the failing write.
+      expect(calls.filter((call) => call.method === 'mkdtemp')).toHaveLength(1)
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never replaces the run\'s own exit code', () => {
+  it('rm fails for the base pristine directory -> the target directory is still removed; run() resolves 1, not a rejection', async () => {
+    const fixture = await makeFixtureRange({
+      rangeJson: { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.0.0', commit: BASE_COMMIT } },
+    })
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const fetchArchive = makeRefFetchArchive({
+        [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+      })
+      // The base's own `makeTmpDir` call happens before the target's (traceability.md "Step
+      // order" row 7: "base fully before target"), so the first directory `mkdtemp` ever creates
+      // in this run is the base's own.
+      const createdTmpDirs = []
+      const mkdtempOverride = async (...args) => {
+        const dir = await fsMkdtemp(...args)
+        createdTmpDirs.push(dir)
+        return dir
+      }
+      const rmOverride = async (...args) => {
+        if (args[0] === createdTmpDirs[0]) throw fsError('EPERM', 'EPERM: operation not permitted')
+        return rm(...args)
+      }
+      const { fs } = recordingFs({ mkdtemp: mkdtempOverride, rm: rmOverride })
+      const deps = makeDeps({
+        cwd: fixture.root,
+        tmpRoot,
+        env: fixture.env,
+        runGit: vi.fn(createSpawnGitRunner()),
+        packageVersion: '3.1.0',
+        source: { version: '3.1.0' },
+        fetchArchive,
+        fs,
+      })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(1)
+      expect(createdTmpDirs.length).toBe(2)
+      const remaining = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+      expect(remaining).toEqual([basename(createdTmpDirs[0])])
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
@@ -384,6 +456,7 @@ describe('U51: --from <commit> base version resolved only after download', () =>
     ['(c) version 2.9.9, below the 3.0.0 floor -> UP-E10', '2.9.9', 'UP-E10'],
     ['(d1) package.json without a version field -> UP-E10', undefined, 'UP-E10'],
     ['(d2) version 3.0 does not match X.Y.Z -> UP-E10', '3.0', 'UP-E10'],
+    ['(d3, F03/A3) version is an array ["3.1.0"], not a string -> UP-E10', ['3.1.0'], 'UP-E10'],
   ]
 
   it.each(DOWNLOAD_AFTER_CASES)('%s, nothing written, no residue', async (_label, version, expectedCode) => {
@@ -394,6 +467,14 @@ describe('U51: --from <commit> base version resolved only after download', () =>
     expect(refs).toEqual([BASE_COMMIT, FIXED_COMMIT].sort())
     expect(afterTmp).toEqual(beforeTmp)
     expect(after).toEqual(before)
+  })
+
+  it('(d2 wording, F17) version 3.0 (not X.Y.Z) says it is not valid, distinct from "lower than 3.0.0"', async () => {
+    const { exitCode, ioHelper } = await runCase('3.0')
+
+    expect(exitCode).toBe(1)
+    expect(ioHelper.stderrText).toMatch(/^UP-E10/m)
+    expect(ioHelper.stderrText).not.toContain('lower than 3.0.0')
   })
 
   it('(b) version 3.0.0, no CREATE_WXL_COMMIT -> exit 0, UP-I01 on stdout only', async () => {
@@ -443,6 +524,56 @@ describe('U52: --from <version> resolving to the target commit -> UP-I01, nothin
       expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
       const refs = fetchArchive.mock.calls.map((call) => call[1])
       expect(refs).toContain(tagRef)
+      expect(afterTmp).toEqual(beforeTmp)
+      expect(after).toEqual(before)
+      // F06 (amendment 6, stage 6 disposition): only (a) can tell "UP-I01 carries the BASE's own
+      // version/commit" apart from "it carries the TARGET's", since (b) uses the same version
+      // for both; (a)'s base version 3.1.0 differs from its target version 3.2.0.
+      if (fromVersion === '3.1.0') {
+        expect(ioHelper.stdoutText).toContain('3.1.0')
+        expect(ioHelper.stdoutText).toContain(FIXED_COMMIT)
+      }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('F22: --from <version> equal to the target version, tag resolves to a DIFFERENT commit, no override -> UP-I01 naming the base version/commit', async () => {
+    const fixture = await makeFixtureRange({})
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const targetVersion = '3.2.0'
+      const baseResolvedCommit = '3333333333333333333333333333333333333333'
+      const tagRef = `refs/tags/v${targetVersion}`
+      const fetchArchive = makeRefFetchArchive({
+        [tagRef]: { body: tagArchive(targetVersion, { comment: baseResolvedCommit }) },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+      })
+      const deps = makeDeps({
+        cwd: fixture.root,
+        tmpRoot,
+        env: fixture.env,
+        runGit: vi.fn(createSpawnGitRunner()),
+        packageVersion: targetVersion,
+        source: { version: targetVersion },
+        fetchArchive,
+      })
+      const before = await snapshotTree(fixture.root)
+      const beforeTmp = withoutRootMtime(await snapshotTree(tmpRoot))
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade', '--from', targetVersion], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+      const afterTmp = withoutRootMtime(await snapshotTree(tmpRoot))
+
+      expect(exitCode).toBe(0)
+      expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
+      expect(ioHelper.stdoutText).toContain(baseResolvedCommit)
+      expect(ioHelper.stdoutText).toContain(targetVersion)
+      expect(ioHelper.stdoutText).not.toContain(FIXED_COMMIT)
+      const refs2 = fetchArchive.mock.calls.map((call) => call[1])
+      expect(refs2).toContain(tagRef)
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
     } finally {

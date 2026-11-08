@@ -3,6 +3,8 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, mkdir, symlink, writeFile } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -13,6 +15,7 @@ import { snapshotTree } from './helpers/snapshot.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeGitStub } from './helpers/git-stub.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
+import { makeSignalingCheckpoint } from './helpers/checkpoint-signal.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const SYMLINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir'
@@ -101,12 +104,17 @@ describe('git tool', () => {
     try {
       const env = { ...fixture.env, PATH: '' }
       const deps = makeDeps({ cwd: fixture.root, env, runGit: vi.fn(createSpawnGitRunner()) })
+      const before = await snapshotTree(fixture.root)
       const ioHelper = makeIo()
       const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E02/m)
+      // F23 (stage 6 disposition): the message points at where to get a newer git.
+      expect(ioHelper.stderrText).toContain('https://git-scm.com/downloads')
       expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
@@ -118,13 +126,18 @@ describe('git tool', () => {
     try {
       const { runGit } = makeGitStub({ version: { code: 0, stdout: 'git version 2.19.0\n', stderr: '' } })
       const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
+      const before = await snapshotTree(fixture.root)
       const ioHelper = makeIo()
       const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E02/m)
       expect(ioHelper.stderrText).toContain('2.19.0')
+      // F23 (stage 6 disposition): the message points at where to get a newer git.
+      expect(ioHelper.stderrText).toContain('https://git-scm.com/downloads')
       expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
@@ -140,12 +153,17 @@ describe('git tool', () => {
         unknown: (args, opts) => real(args, opts),
       })
       const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
+      const before = await snapshotTree(fixture.root)
       const ioHelper = makeIo()
       const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
 
       expect(ioHelper.stderrText).not.toContain('UP-E02')
       expect(exitCode).toBe(0)
       expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
+      // A4/F08 (stage 6 disposition): nothing written, same as U03 and U05.
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
@@ -245,6 +263,98 @@ describe('clean check', () => {
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('git command failures (D6, F01/B1): fail closed, never treated as clean', () => {
+  const realGit = createSpawnGitRunner()
+
+  function interceptingGitStub(matchesArgs, response) {
+    return async (args, opts) => {
+      if (matchesArgs(args)) return response
+      return realGit(args, opts)
+    }
+  }
+
+  const CASES = [
+    [
+      'git status exits 128 with stderr',
+      (args) => args.includes('status'),
+      { code: 128, stdout: '', stderr: 'fatal: index file corrupt' },
+      'status',
+    ],
+    [
+      'git ls-files -v exits 128 with stderr',
+      (args) => args.includes('ls-files'),
+      { code: 128, stdout: '', stderr: 'fatal: index file corrupt' },
+      'ls-files -v',
+    ],
+    [
+      'git rev-parse --git-dir exits 128 with stderr',
+      (args) => args.includes('--git-dir'),
+      { code: 128, stdout: '', stderr: 'fatal: index file corrupt' },
+      'rev-parse --git-dir',
+    ],
+    [
+      'git status closes with code null (killed by a signal)',
+      (args) => args.includes('status'),
+      { code: null, stdout: '', stderr: '' },
+      'status',
+    ],
+  ]
+
+  it.each(CASES)('%s -> CW-E14 naming the command and stderr, exit 1, nothing written', async (_label, matchesArgs, response, command) => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const runGit = interceptingGitStub(matchesArgs, response)
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^CW-E14/m)
+      expect(ioHelper.stderrText).toContain(`git ${command} failed`)
+      expect(ioHelper.stderrText).toContain(response.stderr)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('signal guard (F02/A2): a signal at a step 3-7 checkpoint stops the run before any new file-system work', () => {
+  it('SIGINT raised at the step-4 checkpoint -> exit 130, fixture unchanged (including .git), no download, no tmp entry', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const signals = new EventEmitter()
+      const checkpoint = makeSignalingCheckpoint(signals, 'step-4')
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({
+        cwd: fixture.root,
+        tmpRoot,
+        env: fixture.env,
+        runGit: vi.fn(createSpawnGitRunner()),
+        signals,
+        checkpoint,
+      })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(130)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+      expect(readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))).toEqual([])
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
     }
   })
 })

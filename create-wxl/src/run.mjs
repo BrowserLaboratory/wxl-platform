@@ -37,7 +37,8 @@ async function validateSourceRecord(deps) {
 /**
  * create-wxl's one exported seam (0005-S1): the Step order table's steps 1-13, every signal
  * window (traceability.md "Signals"), and the full set of failure-path messages (CW-E09,
- * CW-E11, CW-E14, CW-W05).
+ * CW-E11, CW-E14, CW-W05). An argv whose first positional is `upgrade` is dispatched to
+ * 0006's upgrade path instead (0006-S1, `runUpgrade` in upgrade.mjs).
  */
 export async function run(argv, io, deps) {
   // traceability.md "Signals": "errors writing the messages are ignored". Without a listener, a
@@ -267,7 +268,7 @@ async function runStepsBody(
   if (hasOverride) {
     io.stderr.write(t2['CW-W04']({ commit }) + '\n')
   }
-  // R2: the URL/AbortController/timeout/race/CW-E07 window now lives in `run-shared.mjs`'s
+  // The URL/AbortController/timeout/race/CW-E07 window lives in `run-shared.mjs`'s
   // `downloadArchive`, shared with the upgrade path (traceability.md "Step order" row 7); this
   // call site's own checkpoints and CW-W04 are unchanged.
   const downloaded = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: commit })
@@ -276,9 +277,9 @@ async function runStepsBody(
 
   deps.checkpoint('step-7')
   guard.throwIfRaised()
-  // R3: parsing, entry-rule validation, mkdtemp, extraction and P1-P4 now live in
-  // `run-shared.mjs`, shared with the upgrade path; this call site's own checkpoints,
-  // `setTmpDir` and argument shape are unchanged.
+  // Parsing, entry-rule validation, mkdtemp, extraction and P1-P4 live in `run-shared.mjs`,
+  // shared with the upgrade path; this call site's own checkpoints, `setTmpDir` and argument
+  // shape are unchanged.
   const validatedEntries = await readArchiveEntries({ io, t2, body, commit })
   if (!validatedEntries) return 1
 
