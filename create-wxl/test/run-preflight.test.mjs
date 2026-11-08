@@ -244,9 +244,9 @@ describe('command grammar', () => {
     { name: '--no-setup=x', argv: ['range', '--no-setup=x'], token: '--no-setup=x' },
     { name: 'empty positional', argv: ['', '--no-setup'], token: '' },
     { name: 'two positionals', argv: ['a', 'b', '--no-setup'], token: 'b' },
-    { name: 'upgrade as positional', argv: ['upgrade', '--no-setup'], token: 'upgrade' },
-    { name: '--no-setup upgrade', argv: ['--no-setup', 'upgrade'], token: 'upgrade' },
-    { name: '--no-setup -- upgrade', argv: ['--no-setup', '--', 'upgrade'], token: 'upgrade' },
+    { name: 'upgrade as positional', argv: ['upgrade', '--no-setup'], token: '--no-setup' },
+    { name: '--no-setup upgrade', argv: ['--no-setup', 'upgrade'], token: '--no-setup' },
+    { name: '--no-setup -- upgrade', argv: ['--no-setup', '--', 'upgrade'], token: '--no-setup' },
     { name: 'invalid --lang', argv: ['range', '--no-setup', '--lang', 'fr'], token: 'fr' },
   ]
 

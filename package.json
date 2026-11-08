@@ -34,6 +34,7 @@
     "redirects:generate": "node --experimental-strip-types scripts/generate-redirects.ts",
     "challenge:analyze": "node --experimental-strip-types scripts/challenge-analyze.ts",
     "fork:init": "tsx scripts/fork-init.ts",
+    "range:upgrade": "npx --yes create-wxl@latest upgrade",
     "challenge:retype": "tsx scripts/challenge-retype.ts",
     "challenge:verify": "tsx scripts/challenge-verify.ts",
     "challenge:verify:blind": "tsx scripts/challenge-verify-blind.ts",

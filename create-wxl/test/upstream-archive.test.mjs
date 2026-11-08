@@ -34,6 +34,13 @@ describe('U1', () => {
   })
 })
 
+describe('range:upgrade script', () => {
+  it('the root manifest\'s range:upgrade script is exactly as specified (AC-12, U30)', async () => {
+    const pkg = JSON.parse(await readFile(join(REPO_ROOT, 'package.json'), 'utf8'))
+    expect(pkg.scripts['range:upgrade']).toBe('npx --yes create-wxl@latest upgrade')
+  })
+})
+
 describe('git archive HEAD', () => {
   it(
     "upstream's own git archive HEAD passes entry rules 1-5 and holds only the allowed .proj.specs/ entries",

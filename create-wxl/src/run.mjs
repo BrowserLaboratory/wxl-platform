@@ -1,43 +1,18 @@
-import { dirname, join, resolve as resolvePath } from 'node:path'
+import { dirname, resolve as resolvePath } from 'node:path'
 import { createHash } from 'node:crypto'
 import { messages, cwE12FinishingCommandsList } from './messages.mjs'
 import { jsonValue } from './text.mjs'
 import { selectLanguage } from './language.mjs'
-import { parseArchive, ArchiveParseError } from './archive.mjs'
-import { checkEntryRules, ArchiveRuleError } from './archive-rules.mjs'
 import { parseArgvStrict, ArgvError, SETUP_FLAG_NAMES } from './argv.mjs'
-import { checkTarget, extractEntries, moveIntoPlace, MoveIntoPlaceError } from './fsops.mjs'
-import { applyChangelog, applyOpenQuestions, applyPackageJson, writeRangeJson, PristineError } from './pristine.mjs'
+import { checkTarget, moveIntoPlace, MoveIntoPlaceError } from './fsops.mjs'
 import { isNodeVersionOk, MINIMUM_NODE_VERSION } from './node-version.mjs'
 import { makeQuestioner, QuestionEofError, buildEngineArgv, missingRequiredFlags, collectInteractiveAnswers } from './questions.mjs'
 import { runGitSteps, orderedPrintedForms } from './git-steps.mjs'
 import { buildNextSteps } from './next-steps.mjs'
 import { createSignalGuard, SignalAbort } from './signals.mjs'
-
-const VERSION_RE = /^\d+\.\d+\.\d+$/
-const COMMIT_RE = /^[0-9a-f]{40}$/
-
-/** S-20: the one place every "print a failure line, then remove the temporary directory this run
- * created, then fail" sequence lives (steps 8-10's CW-E09/CW-E10/CW-E04 branches, and the
- * generic bug/signal catch, each used to repeat this pair of calls for itself). */
-async function removeTmpDir(deps, tmpDir) {
-  await deps.fs.rm(tmpDir, { recursive: true, force: true })
-}
-
-async function failWithCleanup(io, deps, tmpDir, line) {
-  io.stderr.write(line + '\n')
-  await removeTmpDir(deps, tmpDir)
-  return 1
-}
-
-/** CW-E09 (steps 8-9) vs. CW-E14 (a bug): a real file-system error carries a string `code` that
- * does NOT start with `ERR_` (review finding C-12) -- Node's own argument-validation errors
- * (`ERR_INVALID_ARG_TYPE`, `ERR_INVALID_ARG_VALUE`, `ERR_OUT_OF_RANGE`, ...) also carry a string
- * `code`, but they are a programming bug in this codebase, not an environment problem to report
- * as CW-E09. */
-function isFileSystemError(err) {
-  return typeof err?.code === 'string' && !err.code.startsWith('ERR_')
-}
+import { VERSION_RE, COMMIT_RE } from './patterns.mjs'
+import { removeTmpDir, downloadArchive, readArchiveEntries, makeTmpDir, extractInto, applyPristine } from './run-shared.mjs'
+import { runUpgrade } from './upgrade.mjs'
 
 /** Step 2's package source record check (D2): `deps.engineFile` is read through `deps.fs` and its
  * SHA-256 compared with `source.engineSha256`. */
@@ -62,7 +37,8 @@ async function validateSourceRecord(deps) {
 /**
  * create-wxl's one exported seam (0005-S1): the Step order table's steps 1-13, every signal
  * window (traceability.md "Signals"), and the full set of failure-path messages (CW-E09,
- * CW-E11, CW-E14, CW-W05).
+ * CW-E11, CW-E14, CW-W05). An argv whose first positional is `upgrade` is dispatched to
+ * 0006's upgrade path instead (0006-S1, `runUpgrade` in upgrade.mjs).
  */
 export async function run(argv, io, deps) {
   // traceability.md "Signals": "errors writing the messages are ignored". Without a listener, a
@@ -143,6 +119,9 @@ async function runBody(argv, io, deps) {
   const guard = createSignalGuard(deps.signals, ['SIGINT', 'SIGTERM', 'SIGHUP'])
   const questioner = makeQuestioner(io, deps, guard)
   try {
+    if (parsed.mode === 'upgrade') {
+      return await runUpgrade(parsed, io, deps, t2, lang2, guard, { hasOverride, overrideRaw })
+    }
     return await runSteps(parsed, io, deps, t2, lang2, questioner, guard, { hasOverride, overrideRaw })
   } catch (err) {
     if (err instanceof QuestionEofError) {
@@ -289,121 +268,42 @@ async function runStepsBody(
   if (hasOverride) {
     io.stderr.write(t2['CW-W04']({ commit }) + '\n')
   }
-  const url = `https://codeload.github.com/${deps.source.repository}/tar.gz/${commit}`
-  const controller = new AbortController()
-  // decision 6: a signal during the download aborts it through this same controller, instead of
-  // waiting out the full `downloadTimeoutMs` -- traceability.md "Signals": "after a signal no new
-  // file-system operation starts" (the download itself is not a file-system operation, but the
-  // rule not to keep running applies the same way).
-  const unsubscribeAbort = guard.onRaise(() => controller.abort())
-  let timedOut = false
-  let timer
-  const timeoutPromise = new Promise((_resolveTimeout, rejectTimeout) => {
-    timer = setTimeout(() => {
-      timedOut = true
-      controller.abort()
-      rejectTimeout(new Error())
-    }, deps.downloadTimeoutMs)
-  })
-
-  let status, body
-  try {
-    ;({ status, body } = await Promise.race([
-      deps.fetchArchive(deps.source.repository, commit, { signal: controller.signal }),
-      timeoutPromise,
-    ]))
-  } catch (err) {
-    if (guard.raised()) throw new SignalAbort(guard.raised())
-    const detail = timedOut ? { kind: 'timeout' } : { kind: 'error', message: err?.message ?? String(err) }
-    io.stderr.write(t2['CW-E07']({ url, detail }) + '\n')
-    return 1
-  } finally {
-    clearTimeout(timer)
-    // S-17: step 6's own window has closed either way; this `AbortController` is no longer
-    // useful to abort, so the callback is removed instead of lingering for the rest of the run.
-    unsubscribeAbort()
-  }
-
-  guard.throwIfRaised() // P-17/C-14: a signal already received wins over a non-200 status
-  if (status !== 200) {
-    io.stderr.write(t2['CW-E07']({ url, detail: { kind: 'status', status } }) + '\n')
-    return 1
-  }
+  // The URL/AbortController/timeout/race/CW-E07 window lives in `run-shared.mjs`'s
+  // `downloadArchive`, shared with the upgrade path (traceability.md "Step order" row 7); this
+  // call site's own checkpoints and CW-W04 are unchanged.
+  const downloaded = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: commit })
+  if (!downloaded) return 1
+  const { body } = downloaded
 
   deps.checkpoint('step-7')
   guard.throwIfRaised()
-  let parsedArchive
-  try {
-    parsedArchive = await parseArchive(body)
-  } catch (err) {
-    if (err instanceof ArchiveParseError) {
-      io.stderr.write(t2['CW-E08']({ parseError: err.message }) + '\n')
-      return 1
-    }
-    throw err
-  }
-  let validatedEntries
-  try {
-    validatedEntries = checkEntryRules(parsedArchive, { commit })
-  } catch (err) {
-    if (err instanceof ArchiveRuleError) {
-      io.stderr.write(t2['CW-E08']({ rule: err.rule, path: err.path, isCommentMarker: err.isCommentMarker }) + '\n')
-      return 1
-    }
-    throw err
-  }
+  // Parsing, entry-rule validation, mkdtemp, extraction and P1-P4 live in `run-shared.mjs`,
+  // shared with the upgrade path; this call site's own checkpoints, `setTmpDir` and argument
+  // shape are unchanged.
+  const validatedEntries = await readArchiveEntries({ io, t2, body, commit })
+  if (!validatedEntries) return 1
 
   deps.checkpoint('step-8')
   guard.throwIfRaised()
   const parentDir = dirname(target)
-  let tmpDir
-  try {
-    tmpDir = await deps.fs.mkdtemp(join(parentDir, '.create-wxl-'))
-    setTmpDir(tmpDir)
-  } catch (err) {
-    if (isFileSystemError(err)) {
-      io.stderr.write(t2['CW-E09']({ path: parentDir, detail: err.message }) + '\n')
-      return 1 // mkdtemp itself failed: nothing was created, nothing to clean up
-    }
-    throw err
-  }
-  try {
-    // S-19: `{ stopped: true }` (never a silent early return) is the one signal `extractEntries`
-    // gives for "a signal arrived mid-extraction"; turned into the same `SignalAbort` every other
-    // window throws, right here, instead of a separate check the caller could forget.
-    const { stopped } = await extractEntries(deps, validatedEntries, tmpDir, { shouldStop: () => guard.isRaised() })
-    if (stopped) throw new SignalAbort(guard.raised())
-  } catch (err) {
-    if (err instanceof SignalAbort) throw err
-    if (isFileSystemError(err)) {
-      return failWithCleanup(io, deps, tmpDir, t2['CW-E09']({ path: err.reportPath ?? tmpDir, detail: err.message }))
-    }
-    throw err
-  }
+  const tmpDir = await makeTmpDir({ io, deps, t2, parent: parentDir, prefix: '.create-wxl-' })
+  if (!tmpDir) return 1 // mkdtemp itself failed: nothing was created, nothing to clean up
+  setTmpDir(tmpDir)
+  if (!(await extractInto({ io, deps, t2, guard, entries: validatedEntries, tmpDir }))) return 1
 
   deps.checkpoint('step-9')
   guard.throwIfRaised()
-  try {
-    await applyChangelog(deps.fs, tmpDir)
-    guard.throwIfRaised() // decision 6: a signal mid-step-9 stops before the next P-rule's write
-    await applyOpenQuestions(deps.fs, tmpDir)
-    guard.throwIfRaised()
-    await applyPackageJson(deps.fs, tmpDir)
-    guard.throwIfRaised()
-    await writeRangeJson(deps.fs, tmpDir, {
-      repository: deps.source.repository,
-      version: deps.source.version,
-      commit,
-    })
-    guard.throwIfRaised() // P-02/C-01: a signal during step 9's last write starts no step-10 work
-  } catch (err) {
-    if (err instanceof PristineError) {
-      return failWithCleanup(io, deps, tmpDir, t2['CW-E10']({ file: err.file, rule: err.rule }))
-    }
-    if (isFileSystemError(err)) {
-      return failWithCleanup(io, deps, tmpDir, t2['CW-E09']({ path: err.reportPath ?? tmpDir, detail: err.message }))
-    }
-    throw err
+  if (
+    !(await applyPristine({
+      io,
+      deps,
+      t2,
+      guard,
+      tmpDir,
+      record: { repository: deps.source.repository, version: deps.source.version, commit },
+    }))
+  ) {
+    return 1
   }
 
   deps.checkpoint('step-10')

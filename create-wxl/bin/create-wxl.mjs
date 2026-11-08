@@ -67,6 +67,7 @@ async function main() {
   const { dirname, join } = await import('node:path')
   const fsp = await import('node:fs/promises')
   const { readFile } = fsp
+  const { tmpdir } = await import('node:os')
 
   const { run } = await import('../src/run.mjs')
   const { createSpawnGitRunner } = await import('../src/git-runner.mjs')
@@ -106,6 +107,7 @@ async function main() {
       return { status: response.status, body }
     },
     downloadTimeoutMs: 120000,
+    tmpRoot: tmpdir(),
     runGit: createSpawnGitRunner(),
     fs: fsp,
     // `process` itself is `deps.signals` (the seam's own dependency list, traceability.md

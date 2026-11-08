@@ -45,6 +45,38 @@ export function jsonValue(value) {
   return out + '"'
 }
 
+/** Candidate 22 (stage 7, security-T-0026): prints `value` through `JSON.stringify` -- unlike
+ * `jsonValue`, without wrapping the result in its own extra quotes, so an array or object prints
+ * as itself (`["3.1.0"]`, `{"toString":1}`), not through `String(value)` (which calls `toString`,
+ * throwing for a value whose own `toString` property is not callable, and collapsing an array
+ * like `["3.1.0"]` into the indistinguishable-from-a-real-version `"3.1.0"`). Any DEL/C1
+ * character or lone surrogate `JSON.stringify`'s own algorithm leaves unescaped (it already
+ * escapes every C0 character and lone surrogate itself, ES2019) is escaped the same way
+ * `escapeChar` would (D10). Returns `undefined` when `JSON.stringify` throws (a `BigInt`, a
+ * circular structure) or itself returns `undefined` (a bare `function` or `undefined` value) --
+ * the caller falls back to a type name in that case. */
+const SHORT_ESCAPE_CODES = { b: '0008', f: '000c', r: '000d', t: '0009' }
+
+export function jsonStringifyEscaped(value) {
+  let str
+  try {
+    str = JSON.stringify(value)
+  } catch {
+    return undefined
+  }
+  if (typeof str !== 'string') return undefined
+  // D10: JSON.stringify's own short escapes for backspace, form feed, CR and tab become `\uXXXX`
+  // (a line feed keeps `\n`); matching escape pairs left to right leaves `\\` followed by a
+  // letter untouched.
+  str = str.replace(/\\(.)/g, (pair, c) => (c in SHORT_ESCAPE_CODES ? `\\u${SHORT_ESCAPE_CODES[c]}` : pair))
+  let out = ''
+  for (const ch of str) {
+    const code = ch.codePointAt(0)
+    out += isControlCodePoint(code) || isLoneSurrogate(code) ? `\\u${code.toString(16).padStart(4, '0')}` : ch
+  }
+  return out
+}
+
 const BARE_RE = /^[A-Za-z0-9._\-/@%+=:,]+$/
 
 export function posixQuoteWord(word) {
