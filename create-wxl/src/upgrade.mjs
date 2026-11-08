@@ -52,7 +52,10 @@ function lsFilesTag(line) {
   return line[0]
 }
 
-const IN_PROGRESS_MARKERS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply']
+// D7 (candidate 15, stage 7): `sequencer/` holds a multi-commit cherry-pick or revert's own
+// to-do list in progress; a mid-sequence commit removes `CHERRY_PICK_HEAD`/`REVERT_HEAD` without
+// finishing the operation, so this marker is needed in addition to those two.
+const IN_PROGRESS_MARKERS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply', 'sequencer']
 
 /** D6 (F01/B1, stage 6 disposition): a non-zero OR `null` exit (killed by a signal) from any of
  * step 4's three git commands is never treated as "no output, therefore clean" -- it stops the
@@ -125,6 +128,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   } catch {
     versionStdout = undefined
   }
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   const parsedVersion = versionStdout === undefined ? null : parseGitVersion(versionStdout)
   if (!isGitVersionOk(parsedVersion, MINIMUM_GIT_VERSION)) {
     io.stderr.write(t2['UP-E02']({ version: parsedVersion ? parsedVersion.join('.') : undefined }) + '\n')
@@ -138,6 +142,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     cwd: deps.cwd,
     env: gitEnv,
   })
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   if (toplevel.code !== 0) {
     io.stderr.write(t2['UP-E01']({ path: deps.cwd }) + '\n')
     return 1
@@ -158,6 +163,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // missing HEAD (no-head) is never misreported through the other checks' own behaviour on a
   // headless repository.
   const headCheck = await deps.runGit(['rev-parse', '--verify', 'HEAD'], { cwd: deps.cwd, env: gitEnv })
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   if (headCheck.code !== 0) {
     io.stderr.write(t2['UP-E03']({ reason: 'no-head' }) + '\n')
     return 1
@@ -166,12 +172,14 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'],
     { cwd: deps.cwd, env: gitEnv },
   )
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('status', statusResult)
   if (statusResult.stdout !== '') {
     io.stderr.write(t2['UP-E03']({ reason: 'changes' }) + '\n')
     return 1
   }
   const lsFilesResult = await deps.runGit(['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv })
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('ls-files -v', lsFilesResult)
   for (const line of lsFilesResult.stdout.split('\n')) {
     if (line === '') continue
@@ -186,13 +194,17 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     }
   }
   const gitDirResult = await deps.runGit(['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv })
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('rev-parse --git-dir', gitDirResult)
   const gitDir = parseGitDirStdout(deps, gitDirResult.stdout)
   for (const marker of IN_PROGRESS_MARKERS) {
     try {
       await deps.fs.lstat(join(gitDir, marker))
-    } catch {
-      continue // absent: not in progress
+    } catch (err) {
+      // Candidate 03/14 (stage 7): only "absent" means not in progress; any other lstat error
+      // (e.g. EACCES) is a bug, not evidence of a clean range -- fail closed, like D6.
+      if (err?.code === 'ENOENT') continue
+      throw err
     }
     io.stderr.write(t2['UP-E03']({ reason: 'in-progress' }) + '\n')
     return 1

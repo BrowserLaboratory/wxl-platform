@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { rm, mkdir, symlink, writeFile } from 'node:fs/promises'
 import { readdirSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -16,6 +16,8 @@ import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeGitStub } from './helpers/git-stub.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
 import { makeSignalingCheckpoint } from './helpers/checkpoint-signal.mjs'
+import { recordingFs } from './helpers/fs-recorder.mjs'
+import { failAt, fsError } from './helpers/fail-at.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const SYMLINK_TYPE = process.platform === 'win32' ? 'junction' : 'dir'
@@ -232,6 +234,15 @@ describe('clean check', () => {
         await writeFile(join(fixture.root, 'untracked.txt'), 'x\n')
       },
     ],
+    [
+      'sequencer directory present, no CHERRY_PICK_HEAD (D7, candidate 15)',
+      'in-progress',
+      () => makeFixtureRange({ rangeJson: noOpRangeJson() }),
+      async (fixture) => {
+        await mkdir(join(fixture.root, '.git', 'sequencer'))
+        await writeFile(join(fixture.root, '.git', 'sequencer', 'todo'), '')
+      },
+    ],
   ]
 
   it.each(UNCLEAN_CASES)('%s -> UP-E03 token %s', async (_label, token, makeFixture, mutate) => {
@@ -258,6 +269,30 @@ describe('clean check', () => {
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E03/m)
       expect(ioHelper.stderrText).toContain(token)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('in-progress marker check: an lstat error other than ENOENT fails closed (candidate 03/14)', () => {
+  it("an EACCES on the MERGE_HEAD marker (matched by basename) -> CW-E14, exit 1, nothing written", async () => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    try {
+      const { fs } = recordingFs({
+        lstat: failAt('lstat', (_count, args) => (basename(args[0]) === 'MERGE_HEAD' ? fsError('EACCES') : null)),
+      })
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(createSpawnGitRunner()), fs })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(1)
+      expect(ioHelper.stderrText).toMatch(/^CW-E14/m)
       expect(deps.fetchArchive).not.toHaveBeenCalled()
       expect(after).toEqual(before)
     } finally {
@@ -328,6 +363,52 @@ describe('git command failures (D6, F01/B1): fail closed, never treated as clean
 })
 
 describe('signal guard (F02/A2): a signal at a step 3-7 checkpoint stops the run before any new file-system work', () => {
+  /** Candidate 13 (stage 7): a `runGit` stub that forwards every other command to the real
+   * runner, and for the one command `matchesArgs` picks, raises `signalName` on `signals` (the
+   * same way `makeSignalingCheckpoint` does) and then resolves as if the git process itself were
+   * killed by the signal (`code: null`), instead of rejecting. */
+  function interceptingSignalGitStub(signals, matchesArgs, signalName = 'SIGINT') {
+    const real = createSpawnGitRunner()
+    let fired = false
+    return async (args, opts) => {
+      if (!fired && matchesArgs(args)) {
+        fired = true
+        signals.emit(signalName)
+        return { code: null, stdout: '', stderr: '' }
+      }
+      return real(args, opts)
+    }
+  }
+
+  it.each([
+    ['rev-parse --show-toplevel (step 3)', (args) => args.includes('--show-toplevel')],
+    ['status (step 4)', (args) => args.includes('status')],
+  ])('git %s killed by a signal -> exit 130, not UP-E01/UP-E03/CW-E14, nothing written', async (_label, matchesArgs) => {
+    const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const signals = new EventEmitter()
+      const runGit = interceptingSignalGitStub(signals, matchesArgs)
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: fixture.root, tmpRoot, env: fixture.env, runGit: vi.fn(runGit), signals })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(exitCode).toBe(130)
+      expect(ioHelper.stderrText).not.toMatch(/^UP-E01/m)
+      expect(ioHelper.stderrText).not.toMatch(/^UP-E03/m)
+      expect(ioHelper.stderrText).not.toMatch(/^CW-E14/m)
+      expect(deps.fetchArchive).not.toHaveBeenCalled()
+      expect(after).toEqual(before)
+      expect(readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))).toEqual([])
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+
   it('SIGINT raised at the step-4 checkpoint -> exit 130, fixture unchanged (including .git), no download, no tmp entry', async () => {
     const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
     const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')

@@ -6,7 +6,7 @@
 // and signal paths (CW-E09, CW-E11, CW-E14, CW-W05). Every UP-* text (0006's upgrade path:
 // UP-E01-E08, UP-E10, UP-I01) likewise begins with its code, in both tables.
 
-import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar } from './text.mjs'
+import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar, jsonStringifyEscaped } from './text.mjs'
 import { printedForms } from './git-steps.mjs'
 import { MINIMUM_GIT_VERSION } from './git-version.mjs'
 import { MINIMUM_BASE_VERSION_TEXT } from './base-version.mjs'
@@ -15,6 +15,16 @@ import { VERSION_RE } from './patterns.mjs'
 /** CW-W01's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
  * own default), not a hardcoded "2.20" repeated in both language tables. */
 const MINIMUM_GIT_VERSION_TEXT = MINIMUM_GIT_VERSION.join('.')
+
+/** Candidate 22 (stage 7): the fallback UP-E10 prints when `jsonStringifyEscaped` cannot (a
+ * `JSON.stringify` throw, or a `function`/`undefined` value it reflects back as `undefined`) --
+ * only `array`/`object`/`null`/`number`/`boolean` are reachable from the one call site this
+ * exists for (a non-string `version` read from parsed JSON). */
+function typeNameOf(value) {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  return typeof value
+}
 
 const CONDITION_TEXT = {
   en: {
@@ -203,7 +213,11 @@ export const en = {
     if (version === undefined) {
       return `UP-E10: the base version could not be read; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
     }
-    if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+    if (typeof version !== 'string') {
+      const printed = jsonStringifyEscaped(version) ?? typeNameOf(version)
+      return `UP-E10: the base version ${printed} is not valid; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
+    }
+    if (!VERSION_RE.test(version)) {
       return `UP-E10: the base version ${jsonValue(version)} is not valid; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
     }
     return `UP-E10: the base version ${jsonValue(version)} is lower than ${MINIMUM_BASE_VERSION_TEXT}; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
@@ -307,7 +321,11 @@ export const zhTW = {
     if (version === undefined) {
       return `UP-E10：無法讀出 base 版本；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
     }
-    if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+    if (typeof version !== 'string') {
+      const printed = jsonStringifyEscaped(version) ?? typeNameOf(version)
+      return `UP-E10：base 版本 ${printed} 格式不正確；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
+    }
+    if (!VERSION_RE.test(version)) {
       return `UP-E10：base 版本 ${jsonValue(version)} 格式不正確；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
     }
     return `UP-E10：base 版本 ${jsonValue(version)} 低於 ${MINIMUM_BASE_VERSION_TEXT}；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`

@@ -60,6 +60,43 @@ describe('UP-E10 wording: a present-but-invalid-format version is "not valid", n
   })
 })
 
+describe('UP-E10 wording (candidate 22): a non-string version prints as JSON, not through jsonValue', () => {
+  it('an array ["3.1.0"] prints as ["3.1.0"], not the quoted-only "3.1.0" form', () => {
+    const args = { version: ['3.1.0'] }
+
+    const enText = en['UP-E10'](args)
+    const zhText = zhTW['UP-E10'](args)
+
+    expect(enText.startsWith('UP-E10')).toBe(true)
+    expect(zhText.startsWith('UP-E10')).toBe(true)
+    expect(enText).toContain('["3.1.0"]')
+    expect(zhText).toContain('["3.1.0"]')
+    expect(enText).not.toContain('"3.1.0" is not valid')
+    expect(enText).not.toMatch(/the base version "3\.1\.0" /)
+    expect(zhText).not.toMatch(/base 版本 "3\.1\.0" /)
+
+    // D10's escape form inside the JSON: a tab is `\u0009`, not JSON.stringify's own `\t`;
+    // an escaped backslash followed by `t` stays as it is.
+    const tabText = en['UP-E10']({ version: ['a\tb', 'c\\td'] })
+    expect(tabText).toContain('["a\\u0009b","c\\\\td"]')
+  })
+
+  it('an object {"toString":1} does not throw, and prints as JSON', () => {
+    const args = { version: { toString: 1 } }
+
+    expect(() => en['UP-E10'](args)).not.toThrow()
+    expect(() => zhTW['UP-E10'](args)).not.toThrow()
+
+    const enText = en['UP-E10'](args)
+    const zhText = zhTW['UP-E10'](args)
+
+    expect(enText.startsWith('UP-E10')).toBe(true)
+    expect(zhText.startsWith('UP-E10')).toBe(true)
+    expect(enText).toContain('{"toString":1}')
+    expect(zhText).toContain('{"toString":1}')
+  })
+})
+
 describe('UP-E02 wording: with and without a detected version', () => {
   it('en and zh-TW both begin with UP-E02; only the with-version branch names the version found', () => {
     const withVersion = { version: '2.19.0' }

@@ -457,6 +457,7 @@ describe('U51: --from <commit> base version resolved only after download', () =>
     ['(d1) package.json without a version field -> UP-E10', undefined, 'UP-E10'],
     ['(d2) version 3.0 does not match X.Y.Z -> UP-E10', '3.0', 'UP-E10'],
     ['(d3, F03/A3) version is an array ["3.1.0"], not a string -> UP-E10', ['3.1.0'], 'UP-E10'],
+    ['(d4, candidate 22) version is {"toString":1}, not a string -> UP-E10, not CW-E14', { toString: 1 }, 'UP-E10'],
   ]
 
   it.each(DOWNLOAD_AFTER_CASES)('%s, nothing written, no residue', async (_label, version, expectedCode) => {
