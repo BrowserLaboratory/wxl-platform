@@ -1,13 +1,16 @@
 // The upgrade path (0006-S1, traceability.md "Step order"): `run.mjs` dispatches here once
 // `parseArgvStrict` reports `mode === 'upgrade'` (Command grammar). Steps 3-7 are implemented;
-// step 7 ends by building both pristine ranges (base, then target) and removing them again --
-// decision (4): until T-0027 adds the merge (step 8 onward), every range that reaches this point
-// falls through to CW-E14's "the upgrade merge is not implemented yet" wording.
+// step 7 ends by building both pristine ranges (base, then target). Decision (4)'s own CW-E14
+// fall-through (every range that reached step 8 ended there, unmerged) is gone as of T-0027
+// increment 1: step 8 plans the merge (merge-plan.mjs), step 9 applies it (merge-apply.mjs), and
+// step 10 removes the run's temporary directories and prints the report (upgrade-report.mjs).
 
 import { join, resolve as resolvePath } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
 import { SignalAbort } from './signals.mjs'
-import { upgradeMergeNotImplemented } from './messages.mjs'
+import { planMerge, MergeFileError } from './merge-plan.mjs'
+import { applyMerge } from './merge-apply.mjs'
+import { buildReport } from './upgrade-report.mjs'
 import { COMMIT_RE, VERSION_RE } from './patterns.mjs'
 import { parseGitVersion, isGitVersionOk, MINIMUM_GIT_VERSION } from './git-version.mjs'
 import { downloadArchive, readArchiveEntries, makeTmpDir, extractInto, applyPristine, removeTmpDir } from './run-shared.mjs'
@@ -416,13 +419,89 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return 1
   }
 
-  // Decision (4) (ticket Comments, "increment plan: user decisions"): both pristine ranges are
-  // built; the merge itself is T-0027's. `deps.checkpoint('step-8')` fires once both ranges exist,
-  // before either is removed (U14(a) inspects them here).
+  // Decision (4) (ticket Comments, "increment plan: user decisions") no longer falls through to
+  // CW-E14 as of T-0027 increment 1: both pristine ranges exist, so step 8 plans the merge against
+  // them (merge-plan.mjs), step 9 applies the plan (merge-apply.mjs), and only then (step 10) are
+  // the temporary directories -- including the merge-inputs one merge-plan.mjs may have created
+  // lazily -- removed and the report printed.
   deps.checkpoint('step-8')
+  guard.throwIfRaised()
+  let planResult
+  try {
+    planResult = await planMerge({
+      deps,
+      guard,
+      rangeRoot: deps.cwd,
+      baseDir: baseTmpDir,
+      targetDir: targetTmpDir,
+      baseVersion,
+      targetVersion: deps.source.version,
+    })
+  } catch (err) {
+    // T-0027 increment 18 (U57): `git merge-file` exited outside 0-127 -- planning failed, so
+    // nothing from step 9 ever runs; UP-E11 names the path. The merge-inputs directory (if any)
+    // is cleaned up the same way every other early exit's temporary directories are.
+    if (err instanceof MergeFileError) {
+      if (err.mergeDir !== undefined) tmpDirs.push(err.mergeDir)
+      io.stderr.write(t2['UP-E11']({ path: err.path }) + '\n')
+      await cleanupTmpDirs(deps, tmpDirs)
+      return 1
+    }
+    throw err
+  }
+  if (planResult.mergeDir !== undefined) tmpDirs.push(planResult.mergeDir)
+
+  deps.checkpoint('step-9')
+  guard.throwIfRaised()
+  const applyResult = await applyMerge({
+    deps,
+    guard,
+    rangeRoot: deps.cwd,
+    ops: planResult.ops,
+    upstream: { repository: deps.source.repository, version: deps.source.version, commit: targetCommit },
+  })
+  if (!applyResult.ok) {
+    io.stderr.write(
+      t2['UP-E09'](
+        applyResult.signal !== undefined ? { signal: applyResult.signal } : { path: applyResult.path, detail: applyResult.detail },
+      ) + '\n',
+    )
+    await cleanupTmpDirs(deps, tmpDirs)
+    return applyResult.signal !== undefined ? 130 : 1
+  }
+
+  // D8 (traceability.md "Signals"): unlike every earlier checkpoint, `step-10` does not pair with
+  // an immediate `guard.throwIfRaised()` -- a signal here still lets the report print in full
+  // first; only once it is on stdout does a raised signal turn this run's exit code into 130.
+  deps.checkpoint('step-10')
   await cleanupTmpDirs(deps, tmpDirs)
-  io.stderr.write(t2['CW-E14']({ message: upgradeMergeNotImplemented[lang2] }) + '\n')
-  return 1
+
+  // T-0027 increment 21 (U26), traceability.md "Report" R4: "for a range with
+  // .github/workflows/deploy.yml" -- read AFTER apply (step 9), so the advice reflects the
+  // range's own state once this run is done, not its state before it started.
+  let hasDeployWorkflow = false
+  try {
+    const deployStat = await deps.fs.lstat(join(deps.cwd, '.github', 'workflows', 'deploy.yml'))
+    hasDeployWorkflow = deployStat.isFile()
+  } catch {
+    hasDeployWorkflow = false
+  }
+
+  io.stdout.write(
+    buildReport({
+      lang2,
+      toolVersion: deps.packageVersion,
+      baseVersion,
+      baseCommit,
+      targetVersion: deps.source.version,
+      targetCommit,
+      ops: planResult.ops,
+      attention: planResult.attention,
+      hasDeployWorkflow,
+    }),
+  )
+  guard.throwIfRaised()
+  return 0
 }
 
 /** Mirrors `runSteps`' own catch (run.mjs): a `SignalAbort` or any other error (a bug, printed as

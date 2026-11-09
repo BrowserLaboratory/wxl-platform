@@ -69,3 +69,20 @@ export async function makeGitHomeWithExcludes() {
 export async function makeEmptyGitHome() {
   return makeTmpRoot()
 }
+
+/** T-0027 increment 0 (ticket Notes "要建的 fixture/helper"): an identity-only `HOME` for the
+ * 0006 upgrade fixtures -- only `[user] name/email`, and `[merge] conflictStyle` when given; no
+ * `[commit] gpgsign` and no `[init] templateDir`, unlike `makeGitHomeWithHook`, whose
+ * `gpgsign = true` points at a non-existent `gpg.program` and would make every commit this epic's
+ * own fixtures make fail. Returns the `HOME` directory's path (like `makeEmptyGitHome`), not an
+ * object: there is no hook marker to report here. */
+export async function makeGitHomeIdentityOnly({ mergeConflictStyle } = {}) {
+  const homeDir = await makeTmpRoot()
+  const lines = ['[user]', '\tname = Ada', '\temail = ada@example.com']
+  if (mergeConflictStyle !== undefined) {
+    lines.push('[merge]', `\tconflictStyle = ${mergeConflictStyle}`)
+  }
+  lines.push('')
+  await writeFile(join(homeDir, '.gitconfig'), lines.join('\n'))
+  return homeDir
+}

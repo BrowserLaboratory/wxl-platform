@@ -15,7 +15,7 @@ import { makeDeps } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
 import { makeTmpRoot } from './helpers/tmp.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
-import { en, zhTW, upgradeMergeNotImplemented } from '../src/messages.mjs'
+import { en, zhTW } from '../src/messages.mjs'
 
 describe('UP-E10 wording: a present-but-invalid-format version is "not valid", not "lower than 3.0.0"', () => {
   it('en and zh-TW both begin with UP-E10 and distinguish an invalid format from a too-low version', () => {
@@ -153,6 +153,38 @@ describe('every UP-* message starts with its own code', () => {
     'UP-E08': { tag: 'v3.1.0' },
     'UP-E10': { version: '2.9.9' },
     'UP-I01': { version: '3.0.0', commit: '0'.repeat(40) },
+    // T-0027 increment 1 (ticket Comments, 2026-11-09, B1): one entry per new code, at the
+    // increment adding it -- these six take no fields at all (messages.mjs's own comment).
+    'UP-A1': {},
+    'UP-A2': {},
+    'UP-A3': {},
+    'UP-A4': {},
+    'UP-A5': {},
+    'UP-A6': {},
+    // T-0027 increment 4 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U20, P-3).
+    'UP-A7': {},
+    // T-0027 increment 6 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U22, P-5).
+    'UP-A9': {},
+    // T-0027 increment 10 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U27, step 9's write failure).
+    'UP-E09': { path: '/a/b/pnpm-lock.yaml', detail: 'EIO: i/o error' },
+    // T-0027 increment 13 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U53, P-4).
+    'UP-A8': {},
+    // T-0027 increment 15 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U54/U55, P-6 and the parent check).
+    'UP-A10': {},
+    // T-0027 increment 18 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U57, `git merge-file` outside 0-127).
+    'UP-E11': { path: '/a/b/m12-clean.txt' },
+    // T-0027 increment 19 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U58, M12 clean merge of invalid JSON).
+    'UP-A11': {},
+    // T-0027 increment 20 (ticket Comments, 2026-11-09, B1): added at the increment that adds the
+    // code (U59, Fork:init-derived content / anchor files).
+    'UP-A12': {},
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {
@@ -169,15 +201,5 @@ describe('every UP-* message starts with its own code', () => {
         expect(text.startsWith(id)).toBe(true)
       }
     }
-  })
-})
-
-describe('upgradeMergeNotImplemented: the decision-(4) detail outside the id tables', () => {
-  it('has exactly an en and a zh-TW text, both non-empty and different', () => {
-    expect(Object.keys(upgradeMergeNotImplemented).sort()).toEqual(['en', 'zh-TW'])
-    expect(upgradeMergeNotImplemented.en).toBe('the upgrade merge is not implemented yet')
-    expect(upgradeMergeNotImplemented['zh-TW']).toBeTypeOf('string')
-    expect(upgradeMergeNotImplemented['zh-TW'].length).toBeGreaterThan(0)
-    expect(upgradeMergeNotImplemented['zh-TW']).not.toBe(upgradeMergeNotImplemented.en)
   })
 })
