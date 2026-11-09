@@ -132,6 +132,16 @@ const BRANCH_SPECS = {
     targetDirs: ['a/'],
     oOverride: { a: "the teacher's own edit of a\n" },
   },
+  // T-0027 verification follow-up (item 3, approved sub-case, 2026-11-09): one level deeper than
+  // `U55-parent-check` -- T adds `a/b/x`, while `a` itself (not `a/b`) is the kept file the
+  // teacher changed. The parent check (traceability.md:153) must walk every parent inside the
+  // range, not only the write's own immediate one (`a/b`), to drop this write too.
+  'U55-parent-check-deep': {
+    base: { a: 'original a content\n' },
+    target: { 'a/b/x': 'upstream added this two levels under a\n' },
+    targetDirs: ['a/', 'a/b/'],
+    oOverride: { a: "the teacher's own edit of a\n" },
+  },
   // T-0027 increment 17 (U56): `o` differs from `b` only by CRLF line endings; `t` is genuinely
   // different -- this is still `o ≡ b` (M5), once the `≡` helper normalises CRLF to LF.
   'U56-crlf-m5': {

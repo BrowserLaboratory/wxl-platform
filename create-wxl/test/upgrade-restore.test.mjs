@@ -14,6 +14,7 @@ import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
+import { snapshotTree } from './helpers/snapshot.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '9'.repeat(40)
@@ -128,6 +129,11 @@ describe('re-run after a completed upgrade and commit (U61)', () => {
         readme: await readFile(join(fixture.root, 'README.md')),
         rangeJson: await readFile(join(fixture.root, 'range.json')),
       }
+      // Item 5 (verification follow-up, tightened to the approved boundary condition): nothing is
+      // written in the range by the no-op second run -- a whole-tree snapshot (including `.git`),
+      // `HEAD` and `git status` all unchanged, not merely two hand-picked files.
+      const headBefore = await verifyGit(['rev-parse', 'HEAD'], { cwd: fixture.root, env: fixture.env })
+      const snapshotBefore = await snapshotTree(fixture.root)
 
       // m6 (increment plan, "Needs a user decision" item 23's own note): a FRESH `deps` object,
       // never the first run's own -- its `fetchArchive` call counter starts at zero for this run.
@@ -156,6 +162,16 @@ describe('re-run after a completed upgrade and commit (U61)', () => {
         expect(secondFetchArchive).not.toHaveBeenCalled()
         expect(await readFile(join(fixture.root, 'README.md'))).toEqual(treeBefore.readme)
         expect(await readFile(join(fixture.root, 'range.json'))).toEqual(treeBefore.rangeJson)
+
+        // Snapshotted before this verification's OWN `git status`/`rev-parse` calls, either of
+        // which can refresh `.git/index`'s stat cache (mtime/ino, same bytes) on its own --
+        // noise from the check itself, not from the run under test.
+        const snapshotAfter = await snapshotTree(fixture.root)
+        expect(snapshotAfter).toEqual(snapshotBefore)
+        const headAfter = await verifyGit(['rev-parse', 'HEAD'], { cwd: fixture.root, env: fixture.env })
+        expect(headAfter.stdout).toBe(headBefore.stdout)
+        const statusAfter = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: fixture.root, env: fixture.env })
+        expect(statusAfter.stdout).toBe('')
       } finally {
         await rm(secondTmpRoot, { recursive: true, force: true })
       }

@@ -10,12 +10,64 @@ import { makeTmpRoot } from './helpers/tmp.mjs'
 import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
+import { makeRangeRepo } from './helpers/range-repo.mjs'
+import { PRISTINE_FIXTURE, README_CONTENT } from './helpers/fixtures.mjs'
+import { snapshotTree } from './helpers/snapshot.mjs'
 import { en, zhTW } from '../src/messages.mjs'
+import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '6'.repeat(40)
 const BASE_VERSION = '3.0.0'
 const TARGET_VERSION = '3.1.0'
+
+// U17's own 13 branches (upgrade-merge.test.mjs's `ALL_BRANCHES`), reused here (item 1, T-0027
+// verification follow-up) so R2's counts and R3's attention items are exactly U17's.
+const ALL_BRANCHES = [
+  'P2-both-absent',
+  'P2-both-equal',
+  'M4-both-absent',
+  'M4-both-equal',
+  'M5-updated',
+  'M5-added',
+  'M6',
+  'M7',
+  'M8',
+  'M9',
+  'M10',
+  'M11',
+  'M12-clean',
+  'M12-conflict',
+  'teacher-owned',
+]
+
+// U17's own attention items (upgrade-merge.test.mjs:145-155), in R3's sorted-by-path order, with
+// UP-A12 last (M5-updated's README.md is an anchor file that diverges between base and target).
+const U17_ATTENTION = [
+  { code: 'UP-A2', path: 'm11-binary.bin' },
+  { code: 'UP-A1', path: 'm12-conflict.txt' },
+  { code: 'UP-A5', path: 'm7-teacher-deleted.txt' },
+  { code: 'UP-A3', path: 'm8-teacher-edited.txt' },
+  { code: 'UP-A4', path: 'm9-new-both-sides.txt' },
+  { code: 'UP-A6', path: 'pnpm-lock.yaml' },
+  { code: 'UP-A12' },
+]
+
+/** Each R3 line, in `table`'s (en or zh-TW) own words: the attention code's own message text
+ * (which begins with its code), followed by the path for every code but UP-A12 (traceability.md
+ * "Fork:init-derived content": UP-A12 is not tied to one path). */
+function expectedR3Lines(table) {
+  return U17_ATTENTION.map((item) =>
+    item.path === undefined ? `R3: ${table[item.code]()}` : `R3: ${table[item.code]()} ${jsonValue(item.path)}`,
+  )
+}
+
+/** The index of the first line beginning with `id` (e.g. `'R1:'`), or the index of the last one
+ * when `last` is true -- used to assert R1..R5 appear in that order (item 1). */
+function idIndex(lines, id, { last = false } = {}) {
+  const indices = lines.reduce((acc, line, i) => (line.startsWith(id) ? [...acc, i] : acc), [])
+  return last ? indices[indices.length - 1] : indices[0]
+}
 
 function rangeJsonFor(baseCommit) {
   return { upstream: { repository: engineModule.UPSTREAM_SLUG, version: BASE_VERSION, commit: baseCommit } }
@@ -83,7 +135,9 @@ describe('anchor file changes add UP-A12 (U59)', () => {
       const result = await runUpgradeAgainst(fixture)
       tmpRoot = result.tmpRoot
       const r3Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
-      expect(r3Lines).toEqual(['R3: UP-A12'])
+      // Item 2 (T-0027 verification follow-up): the rendered UP-A12 line is the en message
+      // itself, not a bare code -- production renders it through t2 (traceability.md:159-161).
+      expect(r3Lines).toEqual([`R3: ${en['UP-A12']()}`])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -112,9 +166,51 @@ describe('anchor file changes add UP-A12 (U59)', () => {
       const result = await runUpgradeAgainst(fixture)
       tmpRoot = result.tmpRoot
       const r3Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
-      expect(r3Lines).toEqual(['R3: UP-A12'])
+      expect(r3Lines).toEqual([`R3: ${en['UP-A12']()}`])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  // T-0027 verification follow-up (item 4, approved sub-case, 2026-11-09): B has `README.md`; T
+  // has only `readme.md`, with the SAME bytes (a case-only rename upstream). Anchor files are
+  // read by their exact listed name (traceability.md:159-161): `README.md` is present in B,
+  // absent in T (T's own entry is a different, exact path), so b != t for the anchor path --
+  // exactly one UP-A12 line, regardless of what the filesystem's own case folding would resolve.
+  it("adds exactly one UP-A12 line when an anchor file is only a case-only rename upstream (README.md -> readme.md, same bytes)", async () => {
+    const rangeRepo = await makeRangeRepo({ tree: { 'teacher-owned.txt': "the teacher's own file\n" }, rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const baseEntries = [...PRISTINE_FIXTURE]
+      const targetEntries = [
+        ...PRISTINE_FIXTURE.filter((entry) => entry.path !== 'README.md'),
+        { path: 'readme.md', type: 'file', mode: 0o644, content: README_CONTENT },
+      ]
+      tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+      const fetchArchive = makeRefFetchArchive({
+        [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
+      })
+      const deps = makeDeps({
+        cwd: rangeRepo.root,
+        tmpRoot,
+        env: rangeRepo.env,
+        runGit: vi.fn(createSpawnGitRunner()),
+        packageVersion: TARGET_VERSION,
+        source: { version: TARGET_VERSION },
+        fetchArchive,
+      })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(0)
+      const r3Lines = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
+      const upA12Lines = r3Lines.filter((line) => line === `R3: ${en['UP-A12']()}`)
+      expect(upA12Lines).toEqual([`R3: ${en['UP-A12']()}`])
+    } finally {
+      await rm(rangeRepo.root, { recursive: true, force: true })
+      await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+      if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true })
     }
   })
 })
@@ -122,8 +218,8 @@ describe('anchor file changes add UP-A12 (U59)', () => {
 // T-0027 increment 21 (U26, moved here per B5): the full R1-R5 report, in both languages, plus
 // the `--from`/base-version-display case and R4's two conditional bullets.
 describe('report text (U26)', () => {
-  it('renders R1-R5 in full, in en, with pnpm install advised and no deploy tag advice', async () => {
-    const fixture = await buildUpgradeFixtures({ branches: ['M10'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+  it('renders R1-R5 in full, in en, R1..R5 in order, each R3 line its own code\'s message text', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ALL_BRANCHES, rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
       const result = await runUpgradeAgainst(fixture)
@@ -131,31 +227,44 @@ describe('report text (U26)', () => {
       expect(result.exitCode).toBe(0)
       const lines = result.ioHelper.stdoutText.split('\n')
 
+      const r1 = idIndex(lines, 'R1:')
+      const r2 = idIndex(lines, 'R2:')
+      const r3First = idIndex(lines, 'R3:')
+      const r3Last = idIndex(lines, 'R3:', { last: true })
+      const r4First = idIndex(lines, 'R4:')
+      const r5 = idIndex(lines, 'R5:')
+      expect(r1).toBeGreaterThanOrEqual(0)
+      expect(r2).toBeGreaterThan(r1)
+      expect(r3First).toBeGreaterThan(r2)
+      expect(r4First).toBeGreaterThan(r3Last)
+      expect(r5).toBeGreaterThan(r4First)
+
       // R1 (m16, "Needs a user decision" §10, approved option (a)): the running tool's own
       // version and the target's own version are both "3.1.0" by the approved table's blanket
       // setting -- told apart only by their position in this exact, literal line, never by a
       // distinguishing value.
-      expect(lines).toContain(
-        `R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`,
-      )
-      expect(lines).toContain('R2: updated 0 added 0 deleted 0') // M10's own write carries a `report` (UP-A6); R2 does not count it.
-      expect(lines).toContain('R3: UP-A6 "pnpm-lock.yaml"')
+      expect(lines[r1]).toBe(`R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`)
+      expect(lines[r2]).toBe('R2: updated 2 added 1 deleted 1') // same counts as U17.
+
+      const r3Lines = lines.filter((line) => line.startsWith('R3:'))
+      expect(r3Lines).toEqual(expectedR3Lines(en))
+
       const r4Lines = lines.filter((line) => line.startsWith('R4:'))
       expect(r4Lines).toEqual([
         'R4: run git status and git diff',
         'R4: resolve the conflict markers above (search for <<<<<<<) and the other attention items',
-        'R4: run pnpm install',
+        'R4: run pnpm install', // ALL_BRANCHES' M10 writes pnpm-lock.yaml.
         'R4: build and test',
         'R4: commit',
       ])
-      expect(lines).toContain('R5: git clean -fd; git checkout -- .')
+      expect(lines[r5]).toBe('R5: git clean -fd; git checkout -- .')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
   })
 
-  it('renders R1-R5 in full, in zh-TW, with the same facts in Traditional Chinese prose', async () => {
-    const fixture = await buildUpgradeFixtures({ branches: ['M10'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+  it('renders R1-R5 in full, in zh-TW, R1..R5 in order, each R3 line its own code\'s zh-TW message text', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ALL_BRANCHES, rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
       const result = await runUpgradeAgainst(fixture, ['--lang', 'zh-TW', 'upgrade'])
@@ -163,14 +272,42 @@ describe('report text (U26)', () => {
       expect(result.exitCode).toBe(0)
       const lines = result.ioHelper.stdoutText.split('\n')
 
-      expect(lines).toContain(
-        `R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`,
+      const r1 = idIndex(lines, 'R1:')
+      const r2 = idIndex(lines, 'R2:')
+      const r3First = idIndex(lines, 'R3:')
+      const r3Last = idIndex(lines, 'R3:', { last: true })
+      const r4First = idIndex(lines, 'R4:')
+      const r5 = idIndex(lines, 'R5:')
+      expect(r1).toBeGreaterThanOrEqual(0)
+      expect(r2).toBeGreaterThan(r1)
+      expect(r3First).toBeGreaterThan(r2)
+      expect(r4First).toBeGreaterThan(r3Last)
+      expect(r5).toBeGreaterThan(r4First)
+
+      // R1/R2/R5, in the run's language too (traceability.md:206): the zh-TW wording differs
+      // from en's in its words (0005's "Language" rule), while the commit hashes, versions and
+      // the two R5 commands stay the same literal text in both languages.
+      expect(lines[r1]).toBe(
+        `R1: create-wxl "3.1.0"；base 版本 "3.0.0"（commit "${BASE_COMMIT}"）；target 版本 "3.1.0"（commit "${FIXED_COMMIT}"）`,
       )
-      expect(lines).toContain('R2: updated 0 added 0 deleted 0')
-      expect(lines).toContain('R3: UP-A6 "pnpm-lock.yaml"')
+      expect(lines[r2]).toBe('R2: 更新 2 新增 1 刪除 1')
+      expect(lines[r1]).not.toBe(`R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`)
+      expect(lines[r2]).not.toBe('R2: updated 2 added 1 deleted 1')
+
+      const r3Lines = lines.filter((line) => line.startsWith('R3:'))
+      expect(r3Lines).toEqual(expectedR3Lines(zhTW))
+      expect(r3Lines).not.toEqual(expectedR3Lines(en))
+
       const r4Lines = lines.filter((line) => line.startsWith('R4:'))
-      expect(r4Lines).toEqual(['R4: 執行 git status 與 git diff', 'R4: 處理上面的衝突標記（搜尋 <<<<<<<）與其他注意項目', 'R4: 執行 pnpm install', 'R4: build 並測試', 'R4: commit'])
-      expect(lines).toContain('R5: git clean -fd; git checkout -- .')
+      expect(r4Lines).toEqual([
+        'R4: 執行 git status 與 git diff',
+        'R4: 處理上面的衝突標記（搜尋 <<<<<<<）與其他注意項目',
+        'R4: 執行 pnpm install', // ALL_BRANCHES' M10 寫入 pnpm-lock.yaml。
+        'R4: build 並測試',
+        'R4: commit',
+      ])
+      expect(lines[r5]).toBe('R5: 依序執行 git clean -fd 和 git checkout -- . 可撤銷整個升級')
+      expect(lines[r5]).not.toBe('R5: git clean -fd; git checkout -- .')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -259,8 +396,16 @@ describe('ANSI escape in a target path (U62)', () => {
     fixture.targetEntries = [...fixture.targetEntries, { path: hostilePath, type: 'file', mode: 0o644, content: 'x' }]
     let tmpRoot
     try {
+      // Item 5 (verification follow-up, tightened to the approved boundary condition): nothing
+      // is written in the range -- a whole-tree snapshot (including `.git`), taken before any of
+      // this check's own git/fs calls that could otherwise add their own incidental noise.
+      const snapshotBefore = await snapshotTree(fixture.root)
+
       const result = await runUpgradeAgainst(fixture)
       tmpRoot = result.tmpRoot
+
+      const snapshotAfter = await snapshotTree(fixture.root)
+      expect(snapshotAfter).toEqual(snapshotBefore)
 
       expect(result.exitCode).toBe(1)
       expect(result.ioHelper.stderrText).toMatch(/^CW-E08/m)

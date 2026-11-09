@@ -498,6 +498,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       ops: planResult.ops,
       attention: planResult.attention,
       hasDeployWorkflow,
+      t2,
     }),
   )
   guard.throwIfRaised()

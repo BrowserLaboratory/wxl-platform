@@ -16,6 +16,8 @@ import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { snapshotTree, withoutRootMtime } from './helpers/snapshot.mjs'
+import { en } from '../src/messages.mjs'
+import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '4'.repeat(40)
@@ -73,7 +75,12 @@ describe('ignored paths (U22)', () => {
       await expect(readFile(newPath)).rejects.toMatchObject({ code: 'ENOENT' })
 
       const r3Lines = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
-      expect(r3Lines).toEqual(['R3: UP-A9 "added.local"', 'R3: UP-A9 "existing.local"'])
+      // T-0027 verification follow-up (item 1/2): R3 renders each attention item through the
+      // run's message table (here, en), not a bare code (traceability.md:206).
+      expect(r3Lines).toEqual([
+        `R3: ${en['UP-A9']()} ${jsonValue('added.local')}`,
+        `R3: ${en['UP-A9']()} ${jsonValue('existing.local')}`,
+      ])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

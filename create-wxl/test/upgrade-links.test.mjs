@@ -7,7 +7,7 @@
 // from a new one)") pin exactly 4 lines for this fixture's 4 named cases.
 
 import { describe, it, expect, vi } from 'vitest'
-import { link, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, readdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -18,6 +18,8 @@ import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
+import { en } from '../src/messages.mjs'
+import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '3'.repeat(40)
@@ -78,6 +80,15 @@ describe.skipIf(process.platform === 'win32')('symlinks (U20)', () => {
       target3: { content: await readFile(join(external, 'target3.txt')), mtimeMs: (await stat(join(external, 'target3.txt'))).mtimeMs },
       dir2Listing: (await readdir(dir2)).sort(),
     }
+    // Item 5 (verification follow-up, tightened to the approved boundary condition): the three
+    // in-range links themselves (not just their outside targets' content/mtime) stay symbolic
+    // links pointing at their own original readlink target, before AND after.
+    const inRangeLinkPaths = ['link-file.txt', 'linkdir', 'ignored-link.txt']
+    const beforeLinks = {}
+    for (const p of inRangeLinkPaths) {
+      const linkStat = await lstat(join(rangeRepo.root, p))
+      beforeLinks[p] = { isSymlink: linkStat.isSymbolicLink(), target: await readlink(join(rangeRepo.root, p)), mtimeMs: linkStat.mtimeMs, ino: linkStat.ino }
+    }
 
     const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
     const fetchArchive = makeRefFetchArchive({
@@ -109,12 +120,25 @@ describe.skipIf(process.platform === 'win32')('symlinks (U20)', () => {
       // Case 4: the external directory gains no new file.
       expect((await readdir(dir2)).sort()).toEqual(before.dir2Listing)
 
+      for (const p of inRangeLinkPaths) {
+        expect(beforeLinks[p].isSymlink).toBe(true) // sanity: each was already a symlink beforehand.
+        const afterStat = await lstat(join(rangeRepo.root, p))
+        expect(afterStat.isSymbolicLink()).toBe(true)
+        expect(await readlink(join(rangeRepo.root, p))).toBe(beforeLinks[p].target)
+        // The link itself is the same file system entry, not one removed and recreated with the
+        // same target: its own lstat mtime and inode are unchanged.
+        expect(afterStat.mtimeMs).toBe(beforeLinks[p].mtimeMs)
+        expect(afterStat.ino).toBe(beforeLinks[p].ino)
+      }
+
       const r3Lines = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
+      // T-0027 verification follow-up (item 1/2): R3 renders each attention item through the
+      // run's message table (here, en), not a bare code (traceability.md:206).
       expect(r3Lines).toEqual([
-        'R3: UP-A7 "ignored-link.txt"',
-        'R3: UP-A7 "link-file.txt"',
-        'R3: UP-A7 "linkdir/innerfile.txt"',
-        'R3: UP-A7 "linkdir/newfile.txt"',
+        `R3: ${en['UP-A7']()} ${jsonValue('ignored-link.txt')}`,
+        `R3: ${en['UP-A7']()} ${jsonValue('link-file.txt')}`,
+        `R3: ${en['UP-A7']()} ${jsonValue('linkdir/innerfile.txt')}`,
+        `R3: ${en['UP-A7']()} ${jsonValue('linkdir/newfile.txt')}`,
       ])
     } finally {
       await rm(external, { recursive: true, force: true })

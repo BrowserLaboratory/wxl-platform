@@ -19,6 +19,8 @@ import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archiv
 import { verifyGit } from './helpers/real-git.mjs'
 import { makeRangeRepo } from './helpers/range-repo.mjs'
 import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
+import { en } from '../src/messages.mjs'
+import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '2222222222222222222222222222222222222222'
@@ -142,17 +144,19 @@ describe('merge table (U17)', () => {
       // before increment 20 (U59) lands, meaningfully true after it (this fixture's own M5-updated
       // branch uses README.md, an anchor file that diverges between base and target by
       // construction), with no edit needed at either point.
+      // T-0027 verification follow-up (item 1/2): R3 renders each attention item through the
+      // run's message table (here, en), not a bare code (traceability.md:206).
       expect(r3Lines.slice(0, 6)).toEqual([
-        'R3: UP-A2 "m11-binary.bin"',
-        'R3: UP-A1 "m12-conflict.txt"',
-        'R3: UP-A5 "m7-teacher-deleted.txt"',
-        'R3: UP-A3 "m8-teacher-edited.txt"',
-        'R3: UP-A4 "m9-new-both-sides.txt"',
-        'R3: UP-A6 "pnpm-lock.yaml"',
+        `R3: ${en['UP-A2']()} ${jsonValue('m11-binary.bin')}`,
+        `R3: ${en['UP-A1']()} ${jsonValue('m12-conflict.txt')}`,
+        `R3: ${en['UP-A5']()} ${jsonValue('m7-teacher-deleted.txt')}`,
+        `R3: ${en['UP-A3']()} ${jsonValue('m8-teacher-edited.txt')}`,
+        `R3: ${en['UP-A4']()} ${jsonValue('m9-new-both-sides.txt')}`,
+        `R3: ${en['UP-A6']()} ${jsonValue('pnpm-lock.yaml')}`,
       ])
       const extraLines = r3Lines.slice(6)
       expect(extraLines.length).toBeLessThanOrEqual(1)
-      expect(extraLines.every((line) => line === 'R3: UP-A12')).toBe(true)
+      expect(extraLines.every((line) => line === `R3: ${en['UP-A12']()}`)).toBe(true)
 
       const afterHead = await verifyGit(['rev-parse', 'HEAD'], { cwd: fixture.root, env: fixture.env })
       expect(afterHead.stdout).toBe(beforeHead.stdout)
@@ -214,7 +218,7 @@ describe('M12 conflict markers (U19)', () => {
       for (const marker of ['<<<<<<< range', `||||||| ${BASE_VERSION}`, '=======', `>>>>>>> ${TARGET_VERSION}`]) {
         expect(lines.filter((line) => line === marker).length).toBe(1)
       }
-      expect(ioHelper.stdoutText).toContain('R3: UP-A1 "m12-conflict.txt"')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A1']()} ${jsonValue('m12-conflict.txt')}`)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -263,7 +267,10 @@ describe('case collision (U53)', () => {
       const r3Lines = ioHelper.stdoutText
         .split('\n')
         .filter((line) => line.startsWith('R3:') && line.includes('UP-A8'))
-      expect(r3Lines).toEqual(['R3: UP-A8 "Guide.md"', 'R3: UP-A8 "guide.md"'])
+      expect(r3Lines).toEqual([
+        `R3: ${en['UP-A8']()} ${jsonValue('Guide.md')}`,
+        `R3: ${en['UP-A8']()} ${jsonValue('guide.md')}`,
+      ])
     } finally {
       await rm(rangeRepo.root, { recursive: true, force: true })
       await rm(rangeRepo.env.HOME, { recursive: true, force: true })
@@ -369,7 +376,7 @@ describe('file/directory swap (U54)', () => {
       expect(await readOptional(join(fixture.root, 'a', 'x'))).toBeNull()
       expect((await stat(join(fixture.root, 'a'))).isDirectory()).toBe(true)
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 1$/m)
-      expect(ioHelper.stdoutText).toContain('R3: UP-A10 "a"')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A10']()} ${jsonValue('a')}`)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -406,7 +413,7 @@ describe('P-6 and the parent check (U55)', () => {
       expect(exitCode).toBe(0)
       expect((await stat(join(rangeRepo.root, 'p6dir'))).isDirectory()).toBe(true)
       expect((await readFile(join(rangeRepo.root, 'p6dir', 'inner.txt'))).toString()).toBe("the teacher's own nested file\n")
-      expect(ioHelper.stdoutText).toContain('R3: UP-A10 "p6dir"')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A10']()} ${jsonValue('p6dir')}`)
     } finally {
       await rm(rangeRepo.root, { recursive: true, force: true })
       await rm(rangeRepo.env.HOME, { recursive: true, force: true })
@@ -425,8 +432,32 @@ describe('P-6 and the parent check (U55)', () => {
       expect((await stat(join(fixture.root, 'a'))).isFile()).toBe(true)
       expect((await readFile(join(fixture.root, 'a'))).toString()).toBe("the teacher's own edit of a\n")
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
-      expect(ioHelper.stdoutText).toContain('R3: UP-A3 "a"')
-      expect(ioHelper.stdoutText).toContain('R3: UP-A10 "a/x"')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A3']()} ${jsonValue('a')}`)
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A10']()} ${jsonValue('a/x')}`)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  // T-0027 verification follow-up (item 3, approved sub-case, 2026-11-09): one level deeper than
+  // case (2) -- `a` (not `a/b`) is the kept file; T adds `a/b/x`. The parent check must look at
+  // every parent inside the range (traceability.md:153), not only the direct one.
+  it('(3) a kept file blocks a nested write two levels down: a/b/x is never created, UP-A10 for a/b/x', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['U55-parent-check-deep'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture)
+      tmpRoot = usedTmpRoot
+
+      expect(exitCode).toBe(0)
+      expect((await stat(join(fixture.root, 'a'))).isFile()).toBe(true)
+      expect((await readFile(join(fixture.root, 'a'))).toString()).toBe("the teacher's own edit of a\n")
+      // `a` is a file (never created as a directory), so a nested `a/b/x` is unreadable with
+      // ENOTDIR, not merely absent with ENOENT -- `readOptional` only swallows the latter.
+      await expect(readFile(join(fixture.root, 'a', 'b', 'x'))).rejects.toMatchObject({ code: 'ENOTDIR' })
+      expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A3']()} ${jsonValue('a')}`)
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A10']()} ${jsonValue('a/b/x')}`)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -525,7 +556,7 @@ describe('M12 clean merge of invalid JSON (U58)', () => {
 
       expect(exitCode).toBe(0)
       expect(await readFile(join(fixture.root, 'package.json'))).toEqual(before)
-      expect(ioHelper.stdoutText).toContain('R3: UP-A11 "package.json"')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A11']()} ${jsonValue('package.json')}`)
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
     } finally {
       await cleanupFixture(fixture, tmpRoot)

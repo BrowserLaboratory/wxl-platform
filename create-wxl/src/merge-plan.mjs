@@ -1,8 +1,8 @@
 // Step 8 (traceability.md "Step order" row 8, "Pre-checks", "Merge table"): for every path in
 // B ∪ T ∪ tracked, decides what happens to `o` by the pre-checks and the merge table, and (for an
 // M12 path) shells out to the real `git merge-file`. Nothing is written here -- `merge-apply.mjs`
-// executes the plan this module returns. T-0027 increment 1 implements P-1, P-2 and M4-M12 only;
-// P-3-P-6 land at their own later increments (see this ticket's increment plan).
+// executes the plan this module returns. b and t are present only when their exact path is among
+// the names the pristine range lists, so a case-insensitive file system cannot merge two paths (U53).
 
 import { join } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
@@ -362,30 +362,37 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
     if (outcome.report !== undefined) attention.push({ path, code: outcome.report })
   }
 
-  // Parent check (traceability.md, after the merge table; T-0027 increment 16): a planned write
-  // whose immediate parent inside the range exists, is not a directory, and is not itself being
-  // deleted by this same plan, is dropped -- UP-A10 for the write's own path, not counted as
-  // added/updated. Deletions run before writes (step 9), so a file replaced by a directory of the
-  // same name (U54) is unaffected: its own parent IS one of this plan's own deletes.
+  // Parent check (traceability.md:153, after the merge table; T-0027 increment 16, tightened by
+  // the verification follow-up's item 3): a planned write whose path has A PARENT INSIDE THE
+  // RANGE -- any ancestor directory level, not only the immediate one -- that exists, is not a
+  // directory, and is not itself being deleted by this same plan, is dropped -- UP-A10 for the
+  // write's own path, not counted as added/updated. Deletions run before writes (step 9), so a
+  // file replaced by a directory of the same name (U54) is unaffected: its own parent IS one of
+  // this plan's own deletes. `lstat`-ing the immediate parent alone is not enough: when a
+  // SHALLOWER ancestor (e.g. `a` for a write to `a/b/x`) is the non-directory the plan keeps,
+  // `fs.lstat(rangeRoot, 'a', 'b')` fails with ENOTDIR (a component of the path prefix is not a
+  // directory) rather than naming `a` itself -- walking every ancestor from the top catches this.
   const deletingPaths = new Set(ops.filter((op) => op.action === 'delete').map((op) => op.path))
   const finalOps = []
   for (const op of ops) {
     if (op.action === 'write') {
       const parts = op.path.split('/')
-      if (parts.length > 1) {
-        const parentPath = parts.slice(0, -1).join('/')
-        if (!deletingPaths.has(parentPath)) {
-          let parentStat = null
-          try {
-            parentStat = await deps.fs.lstat(join(rangeRoot, ...parts.slice(0, -1)))
-          } catch {
-            parentStat = null // absent: nothing to block this write.
-          }
-          if (parentStat !== null && !parentStat.isDirectory()) {
-            attention.push({ path: op.path, code: 'UP-A10' })
-            continue
-          }
+      let blocked = false
+      for (let depth = 1; depth < parts.length && !blocked; depth++) {
+        const ancestorParts = parts.slice(0, depth)
+        const ancestorPath = ancestorParts.join('/')
+        if (deletingPaths.has(ancestorPath)) continue
+        let ancestorStat = null
+        try {
+          ancestorStat = await deps.fs.lstat(join(rangeRoot, ...ancestorParts))
+        } catch {
+          ancestorStat = null // absent: nothing to block this write at this ancestor level.
         }
+        if (ancestorStat !== null && !ancestorStat.isDirectory()) blocked = true
+      }
+      if (blocked) {
+        attention.push({ path: op.path, code: 'UP-A10' })
+        continue
       }
     }
     finalOps.push(op)
@@ -413,11 +420,16 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
     'platform/zh-TW/index.md',
     'scripts/templates/deploy.yml.template',
   ]
+  // T-0027 verification follow-up (item 4, approved sub-case, 2026-11-09): the same exact-name
+  // (case-sensitive) presence rule as the U53 fix, above (`baseFileSet`/`targetFileSet`), not a
+  // path read -- on a case-insensitive filesystem, joining `anchorPath` onto `targetDir` and
+  // reading it would resolve to a DIFFERENTLY-cased sibling the target pristine range actually
+  // lists (e.g. `readme.md` for the literal anchor `README.md`), wrongly reading it as present.
   let anchorChanged = false
   for (const anchorPath of ANCHOR_PATHS) {
     const [anchorB, anchorT] = await Promise.all([
-      readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))),
-      readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))),
+      baseFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))) : null,
+      targetFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))) : null,
     ])
     if (!eq(anchorB, anchorT)) {
       anchorChanged = true

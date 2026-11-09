@@ -77,8 +77,13 @@ describe('write failure during step 9 (U27)', () => {
       const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: fixture.root, env: fixture.env })
       expect(status.stdout).toBe('')
       const headFiles = await verifyGit(['ls-files'], { cwd: fixture.root, env: fixture.env })
+      // Item 5 (verification follow-up, tightened to the approved boundary condition, as U29
+      // does): every tracked file, compared against HEAD's own content (`git show HEAD:<path>`),
+      // not merely "readable".
       for (const path of headFiles.stdout.split('\n').filter((line) => line !== '')) {
-        await expect(readFile(join(fixture.root, path))).resolves.toBeInstanceOf(Buffer)
+        const headContent = await verifyGit(['show', `HEAD:${path}`], { cwd: fixture.root, env: fixture.env })
+        expect(headContent.code).toBe(0)
+        expect((await readFile(join(fixture.root, path))).toString()).toBe(headContent.stdout)
       }
     } finally {
       await cleanupFixture(fixture, tmpRoot)

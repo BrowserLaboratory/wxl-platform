@@ -1,9 +1,8 @@
 // Step 10 (traceability.md "Step order" row 10, "Report"): prints R1-R5, one per line, each
-// starting with its own id. T-0027 increment 21 (U26) pins R4's exact wording (traceability.md
-// "Report" R4: a fixed body of next-steps advice, plus two conditional bullets -- `pnpm install`
-// only when the run wrote `package.json` or `pnpm-lock.yaml`, and the deploy-tag push only for a
-// range that has `.github/workflows/deploy.yml`); R1/R2/R3/R5 were already written to their real,
-// final shape at increment 1.
+// starting with its own id, in the run's language (`t2`). R3 renders each attention item through the
+// language table's own UP-A* text. R4 (traceability.md "Report" R4) is a fixed body of next-steps
+// advice plus two conditional bullets: `pnpm install` only when the run wrote `package.json` or
+// `pnpm-lock.yaml`, and the deploy-tag push only for a range with `.github/workflows/deploy.yml`.
 
 import { jsonValue } from './text.mjs'
 
@@ -56,20 +55,31 @@ function buildR4Lines(lang2, { ops, hasDeployWorkflow }) {
   return lines
 }
 
-export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targetVersion, targetCommit, ops, attention, hasDeployWorkflow }) {
+export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targetVersion, targetCommit, ops, attention, hasDeployWorkflow, t2 }) {
+  const zh = lang2 === 'zh-TW'
   const counts = countsFromOps(ops)
   const lines = []
   lines.push(
-    `R1: create-wxl ${jsonValue(toolVersion)}; base ${jsonValue(baseVersion)} (${jsonValue(baseCommit)}); ` +
-      `target ${jsonValue(targetVersion)} (${jsonValue(targetCommit)})`,
+    zh
+      ? `R1: create-wxl ${jsonValue(toolVersion)}；base 版本 ${jsonValue(baseVersion)}（commit ${jsonValue(baseCommit)}）；` +
+          `target 版本 ${jsonValue(targetVersion)}（commit ${jsonValue(targetCommit)}）`
+      : `R1: create-wxl ${jsonValue(toolVersion)}; base ${jsonValue(baseVersion)} (${jsonValue(baseCommit)}); ` +
+          `target ${jsonValue(targetVersion)} (${jsonValue(targetCommit)})`,
   )
-  lines.push(`R2: updated ${counts.updated} added ${counts.added} deleted ${counts.deleted}`)
-  // UP-A12 (T-0027 increment 20, U59) is not tied to any one path (traceability.md
-  // "Fork:init-derived content"), so it prints without one, unlike every other UP-A* line.
+  lines.push(
+    zh
+      ? `R2: 更新 ${counts.updated} 新增 ${counts.added} 刪除 ${counts.deleted}`
+      : `R2: updated ${counts.updated} added ${counts.added} deleted ${counts.deleted}`,
+  )
+  // T-0027 verification follow-up (item 1/2): each attention line is rendered through `t2`
+  // (traceability.md:206 "in the run's language"), the same en/zh-TW UP-A* message table every
+  // other code already uses -- UP-A12 (T-0027 increment 20, U59) is not tied to any one path
+  // (traceability.md "Fork:init-derived content"), so it prints without one, unlike every other
+  // UP-A* line.
   for (const item of sortAttention(attention)) {
-    lines.push(item.code === 'UP-A12' ? 'R3: UP-A12' : `R3: ${item.code} ${jsonValue(item.path)}`)
+    lines.push(item.code === 'UP-A12' ? `R3: ${t2[item.code]()}` : `R3: ${t2[item.code]()} ${jsonValue(item.path)}`)
   }
   lines.push(...buildR4Lines(lang2, { ops, hasDeployWorkflow }))
-  lines.push('R5: git clean -fd; git checkout -- .')
+  lines.push(zh ? 'R5: 依序執行 git clean -fd 和 git checkout -- . 可撤銷整個升級' : 'R5: git clean -fd; git checkout -- .')
   return lines.join('\n') + '\n'
 }
