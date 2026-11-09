@@ -2,7 +2,7 @@
 id: T-0027
 title: Three-way merge, apply and the upgrade report
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: [T-0026]
 ---
 
@@ -574,3 +574,14 @@ Clean-up: `git push origin --delete sim/0006-upgrade` (`git ls-remote origin 'si
 local branch deleted, `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the temporary
 directory removed. U32 ticked.
 
+
+### 2026-11-09 — landed (stage 9)
+
+PR [#67](https://github.com/BrowserLaboratory/wxl-platform/pull/67), squash-merged into `main` as
+`651e866` on 2026-11-09 (06:38Z), from head `6419d18`, with all 10 checks passing (Quality Gates run
+<https://github.com/BrowserLaboratory/wxl-platform/actions/runs/42572964182>, windows-latest
+included). `git diff 6419d18 651e866` shows only T-0026's ticket, which #66 brought to `main` after
+this branch was cut from `f0ff741`. With both tickets on `main`, an upgradable range now merges,
+applies and reports instead of ending with CW-E14, so the hold on publishing between T-0026 and
+T-0027 (T-0026's stage 6 finding F26) is lifted; publishing to npm stays the user's. Frontmatter
+`status: done`.
