@@ -31,7 +31,7 @@ are added.
 Revision 2.5 (2026-11-09) applies decision D10 and two hardening changes made by the user during
 T-0027's stage 7 security review: a path at or under a submodule (gitlink) is never touched
 (pre-check P-8, code UP-A14, row U64); P-7 compares the last component after NFC normalisation and
-case folding, as P-4 does; `git check-ignore` reads paths literally (`--literal-pathspecs`).
+case folding, as P-4 does; `git check-ignore` reads paths literally (each given as `./<path>`).
 
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
@@ -79,7 +79,7 @@ skipped on Windows.
 | b, t | p's file in B, T, or absent |
 | ≡ | equality of two sides: both absent; or both regular files whose contents are equal, comparing text files after replacing every CRLF with LF and binary files byte for byte. Text and binary as below |
 | binary | a file whose first 8000 bytes contain a NUL byte, on any present side |
-| ignored path | a path that is not tracked and that `git --literal-pathspecs check-ignore -q --no-index` reports as ignored by the range's rules |
+| ignored path | a path that is not tracked and that `git check-ignore -q --no-index -- ./<path>` reports as ignored by the range's rules (the `./` keeps the path literal; `check-ignore` refuses pathspec magic, `--literal-pathspecs` included) |
 | anchor files | `package.json`, `README.md`, `README.en.md`, `CONTRIBUTE.md`, `.vitepress/config.mts`, `.vitepress/challenge/shortLink.ts`, `platform/index.md`, `platform/zh-TW/index.md`, `scripts/templates/deploy.yml.template` (the files of 0004's anchors A1–A9 and the deploy template) |
 
 ### Command grammar
@@ -306,7 +306,7 @@ and the files of the fixture commit.
 | U61 | repo | after a completed run and a commit, `upgrade` again | rerun | UP-I01 | AC-4 |
 | U62 | output | a path containing an ANSI escape in T | escaping | rejected while T's archive is checked (0005's entry rule 3): CW-E08 with the path as an escaped JSON string literal, exit 1, nothing written (revision 2.1) | AC-10 |
 | U63 | repo | upstream changes `.gitignore` (removes a rule that ignores a teacher's file; adds one) and a nested `sub/.gitignore`; o ≡ b | ignore rules | both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands; exit 0 | AC-8 |
-| U64 | repo | the range has a submodule `sub` (clean); upstream adds `sub/new.txt` and changes and removes paths whose names fall inside `sub` | submodule | every such path untouched, UP-A14 each; after the run and after the restore commands, `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none` is empty; exit 0 | AC-6 |
+| U64 | repo | the range has a submodule `sub` (clean); upstream adds `sub/new.txt` and changes and removes paths whose names fall inside `sub` | submodule | every such path untouched, UP-A14 each; after the run `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none` has no line for the submodule (`range.json` is rewritten, so not empty), and after the restore commands it is empty; exit 0 | AC-6 |
 
 ## Self-check of the surface (revision 2)
 

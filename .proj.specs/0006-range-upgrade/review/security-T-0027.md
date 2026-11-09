@@ -12,7 +12,7 @@
 
 | 候選 | 內容 | 判定 | 處置 |
 |---|---|---|---|
-| 04／17 | P-5 把路徑當 pathspec 傳給 `git check-ignore`，`--` 不會關掉 pathspec magic：上游路徑 `:/x` 被當成頂層 `x` 檢查，`:(glob)…` 讓 check-ignore 以 128 結束；P-5 檢查的路徑和實際寫入的路徑不同（`merge-plan.mjs` 的 `isIgnoredPath`） | true positive，low：要傷到老師的資料，得先有以 `:` 開頭、被 ignore 的檔案 | 修正（使用者 2026-11-09 核准）：`git --literal-pathspecs check-ignore`，新增子案 |
+| 04／17 | P-5 把路徑當 pathspec 傳給 `git check-ignore`，`--` 不會關掉 pathspec magic：上游路徑 `:/x` 被當成頂層 `x` 檢查，`:(glob)…` 讓 check-ignore 以 128 結束；P-5 檢查的路徑和實際寫入的路徑不同（`merge-plan.mjs` 的 `isIgnoredPath`） | true positive，low：要傷到老師的資料，得先有以 `:` 開頭、被 ignore 的檔案 | 修正（使用者 2026-11-09 核准）：check-ignore 依字面讀路徑；原提案 `--literal-pathspecs` 會被 check-ignore 拒絕（git 2.54.0 實測 exit 128），改以 `./<path>` 傳入，新增子案 |
 | 06／16 | 寫入與刪除會進入 submodule（gitlink）的工作目錄：`git ls-files -z` 只列出 gitlink 本身，上游的 `sub/x` 可經 M5、M6、M12 寫入、刪除或標上衝突，還原指令救不回來（違反 B4、AC-11） | true positive，low：需要 submodule 路徑和上游路徑重疊；submodule 自己的 HEAD 可以還原 | 修正：使用者決定 D10，新增 pre-check P-8、UP-A14 與 U64（traceability revision 2.5） |
 | 02／15 | P-7 只比對大小寫完全相同的 `.gitignore`；在不分大小寫的檔案系統上，上游新增的 `.GITIGNORE` 會被寫入並生效，繞過 D9 | hardening，low：只有刻意的上游才會這樣做，而上游本來就能改 scripts | 修正（使用者核准）：P-7 以 NFC 加大小寫摺疊比對，新增子案 |
 | 09／20 | anchor 檔的讀取在 step 8 的 try 之外：讀取錯誤時 merge-inputs 暫存目錄留在 `tmpRoot`，並以 CW-E14 而不是 UP-E11 結束（AC-11） | hardening，low：只在兩次讀取之間出現暫時性錯誤時發生 | 修正（使用者核准）：改回 UP-E11 並清掉 merge-inputs，新增子案 |

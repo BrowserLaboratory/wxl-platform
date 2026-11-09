@@ -45,7 +45,7 @@ with `git clean -fd` then `git checkout -- .`.
 - [x] U28: `SIGINT` at step 7; `SIGTERM` during step 9; `SIGINT` at step 10 (D8) → exit 130; nothing written / UP-E09 with the signal / the report in full; no temporary directory left (AC-11)
 - [x] U29: after U17's run, the restore commands → empty status, `HEAD`'s files, ignored files byte-identical (AC-11)
 - [x] U63: upstream changes `.gitignore` and a nested `.gitignore` → both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands (AC-8, D9)
-- [ ] U64: a path at or inside a submodule → untouched, UP-A14 each; empty status after the run and after the restore commands (AC-6, D10)
+- [x] U64: a path at or inside a submodule → untouched, UP-A14 each; no status line for the submodule after the run, empty status after the restore commands (AC-6, D10)
 - [ ] U32: stage 8 simulation A → B exactly as listed (AC-13)
 - [x] U53: case-only rename → both untouched, UP-A8 each (AC-6)
 - [x] U54: file → directory and directory → file swaps → as the row states (AC-6)
@@ -444,7 +444,7 @@ Checks at `6619cd8`, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --di
 entry adds tests); `python3 scripts/verify-project.py` → `PASS`. U63 ticked. windows-latest: on the
 pull request.
 
-### 2026-11-09 — stage 7 security review and disposition (fixes not yet applied)
+### 2026-11-09 — stage 7 security review and disposition
 
 The project `security-review` skill ran on `git diff f0ff741...HEAD` at `b844895` (two candidate
 lenses, one independent `harness-reviewer` false-positive check per candidate). Report:
@@ -454,7 +454,8 @@ and deletions reach into a submodule's working tree, which the restore commands 
 
 The user decided on 2026-11-09:
 
-- **Fix 04/17:** `git --literal-pathspecs check-ignore`; sub-case: an upstream path `:Zone.Identifier`
+- **Fix 04/17:** `check-ignore` reads paths literally (proposed as `--literal-pathspecs`; applied as
+  `./<path>`, see below); sub-case: an upstream path `:Zone.Identifier`
   under a teacher's rule `*:Zone.Identifier` → UP-A9 (skipped on win32, whose file names cannot hold
   `:`).
 - **D10 (06/16):** a path that is a submodule or lies under one is left as it is and reported UP-A14
@@ -468,4 +469,34 @@ The user decided on 2026-11-09:
   (candidate 19) → OQ-026.
 - **Recorded, not changed:** 01/14 (`.git` aliases on NTFS and HFS+; out of the model, and 0005's
   rule 3 gap; for the epic's chain analysis), 13/25 (bidi in R3, as 0005), 03, 05, 11/22, 12.
+
+### 2026-11-09 — stage 7 fixes applied
+
+Applied test-first; macOS (darwin arm64, Node v24.13.0), git 2.54.0; surface: create-wxl vitest in
+Node. The executor first returned an increment plan (the two-step handoff), which the main session
+confirmed, allowing two mechanical follow-ups in T-0027's own tests (a `check-ignore` stub match, the
+signal test's temporary-name pattern) and a separate `git ls-files -s -z` call for gitlinks.
+
+| Item | Test | Red observed |
+|---|---|---|
+| check-ignore reads paths literally | `create-wxl/test/upgrade-ignored.test.mjs`, "P-5 reads a path literally" (skipped on win32: `:` cannot be in a Windows file name) | `AssertionError: expected [ '.git', '.gitignore', …(2) ] to not include ':Zone.Identifier'` (`upgrade-ignored.test.mjs:265`) |
+| D10, P-8, UP-A14 (U64) | `create-wxl/test/upgrade-submodule.test.mjs`, a real `git submodule add` | `Error: ENOENT: no such file or directory, open '…/sub/kept.txt'` (`upgrade-submodule.test.mjs:96`): M6 deleted the submodule's own file |
+| P-7 folding | `upgrade-ignored.test.mjs`, "P-7 folding (D9)" | `AssertionError: promise resolved "Buffer[ 117, 112, 115, 116, 114, …(-83) ]" instead of rejecting` (`upgrade-ignored.test.mjs:163`): `sub/.GITIGNORE` written |
+| anchor read error → UP-E11 | `create-wxl/test/upgrade-merge.test.mjs`, "an anchor file read error" | `AssertionError: expected 'CW-E14: an unexpected error happened:…' to match /^UP-E11/m` (`upgrade-merge.test.mjs:700`) |
+| fixed-length temporary names | `upgrade-merge.test.mjs`, "step 9's own temporary file", a 240-byte basename via a pax header | `UP-E09 … ENAMETOOLONG: name too long, open '…/.create-wxl-upgrade-tmp-59a6eb276b92a71a-aaaa….txt'`; vitest: `expected 1 to be +0` (`upgrade-merge.test.mjs:858`) |
+
+The approved `--literal-pathspecs` does not work: `git --literal-pathspecs check-ignore` exits 128
+("pathspec magic not supported by this command: 'literal'") for every path, a plain one included
+(git 2.54.0). The main session checked an equivalent and applied it: each path is given as
+`./<path>`, which `check-ignore` reads literally (`:Zone.Identifier` → 0, `:(glob)a` → 1 instead of
+exit 128). The approved behaviour is unchanged; traceability's "ignored path" row, the stage 7 report
+and the disposition above now say so. U64's row is corrected too: right after a run `git status` is
+never empty (`range.json` is rewritten), so the row asks for no status line for the submodule after
+the run and an empty status after the restore commands.
+
+An independent read-only verifier passed all five items (each test fails if its fix is reverted) and
+every guard. Checks, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --dir create-wxl test` →
+`Test Files 35 passed (35) / Tests 623 passed (623)` (create-wxl vitest in Node); `pnpm test --run` →
+`Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`; `python3 scripts/verify-project.py`
+→ `PASS`. windows-latest: on the pull request.
 
