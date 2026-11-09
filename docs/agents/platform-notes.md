@@ -19,6 +19,14 @@ always open the Browser panel.
 - Composables that hold module-level refs (`useSessionGate` and its neighbours) keep state across
   tests in one file. Call `vi.resetModules()` between tests that need a fresh instance.
 
+- create-wxl's tests run on windows-latest too (`fork-init-cross-os`). Besides comparing paths by
+  file name or through `jsonValue`, never expect an OS-specific error code: reading a path under a
+  regular file is `ENOTDIR` on POSIX and `ENOENT` on Windows (T-0027, PR #67's first run). macOS and
+  Windows are case-insensitive: a fixture that holds two paths differing only by case cannot exist
+  there, and reading one of them returns the other.
+- `git check-ignore` refuses every pathspec magic, `--literal-pathspecs` included (exit 128, git
+  2.54.0). Pass a path as `./<path>` to read it literally.
+
 ## Search and local servers
 
 - `rg` skips hidden directories; pass `--hidden` to search `.vitepress/`.
@@ -41,3 +49,13 @@ always open the Browser panel.
   missed without an error.
 - Ranges under one GitHub Pages owner share `cxphoenix.github.io`'s storage (OQ-018); clear it after
   a temporary range's checks.
+
+## Stage 8 on a terminal (create-wxl)
+
+- npm 11 runs `npx --yes <tarball> …` as a command named by the path (`Permission denied`, exit 126).
+  Run a packed create-wxl as `npx --yes --package <tarball> create-wxl …` (T-0025, T-0027).
+- `codeload.github.com` serves a commit only once it is pushed; push the ticket's HEAD (and any
+  simulation branch) before a run that sets `CREATE_WXL_COMMIT`. Run with `GITHUB_REPOSITORY` and
+  `WXL_EXPECT_UPSTREAM` unset, and remove `create-wxl/dist/`, `create-wxl/LICENSE` and the tarball
+  afterwards (`npm pack` creates them).
+
