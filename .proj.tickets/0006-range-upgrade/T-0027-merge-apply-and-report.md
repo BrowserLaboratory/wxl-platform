@@ -19,7 +19,7 @@ Deadline (decision R1, 2026-10-16): if this epic has not landed by 2026-10-16 23
 to `pending` with its reason and evidence and ships after the workshop as 3.0.x (decision of
 2026-10-16, Q2 option A). Withdrawn by the user at 23:39 on 2026-10-16; see Comments.
 
-Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.3 (D7, D8), seams 0006-S1, 0006-S2; "Step order"
+Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.4 (D7–D9), seams 0006-S1, 0006-S2; "Step order"
 8–10, "Pre-checks", "Merge table", "Fork:init-derived content", "`range.json` after the plan", "Report",
 "Stage 8 simulation".
 
@@ -42,8 +42,9 @@ with `git clean -fd` then `git checkout -- .`.
 - [x] U25: attention empty / non-empty → exit 0 / 0 (AC-10)
 - [x] U26: U17's run → R1–R5 in order with ids, in the run's language; every UP code in both tables (AC-10)
 - [x] U27: `fs.rename` fails on the 2nd write → UP-E09 naming the path, exit 1; the restore commands give an empty status and `HEAD`'s files (AC-11)
-- [x] U28: `SIGINT` at step 7; `SIGTERM` during step 9 → exit 130; nothing written / UP-E09 with the signal; no temporary directory left (AC-11)
+- [x] U28: `SIGINT` at step 7; `SIGTERM` during step 9; `SIGINT` at step 10 (D8) → exit 130; nothing written / UP-E09 with the signal / the report in full; no temporary directory left (AC-11)
 - [x] U29: after U17's run, the restore commands → empty status, `HEAD`'s files, ignored files byte-identical (AC-11)
+- [ ] U63: upstream changes `.gitignore` and a nested `.gitignore` → both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands (AC-8, D9)
 - [ ] U32: stage 8 simulation A → B exactly as listed (AC-13)
 - [x] U53: case-only rename → both untouched, UP-A8 each (AC-6)
 - [x] U54: file → directory and directory → file swaps → as the row states (AC-6)
@@ -342,3 +343,41 @@ Checks at `f3b8d5c` plus the U20 follow-up, macOS (darwin arm64, Node v24.13.0),
 vitest in Node); `pnpm test --run` → `Test Files 136 passed (136) / Tests 4854 passed | 1 skipped
 (4855)` (root vitest); `python3 scripts/verify-project.py` → `PASS`. windows-latest and the other CI
 runners: pending, on the pull request. Acceptance criteria ticked except U32; status `review`.
+
+### 2026-11-09 — stage 6 review and disposition (fixes not yet applied)
+
+`/code-review` on the committed change (base `origin/main` `34bbb3b`, merge-base `f0ff741`, HEAD
+`21858b9`; packet captured before review). Two independent `harness-reviewer` passes, one axis each.
+Standards: 23 documented-standard findings (S1–S23) and 11 smells (S24–S34). Spec: 23 findings
+(P1–P23; "P" here numbers the Spec axis, not the pre-checks). Both reports, verbatim, are kept locally
+in `.proj.research/2026-11-09-T-0027-stage6-review.md` (gitignored). Worst per axis: S1 (U55 (3)'s
+`ENOTDIR` assertion fails on windows-latest; it did, on PR #67, and was fixed in `4125aef`) and P1
+(an upstream change to `.gitignore` written by M5 changes which files are ignored, so the restore
+commands' `git clean -fd` can delete a teacher's ignored file).
+
+The user decided on 2026-11-09:
+
+- **D9** (P1): a `.gitignore` at any level with b ≢ t is left as it is and reported UP-A13; the
+  teacher merges ignore rules by hand. Traceability revision 2.4 (P-7, UP-A13, row U63); spec AC-8.
+- **Behaviour fixes, each test-first with a new sub-case (approved):** P2, P11, P18 — a failure or
+  signal while writing `range.json`, or any error after the first operation of step 9, prints UP-E09
+  with the restore commands and removes the temporary file; P3 — the merge-inputs directory is removed
+  however step 8 ends; P4, P5 — a read error or a `runGit` rejection in step 8 is UP-E11, whose text
+  carries the error; P6 — R5 says to use the commands only before other changes (en, zh-TW); P7 — the
+  temporary file has a unique name and is created exclusively; P8 — o is classified by `lstat` before
+  any read, and a symbolic link or non-file is never read; P9 — binary when any present side of the
+  three has a NUL; P10 — a signal this process received while `merge-file` or `check-ignore` ran wins:
+  exit 130 (T-0026's candidate 13 convention); P12 — M10 keeps the lockfile's mode; S2 — the parent
+  check's and `existingMode`'s `lstat` treat only ENOENT as absent (fail closed); R4's deploy hint
+  stays fail-open, commented.
+- **Fixed within scope:** P14 (UP-A8 names the Unicode form too), P22 (U17 asserts exactly one
+  UP-A12), P23 (U28's criterion names D8; spec.en.md notes D7–D9); S3–S8, S15–S18, S20, S21, S23
+  (stale comments and plan codes in comments, bilingual checks of the report texts and UP-E09's
+  signal branch, helper conventions, umask inside `try`, mixed colons, the decision table's order);
+  S9–S13 (records pinned to commits, hashes and commands, Taiwan usage); S19 (GLOSSARY gains
+  "attention item").
+- **Recorded, not changed:** P13, P15–P17, P19–P21 (rare edge cases or spec gaps; open-question
+  candidates); S14 (Chinese in ticket tables, as T-0026) and S22 (coverage not measured, as T-0026);
+  smells S24–S34 (optional quality cleanup, not stage 6).
+
+Status stays `review`. The fixes above are the next step.

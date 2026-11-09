@@ -23,6 +23,11 @@ Revision 2.3 (2026-11-09) applies decision D8, made by the user while confirming
 plan: a signal that arrives in step 10, after step 9 has finished, does not stop the report; R1–R5
 are printed in full and the run exits 130. Row U28 gains that case.
 
+Revision 2.4 (2026-11-09) applies decision D9, made by the user during T-0027's stage 6 review: a
+`.gitignore` file upstream changed is never written, so the set of ignored paths never changes during
+an upgrade and the restore commands keep every ignored file. Pre-check P-7, code UP-A13 and row U63
+are added.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -34,9 +39,10 @@ Decisions this file relies on, in short (full record: the local research note
 | R5 | No `range.json` → stop, unless `--from` names the base; inferring it from git history is deferred |
 | R6 | When unsure, keep the teacher's version and list it; the lockfile takes upstream's on conflict; `range.json` updated with the merge; no downgrade |
 | R10 | Stage 8: a real upgrade between two pushed commits |
-| D8 | A signal in step 10 (after step 9 finished): R1–R5 still printed in full, then exit 130 (2026-11-09, T-0027) |
-| D7 | Step 4 also refuses a repository whose `git rev-parse --git-dir` holds `sequencer` (an unfinished multi-commit cherry-pick or revert): UP-E03 `in-progress` (2026-11-09, T-0026 stage 7) |
 | D2 | ⑦ `--diff3`; ⑧ ignored paths untouched and listed; ⑨ list fork:init-derived changes and advise rerunning `pnpm fork:init`; ⑩ oldest base v3.0.0; ⑪ CRLF normalised before comparing; ⑫ exit 0 when attention items exist; ⑬ case-only renames and file/directory swaps detected in planning; ⑭ restore with `git clean -fd` then `git checkout -- .`; ⑮ override warning |
+| D7 | Step 4 also refuses a repository whose `git rev-parse --git-dir` holds `sequencer` (an unfinished multi-commit cherry-pick or revert): UP-E03 `in-progress` (2026-11-09, T-0026 stage 7) |
+| D8 | A signal in step 10 (after step 9 finished): R1–R5 still printed in full, then exit 130 (2026-11-09, T-0027) |
+| D9 | A `.gitignore` (at any level) with b ≢ t is left as it is and reported UP-A13; the teacher merges ignore rules by hand (2026-11-09, T-0027 stage 6) |
 
 One correction to R6 ⑦'s wording, a fact: an upgrade can add files, which are untracked, so restoring
 needs `git clean -fd` as well as `git checkout -- .`; because the tree had to be clean and ignored
@@ -130,6 +136,7 @@ object, since step 9 rewrites it); J2, J4 and J5 do not.
 | P-4 | another path of B ∪ T ∪ tracked differs from p but equals it after NFC normalisation and case folding | untouched | UP-A8 |
 | P-5 | p is an ignored path, or t is present and p would be an ignored path | untouched | UP-A9 |
 | P-6 | o is a non-file (other than a symbolic link), and o ≢ t | untouched | UP-A10 |
+| P-7 | p's last component is `.gitignore` (D9) | untouched | UP-A13 |
 
 ### Merge table (rows checked in order; the first match applies)
 
@@ -200,6 +207,7 @@ Every message begins with its code; values from outside are escaped as in 0005.
 | UP-A10 | the range has a directory or other non-file where upstream has a file (or the reverse); untouched |
 | UP-A11 | a clean merge of a `.json` file did not parse; the range's version kept |
 | UP-A12 | upstream changed files fork:init writes; rerun `pnpm fork:init` |
+| UP-A13 | upstream changed an ignore file; left as it is so ignored files and the restore commands stay safe; merge the rules by hand (D9) |
 
 ### Report
 
@@ -289,6 +297,7 @@ and the files of the fixture commit.
 | U60 | write | a tracked file that is a hard link to a file outside the range, written by M5 | hard link | the outside file unchanged (write-then-rename) | AC-7 |
 | U61 | repo | after a completed run and a commit, `upgrade` again | rerun | UP-I01 | AC-4 |
 | U62 | output | a path containing an ANSI escape in T | escaping | rejected while T's archive is checked (0005's entry rule 3): CW-E08 with the path as an escaped JSON string literal, exit 1, nothing written (revision 2.1) | AC-10 |
+| U63 | repo | upstream changes `.gitignore` (removes a rule that ignores a teacher's file; adds one) and a nested `sub/.gitignore`; o ≡ b | ignore rules | both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands; exit 0 | AC-8 |
 
 ## Self-check of the surface (revision 2)
 
