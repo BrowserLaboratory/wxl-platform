@@ -19,7 +19,7 @@ Deadline (decision R1, 2026-10-16): if this epic has not landed by 2026-10-16 23
 to `pending` with its reason and evidence and ships after the workshop as 3.0.x (decision of
 2026-10-16, Q2 option A). Withdrawn by the user at 23:39 on 2026-10-16; see Comments.
 
-Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.4 (D7–D9), seams 0006-S1, 0006-S2; "Step order"
+Spec: `.proj.specs/0006-range-upgrade/traceability.md` revision 2.5 (D7–D10), seams 0006-S1, 0006-S2; "Step order"
 8–10, "Pre-checks", "Merge table", "Fork:init-derived content", "`range.json` after the plan", "Report",
 "Stage 8 simulation".
 
@@ -45,6 +45,7 @@ with `git clean -fd` then `git checkout -- .`.
 - [x] U28: `SIGINT` at step 7; `SIGTERM` during step 9; `SIGINT` at step 10 (D8) → exit 130; nothing written / UP-E09 with the signal / the report in full; no temporary directory left (AC-11)
 - [x] U29: after U17's run, the restore commands → empty status, `HEAD`'s files, ignored files byte-identical (AC-11)
 - [x] U63: upstream changes `.gitignore` and a nested `.gitignore` → both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands (AC-8, D9)
+- [ ] U64: a path at or inside a submodule → untouched, UP-A14 each; empty status after the run and after the restore commands (AC-6, D10)
 - [ ] U32: stage 8 simulation A → B exactly as listed (AC-13)
 - [x] U53: case-only rename → both untouched, UP-A8 each (AC-6)
 - [x] U54: file → directory and directory → file swaps → as the row states (AC-6)
@@ -442,3 +443,29 @@ Checks at `6619cd8`, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --di
 `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)` (root vitest; the glossary
 entry adds tests); `python3 scripts/verify-project.py` → `PASS`. U63 ticked. windows-latest: on the
 pull request.
+
+### 2026-11-09 — stage 7 security review and disposition (fixes not yet applied)
+
+The project `security-review` skill ran on `git diff f0ff741...HEAD` at `b844895` (two candidate
+lenses, one independent `harness-reviewer` false-positive check per candidate). Report:
+`.proj.specs/0006-range-upgrade/review/security-T-0027.md`. 28 candidates; none reached the reporting
+threshold. Two low true positives (04/17, `check-ignore` reads paths as pathspec magic; 06/16, writes
+and deletions reach into a submodule's working tree, which the restore commands cannot undo).
+
+The user decided on 2026-11-09:
+
+- **Fix 04/17:** `git --literal-pathspecs check-ignore`; sub-case: an upstream path `:Zone.Identifier`
+  under a teacher's rule `*:Zone.Identifier` → UP-A9 (skipped on win32, whose file names cannot hold
+  `:`).
+- **D10 (06/16):** a path that is a submodule or lies under one is left as it is and reported UP-A14
+  (pre-check P-8; traceability revision 2.5; row U64).
+- **Hardening, each with a sub-case:** P-7 compares the last component after NFC normalisation and
+  case folding (upstream adds `.GITIGNORE` → untouched, UP-A13); an anchor-file read error in step 8
+  is UP-E11 and removes the merge-inputs directory (EIO on an anchor's second read → UP-E11, no
+  entry left); step 9's temporary file names have a fixed length and no basename (an M5 write of a
+  basename near NAME_MAX succeeds).
+- **Open question:** a `range.json` the teacher's range ignores is still written in step 9
+  (candidate 19) → OQ-026.
+- **Recorded, not changed:** 01/14 (`.git` aliases on NTFS and HFS+; out of the model, and 0005's
+  rule 3 gap; for the epic's chain analysis), 13/25 (bidi in R3, as 0005), 03, 05, 11/22, 12.
+

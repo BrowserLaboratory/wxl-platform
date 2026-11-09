@@ -3,11 +3,11 @@
 Status: revision 2 (2026-10-16). Round 1 of adversarial review found no P0 (`review/round-1.md`), so
 the stage 3 gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups
 U1–U9) and the user's decisions D1–D2, and by D1 round 2 is not run. `traceability.md` has since
-moved to revision 2.4 (D7 to D9, decided during T-0026 and T-0027); this text names them where they
+moved to revision 2.5 (D7 to D10, decided during T-0026 and T-0027); this text names them where they
 change a criterion. Derived from `traceability.md`,
 which holds the fixed lists this spec refers to (decisions in short, vocabulary, command grammar, step
-order, base rules J1–J5, pre-checks P-1–P-7, merge table M4–M12 and the parent check, fork:init-derived
-content, the `range.json` update, codes UP-E01–E11, UP-I01 and UP-A1–A13, the report R1–R5, the stage 8
+order, base rules J1–J5, pre-checks P-1–P-8, merge table M4–M12 and the parent check, fork:init-derived
+content, the `range.json` update, codes UP-E01–E11, UP-I01 and UP-A1–A14, the report R1–R5, the stage 8
 simulation) and the seams 0006-S1 and S2. This epic depends on 0005 (`.proj.specs/0005-create-wxl/`,
 revision 2): it reuses 0005's `run` function, package source record, download, archive entry rules,
 pristine processing P1–P4, `range.json` schema, language rule, signal handling, output escaping and

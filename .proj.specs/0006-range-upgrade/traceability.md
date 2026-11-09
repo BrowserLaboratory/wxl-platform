@@ -28,6 +28,11 @@ Revision 2.4 (2026-11-09) applies decision D9, made by the user during T-0027's 
 an upgrade and the restore commands keep every ignored file. Pre-check P-7, code UP-A13 and row U63
 are added.
 
+Revision 2.5 (2026-11-09) applies decision D10 and two hardening changes made by the user during
+T-0027's stage 7 security review: a path at or under a submodule (gitlink) is never touched
+(pre-check P-8, code UP-A14, row U64); P-7 compares the last component after NFC normalisation and
+case folding, as P-4 does; `git check-ignore` reads paths literally (`--literal-pathspecs`).
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -43,6 +48,7 @@ Decisions this file relies on, in short (full record: the local research note
 | D7 | Step 4 also refuses a repository whose `git rev-parse --git-dir` holds `sequencer` (an unfinished multi-commit cherry-pick or revert): UP-E03 `in-progress` (2026-11-09, T-0026 stage 7) |
 | D8 | A signal in step 10 (after step 9 finished): R1–R5 still printed in full, then exit 130 (2026-11-09, T-0027) |
 | D9 | A `.gitignore` (at any level) with b ≢ t is left as it is and reported UP-A13; the teacher merges ignore rules by hand (2026-11-09, T-0027 stage 6) |
+| D10 | A path that is a submodule (gitlink, mode 160000 in `git ls-files -s`) or lies under one is left as it is and reported UP-A14; the restore commands do not reach inside a submodule (2026-11-09, T-0027 stage 7) |
 
 One correction to R6 ⑦'s wording, a fact: an upgrade can add files, which are untracked, so restoring
 needs `git clean -fd` as well as `git checkout -- .`; because the tree had to be clean and ignored
@@ -73,7 +79,7 @@ skipped on Windows.
 | b, t | p's file in B, T, or absent |
 | ≡ | equality of two sides: both absent; or both regular files whose contents are equal, comparing text files after replacing every CRLF with LF and binary files byte for byte. Text and binary as below |
 | binary | a file whose first 8000 bytes contain a NUL byte, on any present side |
-| ignored path | a path that is not tracked and that `git check-ignore -q --no-index` reports as ignored by the range's rules |
+| ignored path | a path that is not tracked and that `git --literal-pathspecs check-ignore -q --no-index` reports as ignored by the range's rules |
 | anchor files | `package.json`, `README.md`, `README.en.md`, `CONTRIBUTE.md`, `.vitepress/config.mts`, `.vitepress/challenge/shortLink.ts`, `platform/index.md`, `platform/zh-TW/index.md`, `scripts/templates/deploy.yml.template` (the files of 0004's anchors A1–A9 and the deploy template) |
 
 ### Command grammar
@@ -136,7 +142,8 @@ object, since step 9 rewrites it); J2, J4 and J5 do not.
 | P-4 | another path of B ∪ T ∪ tracked differs from p but equals it after NFC normalisation and case folding | untouched | UP-A8 |
 | P-5 | p is an ignored path, or t is present and p would be an ignored path | untouched | UP-A9 |
 | P-6 | o is a non-file (other than a symbolic link), and o ≢ t | untouched | UP-A10 |
-| P-7 | p's last component is `.gitignore` (D9) | untouched | UP-A13 |
+| P-7 | p's last component, after NFC normalisation and case folding, is `.gitignore` (D9) | untouched | UP-A13 |
+| P-8 | p is a submodule (gitlink) or a path under one (D10) | untouched | UP-A14 |
 
 ### Merge table (rows checked in order; the first match applies)
 
@@ -208,6 +215,7 @@ Every message begins with its code; values from outside are escaped as in 0005.
 | UP-A11 | a clean merge of a `.json` file did not parse; the range's version kept |
 | UP-A12 | upstream changed files fork:init writes; rerun `pnpm fork:init` |
 | UP-A13 | upstream changed an ignore file; left as it is so ignored files and the restore commands stay safe; merge the rules by hand (D9) |
+| UP-A14 | a path at or inside a submodule; untouched, since the restore commands cannot undo changes there (D10) |
 
 ### Report
 
@@ -298,6 +306,7 @@ and the files of the fixture commit.
 | U61 | repo | after a completed run and a commit, `upgrade` again | rerun | UP-I01 | AC-4 |
 | U62 | output | a path containing an ANSI escape in T | escaping | rejected while T's archive is checked (0005's entry rule 3): CW-E08 with the path as an escaped JSON string literal, exit 1, nothing written (revision 2.1) | AC-10 |
 | U63 | repo | upstream changes `.gitignore` (removes a rule that ignores a teacher's file; adds one) and a nested `sub/.gitignore`; o ≡ b | ignore rules | both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands; exit 0 | AC-8 |
+| U64 | repo | the range has a submodule `sub` (clean); upstream adds `sub/new.txt` and changes and removes paths whose names fall inside `sub` | submodule | every such path untouched, UP-A14 each; after the run and after the restore commands, `git status --porcelain=v1 --untracked-files=all --ignore-submodules=none` is empty; exit 0 | AC-6 |
 
 ## Self-check of the surface (revision 2)
 
