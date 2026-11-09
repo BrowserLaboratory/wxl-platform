@@ -3,7 +3,8 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readdirSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -51,6 +52,61 @@ async function cleanupFixture(fixture, tmpRoot) {
   if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true })
 }
 
+describe('range.json write failure', () => {
+  it("fs.rename fails on range.json's own write -> UP-E09 naming range.json, restore commands, exit 1; no temporary file left in the range", async () => {
+    // M6 (one deletion) and M5-added (one write): both succeed; only range.json's own rename,
+    // the LAST write of step 9, is made to fail.
+    const fixture = await buildUpgradeFixtures({ branches: ['M6', 'M5-added'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const rename = failAt('rename', (count, args) => (basename(args[1]) === 'range.json' ? fsError('EIO', 'EIO: i/o error') : null))
+      const { fs } = recordingFs({ rename })
+
+      const result = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
+      expect(ioHelper.stderrText).toContain('range.json')
+      expect(ioHelper.stderrText).toContain('git clean -fd')
+      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(exitCode).toBe(1)
+
+      // No temporary file of step 9 is left in the range (their names are unique, so list them).
+      expect(readdirSync(fixture.root).filter((name) => name.startsWith('.create-wxl-upgrade-tmp'))).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('a non-file-system error after the first operation of step 9', () => {
+  it('fs.rename rejects with a plain Error (no code) on the 2nd write -> UP-E09 naming the path, restore commands, exit 1', async () => {
+    // Same fixture shape as U27's own case: 'assets/new-file.txt' sorts before 'pnpm-lock.yaml',
+    // so the 2nd sorted write is pnpm-lock.yaml's own rename -- after the first write has already
+    // landed, matching the path by its file name only.
+    const fixture = await buildUpgradeFixtures({ branches: ['M6', 'M5-added', 'M10'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const rename = failAt('rename', (count, args) => (basename(args[1]) === 'pnpm-lock.yaml' ? new Error('boom: not a file-system error') : null))
+      const { fs } = recordingFs({ rename })
+
+      const result = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
+      expect(ioHelper.stderrText).toContain('pnpm-lock.yaml')
+      expect(ioHelper.stderrText).toContain('boom: not a file-system error')
+      expect(ioHelper.stderrText).toContain('git clean -fd')
+      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(exitCode).toBe(1)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
 describe('write failure during step 9 (U27)', () => {
   it('fs.rename fails on the 2nd write -> UP-E09 naming the path, exit 1; the restore commands give an empty status and HEAD\'s files', async () => {
     // M6 (one deletion), M5-added and M10 (two writes): 'assets/new-file.txt' sorts before
@@ -58,8 +114,7 @@ describe('write failure during step 9 (U27)', () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M6', 'M5-added', 'M10'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
-      const secondWriteDest = join(fixture.root, 'pnpm-lock.yaml')
-      const rename = failAt('rename', (count, args) => (args[1] === secondWriteDest ? fsError('EIO', 'EIO: i/o error') : null))
+      const rename = failAt('rename', (count, args) => (basename(args[1]) === 'pnpm-lock.yaml' ? fsError('EIO', 'EIO: i/o error') : null))
       const { fs } = recordingFs({ rename })
 
       const result = await runUpgradeAgainst(fixture, { fs })

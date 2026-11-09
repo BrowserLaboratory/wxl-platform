@@ -16,6 +16,7 @@ import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { snapshotTree, withoutRootMtime } from './helpers/snapshot.mjs'
+import { verifyGit } from './helpers/real-git.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
@@ -81,6 +82,45 @@ describe('ignored paths (U22)', () => {
         `R3: ${en['UP-A9']()} ${jsonValue('added.local')}`,
         `R3: ${en['UP-A9']()} ${jsonValue('existing.local')}`,
       ])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('upstream .gitignore changes (U63, D9)', () => {
+  it('leaves both .gitignore files untouched, each reported UP-A13; the ignored file stays byte-identical after the run and after the restore commands', async () => {
+    const fixture = await buildUpgradeFixtures({
+      branches: ['U63-gitignore'],
+      rangeJson: rangeJsonFor(BASE_COMMIT),
+    })
+    let tmpRoot
+    try {
+      const rootGitignorePath = join(fixture.root, '.gitignore')
+      const nestedGitignorePath = join(fixture.root, 'sub', '.gitignore')
+      const scratchPath = join(fixture.root, 'scratch.local') // the teacher's untracked, ignored file.
+      const rootBefore = await readFile(rootGitignorePath)
+      const nestedBefore = await readFile(nestedGitignorePath)
+      const scratchBefore = await readFile(scratchPath)
+
+      const result = await runUpgradeAgainst(fixture, vi.fn(createSpawnGitRunner()))
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(exitCode).toBe(0)
+      expect(await readFile(rootGitignorePath)).toEqual(rootBefore)
+      expect(await readFile(nestedGitignorePath)).toEqual(nestedBefore)
+      expect(await readFile(scratchPath)).toEqual(scratchBefore)
+
+      const r3Lines = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
+      expect(r3Lines).toEqual([
+        `R3: ${en['UP-A13']()} ${jsonValue('.gitignore')}`,
+        `R3: ${en['UP-A13']()} ${jsonValue('sub/.gitignore')}`,
+      ])
+
+      await verifyGit(['clean', '-fd'], { cwd: fixture.root, env: fixture.env })
+      await verifyGit(['checkout', '--', '.'], { cwd: fixture.root, env: fixture.env })
+      expect(await readFile(scratchPath)).toEqual(scratchBefore)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

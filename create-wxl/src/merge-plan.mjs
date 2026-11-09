@@ -19,6 +19,20 @@ export class MergeFileError extends Error {
   }
 }
 
+/** traceability.md "Codes" UP-E11: "a read error, or `git merge-file` ... or was not read in
+ * full"): a read error of `o`, `b` or `t` (other than the absent cases
+ * `readFileOrNull` already maps to `null`), or a `runGit` rejection for `merge-file`, is a
+ * planning failure naming `path` and carrying `detail` (the underlying error's own message) --
+ * unlike `MergeFileError`, which never has a `detail` (its own fixed text already says enough). */
+export class PlanningError extends Error {
+  constructor(path, detail) {
+    super(`step 8 planning failed at ${path}: ${detail}`)
+    this.name = 'PlanningError'
+    this.path = path
+    this.detail = detail
+  }
+}
+
 const BINARY_SCAN_BYTES = 8000
 
 function isBinary(buf) {
@@ -43,11 +57,16 @@ function normaliseCrlf(buf) {
 /** `≡` (traceability.md "Vocabulary"): both absent, or both present and byte-for-byte equal for a
  * binary pair (classified on raw, unnormalised bytes), or equal after CRLF -> LF normalisation for
  * a text pair (T-0027 increment 17, U56: nothing in U17's own 13 branches at increment 1 needed
- * this, so it was added here, the first row whose fixture actually does). */
-function eq(a, b) {
+ * this, so it was added here, the first row whose fixture actually does).
+ * `forceBinary`, when given, is the PATH's own binary decision (any of o/b/t present with a NUL),
+ * not just this one pair's -- `classify`, below, is the caller that needs this; every other
+ * caller (P-2's `eq(b, t)`, the anchor-file check's `eq(anchorB, anchorT)`) has only two sides of
+ * its own to look at, so it leaves `forceBinary` `undefined` and keeps the old pair-wise reading. */
+function eq(a, b, forceBinary) {
   if (a === null && b === null) return true
   if (a === null || b === null) return false
-  if (isBinary(a) || isBinary(b)) return a.equals(b)
+  const binary = forceBinary !== undefined ? forceBinary : isBinary(a) || isBinary(b)
+  if (binary) return a.equals(b)
   return normaliseCrlf(a).equals(normaliseCrlf(b))
 }
 
@@ -72,11 +91,10 @@ async function listFilesRecursive(fs, dir) {
  * that path is not a file, so reading it as one (`EISDIR`) is "absent" by the same reading as
  * `ENOENT`, not a bug. T-0027 increment 4: this is what keeps a tracked symbolic-linked
  * directory's own bare path (present as a real directory in B and/or T once any path nested under
- * it differs between them, D4/N4's own merge-inputs convention aside) from crashing here -- P-3,
- * below, is what then leaves a path reached THROUGH that directory untouched. T-0027 increment 15
- * (N6, moved from increment 1): `ENOTDIR` -- a parent component inside the range, B or T is a
- * FILE, not a directory -- means the same thing for a nested path reached through it: nothing is
- * there, so it reads as absent too, not a bug. */
+ * it differs between them) from crashing here -- P-3, below, is what then leaves a path reached
+ * THROUGH that directory untouched. T-0027 increment 15: `ENOTDIR` -- a parent component inside
+ * the range, B or T is a FILE, not a directory -- means the same thing for a nested path reached
+ * through it: nothing is there, so it reads as absent too, not a bug. */
 async function readFileOrNull(fs, absPath) {
   try {
     return await fs.readFile(absPath)
@@ -143,11 +161,14 @@ function hasCaseCollision(path, foldedGroups) {
  * bug, never silently read as either answer -- fail closed, the same convention D6 already uses
  * (`upgrade.mjs`'s `requireGitSuccess`). Called only for a path the caller has already excluded
  * from `tracked` (a force-added, tracked file that also matches an ignore rule is never P-5). */
-async function isIgnoredPath(deps, rangeRoot, path) {
+async function isIgnoredPath(deps, guard, rangeRoot, path) {
   const result = await deps.runGit(['check-ignore', '-q', '--no-index', '--', path], {
     cwd: rangeRoot,
     env: buildGitEnv(deps.env),
   })
+  // A signal this process already received while that `runGit` call was in flight wins over
+  // interpreting its result, the same way `runMergeFile` already does.
+  guard.throwIfRaised()
   if (result.code === 0) return true
   if (result.code === 1) return false
   throw new Error(`git check-ignore failed (exit code ${result.code}): ${result.stderr}`)
@@ -156,11 +177,13 @@ async function isIgnoredPath(deps, rangeRoot, path) {
 /** The merge table (rows checked in order; the first match applies), given `o`/`b`/`t` as
  * `Buffer | null`, and ALREADY past P-2 (`b ≡ t`, checked by the caller before this is ever
  * reached). Every remaining combination is total -- traceability.md's own paragraph just below
- * the table ("with b ≢ t and o a file or absent, exactly one of M5-M12 applies"), derived in
- * full in this ticket's increment plan. */
+ * the table ("with b ≢ t and o a file or absent, exactly one of M5-M12 applies"). */
 function classify(path, o, b, t) {
-  if (eq(o, t)) return { row: 'M4' }
-  if (eq(o, b)) {
+  // Decided once per path, from all three sides -- not re-derived separately (and possibly
+  // differently) for each pair `eq`, below, compares.
+  const binary = isBinary(o) || isBinary(b) || isBinary(t)
+  if (eq(o, t, binary)) return { row: 'M4' }
+  if (eq(o, b, binary)) {
     if (t !== null) return { row: 'M5', existedBefore: o !== null }
     return { row: 'M6' }
   }
@@ -168,18 +191,19 @@ function classify(path, o, b, t) {
   if (t === null) return { row: 'M8' }
   if (b === null) return { row: 'M9' }
   if (path === 'pnpm-lock.yaml') return { row: 'M10' }
-  if (isBinary(o) || isBinary(b) || isBinary(t)) return { row: 'M11' }
+  if (binary) return { row: 'M11' }
   return { row: 'M12' }
 }
 
 /** M12: shells out to the real `git merge-file`, its three inputs written into the run's own
  * merge-inputs subdirectory, created lazily the first time any path reaches this row
  * (`mergeDirRef.current` is set once and reused, under a fresh file name, for every later M12
- * path in the same run -- this is also N2's fix for F14: a run with no M12 path never creates
- * this directory at all). T-0027 increment 1's own classification is deliberately naive (see the
- * increment plan): `code === 0` is a clean merge; any other value writes the (possibly marked)
- * output and reports UP-A1 -- the exit-code range check and UP-E11 land at increment 18 (U57). */
-async function runMergeFile({ deps, rangeRoot, baseVersion, targetVersion, mergeDirRef, path, o, b, t }) {
+ * path in the same run, so a run with no M12 path never creates this directory at all --
+ * F14's own `mkdtemp` count stays unaffected). `result.code === 0` is a clean merge
+ * (traceability.md "Merge table" M12); `1`-`127` is a conflict, written with its three labels and
+ * reported UP-A1; anything else -- including `null` for a process ended by a signal -- is a
+ * planning failure (`MergeFileError`, UP-E11; U57, D4). */
+async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion, mergeDirRef, path, o, b, t }) {
   if (mergeDirRef.current === undefined) {
     mergeDirRef.current = await deps.fs.mkdtemp(join(deps.tmpRoot, 'create-wxl-upgrade-merge-'))
   }
@@ -198,10 +222,22 @@ async function runMergeFile({ deps, rangeRoot, baseVersion, targetVersion, merge
   // T-0027 increment 25 (D4): `binary: true` keeps `result.stdout` as a `Buffer` -- the ordinary
   // string-decoding `runGit` would already have replaced every invalid UTF-8 byte sequence (e.g.
   // a non-UTF-8 text file such as Big5) with U+FFFD by the time this function ever saw it.
-  const result = await deps.runGit(
-    ['-c', 'core.autocrlf=false', 'merge-file', '-p', '--diff3', '-L', 'range', '-L', baseVersion, '-L', targetVersion, oPath, bPath, tPath],
-    { cwd: rangeRoot, env: buildGitEnv(deps.env), binary: true },
-  )
+  // A `runGit` rejection (not a resolved result with an unusable `code`) is also a planning
+  // failure, UP-E11 naming `path` with the rejection's own text -- not a bug.
+  let result
+  try {
+    result = await deps.runGit(
+      ['-c', 'core.autocrlf=false', 'merge-file', '-p', '--diff3', '-L', 'range', '-L', baseVersion, '-L', targetVersion, oPath, bPath, tPath],
+      { cwd: rangeRoot, env: buildGitEnv(deps.env), binary: true },
+    )
+  } catch (err) {
+    throw new PlanningError(path, err.message)
+  }
+  // A signal this process already received while that `runGit` call was in flight wins over
+  // interpreting its result -- checked the moment it resolves, BEFORE `result.code` is read, so
+  // a `merge-file` that ended with `code: null` (or any other value) because of that same signal
+  // is never reported as `UP-E11`.
+  guard.throwIfRaised()
 
   if (result.code === 0) {
     // T-0027 increment 19 (U58): a clean merge of a `.json` file whose merged output does not
@@ -271,95 +307,138 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
   const attention = []
   const mergeDirRef = {}
 
-  for (const path of [...allPaths].sort()) {
-    const [o, b, t] = await Promise.all([
-      readFileOrNull(deps.fs, join(rangeRoot, ...path.split('/'))),
-      baseFileSet.has(path) ? readFileOrNull(deps.fs, join(baseDir, ...path.split('/'))) : null,
-      targetFileSet.has(path) ? readFileOrNull(deps.fs, join(targetDir, ...path.split('/'))) : null,
-    ])
-    guard.throwIfRaised()
-
-    if (eq(b, t)) continue // P-2: leave o as it is, unreported
-
-    if (await hasSymlinkInPath(deps.fs, rangeRoot, path)) {
-      // P-3: untouched, UP-A7.
-      attention.push({ path, code: 'UP-A7' })
-      continue
-    }
-
-    if (hasCaseCollision(path, foldedGroups)) {
-      // P-4: untouched, UP-A8.
-      attention.push({ path, code: 'UP-A8' })
-      continue
-    }
-
-    if (!trackedSet.has(path) && (await isIgnoredPath(deps, rangeRoot, path))) {
-      // P-5: untouched, UP-A9.
-      attention.push({ path, code: 'UP-A9' })
-      continue
-    }
-
-    if (await isNonFileOther(deps.fs, rangeRoot, path)) {
-      // P-6 (T-0027 increment 15): untouched, UP-A10.
-      attention.push({ path, code: 'UP-A10' })
-      continue
-    }
-
-    const { row, existedBefore } = classify(path, o, b, t)
-
-    if (row === 'M4') continue
-    if (row === 'M5') {
-      const op = { path, action: 'write', content: t, existedBefore }
-      // M5 (traceability.md "Merge table"): "new files take t's executable bit; existing ones
-      // keep their mode" -- only a brand-new path (M5-added) ever needs t's own mode here; an
-      // existing one's mode is preserved by `merge-apply.mjs` regardless of which row wrote it.
-      if (!existedBefore) {
-        const targetStat = await deps.fs.stat(join(targetDir, ...path.split('/')))
-        op.newFileExecutable = (targetStat.mode & 0o111) !== 0
+  // The merge-inputs directory `runMergeFile` creates lazily, above, must be removed however
+  // this loop ends -- a read error, a `runGit` rejection, or a signal noticed by any of this
+  // loop's own `guard.throwIfRaised()` calls, not only `MergeFileError`. Wrapping the whole loop
+  // lets every one of those attach `mergeDirRef.current` (if a path has reached M12 by then) to
+  // the error it throws, for the caller (`upgrade.mjs`) to clean up -- `planMerge` itself never
+  // sees that caller's own `tmpDirs` list.
+  try {
+    for (const path of [...allPaths].sort()) {
+      // A read error of b or t other than the absent cases `readFileOrNull` already maps to
+      // `null` (e.g. `EACCES`) is a planning failure, UP-E11 naming this path -- not a bug
+      // (`CW-E14`), since it is the range's own file system that refused the read, not a
+      // programming error.
+      let b, t
+      try {
+        ;[b, t] = await Promise.all([
+          baseFileSet.has(path) ? readFileOrNull(deps.fs, join(baseDir, ...path.split('/'))) : null,
+          targetFileSet.has(path) ? readFileOrNull(deps.fs, join(targetDir, ...path.split('/'))) : null,
+        ])
+      } catch (err) {
+        throw new PlanningError(path, err.message)
       }
-      ops.push(op)
-      continue
+      guard.throwIfRaised()
+
+      if (eq(b, t)) continue // P-2: leave o as it is, unreported
+
+      if (await hasSymlinkInPath(deps.fs, rangeRoot, path)) {
+        // P-3: untouched, UP-A7.
+        attention.push({ path, code: 'UP-A7' })
+        continue
+      }
+
+      if (hasCaseCollision(path, foldedGroups)) {
+        // P-4: untouched, UP-A8.
+        attention.push({ path, code: 'UP-A8' })
+        continue
+      }
+
+      if (!trackedSet.has(path) && (await isIgnoredPath(deps, guard, rangeRoot, path))) {
+        // P-5: untouched, UP-A9.
+        attention.push({ path, code: 'UP-A9' })
+        continue
+      }
+
+      if (await isNonFileOther(deps.fs, rangeRoot, path)) {
+        // P-6 (T-0027 increment 15): untouched, UP-A10.
+        attention.push({ path, code: 'UP-A10' })
+        continue
+      }
+
+      // P-7 (D9): an ignore file (at any level -- the LAST path component, not only the
+      // range's root one) that upstream changed is never written, so the restore commands'
+      // `git clean -fd` can never delete a file the teacher's own (unwritten) ignore rules
+      // still match. Checked after every other pre-check, matching traceability.md's own
+      // "Pre-checks" table order.
+      if (path.split('/').pop() === '.gitignore') {
+        attention.push({ path, code: 'UP-A13' })
+        continue
+      }
+
+      // `o` is classified by `lstat` BEFORE any read -- P-3 (a symbolic link anywhere in `path`)
+      // and P-6 (a present, non-symbolic-link, non-regular-file `o`), both just above, already
+      // ran and left without ever reading `o`'s own content; only once
+      // neither applies is `o` known to be a regular file or absent, safe for an ordinary
+      // `readFile` -- otherwise a symlink to something whose read hangs or fails (a FIFO, a
+      // socket, a device) would crash or stall the whole run instead of being left untouched.
+      let o
+      try {
+        o = await readFileOrNull(deps.fs, join(rangeRoot, ...path.split('/')))
+      } catch (err) {
+        throw new PlanningError(path, err.message)
+      }
+      guard.throwIfRaised()
+
+      const { row, existedBefore } = classify(path, o, b, t)
+
+      if (row === 'M4') continue
+      if (row === 'M5') {
+        const op = { path, action: 'write', content: t, existedBefore }
+        // M5 (traceability.md "Merge table"): "new files take t's executable bit; existing ones
+        // keep their mode" -- only a brand-new path (M5-added) ever needs t's own mode here; an
+        // existing one's mode is preserved by `merge-apply.mjs` regardless of which row wrote it.
+        if (!existedBefore) {
+          const targetStat = await deps.fs.stat(join(targetDir, ...path.split('/')))
+          op.newFileExecutable = (targetStat.mode & 0o111) !== 0
+        }
+        ops.push(op)
+        continue
+      }
+      if (row === 'M6') {
+        ops.push({ path, action: 'delete' })
+        continue
+      }
+      if (row === 'M7') {
+        attention.push({ path, code: 'UP-A5' })
+        continue
+      }
+      if (row === 'M8') {
+        attention.push({ path, code: 'UP-A3' })
+        continue
+      }
+      if (row === 'M9') {
+        attention.push({ path, code: 'UP-A4' })
+        continue
+      }
+      if (row === 'M10') {
+        // `pnpm-lock.yaml` always already exists once a path reaches M10
+        // (its base and the teacher's own copy both had it) -- `existedBefore: true` is what
+        // tells `merge-apply.mjs`'s own write loop to preserve its CURRENT mode, the same "M5:
+        // existing ones keep their mode" guarantee every other existing-file write already gets.
+        ops.push({ path, action: 'write', content: t, existedBefore: true, report: 'UP-A6' })
+        attention.push({ path, code: 'UP-A6' })
+        continue
+      }
+      if (row === 'M11') {
+        attention.push({ path, code: 'UP-A2' })
+        continue
+      }
+      // M12
+      const outcome = await runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion, mergeDirRef, path, o, b, t })
+      guard.throwIfRaised()
+      if (outcome.action === 'write') {
+        ops.push({ path, action: 'write', content: outcome.content, existedBefore: o !== null, report: outcome.report })
+      }
+      if (outcome.report !== undefined) attention.push({ path, code: outcome.report })
     }
-    if (row === 'M6') {
-      ops.push({ path, action: 'delete' })
-      continue
-    }
-    if (row === 'M7') {
-      attention.push({ path, code: 'UP-A5' })
-      continue
-    }
-    if (row === 'M8') {
-      attention.push({ path, code: 'UP-A3' })
-      continue
-    }
-    if (row === 'M9') {
-      attention.push({ path, code: 'UP-A4' })
-      continue
-    }
-    if (row === 'M10') {
-      ops.push({ path, action: 'write', content: t, report: 'UP-A6' })
-      attention.push({ path, code: 'UP-A6' })
-      continue
-    }
-    if (row === 'M11') {
-      attention.push({ path, code: 'UP-A2' })
-      continue
-    }
-    // M12
-    let outcome
-    try {
-      outcome = await runMergeFile({ deps, rangeRoot, baseVersion, targetVersion, mergeDirRef, path, o, b, t })
-    } catch (err) {
-      // T-0027 increment 18: the merge-inputs directory (if created) still needs cleaning up by
-      // the caller, which never sees `mergeDirRef` once this throws past `planMerge`'s own return.
-      if (err instanceof MergeFileError) err.mergeDir = mergeDirRef.current
-      throw err
-    }
-    guard.throwIfRaised()
-    if (outcome.action === 'write') {
-      ops.push({ path, action: 'write', content: outcome.content, existedBefore: o !== null, report: outcome.report })
-    }
-    if (outcome.report !== undefined) attention.push({ path, code: outcome.report })
+  } catch (err) {
+    // Whatever throws here -- `MergeFileError`, a `SignalAbort` from
+    // `guard.throwIfRaised()`, a read error, or a `runGit` rejection -- the merge-inputs
+    // directory (if a path already reached M12 by then) is attached to it for the caller
+    // (`upgrade.mjs`) to remove; `planMerge` itself never sees that caller's own `tmpDirs` list.
+    if (mergeDirRef.current !== undefined && err.mergeDir === undefined) err.mergeDir = mergeDirRef.current
+    throw err
   }
 
   // Parent check (traceability.md:153, after the merge table; T-0027 increment 16, tightened by
@@ -385,8 +464,19 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
         let ancestorStat = null
         try {
           ancestorStat = await deps.fs.lstat(join(rangeRoot, ...ancestorParts))
-        } catch {
-          ancestorStat = null // absent: nothing to block this write at this ancestor level.
+        } catch (err) {
+          // Only ENOENT (absent) and ENOTDIR (a SHALLOWER ancestor already a
+          // file -- in practice never reached here, since this loop itself would already have set
+          // `blocked` at that shallower depth first) mean "nothing to block this write at this
+          // ancestor level"; any other error (e.g. EACCES) is a planning failure, not evidence of
+          // absence -- fail closed, like every other pre-check's own lstat.
+          if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') {
+            ancestorStat = null
+          } else {
+            const planningErr = new PlanningError(op.path, err.message)
+            if (mergeDirRef.current !== undefined) planningErr.mergeDir = mergeDirRef.current
+            throw planningErr
+          }
         }
         if (ancestorStat !== null && !ancestorStat.isDirectory()) blocked = true
       }
@@ -407,8 +497,7 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
   // to any single path, so it is appended after the path-sort above, with no `path` field of its
   // own (`upgrade-report.mjs`'s own sort already places a `UP-A12` item last regardless of this
   // append order; this is also why `attention.sort`, above, never sees it). The nine paths are
-  // written as literals here, at this one call site (the increment plan's own M9: no shared
-  // `anchor-files.mjs` module).
+  // written as literals here, at this one call site -- there is no shared module exporting them.
   const ANCHOR_PATHS = [
     'package.json',
     'README.md',

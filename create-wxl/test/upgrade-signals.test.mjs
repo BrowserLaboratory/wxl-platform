@@ -1,12 +1,12 @@
-// 0006-S1 signals during steps 7, 9 and 10 (traceability.md "Step order", "Signals", D8). T-0027
+// 0006-S1 signals during steps 7, 9 and 10 (traceability.md "Step order", D8). T-0027
 // increment 11 (U28). Sub-case (a) is a confirmation of T-0026's own `checkpoint('step-7')` +
 // `guard.throwIfRaised()` pairing; (b) and (c) are this ticket's own new behaviour.
 
 import { describe, it, expect, vi } from 'vitest'
-import { readFile, rename, rm } from 'node:fs/promises'
+import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { readdirSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -57,6 +57,95 @@ async function cleanupFixture(fixture, tmpRoot) {
 function remainingTmpEntries(tmpRoot) {
   return readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
 }
+
+describe('SIGINT during step 8, right after the first merge-file', () => {
+  it('exit 130; the merge-inputs temporary directory is not left under tmpRoot', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const signals = new EventEmitter()
+      const real = createSpawnGitRunner()
+      const runGit = vi.fn(async (args, opts) => {
+        const result = await real(args, opts)
+        if (args.includes('merge-file')) signals.emit('SIGINT')
+        return result
+      })
+
+      const result = await runUpgradeAgainst(fixture, { signals, runGit })
+      tmpRoot = result.tmpRoot
+      const { exitCode } = result
+
+      expect(exitCode).toBe(130)
+      expect(remainingTmpEntries(tmpRoot)).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('a signal received while merge-file ran wins over its own result', () => {
+  it('exit 130, not UP-E11; nothing written; no temporary directory left', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const before = await readFile(join(fixture.root, 'm12-clean.txt'))
+      const signals = new EventEmitter()
+      const real = createSpawnGitRunner()
+      // A signal arrives WHILE the real merge-file is still running (simulated here as arriving
+      // the moment this stub's own call for it is reached), and that same process happens to end
+      // with `code: null` (killed by the signal) -- the guard must win over interpreting that
+      // `null` as `MergeFileError`'s own "outside 0-127" case.
+      const runGit = vi.fn(async (args, opts) => {
+        if (args.includes('merge-file')) {
+          signals.emit('SIGINT')
+          return { code: null, stdout: Buffer.from(''), stderr: '' }
+        }
+        return real(args, opts)
+      })
+
+      const result = await runUpgradeAgainst(fixture, { signals, runGit })
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(exitCode).toBe(130)
+      expect(ioHelper.stderrText).not.toMatch(/UP-E11/)
+      expect(await readFile(join(fixture.root, 'm12-clean.txt'))).toEqual(before)
+      expect(remainingTmpEntries(tmpRoot)).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('a signal received while check-ignore ran wins over its own result', () => {
+  it('exit 130, not CW-E14; nothing written; no temporary directory left', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['P5-existing'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const before = await readFile(join(fixture.root, 'existing.local'))
+      const signals = new EventEmitter()
+      const real = createSpawnGitRunner()
+      const runGit = vi.fn(async (args, opts) => {
+        if (args[0] === 'check-ignore') {
+          signals.emit('SIGINT')
+          return { code: null, stdout: '', stderr: '' }
+        }
+        return real(args, opts)
+      })
+
+      const result = await runUpgradeAgainst(fixture, { signals, runGit })
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(exitCode).toBe(130)
+      expect(ioHelper.stderrText).not.toMatch(/CW-E14/)
+      expect(await readFile(join(fixture.root, 'existing.local'))).toEqual(before)
+      expect(remainingTmpEntries(tmpRoot)).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
 
 describe('SIGINT at the step-7 checkpoint (U28(a), confirmation)', () => {
   it('stops before any download; exit 130, range unchanged, no temporary directory', async () => {
@@ -128,6 +217,38 @@ describe('SIGTERM right after step 9\'s first rename (U28(b))', () => {
       expect(rangeJsonAfter).toBe(rangeJsonBefore)
 
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe("SIGTERM right after range.json's own temporary file is written", () => {
+  it('UP-E09 names the signal, exit 130; no temporary directory left', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M7'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const signals = new EventEmitter()
+      const writeFileOverride = async (path, ...rest) => {
+        const result = await writeFile(path, ...rest)
+        if (/^\.create-wxl-upgrade-tmp-[0-9a-f]+-range\.json$/.test(basename(String(path)))) signals.emit('SIGTERM')
+        return result
+      }
+      const { fs } = recordingFs({ writeFile: writeFileOverride })
+
+      const result = await runUpgradeAgainst(fixture, { signals, fs })
+      tmpRoot = result.tmpRoot
+      const { exitCode, ioHelper } = result
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
+      expect(ioHelper.stderrText).toContain('SIGTERM')
+      expect(ioHelper.stderrText).toContain('git clean -fd')
+      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(exitCode).toBe(130)
+
+      expect(remainingTmpEntries(tmpRoot)).toEqual([])
+      const rangeTmpFiles = readdirSync(fixture.root).filter((name) => name.startsWith('.create-wxl-upgrade-tmp'))
+      expect(rangeTmpFiles).toEqual([])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

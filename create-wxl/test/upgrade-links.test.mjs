@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { link, lstat, mkdir, readdir, readFile, readlink, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -141,6 +142,61 @@ describe.skipIf(process.platform === 'win32')('symlinks (U20)', () => {
         `R3: ${en['UP-A7']()} ${jsonValue('linkdir/newfile.txt')}`,
       ])
     } finally {
+      await rm(external, { recursive: true, force: true })
+      await rm(rangeRepo.root, { recursive: true, force: true })
+      await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+// `o` is classified by `lstat` (P-3/P-6) before any read -- a symbolic link
+// or non-file `o` is never read. A Unix domain socket makes this observable without a hang: an
+// ordinary `readFile` on one fails fast (not ENOENT/EISDIR/ENOTDIR), so reading it unconditionally
+// before P-3 ever runs blows up the whole run instead of leaving it untouched, UP-A7.
+describe.skipIf(process.platform === 'win32')('a symbolic link to a socket is never read', () => {
+  it('untouched, UP-A7, exit 0 -- the run must not read through the link', async () => {
+    const external = await makeTmpRoot('create-wxl-upgrade-external-')
+    const socketPath = join(external, 'secret.sock')
+    const server = createServer()
+    await new Promise((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(socketPath, resolve)
+    })
+
+    const rangeRepo = await makeRangeRepo({ tree: {}, rangeJson: rangeJsonFor(BASE_COMMIT) })
+    const linkPath = join(rangeRepo.root, 'link-to-socket.txt')
+    await symlink(socketPath, linkPath)
+    await rangeRepo.commit('track a symlink to a socket')
+
+    const baseEntries = [...PRISTINE_FIXTURE, { path: 'link-to-socket.txt', type: 'file', mode: 0o644, content: 'base content\n' }]
+    const targetEntries = [...PRISTINE_FIXTURE, { path: 'link-to-socket.txt', type: 'file', mode: 0o644, content: 'target content\n' }]
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    const fetchArchive = makeRefFetchArchive({
+      [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
+      [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
+    })
+    const deps = makeDeps({
+      cwd: rangeRepo.root,
+      tmpRoot,
+      env: rangeRepo.env,
+      runGit: vi.fn(createSpawnGitRunner()),
+      packageVersion: TARGET_VERSION,
+      source: { version: TARGET_VERSION },
+      fetchArchive,
+    })
+    const ioHelper = makeIo()
+
+    try {
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(0)
+      expect(ioHelper.stderrText).toBe('')
+      expect((await lstat(linkPath)).isSymbolicLink()).toBe(true)
+      expect(await readlink(linkPath)).toBe(socketPath)
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A7']()} ${jsonValue('link-to-socket.txt')}`)
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
       await rm(external, { recursive: true, force: true })
       await rm(rangeRepo.root, { recursive: true, force: true })
       await rm(rangeRepo.env.HOME, { recursive: true, force: true })

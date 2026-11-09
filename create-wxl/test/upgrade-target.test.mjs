@@ -406,11 +406,11 @@ describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never re
       const ioHelper = makeIo()
       const exitCode = await run(['upgrade'], ioHelper.io, deps)
 
-      // T-0027 increment 1 (ticket Comments, 2026-11-09, B2/N2): base and target differ only in
+      // T-0027 increment 1 (ticket Comments, 2026-11-09): base and target differ only in
       // `range.json` (P-1 skips it), so this fixture has nothing to merge -- the run completes
       // cleanly with exit 0, not 1. The merge-inputs directory is created only lazily, on an M12
-      // path (N2/N4's corrected M4 bullet); this fixture has none, so `createdTmpDirs.length`
-      // stays 2 (the base/target pristine directories only).
+      // path; this fixture has none, so `createdTmpDirs.length` stays 2 (the base/target
+      // pristine directories only).
       expect(exitCode).toBe(0)
       expect(createdTmpDirs.length).toBe(2)
       const remaining = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))

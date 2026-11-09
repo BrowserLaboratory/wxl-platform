@@ -15,21 +15,27 @@ function gitConfigPath(path) {
 }
 
 /** One gitconfig builder (S-22), instead of the identity/template/gpg block written out twice:
- * `excludesFile` is optional (C59's variant only). */
-function buildGitconfig({ tplDir, gpgProgram, excludesFile }) {
-  const lines = [
-    '[user]',
-    '\tname = Ada',
-    '\temail = ada@example.com',
-    '[init]',
-    `\ttemplateDir = ${gitConfigPath(tplDir)}`,
-    '[commit]',
-    '\tgpgsign = true',
-    '[gpg]',
-    `\tprogram = ${gitConfigPath(gpgProgram)}`,
-  ]
+ * `excludesFile` is optional (C59's variant only), and so are `tplDir`/`gpgProgram` together
+ * (T-0027's identity-only `HOME`, below, gives neither): `[init]`/`[commit]`/`[gpg]` are written
+ * only when both are given, which keeps every existing caller's own output unchanged.
+ * `mergeConflictStyle` is also optional (T-0027's own addition, defaults unchanged). */
+function buildGitconfig({ tplDir, gpgProgram, excludesFile, mergeConflictStyle } = {}) {
+  const lines = ['[user]', '\tname = Ada', '\temail = ada@example.com']
+  if (tplDir !== undefined && gpgProgram !== undefined) {
+    lines.push(
+      '[init]',
+      `\ttemplateDir = ${gitConfigPath(tplDir)}`,
+      '[commit]',
+      '\tgpgsign = true',
+      '[gpg]',
+      `\tprogram = ${gitConfigPath(gpgProgram)}`,
+    )
+  }
   if (excludesFile !== undefined) {
     lines.push('[core]', `\texcludesFile = ${gitConfigPath(excludesFile)}`)
+  }
+  if (mergeConflictStyle !== undefined) {
+    lines.push('[merge]', `\tconflictStyle = ${mergeConflictStyle}`)
   }
   lines.push('')
   return lines.join('\n')
@@ -78,11 +84,6 @@ export async function makeEmptyGitHome() {
  * object: there is no hook marker to report here. */
 export async function makeGitHomeIdentityOnly({ mergeConflictStyle } = {}) {
   const homeDir = await makeTmpRoot()
-  const lines = ['[user]', '\tname = Ada', '\temail = ada@example.com']
-  if (mergeConflictStyle !== undefined) {
-    lines.push('[merge]', `\tconflictStyle = ${mergeConflictStyle}`)
-  }
-  lines.push('')
-  await writeFile(join(homeDir, '.gitconfig'), lines.join('\n'))
+  await writeFile(join(homeDir, '.gitconfig'), buildGitconfig({ mergeConflictStyle }))
   return homeDir
 }

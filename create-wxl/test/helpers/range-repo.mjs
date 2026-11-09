@@ -23,9 +23,10 @@ async function writeTree(root, tree) {
 
 /** `git init`s a tmp dir, writes `tree` plus an optional `.gitignore` and `range.json`, and
  * commits everything with the identity-only `HOME` (`deps.env = { HOME, PATH, XDG_CONFIG_HOME,
- * LANG }`, matching T-0026's own isolation convention -- `create-wxl/src/git-runner.mjs:19-20,75`
- * only reads `env.PATH`). Returns `{ root, env, commit(message) }`: `commit()` stages and commits
- * everything currently on disk under `root` again (U61's "upgrade, commit, upgrade again"). */
+ * LANG }`, matching T-0026's own isolation convention -- `create-wxl/src/git-runner.mjs`'s
+ * `findPathValue` only reads `env.PATH`). Returns `{ root, env, commit(message) }`: `commit()`
+ * stages and commits everything currently on disk under `root` again (U61's "upgrade, commit,
+ * upgrade again"). */
 export async function makeRangeRepo({ tree = {}, rangeJson, gitignore, mergeConflictStyle } = {}) {
   const root = await makeTmpRoot('create-wxl-range-repo-')
   const home = await makeGitHomeIdentityOnly({ mergeConflictStyle })

@@ -218,8 +218,8 @@ export const en = {
   // T-0027 increment 1 (traceability.md "Codes", attention items UP-A1-UP-A12): a fixed
   // description per code, never per-instance (the path itself is printed by R3, next to the
   // code, not inside this text) -- so every one of these takes no fields at all, trivially safe
-  // under `language.test.mjs`'s shared `ARGS` object (M6/N10: a function that never destructures
-  // anything can never throw on a missing field).
+  // under `language.test.mjs`'s shared `ARGS` object: a function that never destructures anything
+  // can never throw on a missing field.
   'UP-A1': () => `UP-A1: a conflict was written, marked with three labels (range, the base version, the target version).`,
   'UP-A2': () => `UP-A2: a binary file changed on both sides; the range's own version was kept.`,
   'UP-A3': () => `UP-A3: upstream deleted a file the range changed; the range's own version was kept.`,
@@ -233,8 +233,11 @@ export const en = {
   // rules; untouched.
   'UP-A9': () => `UP-A9: the path is ignored by the range's own rules; it was left untouched.`,
   // T-0027 increment 13 (traceability.md "Codes", P-4): another path differs only by
-  // normalisation/case folding; untouched.
-  'UP-A8': () => `UP-A8: another path in the range differs from this one only by case; it was left untouched.`,
+  // `path.normalize('NFC')` and `toLowerCase()` (`merge-plan.mjs`'s `hasCaseCollision`) --
+  // lowercasing, not full Unicode case folding (recorded, not changed), so the text names the
+  // Unicode form too, not only letter case; untouched.
+  'UP-A8': () =>
+    `UP-A8: another path in the range differs from this one only by letter case or Unicode form; it was left untouched.`,
   // T-0027 increment 15 (traceability.md "Codes", P-6 and the parent check): the range has a
   // directory or other non-file where upstream has a file, or a planned write's parent is kept as
   // a non-directory; either way, untouched.
@@ -244,10 +247,15 @@ export const en = {
   'UP-A11': () => `UP-A11: a clean JSON merge did not parse; the range's own version was kept.`,
   // T-0027 increment 20 (traceability.md "Fork:init-derived content", "Codes" UP-A12): any of the
   // nine anchor files differs between base and target; this adds the single UP-A12 line, never
-  // naming the files themselves (the increment plan's own m15: both the rerun-with-original-
-  // arguments clause and the deploy-workflow clause).
+  // naming the files themselves -- the one fixed text below covers both the
+  // rerun-with-original-arguments clause and the deploy-workflow clause.
   'UP-A12': () =>
     `UP-A12: upstream changed files pnpm fork:init writes. After resolving every attention item, rerun pnpm fork:init with the range's original arguments; for a range with a deploy workflow, this also refreshes it.`,
+  // D9 (traceability.md "Pre-checks" P-7, "Codes" UP-A13): an ignore file (at any level) that
+  // upstream changed is never written, so the restore commands and every ignored file stay
+  // safe; the teacher merges the ignore rules by hand.
+  'UP-A13': () =>
+    `UP-A13: upstream changed an ignore file; it was left untouched so ignored files and the restore commands stay safe. Merge the ignore rules by hand.`,
   // T-0027 increment 10 (traceability.md "Codes" UP-E09): a write failed, or a signal arrived,
   // during step 9 (apply); names the path and the file-system error, or (for a signal) the signal
   // name, plus the fixed restore commands (traceability.md "Codes": "the restore commands
@@ -261,9 +269,15 @@ export const en = {
     `${posixCommand(['git', 'checkout', '--', '.'])} to restore it to HEAD.`,
   // T-0027 increment 18 (traceability.md "Codes" UP-E11): planning (step 8) failed -- `git
   // merge-file` exited outside 0-127 (or was ended by a signal, `code` `null`), or its output was
-  // not read in full. Nothing is written in the range before step 9, so there is nothing to
-  // restore (unlike UP-E09).
-  'UP-E11': ({ path }) => `UP-E11: planning the merge failed at ${jsonValue(path)}: git merge-file did not finish normally.`,
+  // not read in full (traceability.md's own wording for this code; no code path exercises that
+  // last clause -- see the ticket's coverage report). Nothing is written in the range before
+  // step 9, so there is nothing to restore (unlike UP-E09).
+  // `detail` is the underlying error's own text (a read error of o/b/t, or a `runGit` rejection
+  // for `merge-file`) -- absent for `MergeFileError` (U57's own "exited outside 0-127" case),
+  // which keeps its fixed wording instead.
+  'UP-E11': ({ path, detail }) =>
+    `UP-E11: planning the merge failed at ${jsonValue(path)}: ` +
+    (detail !== undefined ? jsonValue(detail) : `git merge-file did not finish normally.`),
   'CW-E01': ({ running, minimum }) =>
     `CW-E01: the running Node.js ${jsonValue(running)} is older than the minimum ${jsonValue(minimum)}; install a newer Node.js from https://nodejs.org/.`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
@@ -371,25 +385,31 @@ export const zhTW = {
     return `UP-E10：base 版本 ${jsonValue(version)} 低於 ${MINIMUM_BASE_VERSION_TEXT}；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
   },
   'UP-E08': ({ tag }) => `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。`,
-  'UP-A1': () => `UP-A1：寫入了衝突標記，共三個標籤（range、base 版本、target 版本）。`,
-  'UP-A2': () => `UP-A2：有二進位檔案兩邊都改了；保留靶場自己的版本。`,
-  'UP-A3': () => `UP-A3：上游刪除了靶場改過的檔案；保留靶場自己的版本。`,
-  'UP-A4': () => `UP-A4：上游新增的檔案在靶場裡已經是另一個不同的檔案；保留靶場自己的版本。`,
-  'UP-A5': () => `UP-A5：靶場刪除了上游改過的檔案；維持刪除狀態。`,
-  'UP-A6': () => `UP-A6：lockfile 兩邊都改了；採用上游的版本，請執行 pnpm install。`,
-  'UP-A7': () => `UP-A7：這個路徑本身或途經的目錄是靶場裡的符號連結；維持不動。`,
-  'UP-A9': () => `UP-A9：這個路徑被靶場自己的規則忽略；維持不動。`,
-  'UP-A8': () => `UP-A8：靶場裡另有一個路徑只差在大小寫；維持不動。`,
-  'UP-A10': () => `UP-A10：靶場這個路徑是目錄或其他非檔案的東西，但上游是檔案（或反過來）；維持不動。`,
-  'UP-A11': () => `UP-A11：JSON 乾淨合併後無法解析；保留靶場自己的版本。`,
+  // These UP-A* texts use an ASCII colon after the code, like `R1:`/`R2:`
+  // etc. elsewhere in the zh-TW report, instead of this table's own full-width "：" -- a R3 line
+  // is `R3: ` (ASCII) followed by one of these, so the two would otherwise mix colon styles in
+  // the same line.
+  'UP-A1': () => `UP-A1: 寫入了衝突標記，共三個標籤（range、base 版本、target 版本）。`,
+  'UP-A2': () => `UP-A2: 有二進位檔案兩邊都改了；保留靶場自己的版本。`,
+  'UP-A3': () => `UP-A3: 上游刪除了靶場改過的檔案；保留靶場自己的版本。`,
+  'UP-A4': () => `UP-A4: 上游新增的檔案在靶場裡已經是另一個不同的檔案；保留靶場自己的版本。`,
+  'UP-A5': () => `UP-A5: 靶場刪除了上游改過的檔案；維持刪除狀態。`,
+  'UP-A6': () => `UP-A6: lockfile 兩邊都改了；採用上游的版本，請執行 pnpm install。`,
+  'UP-A7': () => `UP-A7: 這個路徑本身或途經的目錄是靶場裡的符號連結；維持不動。`,
+  'UP-A9': () => `UP-A9: 這個路徑被靶場自己的規則忽略；維持不動。`,
+  'UP-A8': () => `UP-A8: 靶場裡另有一個路徑只差在大小寫或 Unicode 形式；維持不動。`,
+  'UP-A10': () => `UP-A10: 靶場這個路徑是目錄或其他非檔案的東西，但上游是檔案（或反過來）；維持不動。`,
+  'UP-A11': () => `UP-A11: JSON 乾淨合併後無法解析；保留靶場自己的版本。`,
   'UP-A12': () =>
-    `UP-A12：上游改了 pnpm fork:init 會寫入的檔案；請在解決所有注意項目後，用靶場原本的參數重新執行 pnpm fork:init；若靶場有部署用的 workflow，這個步驟也會一併更新它。`,
+    `UP-A12: 上游改了 pnpm fork:init 會寫入的檔案；請在解決所有注意項目後，用靶場原本的參數重新執行 pnpm fork:init；若靶場有部署用的 workflow，這個步驟也會一併更新它。`,
+  'UP-A13': () => `UP-A13: 上游改了一個忽略規則檔；維持不動，讓忽略的檔案與還原指令都安全。請自行手動合併忽略規則。`,
   'UP-E09': ({ path, signal, detail }) =>
     `UP-E09：` +
     (signal !== undefined ? `收到訊號（${jsonValue(signal)}）後停止套用合併結果` : `套用合併結果時在 ${jsonValue(path)} 失敗：${jsonValue(detail)}`) +
     `；靶場可能已經被部分改動。請執行 ${posixCommand(['git', 'clean', '-fd'])}，` +
     `再執行 ${posixCommand(['git', 'checkout', '--', '.'])} 還原到 HEAD。`,
-  'UP-E11': ({ path }) => `UP-E11：規劃合併時在 ${jsonValue(path)} 失敗：git merge-file 沒有正常結束。`,
+  'UP-E11': ({ path, detail }) =>
+    `UP-E11：規劃合併時在 ${jsonValue(path)} 失敗：` + (detail !== undefined ? jsonValue(detail) : `git merge-file 沒有正常結束。`),
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>

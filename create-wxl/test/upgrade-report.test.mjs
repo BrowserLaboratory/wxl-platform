@@ -1,5 +1,5 @@
 // 0006-S1 step 10 (traceability.md "Report"): a completed run exits 0 whether or not it has
-// attention items (U25). Increments 20/21/24/U59/U26/U62 add to this file later in the plan.
+// attention items (U25); this file also covers U59, U26 and U62.
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm } from 'node:fs/promises'
@@ -21,8 +21,9 @@ const BASE_COMMIT = '6'.repeat(40)
 const BASE_VERSION = '3.0.0'
 const TARGET_VERSION = '3.1.0'
 
-// U17's own 13 branches (upgrade-merge.test.mjs's `ALL_BRANCHES`), reused here (item 1, T-0027
-// verification follow-up) so R2's counts and R3's attention items are exactly U17's.
+// U17's own 13 branches (upgrade-merge.test.mjs's `ALL_BRANCHES`), plus `P2-both-equal` and
+// `teacher-owned` (U21) -- 15 entries in all -- reused here so R2's counts and R3's attention
+// items are exactly U17's.
 const ALL_BRANCHES = [
   'P2-both-absent',
   'P2-both-equal',
@@ -41,8 +42,9 @@ const ALL_BRANCHES = [
   'teacher-owned',
 ]
 
-// U17's own attention items (upgrade-merge.test.mjs:145-155), in R3's sorted-by-path order, with
-// UP-A12 last (M5-updated's README.md is an anchor file that diverges between base and target).
+// U17's own attention items (upgrade-merge.test.mjs's `describe('merge table (U17)')` `it`), in
+// R3's sorted-by-path order, with UP-A12 last (M5-updated's README.md is an anchor file that
+// diverges between base and target).
 const U17_ATTENTION = [
   { code: 'UP-A2', path: 'm11-binary.bin' },
   { code: 'UP-A1', path: 'm12-conflict.txt' },
@@ -215,7 +217,7 @@ describe('anchor file changes add UP-A12 (U59)', () => {
   })
 })
 
-// T-0027 increment 21 (U26, moved here per B5): the full R1-R5 report, in both languages, plus
+// T-0027 increment 21 (U26): the full R1-R5 report, in both languages, plus
 // the `--from`/base-version-display case and R4's two conditional bullets.
 describe('report text (U26)', () => {
   it('renders R1-R5 in full, in en, R1..R5 in order, each R3 line its own code\'s message text', async () => {
@@ -243,7 +245,9 @@ describe('report text (U26)', () => {
       // version and the target's own version are both "3.1.0" by the approved table's blanket
       // setting -- told apart only by their position in this exact, literal line, never by a
       // distinguishing value.
-      expect(lines[r1]).toBe(`R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`)
+      expect(lines[r1]).toBe(
+        `R1: create-wxl "3.1.0"; base "3.0.0" (commit "${BASE_COMMIT}"); target "3.1.0" (commit "${FIXED_COMMIT}")`,
+      )
       expect(lines[r2]).toBe('R2: updated 2 added 1 deleted 1') // same counts as U17.
 
       const r3Lines = lines.filter((line) => line.startsWith('R3:'))
@@ -257,7 +261,9 @@ describe('report text (U26)', () => {
         'R4: build and test',
         'R4: commit',
       ])
-      expect(lines[r5]).toBe('R5: git clean -fd; git checkout -- .')
+      // R5 also warns to use the restore commands only BEFORE making other changes
+      // (traceability.md "Report" R5; spec.en.md B4) -- not the bare commands alone.
+      expect(lines[r5]).toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -291,7 +297,9 @@ describe('report text (U26)', () => {
         `R1: create-wxl "3.1.0"；base 版本 "3.0.0"（commit "${BASE_COMMIT}"）；target 版本 "3.1.0"（commit "${FIXED_COMMIT}"）`,
       )
       expect(lines[r2]).toBe('R2: 更新 2 新增 1 刪除 1')
-      expect(lines[r1]).not.toBe(`R1: create-wxl "3.1.0"; base "3.0.0" ("${BASE_COMMIT}"); target "3.1.0" ("${FIXED_COMMIT}")`)
+      expect(lines[r1]).not.toBe(
+        `R1: create-wxl "3.1.0"; base "3.0.0" (commit "${BASE_COMMIT}"); target "3.1.0" (commit "${FIXED_COMMIT}")`,
+      )
       expect(lines[r2]).not.toBe('R2: updated 2 added 1 deleted 1')
 
       const r3Lines = lines.filter((line) => line.startsWith('R3:'))
@@ -306,8 +314,10 @@ describe('report text (U26)', () => {
         'R4: build 並測試',
         'R4: commit',
       ])
-      expect(lines[r5]).toBe('R5: 依序執行 git clean -fd 和 git checkout -- . 可撤銷整個升級')
-      expect(lines[r5]).not.toBe('R5: git clean -fd; git checkout -- .')
+      // R5 also warns to use the restore commands only BEFORE making other changes
+      // (traceability.md "Report" R5; spec.en.md B4).
+      expect(lines[r5]).toBe('R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .')
+      expect(lines[r5]).not.toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

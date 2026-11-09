@@ -1,12 +1,11 @@
 // 0006-S1 step 9's own last write (traceability.md "`range.json` after the plan"): after a
 // completed run, `range.json`'s `upstream` names the target, every other top-level key's value
 // and order is kept, and the file is created (`upstream` first) when absent (U24). Sub-case ②
-// (a `UP-E09` failure leaves `range.json` untouched) needs U27's own failure path (increment 10)
-// and is deferred to increment 14, per the increment plan.
+// (a `UP-E09` failure leaves `range.json` untouched) reuses U27's own failure path.
 
 import { describe, it, expect, vi } from 'vitest'
-import { readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readFile, rm, writeFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -76,14 +75,12 @@ describe('range.json after the plan (U24)', () => {
   })
 
   it('② a UP-E09 failure (step 9 write failure) leaves range.json byte-identical to before', async () => {
-    // Deferred from increment 8 (U24, sub-case ②) to increment 14, once U27's own failure path
-    // (increment 10) exists.
+    // Reuses U27's own failure path (step 9's write failure).
     const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
       const rangeJsonBefore = await readFile(join(fixture.root, 'range.json'), 'utf8')
-      const destPath = join(fixture.root, 'README.md')
-      const rename = failAt('rename', (count, args) => (args[1] === destPath ? fsError('EIO', 'EIO: i/o error') : null))
+      const rename = failAt('rename', (count, args) => (basename(args[1]) === 'README.md' ? fsError('EIO', 'EIO: i/o error') : null))
       const { fs } = recordingFs({ rename })
 
       const result = await runUpgradeAgainst(fixture, ['upgrade'], { fs })
@@ -124,6 +121,31 @@ describe('range.json after the plan (U24)', () => {
 
       const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
       const expected = JSON.stringify({ upstream: TARGET_UPSTREAM, x: 1 }, null, 2) + '\n'
+      expect(raw).toBe(expected)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  it("⑤ an ignored file named exactly like range.json's old fixed temporary name is untouched; range.json is still updated; exit 0", async () => {
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const collisionPath = join(fixture.root, '.create-wxl-upgrade-tmp-range.json')
+      const collisionContent = "the teacher's own file, not to be touched\n"
+      await writeFile(collisionPath, collisionContent)
+      const gitignore = await readFile(join(fixture.root, '.gitignore'), 'utf8')
+      await writeFile(join(fixture.root, '.gitignore'), gitignore + '.create-wxl-upgrade-tmp-range.json\n')
+      await fixture.commit('ignore the collision file')
+
+      const result = await runUpgradeAgainst(fixture)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(0)
+
+      expect(await readFile(collisionPath, 'utf8')).toBe(collisionContent)
+
+      const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
+      const expected = JSON.stringify({ upstream: TARGET_UPSTREAM }, null, 2) + '\n'
       expect(raw).toBe(expected)
     } finally {
       await cleanupFixture(fixture, tmpRoot)

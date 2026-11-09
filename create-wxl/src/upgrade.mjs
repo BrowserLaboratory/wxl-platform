@@ -1,14 +1,13 @@
 // The upgrade path (0006-S1, traceability.md "Step order"): `run.mjs` dispatches here once
-// `parseArgvStrict` reports `mode === 'upgrade'` (Command grammar). Steps 3-7 are implemented;
-// step 7 ends by building both pristine ranges (base, then target). Decision (4)'s own CW-E14
-// fall-through (every range that reached step 8 ended there, unmerged) is gone as of T-0027
-// increment 1: step 8 plans the merge (merge-plan.mjs), step 9 applies it (merge-apply.mjs), and
-// step 10 removes the run's temporary directories and prints the report (upgrade-report.mjs).
+// `parseArgvStrict` reports `mode === 'upgrade'` (Command grammar). Step 7 ends by building both
+// pristine ranges (base, then target); step 8 plans the merge (merge-plan.mjs), step 9 applies
+// it (merge-apply.mjs), and step 10 removes the run's temporary directories and prints the
+// report (upgrade-report.mjs).
 
 import { join, resolve as resolvePath } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
 import { SignalAbort } from './signals.mjs'
-import { planMerge, MergeFileError } from './merge-plan.mjs'
+import { planMerge, MergeFileError, PlanningError } from './merge-plan.mjs'
 import { applyMerge } from './merge-apply.mjs'
 import { buildReport } from './upgrade-report.mjs'
 import { COMMIT_RE, VERSION_RE } from './patterns.mjs'
@@ -60,7 +59,7 @@ function lsFilesTag(line) {
 // finishing the operation, so this marker is needed in addition to those two.
 const IN_PROGRESS_MARKERS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG', 'rebase-merge', 'rebase-apply', 'sequencer']
 
-/** D6 (F01/B1, stage 6 disposition): a non-zero OR `null` exit (killed by a signal) from any of
+/** D6: a non-zero OR `null` exit (killed by a signal) from any of
  * step 4's three git commands is never treated as "no output, therefore clean" -- it stops the
  * run with CW-E14 naming the command and the stderr git reported, through the same bug/signal
  * catch `runUpgrade` already has (fail closed). */
@@ -419,7 +418,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return 1
   }
 
-  // Decision (4) (ticket Comments, "increment plan: user decisions") no longer falls through to
+  // Decision (4) (ticket Comments, 2026-11-09) no longer falls through to
   // CW-E14 as of T-0027 increment 1: both pristine ranges exist, so step 8 plans the merge against
   // them (merge-plan.mjs), step 9 applies the plan (merge-apply.mjs), and only then (step 10) are
   // the temporary directories -- including the merge-inputs one merge-plan.mjs may have created
@@ -438,12 +437,17 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       targetVersion: deps.source.version,
     })
   } catch (err) {
+    // `planMerge`'s own catch attaches the merge-inputs directory (if one
+    // was created) to ANY error it rethrows -- a `MergeFileError`, a signal, a read error, or a
+    // `runGit` rejection -- so it is removed here before the error is handled further, the same
+    // way every other early exit's temporary directories are.
+    if (err?.mergeDir !== undefined) tmpDirs.push(err.mergeDir)
     // T-0027 increment 18 (U57): `git merge-file` exited outside 0-127 -- planning failed, so
-    // nothing from step 9 ever runs; UP-E11 names the path. The merge-inputs directory (if any)
-    // is cleaned up the same way every other early exit's temporary directories are.
-    if (err instanceof MergeFileError) {
-      if (err.mergeDir !== undefined) tmpDirs.push(err.mergeDir)
-      io.stderr.write(t2['UP-E11']({ path: err.path }) + '\n')
+    // nothing from step 9 ever runs; UP-E11 names the path.
+    // `PlanningError` is the same planning failure, with the underlying error's own text
+    // (`err.detail`) added -- a read error of o/b/t, or a `runGit` rejection for `merge-file`.
+    if (err instanceof MergeFileError || err instanceof PlanningError) {
+      io.stderr.write(t2['UP-E11']({ path: err.path, detail: err.detail }) + '\n')
       await cleanupTmpDirs(deps, tmpDirs)
       return 1
     }
@@ -470,7 +474,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     return applyResult.signal !== undefined ? 130 : 1
   }
 
-  // D8 (traceability.md "Signals"): unlike every earlier checkpoint, `step-10` does not pair with
+  // D8 (traceability.md "Step order"): unlike every earlier checkpoint, `step-10` does not pair with
   // an immediate `guard.throwIfRaised()` -- a signal here still lets the report print in full
   // first; only once it is on stdout does a raised signal turn this run's exit code into 130.
   deps.checkpoint('step-10')
@@ -478,7 +482,11 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
 
   // T-0027 increment 21 (U26), traceability.md "Report" R4: "for a range with
   // .github/workflows/deploy.yml" -- read AFTER apply (step 9), so the advice reflects the
-  // range's own state once this run is done, not its state before it started.
+  // range's own state once this run is done, not its state before it started. Unlike the parent
+  // check's and `existingMode`'s own `lstat` (merge-plan.mjs, merge-apply.mjs), which are
+  // fail-closed, this one stays fail-open ON PURPOSE -- R4's own advice is best-effort, so ANY
+  // `lstat` error here (not only `ENOENT`) is read as "no deploy.yml", never stopping a run
+  // that has already fully applied the plan.
   let hasDeployWorkflow = false
   try {
     const deployStat = await deps.fs.lstat(join(deps.cwd, '.github', 'workflows', 'deploy.yml'))

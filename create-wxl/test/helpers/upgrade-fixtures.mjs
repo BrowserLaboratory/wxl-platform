@@ -1,9 +1,9 @@
-// T-0027 increment plan ("Helpers and fixtures to build first", N3's redesigned
-// `upgrade-fixtures.mjs`): `buildUpgradeFixtures({ branches })` builds the teacher's range repo
-// (`o`) and the base/target archive entry lists (`b`, `t`) for exactly the named branch(es) of
-// the merge table, plus the fixed scaffold every row needs regardless (a `.gitignore` identical
-// on all three sides, and an untracked, ignored file in neither B nor T -- M2). There is no
-// "default 13" baked in: a row names only the branch(es) its own fixture needs.
+// `buildUpgradeFixtures({ branches })` builds the teacher's range repo (`o`) and the base/target
+// archive entry lists (`b`, `t`) for exactly the named branch(es) of the merge table, plus the
+// fixed scaffold every row needs regardless: a `.gitignore` the teacher's own range has (`o`),
+// absent from B and T (P-2's "both absent", unless a branch overrides it), and an untracked,
+// ignored file in neither B nor T. There is no "default 13" baked in: a row names only the
+// branch(es) its own fixture needs.
 //
 // `o` is derived by running the SAME pristine transforms (P1-P3: `applyChangelog`,
 // `applyOpenQuestions`, `applyPackageJson`; P4/`range.json` is handled by `makeRangeRepo`'s own
@@ -15,12 +15,12 @@
 // default; a branch that needs `o` to diverge from that baseline opts in with its own
 // `oOverride` entry, applied on top, after the pristine derivation.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { applyChangelog, applyOpenQuestions, applyPackageJson } from '../../src/pristine.mjs'
 import { PRISTINE_FIXTURE } from './fixtures.mjs'
 import { makeRangeRepo } from './range-repo.mjs'
+import { makeTmpRoot } from './tmp.mjs'
 
 /** A sentinel for an `oOverride` entry that removes a path `o`'s pristine-derived baseline would
  * otherwise have (M7's "the range deleted a file upstream changed"), distinct from `undefined`
@@ -30,9 +30,11 @@ export const DELETE = Symbol('upgrade-fixtures: delete from o')
 
 /** One entry per branch of P-2, M4-M12 (traceability.md "Pre-checks", "Merge table") this ticket
  * names; each gives `base`/`target` (path -> content, layered onto `PRISTINE_FIXTURE`),
- * `targetDirs` (directory entries the target archive needs for a brand-new nested path, M5-added
- * only) and `oOverride` (path -> content, or `DELETE`, applied on top of `o`'s pristine-derived
- * baseline). A path named by exactly one branch never collides with another's. */
+ * `targetDirs`/`baseDirs` (directory entries a brand-new nested path needs in the target or base
+ * archive -- M5-added and every other branch whose path lives under a directory that is not in
+ * `PRISTINE_FIXTURE` already) and `oOverride` (path -> content, or `DELETE`, applied on top of
+ * `o`'s pristine-derived baseline). A path named by exactly one branch never collides with
+ * another's. */
 const BRANCH_SPECS = {
   'P2-both-absent': {},
   'P2-both-equal': {
@@ -101,7 +103,8 @@ const BRANCH_SPECS = {
     oOverride: { 'teacher-owned.txt': "the teacher's own file, absent from both base and target\n" },
   },
   // T-0027 increment 6 (U22): the fixed scaffold's own `.gitignore` already matches `*.local`
-  // (M2's own untracked scratch file) -- these two reuse that same pattern. `o`'s pristine-derived
+  // (the fixed scaffold's own untracked `scratch.local` file) -- these two reuse that same
+  // pattern. `o`'s pristine-derived
   // baseline already equals `base`'s own raw content for a path pristine processing never touches
   // (P5-existing's own `o ≡ b`), so no `oOverride` is needed here.
   'P5-existing': {
@@ -194,6 +197,27 @@ const BRANCH_SPECS = {
     baseDirs: ['.github/', '.github/workflows/'],
     targetDirs: ['.github/', '.github/workflows/'],
   },
+  // D9 (U63): the range's root `.gitignore` and a nested `sub/.gitignore`
+  // both change upstream (the root one drops the rule matching the fixed scaffold's own
+  // `scratch.local` and adds an unrelated one); `o` is not overridden, so it derives from
+  // `base` on both sides (`o ≡ b`) -- the pre-change behaviour (no P-7) wrongly treats this as a
+  // plain M5 write, which is exactly the bug D9 fixes.
+  'U63-gitignore': {
+    base: { '.gitignore': '*.local\n', 'sub/.gitignore': '*.old\n' },
+    target: { '.gitignore': '*.tmp\n', 'sub/.gitignore': '*.new\n' },
+    baseDirs: ['sub/'],
+    targetDirs: ['sub/'],
+  },
+  // `≡` must decide "binary" per PATH (any of o/b/t present with a NUL in
+  // its first 8000 bytes), not per PAIR being compared. `b` (LF text) and `o` (the same text,
+  // CRLF) would be `≡` under a pair-wise decision (neither has a NUL, so CRLF -> LF normalisation
+  // applies, and it makes them equal); `t` (binary, has a NUL) makes the WHOLE path binary, so
+  // `o` vs `b` must compare raw bytes instead, where the CRLF bytes make them differ.
+  'binary-any-side': {
+    base: { 'p9-mixed.txt': 'alpha\nbeta\n' },
+    target: { 'p9-mixed.txt': Buffer.from([0x61, 0x6c, 0x70, 0x68, 0x61, 0x00, 0x62, 0x65, 0x74, 0x61]) },
+    oOverride: { 'p9-mixed.txt': 'alpha\r\nbeta\r\n' },
+  },
   // T-0027 increment 25 (D4): a clean M12 merge of a non-UTF-8 (Big5-like) text file, edits on
   // different lines -- each byte sequence below is an invalid UTF-8 lead byte (no NUL), so the
   // ordinary string-decoding `runGit` would turn it into U+FFFD (0xEF 0xBF 0xBD) before
@@ -263,7 +287,7 @@ async function readDirAsTree(dir) {
  * (P4/`range.json` is `makeRangeRepo`'s own concern), reads the result back as a flat tree, then
  * removes the scratch directory. */
 async function buildPristineTree(entries) {
-  const dir = await mkdtemp(join(tmpdir(), 'create-wxl-upgrade-fixture-pristine-'))
+  const dir = await makeTmpRoot('create-wxl-upgrade-fixture-pristine-')
   try {
     await writeEntriesToDir(dir, entries)
     const fsAdapter = { readFile, writeFile }
@@ -278,10 +302,11 @@ async function buildPristineTree(entries) {
 
 /** Builds `o` (a committed range-repo fixture, `makeRangeRepo`), `b` and `t` (archive entry
  * lists, for `pristineArchive(commit, { entries })`/`makeRefFetchArchive`) for exactly the named
- * `branches` (array of `BRANCH_SPECS` keys) plus the fixed scaffold: a `.gitignore` identical on
- * all three sides (P-2), and an untracked, ignored file in neither B nor T (M2), written AFTER
- * the repo's own commit so it stays untracked. Returns `{ root, env, commit, baseEntries,
- * targetEntries }` (`root`/`env`/`commit` from `makeRangeRepo`). */
+ * `branches` (array of `BRANCH_SPECS` keys) plus the fixed scaffold: a `.gitignore` only the
+ * teacher's own range has (absent from B and T, P-2, unless a branch overrides it), and an
+ * untracked, ignored file in neither B nor T, written AFTER the repo's own commit so it stays
+ * untracked. Returns `{ root, env, commit, baseEntries, targetEntries }` (`root`/`env`/`commit`
+ * from `makeRangeRepo`). */
 export async function buildUpgradeFixtures({ branches = [], mergeConflictStyle, rangeJson } = {}) {
   const specs = branches.map((name) => {
     const spec = BRANCH_SPECS[name]
@@ -310,8 +335,8 @@ export async function buildUpgradeFixtures({ branches = [], mergeConflictStyle, 
   const gitignore = '*.local\n'
   const rangeRepo = await makeRangeRepo({ tree: treeForRepo, gitignore, mergeConflictStyle, rangeJson })
 
-  // M2 (fixed scaffold): an untracked, `.gitignore`-matched file in neither B nor T, written
-  // after the repo's own commit so `git status` (step 4) still sees a clean tree.
+  // An untracked, `.gitignore`-matched file in neither B nor T (U22), written after the repo's
+  // own commit so `git status` (step 4) still sees a clean tree.
   await writeFile(join(rangeRepo.root, 'scratch.local'), 'teacher scratch file, ignored\n')
 
   return { ...rangeRepo, baseEntries, targetEntries }

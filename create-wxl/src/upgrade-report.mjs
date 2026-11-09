@@ -19,8 +19,7 @@ function countsFromOps(ops) {
 }
 
 /** UP-A12 sorts last among attention lines (traceability.md "Report" R3); every other code sorts
- * by path. UP-A12 does not exist before increment 20 (U59), so this is vacuously true until
- * then. */
+ * by path. */
 function sortAttention(attention) {
   const rest = attention.filter((item) => item.code !== 'UP-A12').sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   const anchor = attention.filter((item) => item.code === 'UP-A12')
@@ -28,9 +27,9 @@ function sortAttention(attention) {
 }
 
 /** T-0027 increment 21 (U26), traceability.md "Report" R2's own "M10 is not counted as updated":
- * the same test this op's own `report` field already excludes from `countsFromOps`, above -- a
- * written `package.json`/`pnpm-lock.yaml` still needs `pnpm install` advice whether or not it was
- * an M10 lockfile-conflict write or a plain M5/M12 write. */
+ * unlike `countsFromOps`, above, this does not look at `op.report` at all -- a written
+ * `package.json`/`pnpm-lock.yaml` still needs `pnpm install` advice whether or not it was an M10
+ * lockfile-conflict write or a plain M5/M12 write. */
 function wroteDependencyFile(ops) {
   return ops.some((op) => op.action === 'write' && (op.path === 'package.json' || op.path === 'pnpm-lock.yaml'))
 }
@@ -63,8 +62,9 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
     zh
       ? `R1: create-wxl ${jsonValue(toolVersion)}；base 版本 ${jsonValue(baseVersion)}（commit ${jsonValue(baseCommit)}）；` +
           `target 版本 ${jsonValue(targetVersion)}（commit ${jsonValue(targetCommit)}）`
-      : `R1: create-wxl ${jsonValue(toolVersion)}; base ${jsonValue(baseVersion)} (${jsonValue(baseCommit)}); ` +
-          `target ${jsonValue(targetVersion)} (${jsonValue(targetCommit)})`,
+      // Names the commit the same way the zh-TW text above already does.
+      : `R1: create-wxl ${jsonValue(toolVersion)}; base ${jsonValue(baseVersion)} (commit ${jsonValue(baseCommit)}); ` +
+          `target ${jsonValue(targetVersion)} (commit ${jsonValue(targetCommit)})`,
   )
   lines.push(
     zh
@@ -80,6 +80,13 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
     lines.push(item.code === 'UP-A12' ? `R3: ${t2[item.code]()}` : `R3: ${t2[item.code]()} ${jsonValue(item.path)}`)
   }
   lines.push(...buildR4Lines(lang2, { ops, hasDeployWorkflow }))
-  lines.push(zh ? 'R5: 依序執行 git clean -fd 和 git checkout -- . 可撤銷整個升級' : 'R5: git clean -fd; git checkout -- .')
+  // traceability.md "Report" R5; spec.en.md B4: the restore commands undo
+  // the WHOLE upgrade, so they are only safe BEFORE any other change -- the fixed bare commands
+  // alone, without that warning, let a teacher who edits first lose that edit too.
+  lines.push(
+    zh
+      ? 'R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .'
+      : 'R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .',
+  )
   return lines.join('\n') + '\n'
 }

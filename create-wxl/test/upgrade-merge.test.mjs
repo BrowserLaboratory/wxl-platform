@@ -6,9 +6,9 @@
 // `test/helpers/upgrade-fixtures.mjs`).
 
 import { describe, it, expect, vi } from 'vitest'
-import { chmod, readFile, rm, stat } from 'node:fs/promises'
+import { chmod, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -19,6 +19,8 @@ import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archiv
 import { verifyGit } from './helpers/real-git.mjs'
 import { makeRangeRepo } from './helpers/range-repo.mjs'
 import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
+import { recordingFs } from './helpers/fs-recorder.mjs'
+import { failAt, fsError } from './helpers/fail-at.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
@@ -138,12 +140,10 @@ describe('merge table (U17)', () => {
 
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 2 added 1 deleted 1$/m)
       const r3Lines = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
-      // B6 (increment plan, "Needs a user decision" §3, approved 2026-11-09): read as "exactly 6
-      // per-path, M4-M12-derived" attention lines, with any line beyond those 6 being exactly one
-      // UP-A12 (Fork:init-derived content, counted separately, not one of the 6) -- vacuously true
-      // before increment 20 (U59) lands, meaningfully true after it (this fixture's own M5-updated
-      // branch uses README.md, an anchor file that diverges between base and target by
-      // construction), with no edit needed at either point.
+      // traceability.md "Report" R3: exactly 6 per-path, M4-M12-derived attention lines, plus
+      // exactly one UP-A12 last (Fork:init-derived content, not tied to a path; U59) -- this
+      // fixture's own M5-updated branch uses README.md, an anchor file that diverges between
+      // base and target by construction, so the fixture always triggers it.
       // T-0027 verification follow-up (item 1/2): R3 renders each attention item through the
       // run's message table (here, en), not a bare code (traceability.md:206).
       expect(r3Lines.slice(0, 6)).toEqual([
@@ -154,9 +154,9 @@ describe('merge table (U17)', () => {
         `R3: ${en['UP-A4']()} ${jsonValue('m9-new-both-sides.txt')}`,
         `R3: ${en['UP-A6']()} ${jsonValue('pnpm-lock.yaml')}`,
       ])
-      const extraLines = r3Lines.slice(6)
-      expect(extraLines.length).toBeLessThanOrEqual(1)
-      expect(extraLines.every((line) => line === `R3: ${en['UP-A12']()}`)).toBe(true)
+      // Exactly one UP-A12 line, last -- not "at most one", which would
+      // stay green even if this fixture's own anchor-file change stopped producing it.
+      expect(r3Lines.slice(6)).toEqual([`R3: ${en['UP-A12']()}`])
 
       const afterHead = await verifyGit(['rev-parse', 'HEAD'], { cwd: fixture.root, env: fixture.env })
       expect(afterHead.stdout).toBe(beforeHead.stdout)
@@ -227,7 +227,7 @@ describe('M12 conflict markers (U19)', () => {
 
 describe('case collision (U53)', () => {
   it("Guide.md (B) and guide.md (T) only differ by case: both untouched, UP-A8 each", async () => {
-    // B7, corrected (increment plan): the range already has Guide.md, tracked; B carries
+    // The range already has Guide.md, tracked; B carries
     // Guide.md, T carries guide.md -- a rename upstream, with the SAME content on both sides (the
     // approved reading, ticket 2026-11-09 comment, decisions item 2); o starts equal to B's own
     // Guide.md. B and T are the pristine ranges P-4 reads: B lists only `Guide.md`, T lists only
@@ -281,16 +281,20 @@ describe('case collision (U53)', () => {
 
 describe.skipIf(process.platform === 'win32')('executable mode (U23)', () => {
   it('a new executable file is written 0755 (umask 022); an existing file keeps its own mode, executable or not', async () => {
-    const umask = process.umask(0o022)
-    const rangeRepo = await makeRangeRepo({
-      tree: {
-        'existing-0755.sh': '#!/bin/sh\necho hi\n',
-        'mode-change.txt': 'o/b original content\n',
-      },
-      rangeJson: rangeJsonFor(BASE_COMMIT),
-    })
+    // The umask is set and restored both inside the same try/finally as
+    // every other cleanup here, so a throw from `makeRangeRepo` itself still restores it.
+    let umask
+    let rangeRepo
     let tmpRoot
     try {
+      umask = process.umask(0o022)
+      rangeRepo = await makeRangeRepo({
+        tree: {
+          'existing-0755.sh': '#!/bin/sh\necho hi\n',
+          'mode-change.txt': 'o/b original content\n',
+        },
+        rangeJson: rangeJsonFor(BASE_COMMIT),
+      })
       // The approved extra sub-case (ticket's 2026-11-09 comment): an EXISTING 0755 file updated
       // by M5 keeps 0755 -- so `o` itself, not just the archives, must start at that mode.
       await chmod(join(rangeRepo.root, 'existing-0755.sh'), 0o755)
@@ -304,8 +308,8 @@ describe.skipIf(process.platform === 'win32')('executable mode (U23)', () => {
       ]
       const targetEntries = [
         ...PRISTINE_FIXTURE,
-        // Target's own mode changes on both existing paths; M5 ignores it either way (M3: "existing
-        // ones keep their mode").
+        // Target's own mode changes on both existing paths; M5 ignores it either way
+        // (traceability.md "Merge table" M5: "existing ones keep their mode").
         { path: 'existing-0755.sh', type: 'file', mode: 0o644, content: '#!/bin/sh\necho updated\n' },
         { path: 'mode-change.txt', type: 'file', mode: 0o755, content: 'updated by upstream\n' },
         { path: 'bin/', type: 'dir', mode: 0o755 },
@@ -338,10 +342,32 @@ describe.skipIf(process.platform === 'win32')('executable mode (U23)', () => {
       expect((await readFile(join(rangeRepo.root, 'existing-0755.sh'))).toString()).toBe('#!/bin/sh\necho updated\n')
       expect((await readFile(join(rangeRepo.root, 'mode-change.txt'))).toString()).toBe('updated by upstream\n')
     } finally {
-      process.umask(umask)
-      await rm(rangeRepo.root, { recursive: true, force: true })
-      await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+      if (umask !== undefined) process.umask(umask)
+      if (rangeRepo !== undefined) {
+        await rm(rangeRepo.root, { recursive: true, force: true })
+        await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+      }
       if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe.skipIf(process.platform === 'win32')("M10 keeps the lockfile's existing mode", () => {
+  it('a 0755 lockfile stays 0755 after M10 writes the target content', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M10'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      await chmod(join(fixture.root, 'pnpm-lock.yaml'), 0o755)
+      await fixture.commit('set the lockfile mode to 0755')
+
+      const { exitCode, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture)
+      tmpRoot = usedTmpRoot
+
+      expect(exitCode).toBe(0)
+      expect((await stat(join(fixture.root, 'pnpm-lock.yaml'))).mode & 0o777).toBe(0o755)
+      expect((await readFile(join(fixture.root, 'pnpm-lock.yaml'))).toString()).toBe('lockfile v1 target\n')
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
     }
   })
 })
@@ -466,6 +492,67 @@ describe('P-6 and the parent check (U55)', () => {
   })
 })
 
+describe("the parent check's own lstat fails closed", () => {
+  it('EACCES on the parent directory of an M5-added path -> UP-E11 naming the path, exit 1, nothing written', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M5-added'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      // `assets` does not exist yet (M5-added creates it): P-3's own `hasSymlinkInPath` already
+      // `lstat`s it once per path, legitimately ENOENT (not yet classified as a symlink), before
+      // the parent check (after the whole merge table, over every planned write) `lstat`s the
+      // SAME ancestor path a second time -- only that SECOND call is overridden here, matched by
+      // file name, so P-3's own (unrelated) reading of this path is left exactly as it already is.
+      let matchCount = 0
+      const lstatOverride = failAt('lstat', (_count, args) => {
+        if (basename(args[0]) !== 'assets') return null
+        matchCount++
+        return matchCount === 2 ? fsError('EACCES', 'EACCES: permission denied') : null
+      })
+      const { fs } = recordingFs({ lstat: lstatOverride })
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = usedTmpRoot
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E11/m)
+      expect(ioHelper.stderrText).toContain('assets/new-file.txt')
+      expect(exitCode).toBe(1)
+      await expect(readFile(join(fixture.root, 'assets', 'new-file.txt'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe("step 9's existingMode lstat fails closed", () => {
+  it('EACCES on an M5-updated path\'s destination during step 9 -> UP-E09 naming the path, exit 1', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      // Two legitimate `lstat` calls for 'README.md' already happen in step 8 (P-3's
+      // `hasSymlinkInPath` and P-6's `isNonFileOther`); only the THIRD one, step 9's own
+      // `existingMode` read, is overridden here, matched by file name.
+      let matchCount = 0
+      const lstatOverride = failAt('lstat', (_count, args) => {
+        if (basename(args[0]) !== 'README.md') return null
+        matchCount++
+        return matchCount === 3 ? fsError('EACCES', 'EACCES: permission denied') : null
+      })
+      const { fs } = recordingFs({ lstat: lstatOverride })
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = usedTmpRoot
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
+      expect(ioHelper.stderrText).toContain('README.md')
+      expect(ioHelper.stderrText).toContain('git clean -fd')
+      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(exitCode).toBe(1)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
 describe('CRLF-only difference between o and b (U56)', () => {
   it('o differs from b only by CRLF, t changed: M5, t written', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['U56-crlf-m5'], rangeJson: rangeJsonFor(BASE_COMMIT) })
@@ -547,6 +634,73 @@ describe('merge-file exit outside 0-127 (U57)', () => {
   })
 })
 
+describe('planning failures other than an absent path', () => {
+  it("a read error of an M12 path's own o (other than absent) -> UP-E11 naming the path, the error in the text, exit 1; nothing written", async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M5-added', 'M6', 'M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const m6Before = await readFile(join(fixture.root, 'm6-upstream-removed.txt'))
+      const rangeJsonBefore = await readFile(join(fixture.root, 'range.json'), 'utf8')
+
+      const readFileOverride = failAt('readFile', (count, args) =>
+        // o only: the file name, and its parent folder is the range's own (b and t are read from the
+        // pristine ranges' folders), both compared by name.
+        basename(args[0]) === 'm12-clean.txt' && basename(dirname(args[0])) === basename(fixture.root)
+          ? fsError('EACCES', 'EACCES: permission denied')
+          : null,
+      )
+      const { fs } = recordingFs({ readFile: readFileOverride })
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = usedTmpRoot
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E11/m)
+      expect(ioHelper.stderrText).toContain('m12-clean.txt')
+      expect(ioHelper.stderrText).toContain('EACCES')
+      expect(exitCode).toBe(1)
+      expect(await readOptional(join(fixture.root, 'assets', 'new-file.txt'))).toBeNull()
+      expect(await readFile(join(fixture.root, 'm6-upstream-removed.txt'))).toEqual(m6Before)
+      expect(await readFile(join(fixture.root, 'range.json'), 'utf8')).toBe(rangeJsonBefore)
+      const remainingTmp = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+      expect(remainingTmp).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('runGit rejects for merge-file', () => {
+  it('UP-E11 naming the path, the error in the text, exit 1; nothing written', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M5-added', 'M6', 'M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const m6Before = await readFile(join(fixture.root, 'm6-upstream-removed.txt'))
+      const rangeJsonBefore = await readFile(join(fixture.root, 'range.json'), 'utf8')
+
+      const real = createSpawnGitRunner()
+      const runGit = vi.fn((args, opts) => {
+        if (args.includes('merge-file')) return Promise.reject(new Error('ECONNRESET: socket hang up'))
+        return real(args, opts)
+      })
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture, { runGit })
+      tmpRoot = usedTmpRoot
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E11/m)
+      expect(ioHelper.stderrText).toContain('m12-clean.txt')
+      expect(ioHelper.stderrText).toContain('ECONNRESET')
+      expect(exitCode).toBe(1)
+      expect(await readOptional(join(fixture.root, 'assets', 'new-file.txt'))).toBeNull()
+      expect(await readFile(join(fixture.root, 'm6-upstream-removed.txt'))).toEqual(m6Before)
+      expect(await readFile(join(fixture.root, 'range.json'), 'utf8')).toBe(rangeJsonBefore)
+      const remainingTmp = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+      expect(remainingTmp).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
 describe('M12 clean merge of invalid JSON (U58)', () => {
   it('a clean merge of package.json that does not parse as JSON: o kept, UP-A11', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['U58-invalid-json'], rangeJson: rangeJsonFor(BASE_COMMIT) })
@@ -559,6 +713,24 @@ describe('M12 clean merge of invalid JSON (U58)', () => {
       expect(exitCode).toBe(0)
       expect(await readFile(join(fixture.root, 'package.json'))).toEqual(before)
       expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A11']()} ${jsonValue('package.json')}`)
+      expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('binary decided per path, across all three sides', () => {
+  it('o (CRLF text) is kept and reported UP-A2 -- o ≢ b once t (binary) makes the whole path binary', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['binary-any-side'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture)
+      tmpRoot = usedTmpRoot
+
+      expect(exitCode).toBe(0)
+      expect((await readFile(join(fixture.root, 'p9-mixed.txt'))).toString()).toBe('alpha\r\nbeta\r\n')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A2']()} ${jsonValue('p9-mixed.txt')}`)
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
@@ -582,6 +754,38 @@ describe('M12 clean merge of a non-UTF-8 file (D4)', () => {
       const expected = Buffer.from([0xa4, 0x5d, 0x0a, 0xb0, 0xcf, 0x0a, 0xa4, 0x5e, 0x0a])
       expect(written).toEqual(expected)
       expect(written.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false)
+      expect(ioHelper.stdoutText).toMatch(/^R2: updated 1 added 0 deleted 0$/m)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+describe('step 9\'s own temporary file', () => {
+  it('an ignored file already at the (pre-fix) fixed temp-file name for an M5 path is left byte-identical; the M5 path is still written', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      // The name scheme read from `merge-apply.mjs`'s own `tempPathFor`, BEFORE this item's fix:
+      // a fixed `.create-wxl-upgrade-tmp-<basename>`, alongside the destination. `README.md` is
+      // this fixture's own M5-updated path, so its own (pre-fix) temp name is this literal.
+      const collisionPath = join(fixture.root, '.create-wxl-upgrade-tmp-README.md')
+      const collisionContent = "the teacher's own file, coincidentally named like the old temp scheme\n"
+      // Ignored (not tracked, matched by an added .gitignore rule), as the sub-case asks --
+      // committed via the fixture's own `commit()` so step 4's clean-repository check still
+      // passes once the ignored file itself is written, after this commit, untracked.
+      await writeFile(join(fixture.root, '.gitignore'), '*.local\n.create-wxl-upgrade-tmp-README.md\n')
+      await fixture.commit('ignore the old temp-file name too')
+      await writeFile(collisionPath, collisionContent)
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture)
+      tmpRoot = usedTmpRoot
+
+      expect(exitCode).toBe(0)
+      expect((await readFile(join(fixture.root, 'README.md'))).toString()).toBe(
+        '# wxl\n\nA pristine range fixture, updated by upstream.\n',
+      )
+      expect(await readFile(collisionPath)).toEqual(Buffer.from(collisionContent))
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 1 added 0 deleted 0$/m)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
