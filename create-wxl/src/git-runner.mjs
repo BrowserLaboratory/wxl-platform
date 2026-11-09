@@ -65,12 +65,16 @@ function resolveGitPath(env, cwd, platform) {
   return null
 }
 
-/** Returns a `runGit(args, { cwd, env })` function matching `deps.runGit`'s contract: resolves to
- * `{ code, stdout, stderr }`, or rejects (ENOENT when `git` cannot be resolved from `PATH`, or
- * whatever `child_process.spawn`'s own `error` event reports). `platform` (default
- * `process.platform`) is injectable so tests can exercise the win32 lookup on any host. */
+/** Returns a `runGit(args, { cwd, env, binary })` function matching `deps.runGit`'s contract:
+ * resolves to `{ code, stdout, stderr }`, or rejects (ENOENT when `git` cannot be resolved from
+ * `PATH`, or whatever `child_process.spawn`'s own `error` event reports). `platform` (default
+ * `process.platform`) is injectable so tests can exercise the win32 lookup on any host. T-0027
+ * (D4, increment 25): `binary` (default falsy; every existing call site is unaffected) keeps
+ * `stdout` as a `Buffer` -- `git merge-file -p`'s own output is the one caller (`merge-plan.mjs`)
+ * that cannot afford the string-decoding path below silently replacing an invalid UTF-8 byte
+ * sequence (a non-UTF-8 text file, e.g. Big5) with U+FFFD before it is ever written back. */
 export function createSpawnGitRunner({ platform = process.platform } = {}) {
-  return function runGit(args, { cwd, env }) {
+  return function runGit(args, { cwd, env, binary = false }) {
     return new Promise((resolvePromise, reject) => {
       const gitPath = resolveGitPath(env, cwd, platform)
       if (!gitPath) {
@@ -86,19 +90,28 @@ export function createSpawnGitRunner({ platform = process.platform } = {}) {
         reject(err)
         return
       }
-      // A multibyte UTF-8 character can land split across two `data` events; decoding each
-      // chunk on its own (`stdout += chunk`) would mangle it, so each stream gets its own
-      // stateful decoder instead (`setEncoding` buffers an incomplete trailing sequence until
-      // the rest arrives).
-      child.stdout.setEncoding('utf8')
+      // stderr is always decoded as text (a multibyte UTF-8 character can land split across two
+      // `data` events; `setEncoding` buffers an incomplete trailing sequence until the rest
+      // arrives, decoding each chunk on its own would mangle it). stdout does the same UNLESS
+      // `binary` asks for the raw bytes instead, accumulated as `Buffer` chunks and concatenated
+      // once on `close` -- never `setEncoding('utf8')`, which would already have thrown away the
+      // original bytes by the time `close` fires.
       child.stderr.setEncoding('utf8')
-      let stdout = ''
       let stderr = ''
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk
-      })
       child.stderr.on('data', (chunk) => {
         stderr += chunk
+      })
+      if (binary) {
+        const stdoutChunks = []
+        child.stdout.on('data', (chunk) => stdoutChunks.push(chunk))
+        child.on('error', (err) => reject(err))
+        child.on('close', (code) => resolvePromise({ code, stdout: Buffer.concat(stdoutChunks), stderr }))
+        return
+      }
+      child.stdout.setEncoding('utf8')
+      let stdout = ''
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk
       })
       child.on('error', (err) => reject(err))
       child.on('close', (code) => resolvePromise({ code, stdout, stderr }))

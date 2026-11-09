@@ -302,7 +302,7 @@ describe('in-progress marker check: an lstat error other than ENOENT fails close
   })
 })
 
-describe('git command failures (D6, F01/B1): fail closed, never treated as clean', () => {
+describe('git command failures (D6): fail closed, never treated as clean', () => {
   const realGit = createSpawnGitRunner()
 
   function interceptingGitStub(matchesArgs, response) {

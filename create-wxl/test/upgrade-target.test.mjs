@@ -369,7 +369,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
 })
 
 describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never replaces the run\'s own exit code', () => {
-  it('rm fails for the base pristine directory -> the target directory is still removed; run() resolves 1, not a rejection', async () => {
+  it('rm fails for the base pristine directory -> the target directory is still removed; run() resolves 0, not a rejection', async () => {
     const fixture = await makeFixtureRange({
       rangeJson: { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.0.0', commit: BASE_COMMIT } },
     })
@@ -406,7 +406,12 @@ describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never re
       const ioHelper = makeIo()
       const exitCode = await run(['upgrade'], ioHelper.io, deps)
 
-      expect(exitCode).toBe(1)
+      // T-0027 increment 1 (ticket Comments, 2026-11-09): base and target differ only in
+      // `range.json` (P-1 skips it), so this fixture has nothing to merge -- the run completes
+      // cleanly with exit 0, not 1. The merge-inputs directory is created only lazily, on an M12
+      // path; this fixture has none, so `createdTmpDirs.length` stays 2 (the base/target
+      // pristine directories only).
+      expect(exitCode).toBe(0)
       expect(createdTmpDirs.length).toBe(2)
       const remaining = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
       expect(remaining).toEqual([basename(createdTmpDirs[0])])

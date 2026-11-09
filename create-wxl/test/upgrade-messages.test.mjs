@@ -15,7 +15,8 @@ import { makeDeps } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
 import { makeTmpRoot } from './helpers/tmp.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
-import { en, zhTW, upgradeMergeNotImplemented } from '../src/messages.mjs'
+import { en, zhTW } from '../src/messages.mjs'
+import { buildReport } from '../src/upgrade-report.mjs'
 
 describe('UP-E10 wording: a present-but-invalid-format version is "not valid", not "lower than 3.0.0"', () => {
   it('en and zh-TW both begin with UP-E10 and distinguish an invalid format from a too-low version', () => {
@@ -153,6 +154,43 @@ describe('every UP-* message starts with its own code', () => {
     'UP-E08': { tag: 'v3.1.0' },
     'UP-E10': { version: '2.9.9' },
     'UP-I01': { version: '3.0.0', commit: '0'.repeat(40) },
+    // T-0027 increment 1 (ticket Comments, 2026-11-09): one entry per new code, at the
+    // increment adding it -- these six take no fields at all (messages.mjs's own comment).
+    'UP-A1': {},
+    'UP-A2': {},
+    'UP-A3': {},
+    'UP-A4': {},
+    'UP-A5': {},
+    'UP-A6': {},
+    // T-0027 increment 4 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U20, P-3).
+    'UP-A7': {},
+    // T-0027 increment 6 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U22, P-5).
+    'UP-A9': {},
+    // T-0027 increment 10 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U27, step 9's write failure).
+    'UP-E09': { path: '/a/b/pnpm-lock.yaml', detail: 'EIO: i/o error' },
+    // T-0027 increment 13 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U53, P-4).
+    'UP-A8': {},
+    // T-0027 increment 15 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U54/U55, P-6 and the parent check).
+    'UP-A10': {},
+    // T-0027 increment 18 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U57, `git merge-file` outside 0-127).
+    'UP-E11': { path: '/a/b/m12-clean.txt' },
+    // T-0027 increment 19 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U58, M12 clean merge of invalid JSON).
+    'UP-A11': {},
+    // T-0027 increment 20 (ticket Comments, 2026-11-09): added at the increment that adds the
+    // code (U59, Fork:init-derived content / anchor files).
+    'UP-A12': {},
+    // D9: added at the increment that adds the code (U63, P-7, an ignore file changed
+    // upstream).
+    'UP-A13': {},
+    // D10: added at the increment that adds the code (U64, P-8, a submodule path).
+    'UP-A14': {},
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {
@@ -164,7 +202,7 @@ describe('every UP-* message starts with its own code', () => {
       expect(zhTW[id]).toBeTypeOf('function')
       for (const table of [en, zhTW]) {
         const text = table[id](UP_ARGS[id])
-        // A10 (stage 6 verification): the whole message begins with its own code, so a UP-*
+        // The whole message begins with its own code, so a UP-*
         // message that omitted its code entirely fails here too.
         expect(text.startsWith(id)).toBe(true)
       }
@@ -172,12 +210,81 @@ describe('every UP-* message starts with its own code', () => {
   })
 })
 
-describe('upgradeMergeNotImplemented: the decision-(4) detail outside the id tables', () => {
-  it('has exactly an en and a zh-TW text, both non-empty and different', () => {
-    expect(Object.keys(upgradeMergeNotImplemented).sort()).toEqual(['en', 'zh-TW'])
-    expect(upgradeMergeNotImplemented.en).toBe('the upgrade merge is not implemented yet')
-    expect(upgradeMergeNotImplemented['zh-TW']).toBeTypeOf('string')
-    expect(upgradeMergeNotImplemented['zh-TW'].length).toBeGreaterThan(0)
-    expect(upgradeMergeNotImplemented['zh-TW']).not.toBe(upgradeMergeNotImplemented.en)
+describe('UP-E09 wording: the path/detail branch and the signal branch', () => {
+  it('en and zh-TW both begin with UP-E09; the signal branch names the signal, not a path, and renders its own text in each branch and each language', () => {
+    const pathArgs = { path: '/a/b/pnpm-lock.yaml', detail: 'EIO: i/o error' }
+    const signalArgs = { signal: 'SIGTERM' }
+
+    const enPath = en['UP-E09'](pathArgs)
+    const zhPath = zhTW['UP-E09'](pathArgs)
+    const enSignal = en['UP-E09'](signalArgs)
+    const zhSignal = zhTW['UP-E09'](signalArgs)
+
+    for (const text of [enPath, zhPath, enSignal, zhSignal]) {
+      expect(text.startsWith('UP-E09')).toBe(true)
+    }
+
+    expect(enSignal).toContain('SIGTERM')
+    expect(zhSignal).toContain('SIGTERM')
+    expect(enSignal).not.toContain('pnpm-lock.yaml')
+    expect(zhSignal).not.toContain('pnpm-lock.yaml')
+    expect(enPath).not.toContain('SIGTERM')
+    expect(zhPath).not.toContain('SIGTERM')
+
+    // Each branch renders its own text, distinct from the other branch and from the other
+    // language.
+    expect(enPath).not.toBe(enSignal)
+    expect(zhPath).not.toBe(zhSignal)
+    expect(enPath).not.toBe(zhPath)
+    expect(enSignal).not.toBe(zhSignal)
+  })
+})
+
+// R1, R2, every R4 line and R5 each render their own text in en and in zh-TW, present in both
+// languages and never the same string -- checked here at the message level (`buildReport`
+// directly), not by running a whole upgrade as `upgrade-report.test.mjs` already does.
+describe('report line text (R1, R2, R4, R5) exists in both languages and differs', () => {
+  it('renders R1, R2, every R4 line and R5 with its own text in en and in zh-TW, never the same string', () => {
+    const common = {
+      toolVersion: '1.2.3',
+      baseVersion: '1.0.0',
+      baseCommit: 'a'.repeat(40),
+      targetVersion: '1.1.0',
+      targetCommit: 'b'.repeat(40),
+      // A written `package.json` and a deploy workflow together trigger both of R4's conditional
+      // bullets, so this one fixture exercises every R4 line in a single call.
+      ops: [{ path: 'package.json', action: 'write', existedBefore: true }],
+      attention: [],
+      hasDeployWorkflow: true,
+    }
+    const reportEn = buildReport({ ...common, lang2: 'en', t2: en })
+      .split('\n')
+      .filter((line) => line !== '')
+    const reportZh = buildReport({ ...common, lang2: 'zh-TW', t2: zhTW })
+      .split('\n')
+      .filter((line) => line !== '')
+
+    const linesFor = (lines, id) => lines.filter((line) => line.startsWith(id))
+
+    for (const id of ['R1:', 'R2:', 'R5:']) {
+      const [enLine] = linesFor(reportEn, id)
+      const [zhLine] = linesFor(reportZh, id)
+      expect(enLine, `${id} missing from the en report`).toBeTruthy()
+      expect(zhLine, `${id} missing from the zh-TW report`).toBeTruthy()
+      expect(zhLine).not.toBe(enLine)
+    }
+
+    const r4En = linesFor(reportEn, 'R4:')
+    const r4Zh = linesFor(reportZh, 'R4:')
+    expect(r4En.length).toBeGreaterThan(0)
+    expect(r4Zh.length).toBe(r4En.length)
+    // `R4: commit` is the one R4 line with no translated words around it at all (`commit` is the
+    // whole line, as `upgrade-report.mjs`'s `buildR4Lines` writes it, unconditionally, for both
+    // languages) -- every other R4 line differs between languages.
+    r4En.forEach((line, i) => (line === 'R4: commit' ? expect(r4Zh[i]).toBe(line) : expect(r4Zh[i]).not.toBe(line)))
+
+    // R1 names the commit in both languages.
+    expect(linesFor(reportEn, 'R1:')[0]).toContain('commit')
+    expect(linesFor(reportZh, 'R1:')[0]).toContain('commit')
   })
 })

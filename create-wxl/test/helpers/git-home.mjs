@@ -15,21 +15,27 @@ function gitConfigPath(path) {
 }
 
 /** One gitconfig builder (S-22), instead of the identity/template/gpg block written out twice:
- * `excludesFile` is optional (C59's variant only). */
-function buildGitconfig({ tplDir, gpgProgram, excludesFile }) {
-  const lines = [
-    '[user]',
-    '\tname = Ada',
-    '\temail = ada@example.com',
-    '[init]',
-    `\ttemplateDir = ${gitConfigPath(tplDir)}`,
-    '[commit]',
-    '\tgpgsign = true',
-    '[gpg]',
-    `\tprogram = ${gitConfigPath(gpgProgram)}`,
-  ]
+ * `excludesFile` is optional (C59's variant only), and so are `tplDir`/`gpgProgram` together
+ * (T-0027's identity-only `HOME`, below, gives neither): `[init]`/`[commit]`/`[gpg]` are written
+ * only when both are given, which keeps every existing caller's own output unchanged.
+ * `mergeConflictStyle` is also optional (T-0027's own addition, defaults unchanged). */
+function buildGitconfig({ tplDir, gpgProgram, excludesFile, mergeConflictStyle } = {}) {
+  const lines = ['[user]', '\tname = Ada', '\temail = ada@example.com']
+  if (tplDir !== undefined && gpgProgram !== undefined) {
+    lines.push(
+      '[init]',
+      `\ttemplateDir = ${gitConfigPath(tplDir)}`,
+      '[commit]',
+      '\tgpgsign = true',
+      '[gpg]',
+      `\tprogram = ${gitConfigPath(gpgProgram)}`,
+    )
+  }
   if (excludesFile !== undefined) {
     lines.push('[core]', `\texcludesFile = ${gitConfigPath(excludesFile)}`)
+  }
+  if (mergeConflictStyle !== undefined) {
+    lines.push('[merge]', `\tconflictStyle = ${mergeConflictStyle}`)
   }
   lines.push('')
   return lines.join('\n')
@@ -68,4 +74,16 @@ export async function makeGitHomeWithExcludes() {
  * cannot fall back to the real `$HOME`'s own config. */
 export async function makeEmptyGitHome() {
   return makeTmpRoot()
+}
+
+/** T-0027 increment 0 (ticket Notes "要建的 fixture/helper"): an identity-only `HOME` for the
+ * 0006 upgrade fixtures -- only `[user] name/email`, and `[merge] conflictStyle` when given; no
+ * `[commit] gpgsign` and no `[init] templateDir`, unlike `makeGitHomeWithHook`, whose
+ * `gpgsign = true` points at a non-existent `gpg.program` and would make every commit this epic's
+ * own fixtures make fail. Returns the `HOME` directory's path (like `makeEmptyGitHome`), not an
+ * object: there is no hook marker to report here. */
+export async function makeGitHomeIdentityOnly({ mergeConflictStyle } = {}) {
+  const homeDir = await makeTmpRoot()
+  await writeFile(join(homeDir, '.gitconfig'), buildGitconfig({ mergeConflictStyle }))
+  return homeDir
 }

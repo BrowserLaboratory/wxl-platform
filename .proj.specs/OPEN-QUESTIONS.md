@@ -1029,3 +1029,29 @@ Cloudflare Pages article for teachers who choose it (the user's answer 2 of 2026
 
 **Revisit when.** The authoring-environment epic settles what a teacher installs and runs, or before
 the next teacher workshop.
+
+## OQ-026 — Should the upgrade write a `range.json` that the teacher's range ignores?
+
+**Deferred on:** 2026-11-09
+**Status:** open
+
+**Reason.** Raised by T-0027's stage 7 security review (candidate 19,
+`.proj.specs/0006-range-upgrade/review/security-T-0027.md`); the user chose to defer it on 2026-11-09.
+Pre-check P-1 takes `range.json` out of the merge before P-5's ignore check, and step 9 always
+writes it (traceability.md "Pre-checks" P-1, "Step order" row 9; spec AC-9 "a missing file is
+created"). If a teacher's rules ignore an untracked `range.json`, the restore commands
+(`git clean -fd` then `git checkout -- .`) neither restore nor remove it, against AC-11 and B4; the
+next upgrade then takes the target as its base and skips upstream's changes in between.
+
+**Evidence.** Verified by reading `create-wxl/src/merge-plan.mjs` (P-1) and
+`create-wxl/src/merge-apply.mjs` (`writeRangeJson`) at T-0027's branch; not reproduced on a terminal.
+It needs a teacher's own ignore rule over `range.json`, then the restore commands.
+
+**Blocks.** Nothing in epic 0006. Options: stop in step 5, before any download, when `range.json`
+is untracked and ignored (a new code); or keep writing it and say in R5 that an ignored
+`range.json` is not restored.
+
+**Not blocked.** T-0027 and the epic's close-out.
+
+**Revisit when.** A teacher reports it, or the next epic that changes the upgrade's steps.
+

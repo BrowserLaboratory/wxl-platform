@@ -2,10 +2,12 @@
 
 Status: revision 2 (2026-10-16). Round 1 of adversarial review found no P0 (`review/round-1.md`), so
 the stage 3 gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups
-U1–U9) and the user's decisions D1–D2, and by D1 round 2 is not run. Derived from `traceability.md`,
+U1–U9) and the user's decisions D1–D2, and by D1 round 2 is not run. `traceability.md` has since
+moved to revision 2.5 (D7 to D10, decided during T-0026 and T-0027); this text names them where they
+change a criterion. Derived from `traceability.md`,
 which holds the fixed lists this spec refers to (decisions in short, vocabulary, command grammar, step
-order, base rules J1–J5, pre-checks P-1–P-6, merge table M4–M12 and the parent check, fork:init-derived
-content, the `range.json` update, codes UP-E01–E11, UP-I01 and UP-A1–A12, the report R1–R5, the stage 8
+order, base rules J1–J5, pre-checks P-1–P-8, merge table M4–M12 and the parent check, fork:init-derived
+content, the `range.json` update, codes UP-E01–E11, UP-I01 and UP-A1–A14, the report R1–R5, the stage 8
 simulation) and the seams 0006-S1 and S2. This epic depends on 0005 (`.proj.specs/0005-create-wxl/`,
 revision 2): it reuses 0005's `run` function, package source record, download, archive entry rules,
 pristine processing P1–P4, `range.json` schema, language rule, signal handling, output escaping and
@@ -82,7 +84,8 @@ from version 3.0.0 on.
   `git clean -fd` then `git checkout -- .` restores `HEAD` exactly; the report says to use them only
   before other changes.
 - **Exit codes**: 0 when the run completed, with or without attention items (the report lists them;
-  pnpm would print a failure for any other code), and for a no-op; 1 on an error; 130 on a signal.
+  pnpm would print a failure for any other code), and for a no-op; 1 on an error; 130 on a signal, including one in step 10, where the report still prints in full
+  first (D8).
 
 ## Trust Boundaries and Threat Model
 
@@ -104,7 +107,7 @@ from version 3.0.0 on.
 - **AC-5** A failed, hostile or unprocessable archive ends with 0005's code, and a tag archive without a 40-hex `comment` with UP-E08; each exits 1 with nothing written in the range and no `create-wxl-upgrade-` entry under `tmpRoot`. (U15, U16)
 - **AC-6** In one run whose fixture has one path for every branch of P-2 and M4–M12, each path ends as its row states and R2 and R3 report exactly those; a clean M12 merge is written, an overlapping one carries the four marker lines with the three labels whatever `merge.conflictStyle` says; teacher-own files are untouched and unreported; a new executable file is written 0755; case-only renames give UP-A8; a file replaced by a directory works and the reverse gives UP-A10, as does a write blocked by a kept file; CRLF-only differences count as equal; `merge-file` exiting 255 gives UP-E11 with nothing written; an unparsable clean `.json` merge keeps the range's file with UP-A11. (U17–U19, U21, U23, U53–U58)
 - **AC-7** A path that is or passes through a symbolic link (tracked or ignored) is untouched and reported UP-A7 and the link's outside target keeps its content and modification time; a hard-linked tracked file written by M5 leaves its outside name unchanged. (U20, U60)
-- **AC-8** An ignored file at a path upstream changes, and a path upstream adds that the range ignores, are untouched and reported UP-A9. (U22)
+- **AC-8** An ignored file at a path upstream changes, and a path upstream adds that the range ignores, are untouched and reported UP-A9. A `.gitignore` upstream changes is untouched and reported UP-A13, so the set of ignored paths does not change (D9). (U22, U63)
 - **AC-9** After a completed run, `range.json`'s `upstream` equals the target's repository, version and commit, other top-level keys are deep-equal and in their order, a missing file is created; after UP-E09 it is unchanged. (U24)
 - **AC-10** A completed run exits 0 whether or not attention items exist; the report prints R1–R5 by id in order and in the run's language, R2's counts equal the paths so classified, R3 lists every attention item with its code, UP-A12 appears exactly when an anchor file has b ≢ t; every UP code exists in both message tables; paths are escaped. (U25, U26, U59, U62)
 - **AC-11** A write failure or a signal in step 9 prints UP-E09 with the path or signal and the restore commands (exit 1, or 130 for a signal); a signal in step 7 writes nothing (exit 130); no temporary directory is left; after a completed or a failed run, `git clean -fd && git checkout -- .` gives an empty porcelain status, `HEAD`'s files, and ignored files byte-identical to before the run. (U27–U29)
