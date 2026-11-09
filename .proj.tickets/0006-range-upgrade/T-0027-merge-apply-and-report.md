@@ -46,7 +46,7 @@ with `git clean -fd` then `git checkout -- .`.
 - [x] U29: after U17's run, the restore commands → empty status, `HEAD`'s files, ignored files byte-identical (AC-11)
 - [x] U63: upstream changes `.gitignore` and a nested `.gitignore` → both untouched, UP-A13 each; the teacher's ignored file byte-identical after the run and after the restore commands (AC-8, D9)
 - [x] U64: a path at or inside a submodule → untouched, UP-A14 each; no status line for the submodule after the run, empty status after the restore commands (AC-6, D10)
-- [ ] U32: stage 8 simulation A → B exactly as listed (AC-13)
+- [x] U32: stage 8 simulation A → B exactly as listed (AC-13)
 - [x] U53: case-only rename → both untouched, UP-A8 each (AC-6)
 - [x] U54: file → directory and directory → file swaps → as the row states (AC-6)
 - [x] U55: directory where b and t are files; T adds `a/x` over a kept file `a` → untouched, UP-A10 (AC-6)
@@ -499,4 +499,78 @@ every guard. Checks, macOS (darwin arm64, Node v24.13.0), 2026-11-09: `pnpm --di
 `Test Files 35 passed (35) / Tests 623 passed (623)` (create-wxl vitest in Node); `pnpm test --run` →
 `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`; `python3 scripts/verify-project.py`
 → `PASS`. windows-latest: on the pull request.
+
+### 2026-11-09 — stage 8 end-to-end (0006-S2)
+
+Surface: a terminal on macOS (darwin arm64, Node v24.13.0, npm 11.6.2, pnpm 10.28.0, git 2.54.0),
+running the packed package as `npx`; no browser (0006-S2, the approved Notes). Run as traceability's
+"Stage 8 simulation" states, with the user's authorisation of 2026-11-07 (the branch
+`sim/0006-upgrade` pushed and deleted after the run, an explicit exception to hard rule 1; only a
+local temporary `sim`, no GitHub range). The shell had neither `GITHUB_REPOSITORY` nor
+`WXL_EXPECT_UPSTREAM` set.
+
+- **A** = this ticket's HEAD `5bb94fa0d4ca7c3f6617a4e57fe016ddc1925cfd`, pushed.
+- **B** = `9b0eb00af291b79c9cc4706d788ef1eeb041936f` on `sim/0006-upgrade`, made from A with the
+  commit skill: the `door-is-open` brief line "**Client:** FileHub, a file-sharing service used by
+  small teams." gains " and schools"; `platform/public/upgrade-sim.txt` added;
+  `.archive/guide/terminal.md` deleted; `package.json` `version` 3.0.0 → 3.0.1 and
+  `"sim:noop": "node -e \"\""`; `platform/index.md`'s `tagline:` → `Upstream simulation B` (its
+  two-space indent kept).
+- The package was packed once, from A: `npm pack` in `create-wxl/` → `create-wxl-3.0.0.tgz` (33
+  files, shasum `66a9b35d5bb37b6a3288a89c6b8e3f5975086d6c`).
+- **Invocation deviation**, as T-0025 recorded: npm 11 runs `npx --yes <tarball> …` as a command named
+  by the path (`Permission denied`, exit 126, seen again here). Every run used
+  `npx --yes --package <tarball> create-wxl …`.
+
+| Step | Command (in an empty temporary directory) | Result |
+|---|---|---|
+| 1 | `CREATE_WXL_COMMIT=<A> npx --yes --package <tarball> create-wxl sim --author 'Stage Eight' --repo wxl-test/sim --host github-pages </dev/null` | `exit=0`; stderr `CW-W04: using the override commit "5bb94fa…"`; one commit `Create range from WXL 3.0.0`; `range.json` names A, version 3.0.0 |
+| 2 | in `sim`: `tagline:` → `Teacher edit`; line 20 of `platform/challenge/staff-only/index.md` gains " (teacher note)"; `platform/public/teacher-note.txt` added; `git add -A && git commit -m fixture` | fixture commit `43ca851`; empty status |
+| 3 | `CREATE_WXL_COMMIT=<B> npx --yes --package <tarball> create-wxl upgrade </dev/null` | `exit=0`; stderr `CW-W04` for B; stdout below |
+
+Step 3's stdout, verbatim:
+
+```
+R1: create-wxl "3.0.0"; base "3.0.0" (commit "5bb94fa0d4ca7c3f6617a4e57fe016ddc1925cfd"); target "3.0.0" (commit "9b0eb00af291b79c9cc4706d788ef1eeb041936f")
+R2: updated 2 added 1 deleted 1
+R3: UP-A1: a conflict was written, marked with three labels (range, the base version, the target version). "platform/index.md"
+R3: UP-A12: upstream changed files pnpm fork:init writes. After resolving every attention item, rerun pnpm fork:init with the range's original arguments; for a range with a deploy workflow, this also refreshes it.
+R4: run git status and git diff
+R4: resolve the conflict markers above (search for <<<<<<<) and the other attention items
+R4: run pnpm install
+R4: build and test
+R4: commit
+R4: push a new v* tag to deploy
+R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .
+```
+
+Checked against the expected list:
+
+- exit 0 and CW-W04: as above.
+- R2 updated 2, added 1, deleted 1, and `git status --porcelain=v1 --untracked-files=all` lists
+  exactly `M platform/challenge/door-is-open/index.md`, `M package.json`,
+  `?? platform/public/upgrade-sim.txt`, `D .archive/guide/terminal.md`, plus `M platform/index.md`
+  (the conflict) and `M range.json`.
+- R3 exactly UP-A1 `platform/index.md` and UP-A12.
+- `platform/index.md` lines 7–13: `<<<<<<< range`, `  tagline: Teacher edit`, `||||||| 3.0.0`, the
+  original tagline, `=======`, `  tagline: Upstream simulation B`, `>>>>>>> 3.0.0`. Both labels read
+  3.0.0: the target's version is the package source record's (the tarball is 3.0.0), not B's
+  `package.json` (traceability "Vocabulary": target).
+- `git diff --quiet HEAD -- platform/challenge/staff-only/index.md platform/public/teacher-note.txt`
+  succeeded: the teacher's change and note are unchanged.
+- `package.json`: `version` `0.1.0`, `sim:noop` `node -e ""`, `repository.url`
+  `git+https://github.com/wxl-test/sim.git` (the teacher's).
+- `range.json` names B (`9b0eb00…`).
+- No `.create-wxl-*` entry left in `sim`.
+
+After replacing the conflict block with `  tagline: Teacher edit`: `pnpm install` → exit 0;
+`pnpm build` → exit 0 ("build complete"). Then `git clean -fd` (removed only
+`platform/public/upgrade-sim.txt`; ignored `node_modules` and build output kept) and
+`git checkout -- .` → `git status --porcelain=v1 --untracked-files=all` empty, `git diff --quiet
+HEAD` succeeded (the files of the fixture commit `43ca851`), `range.json` names A again,
+`.archive/guide/terminal.md` restored.
+
+Clean-up: `git push origin --delete sim/0006-upgrade` (`git ls-remote origin 'sim/*'` empty), the
+local branch deleted, `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the temporary
+directory removed. U32 ticked.
 
