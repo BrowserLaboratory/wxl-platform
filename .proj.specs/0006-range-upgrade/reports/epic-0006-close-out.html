@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0006 收尾報告</title>
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --text: #1b2430;
+  --muted: #566273;
+  --line: #d5dce4;
+  --accent: #0d5c63;
+  --accent-soft: #e3f0f1;
+  --warn: #8a5a00;
+  --warn-soft: #fbf1dc;
+  --ok: #276234;
+  --code-bg: #eaeef2;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161c;
+    --surface: #182029;
+    --text: #e3e8ee;
+    --muted: #9aa6b4;
+    --line: #2c3743;
+    --accent: #5fb8bf;
+    --accent-soft: #15303330;
+    --warn: #e0b45c;
+    --warn-soft: #2e2615;
+    --ok: #7cc98a;
+    --code-bg: #202a35;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.7 -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+}
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 4px; }
+h2 { font-size: 1.2rem; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1.02rem; margin: 24px 0 8px; }
+.meta { color: var(--muted); font-size: .9rem; margin: 0 0 24px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .8rem; background: var(--code-bg); padding: 12px 14px; overflow-x: auto; line-height: 1.5; margin: 8px 0 16px; }
+.answer { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 16px 20px; margin: 8px 0; }
+.answer p { margin: 6px 0; }
+.answer strong { color: var(--accent); }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); margin: 8px 0 16px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; background: var(--bg); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+.pass { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.gap { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier { white-space: nowrap; font-weight: 600; }
+.note { background: var(--warn-soft); border: 1px solid var(--line); padding: 12px 16px; margin: 12px 0; }
+.decision { background: var(--surface); border: 1px solid var(--line); padding: 16px 20px; margin-top: 12px; }
+.decision ol { margin: 8px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0006 收尾報告：靶場升級</h1>
+<p class="meta">2026-11-09。範圍：spec 0006 revision 2（2026-10-16）到 T-0027 改為 done 的紀錄 #68（<code>4fe2cad</code>）。程式碼以 <code>main</code> 的 <code>651e866</code> 為準。</p>
+
+<div class="answer">
+<p><strong>epic 0006 可以收尾。</strong>T-0026、T-0027 都已合併進 <code>main</code>。老師在自己的靶場執行 <code>pnpm range:upgrade</code>，就能把上游的新版本以三方合併帶進來；第 8 階段已經在終端機上用打包後的 <code>npx</code> 實際升級一次，結果和預期完全相同。</p>
+<p>收尾的串連分析找到三條從 B3 跨到 B4 的鏈，嚴重度 low，最嚴重的一條在 medium 下緣。依規定在 epic 完成前開出 <strong>T-0061</strong>，狀態是 <code>pending</code>，等你決定什麼時候做。</p>
+</div>
+
+<h2>要決定什麼</h2>
+<p>epic 本身沒有待決的事項。剩下兩件事會影響接下來的順序：T-0061 什麼時候做，以及兩張 ticket 都合併之後，要不要把 create-wxl 發布到 npm。發布一向由你執行。</p>
+
+<h2>交付內容</h2>
+<div class="scroll"><table>
+<tr><th>Ticket</th><th>內容</th><th>PR</th><th>第 8 階段的驗證面</th></tr>
+<tr><td>T-0026</td><td><code>create-wxl upgrade</code> 的指令文法、git 與工作目錄的前置檢查、從 <code>range.json</code> 或 <code>--from</code> 解析 base、不需要升級／降版／3.0.0 以前的判斷，以及下載並建好兩份原廠靶場</td><td>#65（<code>f0ff741</code>）、#66</td><td>create-wxl 在 Node 裡跑的 vitest，涵蓋 CI 的四組 OS／Node</td></tr>
+<tr><td>T-0027</td><td>step 8～10：pre-check P-1～P-8、合併表 M4～M12、<code>git merge-file --diff3</code>、先刪除再以暫存檔 rename 寫入、<code>range.json</code>、雙語報告 R1～R5、訊號與失敗時印出還原指令</td><td>#67（<code>651e866</code>）、#68</td><td>macOS 終端機，打包後的 <code>npx</code>（0006-S2）</td></tr>
+</table></div>
+
+<h3>第 8 階段（0006-S2）的實際輸出</h3>
+<p>先以 A（<code>5bb94fa</code>）建立靶場，做了老師的修改並 commit，再用同一個 tarball 升級到 B（<code>9b0eb00</code>，拋棄式分支 <code>sim/0006-upgrade</code>，已刪除）：</p>
+<pre>R2: updated 2 added 1 deleted 1
+R3: UP-A1: a conflict was written, marked with three labels (range, the base version, the target version). "platform/index.md"
+R3: UP-A12: upstream changed files pnpm fork:init writes. …
+R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .</pre>
+<p>exit 0，印出 CW-W04。衝突標記有三個標籤，兩邊的 tagline 都在。老師的修改沒有被動到；<code>package.json</code> 的版本是 <code>0.1.0</code>，repository 仍是老師的；<code>range.json</code> 指向 B。解完衝突後，<code>pnpm install &amp;&amp; pnpm build</code> 成功；執行還原指令後，status 是空的，檔案和 fixture commit 相同。</p>
+
+<h2>品質與審查</h2>
+<div class="scroll"><table>
+<tr><th>項目</th><th>結果</th></tr>
+<tr><td>create-wxl 測試</td><td class="pass">437 → 558 → 623 個，全綠</td></tr>
+<tr><td>根目錄 vitest</td><td class="pass">4,854 → 4,861 個，1 skipped</td></tr>
+<tr><td>CI（四組 OS／Node）</td><td>#65 兩輪全綠；#67 第一輪 windows-latest 失敗一個測試（測試預期了 POSIX 的 <code>ENOTDIR</code>），修正後全綠</td></tr>
+<tr><td>第 6 階段 code review</td><td>T-0026：Standards 38 項、Spec 26 項；T-0027：Standards 34 項、Spec 23 項。全部經你核准處置，行為修正一律先紅後綠</td></tr>
+<tr><td>第 7 階段資安審查</td><td>兩份各 28 個候選，都沒有達到通報門檻；三組 low 的 true positive 已修正</td></tr>
+<tr><td>過程中的決策</td><td>D3～D10；traceability 從 revision 2.1 改到 2.5</td></tr>
+</table></div>
+<p>每一輪實作之後，都由獨立的唯讀驗證者逐列核對，抓到四個測試全綠也看不出的 production 缺陷。其中一個是：在 macOS 和 Windows 上，上游只改檔名大小寫的變更會被默默忽略。這個缺陷先前被一個改過的 fixture 遮住了。</p>
+
+<h2>安全審查與串連分析</h2>
+<p>根因是同一個：B3 承認能修改 <code>range.json</code> 的人（共同授課老師、被合併的 PR）可以挑 fork network 裡的 commit 當 base，但只寫出「跳過上游變更」這一種後果。實際上，這個 commit 的內容由攻擊者決定，而合併表把它當成真的上游。</p>
+<div class="scroll"><table>
+<tr><th>鏈</th><th>後果</th><th>嚴重度</th></tr>
+<tr><td>X1</td><td>偽造的 base 讓 o ≡ b 成立：M5 覆蓋老師的修改、M6 刪掉老師的檔案，報告裡只多幾個計數</td><td class="gap">low</td></tr>
+<tr><td>X2</td><td>攻擊者寫的文字出現在 <code>--diff3</code> 衝突區塊的 base 段落，老師會把它當成舊版上游</td><td class="gap">low</td></tr>
+<tr><td>X3</td><td>Windows 開著 8.3 短檔名時，b 裡名為 <code>GITIGN~1</code> 的檔案在磁碟上解析成 <code>.gitignore</code>，被 M6 刪掉；之後 R5 的 <code>git clean -fd</code> 會刪掉老師所有被 ignore 的檔案</td><td class="gap">medium 下緣</td></tr>
+</table></div>
+<p>這些鏈都沒有程式碼執行，乾淨合併也只會含 o 與 t 的行。X3 以外，被動到的都是 tracked 檔案，git 救得回來。要部署給學員，還得老師自己 commit、push。T-0061 記錄的修法選項包括：base 和上游 tag 綁定、讀檔前確認磁碟上的實際檔名、調整還原指令的順序、逐一列出刪除的路徑。這些都需要先回到第 1 階段做 spec 決策。</p>
+
+<h2>收尾一併處理的事</h2>
+<ul>
+<li><code>review/chain-analysis.md</code>：串連分析，以及三個 spec 準確度缺口。</li>
+<li><code>retrospective.md</code>：做得好的 7 項、要改的 8 項。其中 7 項是通用流程，依 upstream-first 的做法提給 harness-agile；1 項是 wxl 專屬，已寫進 <code>docs/agents/platform-notes.md</code>。</li>
+<li>T-0061（<code>pending</code>）；security-T-0027 候選 07 的誤報理由已加註更正。</li>
+<li>OQ-026（T-0027 第 7 階段加入）：老師自己 ignore 的 <code>range.json</code> 仍會被寫入，保持 open。</li>
+</ul>
+
+<h2>為什麼可以收尾</h2>
+<p>兩張 ticket 的驗收條件都已勾選，並合併進 <code>main</code>；第 8 階段在 spec 指定的驗證面上通過；串連分析找到的跨界鏈已依規定開出 ticket；回顧已寫好。T-0061 是新的工作，需要先做 spec 決策，不屬於 epic 0006 已交付的範圍。</p>
+
+<h2>代價</h2>
+<ul>
+<li>T-0061 完成之前，B3 的攻擊者可以讓升級靜默地覆蓋或刪除老師的 tracked 檔案；在 Windows 上，還可能讓 R5 刪掉被 ignore 的檔案。這些都需要先合併攻擊者的 PR。</li>
+<li>第 8 階段只在 macOS 終端機上跑過；Windows 的終端機實跑不在測試範圍內，只有 cross-OS 的單元測試涵蓋。</li>
+<li><code>'wx'</code> 獨佔建立沒有專屬測試；U61 無法單獨隔離 commit-equal 分支。這兩點都已記錄。</li>
+<li>過程本身花的成本：T-0027 的增量計畫審查了三輪才由主 session 停下；第 6 階段的修正跑了兩輪，因為第一輪只套用了一部分；第 7 階段有一項核准的修法在實作時才發現不能用。這三點都已寫進回顧的「要改的地方」。</li>
+</ul>
+
+<h2>證據表</h2>
+<div class="scroll"><table>
+<tr><th>主張</th><th>來源</th><th>層級</th></tr>
+<tr><td>T-0026 以 #65 合併為 <code>f0ff741</code>，T-0027 以 #67 合併為 <code>651e866</code></td><td><code>gh pr view 65 --json mergeCommit</code>、<code>gh pr view 67 --json mergeCommit</code></td><td class="tier">已驗證</td></tr>
+<tr><td>兩張 ticket 的 status 都是 <code>done</code></td><td>#66（<code>34bbb3b</code>）、#68（<code>4fe2cad</code>）；兩個 ticket 檔的 frontmatter</td><td class="tier">已驗證</td></tr>
+<tr><td>0006-S2 的輸出與各項核對結果</td><td>T-0027「stage 8 end-to-end (0006-S2)」，附指令與輸出原文</td><td class="tier">已驗證</td></tr>
+<tr><td>create-wxl 測試 437 → 558 → 623 個</td><td>T-0026 紅綠紀錄的 R1 基準；T-0026、T-0027 的檢查紀錄（<code>pnpm --dir create-wxl test</code>）</td><td class="tier">已驗證</td></tr>
+<tr><td>根目錄 vitest 4,854 → 4,861 個，增加的是 GLOSSARY 詞條</td><td>T-0027「stage 6 fixes applied」的檢查紀錄</td><td class="tier">已驗證</td></tr>
+<tr><td>#67 第一輪只有 windows-latest 失敗一個測試，原因是 <code>ENOTDIR</code> 的預期</td><td>job 128953301446 的 log；修正 commit <code>4125aef</code></td><td class="tier">已驗證</td></tr>
+<tr><td>兩份第 7 階段報告各 28 個候選，都沒有達到通報門檻</td><td><code>review/security-T-0026.md</code>、<code>review/security-T-0027.md</code></td><td class="tier">已驗證</td></tr>
+<tr><td>X1～X3 從 B3 跨到 B4</td><td><code>review/chain-analysis.md</code>；逐環讀碼查證，<code>main</code> <code>651e866</code></td><td class="tier">推論</td></tr>
+<tr><td>GitHub 會用上游的 codeload URL 提供只存在於 fork 的 commit</td><td>spec B3 的前提，沒有實測</td><td class="tier">推論</td></tr>
+<tr><td>git 的 fsck 接受名為 <code>GITIGN~1</code> 的一般檔案；Windows 8.3 短檔名會把它解析成 <code>.gitignore</code></td><td>依 git 與 Windows 的行為推論，沒有實測</td><td class="tier">推論</td></tr>
+<tr><td><code>git check-ignore</code> 拒絕 <code>--literal-pathspecs</code>，<code>./&lt;path&gt;</code> 可以依字面讀路徑</td><td>git 2.54.0 實測（T-0027「stage 7 fixes applied」）</td><td class="tier">已驗證</td></tr>
+<tr><td><code>main</code> 上有 82 個 Dependabot 警告</td><td>push 時 GitHub 的提示訊息</td><td class="tier">外部</td></tr>
+</table></div>
+<p class="note"><strong>本報告不主張：</strong>整個專案沒有安全問題；Windows 或 HFS+ 上的實際行為；npm 發布後的行為（還沒發布）；Dependabot 警告的內容或嚴重度（沒有檢視）。</p>
+
+<h2>請你決定</h2>
+<div class="decision">
+<ol>
+<li>T-0061 要排在主語系版面的 epic 之前，還是維持 <code>pending</code>、之後再排？</li>
+<li>兩張 ticket 都已合併，要不要發布新版 create-wxl 到 npm？發布由你執行。如果要先等 T-0061，也可以。</li>
+</ol>
+</div>
+</main>
+</body>
+</html>
