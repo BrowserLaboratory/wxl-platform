@@ -16,16 +16,20 @@ import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 
 /** A dotfile alongside the destination, inside the same directory (so the final `rename` is
- * same-device): `.create-wxl-upgrade-tmp-<16 random hex chars>-<basename>`. A FIXED name here
- * (no random part) could already exist -- an ignored file the teacher has, or
- * a symbolic link -- and the write loop's own `writeFile`, below, uses `flag: 'wx'` (never the
- * default `'w'`) so it refuses to create over whatever that existing name turns out to be,
- * instead of silently truncating it or following a symlink through it. */
+ * same-device): `.create-wxl-upgrade-tmp-<16 random hex chars>`, a FIXED LENGTH never growing
+ * with the destination's own basename -- a brand-new path whose own basename is already close to
+ * `NAME_MAX` must not fail with `ENAMETOOLONG` only because of space this temporary name added on
+ * top of it. The random part alone still keeps every concurrent write
+ * (in the same destination directory, in the same run) its own temporary name; a FIXED name with
+ * no random part at all could already exist -- an ignored file the teacher has, or a symbolic
+ * link -- and the write loop's own `writeFile`, below, uses `flag: 'wx'` (never the default
+ * `'w'`) so it refuses to create over whatever that existing name turns out to be, instead of
+ * silently truncating it or following a symlink through it. */
 function tempPathFor(rangeRoot, path) {
   const parts = path.split('/')
   const last = parts.pop()
   const dest = join(rangeRoot, ...parts, last)
-  const tmp = join(rangeRoot, ...parts, `.create-wxl-upgrade-tmp-${randomBytes(8).toString('hex')}-${last}`)
+  const tmp = join(rangeRoot, ...parts, `.create-wxl-upgrade-tmp-${randomBytes(8).toString('hex')}`)
   return { dest, tmp }
 }
 

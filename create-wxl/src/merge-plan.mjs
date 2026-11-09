@@ -147,6 +147,32 @@ async function isNonFileOther(fs, rangeRoot, path) {
   return !st.isSymbolicLink() && !st.isFile()
 }
 
+/** D10 (traceability.md "Pre-checks" P-8): parses `git ls-files -s -z`'s own stdout into the set
+ * of paths whose INDEX entry is a gitlink (mode `160000`, a submodule) -- each NUL-terminated
+ * entry is `<mode> <sha1> <stage>\t<path>`, unquoted (`-z`, the same convention `ls-files -z`'s
+ * own tracked-paths call already relies on). */
+function parseSubmodulePaths(stdout) {
+  const paths = new Set()
+  for (const entry of stdout.split('\0')) {
+    if (entry === '') continue
+    const tab = entry.indexOf('\t')
+    const mode = entry.slice(0, tab).split(' ')[0]
+    if (mode === '160000') paths.add(entry.slice(tab + 1))
+  }
+  return paths
+}
+
+/** P-8 (traceability.md "Pre-checks", D10): true when `path` IS a submodule, or lies under one --
+ * `submodulePaths` holds exact gitlink paths (`parseSubmodulePaths`, above); a path under one is
+ * never itself an index entry (the submodule's own files are not part of the range's index), so
+ * this is a prefix check, not a set lookup. */
+function isUnderSubmodule(path, submodulePaths) {
+  for (const submodulePath of submodulePaths) {
+    if (path === submodulePath || path.startsWith(`${submodulePath}/`)) return true
+  }
+  return false
+}
+
 /** P-4 (traceability.md "Pre-checks", T-0027 increment 13): true when some OTHER path of
  * `allPaths` differs from `path` only by NFC normalisation and ASCII/Unicode case folding --
  * `foldedGroups` maps every path's own folded key to the list of paths sharing it, built once per
@@ -156,13 +182,15 @@ function hasCaseCollision(path, foldedGroups) {
 }
 
 /** P-5 (traceability.md "Pre-checks"; Vocabulary's own "ignored path" -- "a path that is not
- * tracked and that `git check-ignore -q --no-index` reports as ignored by the range's rules"):
+ * tracked and that `git check-ignore -q --no-index -- ./<path>` reports as ignored by the range's rules"):
  * `check-ignore`'s own exit codes are 0 (ignored) and 1 (not ignored); any other exit code is a
  * bug, never silently read as either answer -- fail closed, the same convention D6 already uses
  * (`upgrade.mjs`'s `requireGitSuccess`). Called only for a path the caller has already excluded
  * from `tracked` (a force-added, tracked file that also matches an ignore rule is never P-5). */
 async function isIgnoredPath(deps, guard, rangeRoot, path) {
-  const result = await deps.runGit(['check-ignore', '-q', '--no-index', '--', path], {
+  // `./` keeps the path literal: `check-ignore` refuses every pathspec magic (`--literal-pathspecs`
+  // included), and a path starting with `:` would otherwise be read as magic and check another path.
+  const result = await deps.runGit(['check-ignore', '-q', '--no-index', '--', `./${path}`], {
     cwd: rangeRoot,
     env: buildGitEnv(deps.env),
   })
@@ -272,17 +300,26 @@ async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion
  * created merge-inputs directory's path, or `undefined` when no path reached M12.
  */
 export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, baseVersion, targetVersion }) {
-  const [baseFiles, targetFiles, trackedResult] = await Promise.all([
+  // D10 (traceability.md "Pre-checks" P-8): a SEPARATE `git ls-files -s -z` call, kept apart from
+  // the plain `ls-files -z` call below (which lists only the TRACKED PATHS, not their index mode)
+  // -- a gitlink is also a tracked path, so it is in BOTH results; only this one can tell it apart
+  // from an ordinary file.
+  const [baseFiles, targetFiles, trackedResult, submoduleResult] = await Promise.all([
     listFilesRecursive(deps.fs, baseDir),
     listFilesRecursive(deps.fs, targetDir),
     deps.runGit(['ls-files', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
+    deps.runGit(['ls-files', '-s', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
   ])
   guard.throwIfRaised()
   if (trackedResult.code !== 0) {
     throw new Error(`git ls-files -z failed (exit code ${trackedResult.code}): ${trackedResult.stderr}`)
   }
+  if (submoduleResult.code !== 0) {
+    throw new Error(`git ls-files -s -z failed (exit code ${submoduleResult.code}): ${submoduleResult.stderr}`)
+  }
   const tracked = trackedResult.stdout.split('\0').filter((entry) => entry !== '')
   const trackedSet = new Set(tracked)
+  const submodulePaths = parseSubmodulePaths(submoduleResult.stdout)
   // T-0027 increment 13 fix (U53): B and T are the pristine ranges listFilesRecursive already
   // listed, above -- `b`/`t` exist at `path` only when that EXACT (case-sensitive) string is one
   // of those listed names. Reading by joining `path` onto `baseDir`/`targetDir` and letting the
@@ -359,10 +396,18 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
       // P-7 (D9): an ignore file (at any level -- the LAST path component, not only the
       // range's root one) that upstream changed is never written, so the restore commands'
       // `git clean -fd` can never delete a file the teacher's own (unwritten) ignore rules
-      // still match. Checked after every other pre-check, matching traceability.md's own
-      // "Pre-checks" table order.
-      if (path.split('/').pop() === '.gitignore') {
+      // still match. Checked in traceability.md's "Pre-checks" table order, after P-6 and before
+      // P-8. The last component is folded the way P-4 folds a whole path, so an upstream
+      // `.GITIGNORE` (or any other-cased or normalised form) is still an ignore file.
+      if (path.split('/').pop().normalize('NFC').toLowerCase() === '.gitignore') {
         attention.push({ path, code: 'UP-A13' })
+        continue
+      }
+
+      // P-8 (D10): `path` is a submodule, or lies under one -- its own working tree is not part
+      // of the range's index, so the restore commands cannot undo a write or delete there.
+      if (isUnderSubmodule(path, submodulePaths)) {
+        attention.push({ path, code: 'UP-A14' })
         continue
       }
 
@@ -514,16 +559,31 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
   // path read -- on a case-insensitive filesystem, joining `anchorPath` onto `targetDir` and
   // reading it would resolve to a DIFFERENTLY-cased sibling the target pristine range actually
   // lists (e.g. `readme.md` for the literal anchor `README.md`), wrongly reading it as present.
+  // This check's own reads are wrapped the same way the main loop's own reads, above, already
+  // are -- a read error here (other than the absent cases `readFileOrNull` already maps to
+  // `null`) is a planning failure too (traceability.md "Codes" UP-E11), naming the anchor path,
+  // with the merge-inputs directory (if any path already reached M12) attached for the caller to
+  // remove -- not a bug reaching step 9 with that directory left behind under `tmpRoot`.
   let anchorChanged = false
-  for (const anchorPath of ANCHOR_PATHS) {
-    const [anchorB, anchorT] = await Promise.all([
-      baseFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))) : null,
-      targetFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))) : null,
-    ])
-    if (!eq(anchorB, anchorT)) {
-      anchorChanged = true
-      break
+  try {
+    for (const anchorPath of ANCHOR_PATHS) {
+      let anchorB, anchorT
+      try {
+        ;[anchorB, anchorT] = await Promise.all([
+          baseFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))) : null,
+          targetFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))) : null,
+        ])
+      } catch (err) {
+        throw new PlanningError(anchorPath, err.message)
+      }
+      if (!eq(anchorB, anchorT)) {
+        anchorChanged = true
+        break
+      }
     }
+  } catch (err) {
+    if (mergeDirRef.current !== undefined && err.mergeDir === undefined) err.mergeDir = mergeDirRef.current
+    throw err
   }
   if (anchorChanged) attention.push({ code: 'UP-A12' })
 

@@ -231,7 +231,11 @@ describe("SIGTERM right after range.json's own temporary file is written", () =>
       const signals = new EventEmitter()
       const writeFileOverride = async (path, ...rest) => {
         const result = await writeFile(path, ...rest)
-        if (/^\.create-wxl-upgrade-tmp-[0-9a-f]+-range\.json$/.test(basename(String(path)))) signals.emit('SIGTERM')
+        // The temporary name no longer embeds the destination's own basename (`range.json`
+        // here) -- it is a fixed-length name, and in this fixture `range.json` is
+        // the only temporary file the run ever creates, so matching the fixed prefix and length
+        // is enough to single it out.
+        if (/^\.create-wxl-upgrade-tmp-[0-9a-f]{16}$/.test(basename(String(path)))) signals.emit('SIGTERM')
         return result
       }
       const { fs } = recordingFs({ writeFile: writeFileOverride })

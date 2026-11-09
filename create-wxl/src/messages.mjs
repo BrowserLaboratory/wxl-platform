@@ -256,6 +256,11 @@ export const en = {
   // safe; the teacher merges the ignore rules by hand.
   'UP-A13': () =>
     `UP-A13: upstream changed an ignore file; it was left untouched so ignored files and the restore commands stay safe. Merge the ignore rules by hand.`,
+  // D10 (traceability.md "Pre-checks" P-8, "Codes" UP-A14): the path is a submodule (a gitlink in
+  // the index) or lies under one; left untouched, since the restore commands cannot undo a change
+  // inside a submodule's own working tree.
+  'UP-A14': () =>
+    `UP-A14: the path is a submodule, or is inside one; it was left untouched, since the restore commands cannot undo a change there.`,
   // T-0027 increment 10 (traceability.md "Codes" UP-E09): a write failed, or a signal arrived,
   // during step 9 (apply); names the path and the file-system error, or (for a signal) the signal
   // name, plus the fixed restore commands (traceability.md "Codes": "the restore commands
@@ -403,6 +408,7 @@ export const zhTW = {
   'UP-A12': () =>
     `UP-A12: 上游改了 pnpm fork:init 會寫入的檔案；請在解決所有注意項目後，用靶場原本的參數重新執行 pnpm fork:init；若靶場有部署用的 workflow，這個步驟也會一併更新它。`,
   'UP-A13': () => `UP-A13: 上游改了一個忽略規則檔；維持不動，讓忽略的檔案與還原指令都安全。請自行手動合併忽略規則。`,
+  'UP-A14': () => `UP-A14: 這個路徑是子模組本身或在子模組裡面；維持不動，因為還原指令無法復原子模組內部的變更。`,
   'UP-E09': ({ path, signal, detail }) =>
     `UP-E09：` +
     (signal !== undefined ? `收到訊號（${jsonValue(signal)}）後停止套用合併結果` : `套用合併結果時在 ${jsonValue(path)} 失敗：${jsonValue(detail)}`) +

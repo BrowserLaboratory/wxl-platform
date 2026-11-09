@@ -189,6 +189,8 @@ describe('every UP-* message starts with its own code', () => {
     // D9: added at the increment that adds the code (U63, P-7, an ignore file changed
     // upstream).
     'UP-A13': {},
+    // D10: added at the increment that adds the code (U64, P-8, a submodule path).
+    'UP-A14': {},
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {

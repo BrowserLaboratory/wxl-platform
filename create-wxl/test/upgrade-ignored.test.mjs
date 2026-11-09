@@ -6,7 +6,7 @@
 // with nothing written.
 
 import { describe, it, expect, vi } from 'vitest'
-import { readFile, rm } from 'node:fs/promises'
+import { readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -17,6 +17,8 @@ import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { snapshotTree, withoutRootMtime } from './helpers/snapshot.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
+import { makeRangeRepo } from './helpers/range-repo.mjs'
+import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
@@ -127,6 +129,48 @@ describe('upstream .gitignore changes (U63, D9)', () => {
   })
 })
 
+describe('P-7 folding (D9)', () => {
+  it('upstream adds sub/.GITIGNORE (b absent, t present): never created, UP-A13, exit 0', async () => {
+    const rangeRepo = await makeRangeRepo({ rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const baseEntries = [...PRISTINE_FIXTURE]
+      const targetEntries = [
+        ...PRISTINE_FIXTURE,
+        { path: 'sub/', type: 'dir', mode: 0o755 },
+        { path: 'sub/.GITIGNORE', type: 'file', mode: 0o644, content: 'upstream pattern\n' },
+      ]
+      tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+      const fetchArchive = makeRefFetchArchive({
+        [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
+      })
+      const deps = makeDeps({
+        cwd: rangeRepo.root,
+        tmpRoot,
+        env: rangeRepo.env,
+        runGit: createSpawnGitRunner(),
+        packageVersion: TARGET_VERSION,
+        source: { version: TARGET_VERSION },
+        fetchArchive,
+      })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+      expect(exitCode).toBe(0)
+      // Not under its exact (upstream-cased) name, and `sub` itself was never created either --
+      // on a case-insensitive file system, the two names would resolve to the same entry anyway.
+      await expect(readFile(join(rangeRepo.root, 'sub', '.GITIGNORE'))).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readdir(rangeRepo.root)).resolves.not.toContain('sub')
+      expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A13']()} ${jsonValue('sub/.GITIGNORE')}`)
+    } finally {
+      await rm(rangeRepo.root, { recursive: true, force: true })
+      await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+      if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('git check-ignore fails closed', () => {
   it('check-ignore exiting 2 -> CW-E14 naming check-ignore, exit 1, nothing written', async () => {
     const fixture = await buildUpgradeFixtures({
@@ -186,3 +230,46 @@ describe('git ls-files -z fails closed', () => {
     }
   })
 })
+
+describe('P-5 reads a path literally, never as pathspec magic', () => {
+  // A component starting with ':' would otherwise be read by git as pathspec magic (':/x', ':!x'),
+  // so P-5 would check another path than the one step 9 writes. Windows file names cannot hold ':'.
+  it.skipIf(process.platform === 'win32')(
+    "upstream adds ':Zone.Identifier' under the range's rule '*:Zone.Identifier': never created, UP-A9, exit 0",
+    async () => {
+      const rangeRepo = await makeRangeRepo({ rangeJson: rangeJsonFor(BASE_COMMIT), gitignore: '*:Zone.Identifier\n' })
+      let tmpRoot
+      try {
+        const targetEntries = [
+          ...PRISTINE_FIXTURE,
+          { path: ':Zone.Identifier', type: 'file', mode: 0o644, content: 'upstream stream copy\n' },
+        ]
+        tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+        const fetchArchive = makeRefFetchArchive({
+          [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: [...PRISTINE_FIXTURE] }) },
+          [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
+        })
+        const deps = makeDeps({
+          cwd: rangeRepo.root,
+          tmpRoot,
+          env: rangeRepo.env,
+          runGit: createSpawnGitRunner(),
+          packageVersion: TARGET_VERSION,
+          source: { version: TARGET_VERSION },
+          fetchArchive,
+        })
+        const ioHelper = makeIo()
+        const exitCode = await run(['upgrade'], ioHelper.io, deps)
+
+        expect(exitCode).toBe(0)
+        await expect(readdir(rangeRepo.root)).resolves.not.toContain(':Zone.Identifier')
+        expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A9']()} ${jsonValue(':Zone.Identifier')}`)
+      } finally {
+        await rm(rangeRepo.root, { recursive: true, force: true })
+        await rm(rangeRepo.env.HOME, { recursive: true, force: true })
+        if (tmpRoot) await rm(tmpRoot, { recursive: true, force: true })
+      }
+    },
+  )
+})
+

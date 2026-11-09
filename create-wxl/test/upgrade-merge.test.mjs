@@ -13,9 +13,10 @@ import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
 import { makeTmpRoot } from './helpers/tmp.mjs'
-import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
+import { buildUpgradeFixtures, LONG_BASENAME } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
+import { paxExtendedHeaderBlock } from './helpers/archive.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
 import { makeRangeRepo } from './helpers/range-repo.mjs'
 import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
@@ -669,6 +670,48 @@ describe('planning failures other than an absent path', () => {
   })
 })
 
+describe('an anchor file read error ("Fork:init-derived content")', () => {
+  it("the anchor check's own SECOND read of a path (after the main loop's own first read) failing -> UP-E11 naming it, exit 1, nothing written, no temporary entry left", async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    // `README.en.md` on the BASE side only (never in `PRISTINE_FIXTURE`, absent from target here):
+    // the main loop reads it once (as `b`, M4's own `o ≡ t` with both absent), then the anchor
+    // check (traceability.md "Fork:init-derived content") reads the SAME base-side bytes again --
+    // this is that second read.
+    fixture.baseEntries.push({ path: 'README.en.md', type: 'file', mode: 0o644, content: 'base-only anchor\n' })
+    let tmpRoot
+    try {
+      const m12Before = await readFile(join(fixture.root, 'm12-clean.txt'))
+      const rangeJsonBefore = await readFile(join(fixture.root, 'range.json'), 'utf8')
+
+      let hits = 0
+      const readFileOverride = failAt('readFile', (_count, args) => {
+        // Only a pristine-range copy of `README.en.md` (the base or target archive's own
+        // extracted directory, prefixed `create-wxl-upgrade-`) counts -- not the range's own `o`
+        // read, which never finds this path (absent from the range) and lives under a
+        // differently-prefixed directory.
+        if (basename(args[0]) !== 'README.en.md' || !basename(dirname(args[0])).startsWith('create-wxl-upgrade-')) return null
+        hits++
+        return hits === 2 ? fsError('EIO', 'EIO: i/o error') : null
+      })
+      const { fs } = recordingFs({ readFile: readFileOverride })
+
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture, { fs })
+      tmpRoot = usedTmpRoot
+
+      expect(ioHelper.stderrText).toMatch(/^UP-E11/m)
+      expect(ioHelper.stderrText).toContain('README.en.md')
+      expect(ioHelper.stderrText).toContain('EIO')
+      expect(exitCode).toBe(1)
+      expect(await readFile(join(fixture.root, 'm12-clean.txt'))).toEqual(m12Before)
+      expect(await readFile(join(fixture.root, 'range.json'), 'utf8')).toBe(rangeJsonBefore)
+      const remainingTmp = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+      expect(remainingTmp).toEqual([])
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
 describe('runGit rejects for merge-file', () => {
   it('UP-E11 naming the path, the error in the text, exit 1; nothing written', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M5-added', 'M6', 'M12-clean'], rangeJson: rangeJsonFor(BASE_COMMIT) })
@@ -787,6 +830,36 @@ describe('step 9\'s own temporary file', () => {
       )
       expect(await readFile(collisionPath)).toEqual(Buffer.from(collisionContent))
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 1 added 0 deleted 0$/m)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  it('a long basename (240 bytes) never makes the temporary name exceed NAME_MAX: written, exit 0, no temporary file left', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    // The raw tar writer's own `ustar` name field is 100 bytes; a 240-byte basename needs a pax
+    // extended header (the same technique 0005's own long-path archive test uses) -- the
+    // placeholder entry's own `path` is never read once the pax header overrides it. The pax
+    // header's own path must include the archive's own prefix directory (`pristineArchive`'s
+    // `<repoName>-<commit>/`), which `buildArchive` only ever adds to an entry's PLAIN `path`.
+    const targetRepoName = engineModule.UPSTREAM_SLUG.split('/')[1]
+    fixture.targetEntries.push({
+      path: 'long-basename-placeholder.txt',
+      type: 'file',
+      mode: 0o644,
+      content: 'new upstream file with a long basename\n',
+      extraBlocksBefore: [paxExtendedHeaderBlock({ path: `${targetRepoName}-${FIXED_COMMIT}/${LONG_BASENAME}` })],
+    })
+    let tmpRoot
+    try {
+      const { exitCode, ioHelper, tmpRoot: usedTmpRoot } = await runUpgradeAgainst(fixture)
+      tmpRoot = usedTmpRoot
+
+      expect(exitCode).toBe(0)
+      expect((await readFile(join(fixture.root, LONG_BASENAME))).toString()).toBe('new upstream file with a long basename\n')
+      expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 1 deleted 0$/m)
+      const rangeTmpFiles = readdirSync(fixture.root).filter((name) => name.startsWith('.create-wxl-upgrade-tmp'))
+      expect(rangeTmpFiles).toEqual([])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

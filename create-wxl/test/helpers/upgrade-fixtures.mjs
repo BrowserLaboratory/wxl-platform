@@ -28,6 +28,11 @@ import { makeTmpRoot } from './tmp.mjs'
  * override object literal). */
 export const DELETE = Symbol('upgrade-fixtures: delete from o')
 
+/** A 240-byte basename: below `NAME_MAX` (255) on its own, but
+ * only by 15 bytes -- the OLD temp-file scheme (destination basename plus a 41-byte prefix) would
+ * have pushed a write to this path past that limit. */
+export const LONG_BASENAME = `${'a'.repeat(236)}.txt`
+
 /** One entry per branch of P-2, M4-M12 (traceability.md "Pre-checks", "Merge table") this ticket
  * names; each gives `base`/`target` (path -> content, layered onto `PRISTINE_FIXTURE`),
  * `targetDirs`/`baseDirs` (directory entries a brand-new nested path needs in the target or base
