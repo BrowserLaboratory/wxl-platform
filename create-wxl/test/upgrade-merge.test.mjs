@@ -452,9 +452,11 @@ describe('P-6 and the parent check (U55)', () => {
       expect(exitCode).toBe(0)
       expect((await stat(join(fixture.root, 'a'))).isFile()).toBe(true)
       expect((await readFile(join(fixture.root, 'a'))).toString()).toBe("the teacher's own edit of a\n")
-      // `a` is a file (never created as a directory), so a nested `a/b/x` is unreadable with
-      // ENOTDIR, not merely absent with ENOENT -- `readOptional` only swallows the latter.
-      await expect(readFile(join(fixture.root, 'a', 'b', 'x'))).rejects.toMatchObject({ code: 'ENOTDIR' })
+      // `a` is still a file (never replaced by a directory), so `a/b/x` cannot exist. Reading a
+      // path under a regular file fails with ENOTDIR on POSIX and ENOENT on Windows; either proves
+      // it was never created.
+      const nestedRead = await readFile(join(fixture.root, 'a', 'b', 'x')).then(() => null, (err) => err.code)
+      expect(['ENOTDIR', 'ENOENT']).toContain(nestedRead)
       expect(ioHelper.stdoutText).toMatch(/^R2: updated 0 added 0 deleted 0$/m)
       expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A3']()} ${jsonValue('a')}`)
       expect(ioHelper.stdoutText).toContain(`R3: ${en['UP-A10']()} ${jsonValue('a/b/x')}`)
