@@ -1,7 +1,8 @@
-// 0006-S1 step 10's own restore path (traceability.md "Codes" R5, "Pre-checks" P-5): after a
-// completed run, `git checkout -- .` then `git clean -fd` (D14, T-0063) gives back exactly `HEAD`'s own tree,
-// including an untracked, ignored file never touched by the plan. T-0027 increment 12 (U29);
-// ticket-specified new file, reusing U17's own fixture and run.
+// 0006-S1 step 10's own restore path (traceability.md "Codes" R5, "Pre-checks" P-5).
+// U29 (T-0027 increment 12): after a completed run, `git checkout -- .` then `git clean -fd`
+// (D14, T-0063) gives back exactly `HEAD`'s own tree, including an untracked, ignored file never
+// touched by the plan; it reuses U17's own fixture and run. U61: a rerun after a commit.
+// U70 (T-0063): the same commands on trees built from a commit by hand, without an upgrade.
 
 import { describe, it, expect, vi } from 'vitest'
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
@@ -17,7 +18,7 @@ import { verifyGit } from './helpers/real-git.mjs'
 import { makeRangeRepo } from './helpers/range-repo.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
-import { RESTORE_COMMANDS } from '../src/upgrade-report.mjs'
+import { runRestoreCommands } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '9'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -89,8 +90,8 @@ describe('restore after U17\'s run (U29)', () => {
       tmpRoot = usedTmpRoot
       expect(exitCode).toBe(0)
 
-      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them.
-      for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: fixture.root, env: fixture.env })
+      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them, each exiting 0.
+      await runRestoreCommands({ cwd: fixture.root, env: fixture.env })
 
       const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: fixture.root, env: fixture.env })
       expect(status.stdout).toBe('')
@@ -228,12 +229,16 @@ describe('the restore commands keep every file HEAD ignores (U70, D14)', () => {
         const headTree = withoutIgnored(await snapshotTree(repo.root), ignored)
 
         await change(repo.root)
-        for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: repo.root, env: repo.env })
+        // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them, each exiting 0.
+        await runRestoreCommands({ cwd: repo.root, env: repo.env })
 
         const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: repo.root, env: repo.env })
         expect(status.stdout).toBe('')
         expect(withoutIgnored(await snapshotTree(repo.root), ignored)).toEqual(headTree)
-        for (const path of ignored) expect(await readFile(join(repo.root, ...path.split('/')), 'utf8')).toBe(IGNORED)
+        // Byte-identical, and still listed as ignored by `HEAD`'s rules (stage 6, F8).
+        for (const path of ignored) expect(await readFile(join(repo.root, ...path.split('/')))).toEqual(Buffer.from(IGNORED))
+        const ignoredAfter = (await verifyGit(['ls-files', '--others', '--ignored', '--exclude-standard'], { cwd: repo.root, env: repo.env })).stdout
+        expect(ignoredAfter).toBe(ignoredBefore)
       } finally {
         await rm(repo.root, { recursive: true, force: true })
         await rm(repo.env.HOME, { recursive: true, force: true })

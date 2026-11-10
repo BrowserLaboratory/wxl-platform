@@ -434,8 +434,8 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
       // P-7 (D9): an ignore file (at any level -- the LAST path component, not only the
       // range's root one) that upstream changed is never written, so the upgrade never leaves a
       // missing or changed ignore file for the restore commands' `git clean -fd` to act on (D14
-      // also runs `git checkout -- .` first, T-0063). Checked in traceability.md's "Pre-checks" table order, after P-6 and before
-      // P-8. The last component is folded the way P-4 folds a whole path, so an upstream
+      // also runs `git checkout -- .` first, T-0063). Checked in traceability.md's "Pre-checks"
+      // table order, after P-6 and before P-8. The last component is folded the way P-4 folds a whole path, so an upstream
       // `.GITIGNORE` (or any other-cased or normalised form) is still an ignore file.
       if (path.split('/').pop().normalize('NFC').toLowerCase() === '.gitignore') {
         attention.push({ path, code: 'UP-A13' })

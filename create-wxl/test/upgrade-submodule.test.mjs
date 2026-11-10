@@ -21,7 +21,7 @@ import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
-import { RESTORE_COMMANDS } from '../src/upgrade-report.mjs'
+import { runRestoreCommands } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '5'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -113,8 +113,8 @@ describe('submodule paths (D10, U64)', () => {
       )
       expect(statusAfterRun.stdout.split('\n').filter((line) => line.includes('sub'))).toEqual([])
 
-      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them.
-      for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: rangeRepo.root, env: rangeRepo.env })
+      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them, each exiting 0.
+      await runRestoreCommands({ cwd: rangeRepo.root, env: rangeRepo.env })
       const statusAfterRestore = await verifyGit(
         ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'],
         { cwd: rangeRepo.root, env: rangeRepo.env },

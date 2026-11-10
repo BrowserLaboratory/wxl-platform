@@ -6,7 +6,7 @@
 // `package.json` or `pnpm-lock.yaml`, and the deploy-tag push only for a range with
 // `.github/workflows/deploy.yml`.
 
-import { jsonValue } from './text.mjs'
+import { jsonValue, posixCommand } from './text.mjs'
 
 /** D14 (T-0063): the restore commands, in order -- `checkout` first, so a missing or changed
  * ignore file is back before `clean` runs, and `clean` never deletes a file `HEAD`'s rules ignore.
@@ -44,8 +44,9 @@ function wroteDependencyFile(ops) {
   return ops.some((op) => op.action === 'write' && (op.path === 'package.json' || op.path === 'pnpm-lock.yaml'))
 }
 
-/** R4 (traceability.md "Report"): a fixed body of next-steps advice, plus two conditional
- * bullets, each its own `R4:` line (mirrors R3's own one-line-per-item convention). */
+/** R4 (traceability.md "Report"): a fixed body of next-steps advice, plus three conditional
+ * bullets (D16's `|||||||` line, `pnpm install`, the `v*` tag), each its own `R4:` line (mirrors
+ * R3's own one-line-per-item convention). */
 function buildR4Lines(lang2, { ops, attention, hasDeployWorkflow }) {
   const zh = lang2 === 'zh-TW'
   const lines = [
@@ -116,7 +117,8 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
   // traceability.md "Report" R5; spec.en.md B4: the restore commands undo
   // the WHOLE upgrade, so they are only safe BEFORE any other change -- the fixed bare commands
   // alone, without that warning, let a teacher who edits first lose that edit too.
-  const [first, second] = RESTORE_COMMANDS.map((command) => command.join(' '))
+  // Rendered as UP-E09 renders them (messages.mjs), so both print the same commands.
+  const [first, second] = RESTORE_COMMANDS.map((command) => posixCommand(command))
   lines.push(
     zh
       ? `R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 ${first} 和 ${second}`

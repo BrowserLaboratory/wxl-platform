@@ -1,5 +1,5 @@
 // 0006-S1 step 10 (traceability.md "Report"): a completed run exits 0 whether or not it has
-// attention items (U25); this file also covers U59, U26 and U62.
+// attention items (U25); this file also covers U59, U26, U62, U72 and U76.
 
 import { describe, it, expect, vi } from 'vitest'
 import { readFile, rm } from 'node:fs/promises'
@@ -16,6 +16,7 @@ import { PRISTINE_FIXTURE, README_CONTENT } from './helpers/fixtures.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import { en, zhTW } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
+import { buildReport } from '../src/upgrade-report.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '6'.repeat(40)
@@ -73,10 +74,10 @@ function idIndex(lines, id, { last = false } = {}) {
 }
 
 // D16 (traceability.md "Report" R4; T-0063): printed only when R3 holds UP-A1.
-const D16_EN =
+const R4_BASE_SECTION_EN =
   'R4: in a conflict block, the section after ||||||| is the text of the base version in R1; ' +
   'if that base is not the version the range came from, run the R5 commands first'
-const D16_ZH = 'R4: 衝突區塊裡 ||||||| 之後的段落是 R1 所列 base 版本的內容；如果這個 base 不是靶場原本所依據的版本，請先執行 R5 的指令'
+const R4_BASE_SECTION_ZH = 'R4: 衝突區塊裡 ||||||| 之後的段落是 R1 所列 base 版本的內容；如果這個 base 不是靶場原本所依據的版本，請先執行 R5 的指令'
 
 function rangeJsonFor(baseCommit) {
   return { upstream: { repository: engineModule.UPSTREAM_SLUG, version: BASE_VERSION, commit: baseCommit } }
@@ -100,6 +101,16 @@ async function runUpgradeAgainst(fixture, argv = ['upgrade']) {
   const ioHelper = makeIo()
   const exitCode = await run(argv, ioHelper.io, deps)
   return { exitCode, ioHelper, tmpRoot }
+}
+
+/** The file's bytes, or `null` when it does not exist. */
+async function readOptional(path) {
+  try {
+    return await readFile(path)
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null
+    throw err
+  }
 }
 
 async function cleanupFixture(fixture, tmpRoot) {
@@ -266,7 +277,7 @@ describe('report text (U26)', () => {
       expect(r4Lines).toEqual([
         'R4: run git status and git diff',
         'R4: resolve the conflict markers above (search for <<<<<<<) and the other attention items',
-        D16_EN, // R3 holds UP-A1 (M12-conflict).
+        R4_BASE_SECTION_EN, // R3 holds UP-A1 (M12-conflict).
         'R4: run pnpm install', // ALL_BRANCHES' M10 writes pnpm-lock.yaml.
         'R4: build and test',
         'R4: commit',
@@ -321,7 +332,7 @@ describe('report text (U26)', () => {
       expect(r4Lines).toEqual([
         'R4: 執行 git status 與 git diff',
         'R4: 處理上面的衝突標記（搜尋 <<<<<<<）與其他注意項目',
-        D16_ZH, // R3 有 UP-A1（M12-conflict）。
+        R4_BASE_SECTION_ZH, // R3 有 UP-A1（M12-conflict）。
         'R4: 執行 pnpm install', // ALL_BRANCHES' M10 寫入 pnpm-lock.yaml。
         'R4: build 並測試',
         'R4: commit',
@@ -408,15 +419,12 @@ describe('report text (U26)', () => {
   })
 })
 
-// T-0027 increment 24 (U62): a target path holding an ANSI escape is rejected by 0005's own entry
-// rule 3 (`archive-rules.mjs`'s `CONTROL_CHAR_RE`) while step 7 validates the target archive --
-// before `checkpoint('step-8')`, so this never reaches the merge or the report at all.
 // U72 (traceability.md revision 3.1, D16; T-0063): R2 lists every M6 path after the counts, sorted
 // by UTF-16 code units, without a code; R4's D16 line follows whether R3 holds UP-A1.
 describe('R2 lists M6 paths and R4 explains the ||||||| section (U72, D16)', () => {
   for (const [lang, argv, d16] of [
-    ['en', ['upgrade'], D16_EN],
-    ['zh-TW', ['--lang', 'zh-TW', 'upgrade'], D16_ZH],
+    ['en', ['upgrade'], R4_BASE_SECTION_EN],
+    ['zh-TW', ['--lang', 'zh-TW', 'upgrade'], R4_BASE_SECTION_ZH],
   ]) {
     it(`${lang}: three M6 paths and an UP-A1 item -> R2 path lines B.md, a/b.md, z.md; the D16 line present`, async () => {
       const fixture = await buildUpgradeFixtures({ branches: ['U72-m6-three', 'M12-conflict'], rangeJson: rangeJsonFor(BASE_COMMIT) })
@@ -427,6 +435,8 @@ describe('R2 lists M6 paths and R4 explains the ||||||| section (U72, D16)', () 
         expect(result.exitCode).toBe(0)
         const lines = result.ioHelper.stdoutText.split('\n')
         const r2Lines = lines.filter((line) => line.startsWith('R2:'))
+        // The deleted count equals the number of path lines (traceability.md "Report" R2).
+        expect(r2Lines[0]).toMatch(lang === 'en' ? / deleted 3$/ : / 刪除 3$/)
         expect(r2Lines.slice(1)).toEqual(['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`))
         expect(lines.filter((line) => line.startsWith('R4:'))).toContain(d16)
       } finally {
@@ -467,6 +477,10 @@ describe("R4's conditional lines (U76)", () => {
       const fixture = await buildUpgradeFixtures({ branches, rangeJson: rangeJsonFor(BASE_COMMIT) })
       let tmpRoot
       try {
+        const before = {
+          'package.json': await readOptional(join(fixture.root, 'package.json')),
+          'pnpm-lock.yaml': await readOptional(join(fixture.root, 'pnpm-lock.yaml')),
+        }
         const result = await runUpgradeAgainst(fixture)
         tmpRoot = result.tmpRoot
         expect(result.exitCode).toBe(0)
@@ -474,6 +488,10 @@ describe("R4's conditional lines (U76)", () => {
         // check is on the content upstream changed, not on the archive's bytes).
         if (written === 'package.json') expect(await readFile(join(fixture.root, written), 'utf8')).toContain('sim:noop')
         if (written === 'pnpm-lock.yaml') expect(await readFile(join(fixture.root, written), 'utf8')).toBe('lockfile v1 target\n')
+        // Neither dependency file the case does not name was written (stage 6, B3).
+        for (const other of ['package.json', 'pnpm-lock.yaml'].filter((path) => path !== written)) {
+          expect(await readOptional(join(fixture.root, other))).toEqual(before[other])
+        }
         const r4Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R4:'))
         expect(r4Lines.includes(PNPM)).toBe(pnpm)
         expect(r4Lines.includes(TAG)).toBe(tag)
@@ -482,8 +500,32 @@ describe("R4's conditional lines (U76)", () => {
       }
     })
   }
+
+  // `planMerge` already sorts its ops, so the runs above cannot tell whether `buildReport` sorts R2's
+  // path lines itself; this calls it with the deletes out of order (stage 6, B2).
+  it('buildReport sorts R2 path lines itself, by UTF-16 code units, whatever order the ops come in', () => {
+    const report = buildReport({
+      lang2: 'en',
+      toolVersion: TARGET_VERSION,
+      baseVersion: BASE_VERSION,
+      baseCommit: BASE_COMMIT,
+      targetVersion: TARGET_VERSION,
+      targetCommit: FIXED_COMMIT,
+      ops: ['z.md', 'a/b.md', 'B.md'].map((path) => ({ path, action: 'delete' })),
+      attention: [],
+      hasDeployWorkflow: false,
+      t2: en,
+    })
+    expect(report.split('\n').filter((line) => line.startsWith('R2:'))).toEqual([
+      'R2: updated 0 added 0 deleted 3',
+      ...['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`),
+    ])
+  })
 })
 
+// T-0027 increment 24 (U62): a target path holding an ANSI escape is rejected by 0005's own entry
+// rule 3 (`archive-rules.mjs`'s `CONTROL_CHAR_RE`) while step 7 validates the target archive --
+// before `checkpoint('step-8')`, so this never reaches the merge or the report at all.
 describe('ANSI escape in a target path (U62)', () => {
   it('rejects with CW-E08, the path shown as an escaped JSON literal, before any write', async () => {
     const hostilePath = 'a\u001bb.txt'

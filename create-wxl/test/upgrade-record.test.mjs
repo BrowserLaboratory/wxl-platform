@@ -1,7 +1,8 @@
 // 0006-S1 step 9's own last write (traceability.md "`range.json` after the plan"): after a
 // completed run, `range.json`'s `upstream` names the target, every other top-level key's value
 // and order is kept, and the file is created (`upstream` first) when absent (U24). Sub-case ②
-// (a `UP-E09` failure leaves `range.json` untouched) reuses U27's own failure path.
+// (a `UP-E09` failure leaves `range.json` untouched) reuses U27's own failure path; ⑥ and ⑦
+// (T-0063, R-6) keep a top-level `__proto__` key on both paths of the rewrite.
 
 import { describe, it, expect, vi } from 'vitest'
 import { readFile, rm, writeFile } from 'node:fs/promises'
@@ -69,33 +70,6 @@ describe('range.json after the plan (U24)', () => {
       const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
       const expected = JSON.stringify({ customKey: 'custom value', upstream: TARGET_UPSTREAM }, null, 2) + '\n'
       expect(raw).toBe(expected)
-    } finally {
-      await cleanupFixture(fixture, tmpRoot)
-    }
-  })
-
-  // R-6 (round 2 disposition W15; T-0063): `JSON.parse` makes `__proto__` an own key; rewriting
-  // `upstream` must keep it as one, with its value and position, not set the object's prototype.
-  it('⑥ a top-level __proto__ key keeps its value and position; upstream becomes the target', async () => {
-    const before = JSON.parse(
-      `{"__proto__":{"x":1},"upstream":${JSON.stringify(rangeJsonFor(BASE_COMMIT).upstream)},"y":2}`,
-    )
-    expect(Object.keys(before)).toEqual(['__proto__', 'upstream', 'y'])
-    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: before })
-    let tmpRoot
-    try {
-      const result = await runUpgradeAgainst(fixture)
-      tmpRoot = result.tmpRoot
-      expect(result.exitCode).toBe(0)
-
-      const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
-      const expected = JSON.stringify(
-        JSON.parse(`{"__proto__":{"x":1},"upstream":${JSON.stringify(TARGET_UPSTREAM)},"y":2}`),
-        null,
-        2,
-      ) + '\n'
-      expect(raw).toBe(expected)
-      expect(raw).toContain('"__proto__": {')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -174,6 +148,55 @@ describe('range.json after the plan (U24)', () => {
       const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
       const expected = JSON.stringify({ upstream: TARGET_UPSTREAM }, null, 2) + '\n'
       expect(raw).toBe(expected)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  // R-6 (round 2 disposition W15; T-0063): `JSON.parse` makes `__proto__` an own key; rewriting
+  // `upstream` must keep it as one, with its value and position, not set the object's prototype.
+  it('⑥ a top-level __proto__ key keeps its value and position; upstream becomes the target', async () => {
+    const before = JSON.parse(
+      `{"__proto__":{"x":1},"upstream":${JSON.stringify(rangeJsonFor(BASE_COMMIT).upstream)},"y":2}`,
+    )
+    expect(Object.keys(before)).toEqual(['__proto__', 'upstream', 'y'])
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: before })
+    let tmpRoot
+    try {
+      const result = await runUpgradeAgainst(fixture)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(0)
+
+      const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
+      const expected = JSON.stringify(
+        JSON.parse(`{"__proto__":{"x":1},"upstream":${JSON.stringify(TARGET_UPSTREAM)},"y":2}`),
+        null,
+        2,
+      ) + '\n'
+      expect(raw).toBe(expected)
+      expect(raw).toContain('"__proto__": {')
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  // R-6, the other path (stage 6, F3): with no `upstream` key yet, the record is built by spreading
+  // the current object after `upstream`, which keeps an own `__proto__` key as well.
+  it('⑦ --from <base commit>, range.json with __proto__ and no upstream -> upstream added first, __proto__ kept after it', async () => {
+    const before = JSON.parse('{"__proto__":{"x":1},"y":2}')
+    expect(Object.keys(before)).toEqual(['__proto__', 'y'])
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: before })
+    let tmpRoot
+    try {
+      const result = await runUpgradeAgainst(fixture, ['upgrade', '--from', BASE_COMMIT])
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(0)
+
+      const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
+      const expected =
+        JSON.stringify(JSON.parse(`{"upstream":${JSON.stringify(TARGET_UPSTREAM)},"__proto__":{"x":1},"y":2}`), null, 2) + '\n'
+      expect(raw).toBe(expected)
+      expect(raw).toContain('"__proto__": {')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
