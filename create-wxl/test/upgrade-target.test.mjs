@@ -497,24 +497,29 @@ describe('U51: --from <commit> base version resolved only after download', () =>
 })
 
 describe('U52: --from <version> resolving to the target commit -> UP-I01, nothing written', () => {
+  // Revision 3.1 (U52, W8; T-0061): case (c) sets CREATE_WXL_COMMIT to the tag's commit, a commit
+  // other than the source record's; every case asserts both downloads happened (UP-I01 comes only
+  // after them, since a --from <version> base's commit is unknown before the tag is read).
+  const OVERRIDE_TAG_COMMIT = '4444444444444444444444444444444444444444'
   const CASES = [
-    ["(a) --from 3.1.0, target 3.2.0, tag's commit equals the target's", '3.1.0', '3.2.0'],
-    ["(b) --from 3.2.0, target 3.2.0, tag's commit equals the target's", '3.2.0', '3.2.0'],
+    ["(a) --from 3.1.0, target 3.2.0, tag's commit equals the target's", '3.1.0', '3.2.0', undefined],
+    ["(b) --from 3.2.0, target 3.2.0, tag's commit equals the target's", '3.2.0', '3.2.0', undefined],
+    ["(c) --from 3.2.0, target 3.2.0, CREATE_WXL_COMMIT set to the tag's commit", '3.2.0', '3.2.0', OVERRIDE_TAG_COMMIT],
   ]
 
-  it.each(CASES)('%s', async (_label, fromVersion, targetVersion) => {
+  it.each(CASES)('%s', async (_label, fromVersion, targetVersion, override) => {
     const fixture = await makeFixtureRange({})
     const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
     try {
       const tagRef = `refs/tags/v${fromVersion}`
       const fetchArchive = makeRefFetchArchive({
-        [tagRef]: { body: tagArchive(fromVersion, { comment: FIXED_COMMIT }) },
-        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+        [tagRef]: { body: tagArchive(fromVersion, { comment: override ?? FIXED_COMMIT }) },
+        [override ?? FIXED_COMMIT]: { body: pristineArchive(override ?? FIXED_COMMIT) },
       })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
-        env: fixture.env,
+        env: override === undefined ? fixture.env : { ...fixture.env, CREATE_WXL_COMMIT: override },
         runGit: vi.fn(createSpawnGitRunner()),
         packageVersion: targetVersion,
         source: { version: targetVersion },
@@ -530,7 +535,7 @@ describe('U52: --from <version> resolving to the target commit -> UP-I01, nothin
       expect(exitCode).toBe(0)
       expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
       const refs = fetchArchive.mock.calls.map((call) => call[1])
-      expect(refs).toContain(tagRef)
+      expect(refs).toEqual([tagRef, override ?? FIXED_COMMIT])
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
       // F06 (amendment 6, stage 6 disposition): only (a) can tell "UP-I01 carries the BASE's own

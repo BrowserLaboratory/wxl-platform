@@ -178,15 +178,18 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // Step 4 (traceability.md "Step order" row 4): a clean repository, checked in this order so a
   // missing HEAD (no-head) is never misreported through the other checks' own behaviour on a
   // headless repository.
-  const headCheck = await deps.runGit(['rev-parse', '--verify', 'HEAD'], { cwd: deps.cwd, env: gitEnv })
+  const headCheck = await runGitNamed(deps, guard, ['rev-parse', '--verify', 'HEAD'], { cwd: deps.cwd, env: gitEnv }, 'rev-parse --verify HEAD')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   if (headCheck.code !== 0) {
     io.stderr.write(t2['UP-E03']({ reason: 'no-head' }) + '\n')
     return 1
   }
-  const statusResult = await deps.runGit(
+  const statusResult = await runGitNamed(
+    deps,
+    guard,
     ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'],
     { cwd: deps.cwd, env: gitEnv },
+    'status',
   )
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('status', statusResult)
@@ -194,7 +197,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     io.stderr.write(t2['UP-E03']({ reason: 'changes' }) + '\n')
     return 1
   }
-  const lsFilesResult = await deps.runGit(['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv })
+  const lsFilesResult = await runGitNamed(deps, guard, ['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv }, 'ls-files -v')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('ls-files -v', lsFilesResult)
   for (const line of lsFilesResult.stdout.split('\n')) {
@@ -209,7 +212,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       return 1
     }
   }
-  const gitDirResult = await deps.runGit(['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv })
+  const gitDirResult = await runGitNamed(deps, guard, ['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv }, 'rev-parse --git-dir')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('rev-parse --git-dir', gitDirResult)
   const gitDir = parseGitDirStdout(deps, gitDirResult.stdout)
@@ -568,6 +571,8 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       attention: planResult.attention,
       hasDeployWorkflow,
       t2,
+      // D17: R1 marks a `--from <commit>` base as not checked against an upstream tag.
+      baseUnchecked: parsed.from !== undefined && COMMIT_RE.test(parsed.from),
     }),
   )
   guard.throwIfRaised()
