@@ -28,15 +28,15 @@ revision 2 的 X1～X3 中，只有 X3 的最終影響（不可逆地刪掉老�
 | 鏈 | 環節 | 判定 | 處置 |
 |---|---|---|---|
 | env:Y1 | `--from <commit>`（D17）→ WSL `/mnt/c` 上 P-9 失效（B4）→ 8.3 別名 `GITIGN~1` 讓 M6 刪掉 `.gitignore` → `git checkout -- .` 失敗（例如 git 2.26～2.34 加 zdiff3）→ `git clean -fd` 照樣執行，刪掉被 ignore 的檔案 | 成立，low 上緣（最終影響和 X3 相同） | T-0066：還原指令印成單一指令 `git checkout -- . && git clean -fd`（D23），並加上不依賴 `realpath` 的別名檢查（D24） |
-| env:Y2、b3:Y2、fork:Y4 | 同上的別名讓 M6 刪掉 `.gitignore`；R2 印出的是別名；老師照 R4 commit，原本被 ignore 的檔案被 `git add -A` 收進 repository | 成立，low | T-0066 的 D24：o 存在，而 p 既不在 tracked 裡、也沒被 ignore 時，p 一定是別名（step 4 已確認沒有未追蹤、未被 ignore 的檔案）→ 不動並報 UP-A15。B4 也補上這個後果 |
+| env:Y2、b3:Y2、fork:Y4 | 同上的別名讓 M6 刪掉 `.gitignore`；R2 印出的是別名；老師照 R4 commit，原本被 ignore 的檔案被 `git add -A` 收進 repository | 成立，low | T-0066 的 D24（P-10）：o 存在，而 p 既不在 tracked 裡、也沒被 ignore 時，p 是經由別名到達的（step 4 已確認沒有未追蹤、未被 ignore 的檔案；其餘可能見 revision 3.4 的自我檢查）→ 不動並報 UP-A15。檔案層級的別名因此不會被 M6 刪掉，這條鏈的後果不再成立，B4 改為列出 P-10 擋不到的部分（經由資料夾別名到達的新路徑） |
 | fork:Y1 | 偽造的 base 讓 b ≡ t，P-2 靜默略過上游的修補；`range.json` 改寫成 target 後，之後的升級會一直把這個缺口當成老師的修改保留 | 成立，low | T-0066：寫進 B1 Does not protect（靜默略過與延續），沒有改程式碼 |
 | b3:Y1、b3:Y4 | `range.json` 指向較舊或較新的 release：老師刪掉的檔案被加回、改回的內容被覆蓋，或中間的修正永遠缺少 | 成立，low（上游目前只有一個 release，屬於潛在風險） | T-0066：B3 Does not protect 寫出這些後果與延續性 |
 | b3:Y3 | B3 commit 一條 ignore 規則，提前封鎖上游之後才新增的檔案：P-5 讓升級永遠不寫入 | 成立，low | T-0066：寫進 B3 Does not protect |
 | fork:Y2 | B3 被 J6 擋下後，經由 D18 的補救建議把老師導向 `--from <commit>` | 成立，low | 併入 T-0066 的 B1 註記；D18 的訊息不改（T-0061 C1 已記錄） |
-| fork:Y5 | APFS 上 NFC 等價的名稱（singleton）讓 P-5 判為沒被 ignore、P-9 放行，M6 刪掉被 ignore 的檔案 | 成立，low 下緣；要攻擊者知道檔案內容 | T-0066 的 D24 會擋下：p 不在 tracked 裡，o 卻存在。R-9 也寫進 B4 |
+| fork:Y5 | APFS 上 NFC 等價的名稱（singleton）讓 P-5 判為沒被 ignore、P-9 放行，M6 刪掉被 ignore 的檔案 | 成立，low 下緣；要攻擊者知道檔案內容 | T-0066 的 D24（P-10）會擋下：p 不在 tracked 裡，o 卻存在。round 2 的 R-9（P-5 以字面比對）也寫進 B4（推論，未量測） |
 | fork:Y6 | `CREATE_WXL_COMMIT` 讓 target 也來自 fork network | 模型外（0005 B6），沒有增量 | T-0066：0006 的 B 表註明這種情況下 T 不受 B2 保護 |
 | fork:Y3 | D16 的 R4 句子要老師比對版本號，而版本號可以偽造 | 不成立（B1 已接受，同 T-0063 C3） | 不處理 |
-| env:Y3 | fsmonitor hook protocol V1 讓 step 4 誤判乾淨，接著還原時丟掉修改 | 不成立（還原用的是同一支 git、同一份設定） | 不處理；`-c core.fsmonitor=` 的強化留給之後，需要在兩個 git 版本上實測 |
+| env:Y3 | fsmonitor hook protocol V1 讓 step 4 誤判乾淨，接著還原時丟掉修改 | 不成立（還原用的是同一支 git、同一份設定） | 不處理；`-c core.fsmonitor=` 的強化留給之後，需要在兩個 git 版本上實測，記在 `security-T-0065.md` 的可選強化 |
 
 ## 找鏈階段就排除的候選
 
@@ -52,4 +52,5 @@ revision 2 的 X1～X3 中，只有 X3 的最終影響（不可逆地刪掉老�
 ## 更正先前的判定
 
 - `security-T-0063.md` 的 C1 與 `round-2-R.md:161` 說 R2 的刪除路徑一定是老師 tracked 的名稱。這只在 P-9 有效的檔案系統上成立；在 WSL `/mnt/c` 上，R2 可能印出別名。T-0066 的 D24 讓這句重新成立。
+- `security-T-0063.md` 的 C5 判定「還原指令不必用 `&&`」，理由是升級不動 ignore 檔；P-9 失效時這個前提不成立，T-0066 的 D23 改採 `&&`。
 - `security-T-0065.md` 的 C2 說「這種 git 的日常 checkout 本來就會失敗，老師在升級之前就會發現」。對平常用 Windows 端 git、只在 WSL 裡執行 pnpm 的老師，這句不一定成立。T-0066 的 D23 讓這點不再影響結果。
