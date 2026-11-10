@@ -4,7 +4,7 @@
 // ticket-specified new file, reusing U17's own fixture and run.
 
 import { describe, it, expect, vi } from 'vitest'
-import { readFile, rm } from 'node:fs/promises'
+import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -14,6 +14,7 @@ import { buildUpgradeFixtures } from './helpers/upgrade-fixtures.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
+import { makeRangeRepo } from './helpers/range-repo.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 import { RESTORE_COMMANDS } from '../src/upgrade-report.mjs'
@@ -181,3 +182,73 @@ describe('re-run after a completed upgrade and commit (U61)', () => {
     }
   })
 })
+
+// U70 (traceability.md revision 3.1, D14; T-0063): the restore commands, exactly as R5 and UP-E09
+// print them, on trees built from a commit -- the upgrade itself can no longer leave a missing or
+// changed ignore file (P-7), so these trees are made by hand. Cleaning first would delete the
+// ignored file in (a) and (b); `checkout` first brings the ignore file back before `clean` runs.
+describe('the restore commands keep every file HEAD ignores (U70, D14)', () => {
+  const IGNORED = 'teacher notes, ignored\n'
+  const cases = [
+    {
+      name: '(a) the tracked .gitignore deleted, an ignored file present',
+      tree: { 'keep.txt': 'tracked\n' },
+      gitignore: '*.local\n',
+      ignored: ['notes.local'],
+      change: async (root) => unlink(join(root, '.gitignore')),
+    },
+    {
+      name: '(b) a tracked sub/.gitignore changed so it no longer ignores a file',
+      tree: { 'sub/.gitignore': '*.old\n', 'sub/keep.txt': 'tracked\n' },
+      gitignore: '',
+      ignored: ['sub/data.old'],
+      change: async (root) => writeFile(join(root, 'sub', '.gitignore'), '# no rules\n'),
+    },
+    {
+      name: '(c) a tracked file a replaced by an untracked a/x',
+      tree: { a: 'tracked file a\n', 'keep.txt': 'tracked\n' },
+      gitignore: '*.local\n',
+      ignored: ['notes.local'],
+      change: async (root) => {
+        await unlink(join(root, 'a'))
+        await mkdir(join(root, 'a'))
+        await writeFile(join(root, 'a', 'x'), 'untracked\n')
+      },
+    },
+  ]
+
+  for (const { name, tree, gitignore, ignored, change } of cases) {
+    it(`${name} -> empty status, HEAD's files, the ignored file byte-identical`, async () => {
+      const repo = await makeRangeRepo({ tree, gitignore })
+      try {
+        // Ignored files are written after the commit, so they are never tracked.
+        for (const path of ignored) await writeFile(join(repo.root, ...path.split('/')), IGNORED)
+        const ignoredBefore = (await verifyGit(['ls-files', '--others', '--ignored', '--exclude-standard'], { cwd: repo.root, env: repo.env })).stdout
+        expect(ignoredBefore.split('\n').filter(Boolean)).toEqual(ignored)
+        const headTree = withoutIgnored(await snapshotTree(repo.root), ignored)
+
+        await change(repo.root)
+        for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: repo.root, env: repo.env })
+
+        const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: repo.root, env: repo.env })
+        expect(status.stdout).toBe('')
+        expect(withoutIgnored(await snapshotTree(repo.root), ignored)).toEqual(headTree)
+        for (const path of ignored) expect(await readFile(join(repo.root, ...path.split('/')), 'utf8')).toBe(IGNORED)
+      } finally {
+        await rm(repo.root, { recursive: true, force: true })
+        await rm(repo.env.HOME, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+/** Each entry's type and content only (a restored file is a new inode with a new mtime), without
+ * `.git` and the ignored files, so it compares what `HEAD` holds. */
+function withoutIgnored(snapshot, ignored) {
+  const result = {}
+  for (const [path, value] of Object.entries(snapshot)) {
+    if (ignored.includes(path) || path === '.git' || path.startsWith('.git/')) continue
+    result[path] = { type: value.type, contentHash: value.contentHash }
+  }
+  return result
+}
