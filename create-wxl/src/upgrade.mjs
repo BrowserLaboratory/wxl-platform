@@ -69,6 +69,20 @@ function requireGitSuccess(command, result) {
   }
 }
 
+/** D19 (traceability.md revision 3.1; T-0061): runs one git command of steps 4 and 5 and, when
+ * `runGit` rejects (not an exit code -- the spawn itself failed), rethrows it as a bug whose
+ * message names the command, so CW-E14 says which git command failed. A signal already received,
+ * or a `SignalAbort`, passes through unchanged so the run still exits 130. */
+async function runGitNamed(deps, guard, args, opts, name) {
+  try {
+    return await deps.runGit(args, opts)
+  } catch (err) {
+    if (err instanceof SignalAbort) throw err
+    if (guard.raised()) throw new SignalAbort(guard.raised())
+    throw new Error(`git ${name} failed: ${err?.message ?? String(err)}`)
+  }
+}
+
 /** J1 (`lstat`: absent, or a regular file) then J3 (parses as JSON,
  * and is an object) for `range.json` at `deps.cwd` -- the shape increment 13's `--from` branch and
  * increment 14's no-`--from` branch both need. Returns `{ absent: true }` when there is no
@@ -276,6 +290,32 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     }
     baseCommit = upstream.commit
     baseVersion = upstream.version
+  }
+
+  // D15 (OQ-026; T-0061): with or without `--from`, after J1-J5 and before step 6, a `range.json`
+  // that is not tracked and that the range's rules ignore is refused -- step 9 would write it, and
+  // the restore commands could neither restore nor remove an ignored, untracked file. The path is
+  // given as `./range.json` so both commands read it literally. `check-ignore` exits 0 (ignored)
+  // or 1 (not ignored); any other result of either command is CW-E14 naming it (D19).
+  const recordTracked = await runGitNamed(deps, guard, ['ls-files', '-z', '--', './range.json'], { cwd: deps.cwd, env: gitEnv }, 'ls-files')
+  guard.throwIfRaised()
+  requireGitSuccess('ls-files', recordTracked)
+  if (recordTracked.stdout === '') {
+    const recordIgnored = await runGitNamed(
+      deps,
+      guard,
+      ['check-ignore', '-q', '--no-index', '--', './range.json'],
+      { cwd: deps.cwd, env: gitEnv },
+      'check-ignore',
+    )
+    guard.throwIfRaised()
+    if (recordIgnored.code === 0) {
+      io.stderr.write(t2['UP-E13']() + '\n')
+      return 1
+    }
+    if (recordIgnored.code !== 1) {
+      throw new Error(`git check-ignore failed (exit code ${recordIgnored.code}): ${recordIgnored.stderr}`)
+    }
   }
 
   // Step 6: gathers the checks written by increments 6 (commit

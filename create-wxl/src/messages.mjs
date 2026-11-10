@@ -305,6 +305,12 @@ export const en = {
     `but upstream's tag ${jsonValue(`v${version}`)} names commit ${jsonValue(tagCommit)}, so the recorded base is not an upstream release. ` +
     `range.json may have been written with CREATE_WXL_COMMIT or by a package packed at another commit, the tag may have moved since, or someone may have changed the record. ` +
     d18RemediesText('en'),
+  // D15 (OQ-026; T-0061): an untracked range.json that the range's rules ignore.
+  'UP-E13': () =>
+    `UP-E13: range.json is not tracked and the range's ignore rules ignore it, so the restore commands could not undo the upgrade's change to it. ` +
+    `The rule may be in a .gitignore, in .git/info/exclude or in your core.excludesFile. ` +
+    `Remove the rule and commit that change, together with range.json when it exists; or, when range.json exists, track it with git add -f -- range.json and commit it. ` +
+    `If a tracked file's name differs from range.json only in letter case, rename it to range.json with git mv and commit.`,
   'CW-E01': ({ running, minimum }) =>
     `CW-E01: the running Node.js ${jsonValue(running)} is older than the minimum ${jsonValue(minimum)}; install a newer Node.js from https://nodejs.org/.`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
@@ -447,6 +453,11 @@ export const zhTW = {
     `但上游的 tag ${jsonValue(`v${version}`)} 指向 commit ${jsonValue(tagCommit)}，所以記錄的 base 不是上游的發布版。` +
     `可能的原因：range.json 是用 CREATE_WXL_COMMIT 或在其他 commit 打包的套件寫入的、這個 tag 之後被移動過，或是有人改了這份紀錄。` +
     d18RemediesText('zh-TW'),
+  'UP-E13': () =>
+    `UP-E13：range.json 沒有被 git 追蹤，又被靶場的 ignore 規則排除，還原指令沒辦法撤銷升級對它的改動。` +
+    `這條規則可能在某個 .gitignore、.git/info/exclude，或你的 core.excludesFile 裡。` +
+    `請移除這條規則並 commit，range.json 存在時一起 commit；或者在 range.json 存在時，用 git add -f -- range.json 把它納入追蹤並 commit。` +
+    `如果 tracked 的檔名和 range.json 只差在大小寫，請用 git mv 改名為 range.json 並 commit。`,
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>

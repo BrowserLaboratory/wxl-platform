@@ -108,3 +108,11 @@ epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第�
   shortened to `upgrade-base-provenance` (the branch had not been pushed). Items carried to stage 5
   above go to the ticket that owns them: the GLOSSARY sentence, `__proto__` and step 9's bug code to
   T-0063; the stale comments to the ticket that changes each file.
+- 2026-11-10, stage 5 (U67, D15): deviation, recorded as the 0006 retrospective asks. Step 5's new
+  `git ls-files -z -- ./range.json` also matched the stub of `upgrade-ignored.test.mjs` "git ls-files
+  -z fails closed", which is meant to fail step 8's `git ls-files -z`; the run then stopped at step 5
+  and the test went red. The stub was narrowed to the two-argument call step 8 makes
+  (`merge-plan.mjs` `planMerge`), so the test checks step 8 again; its assertions are unchanged.
+  U65(b)'s fixture holds both `git~1/x` and `.git/x`: `git~1` is rejected only after T-0062, and
+  `.git/x` makes the "comment checks first" order testable now.
+
