@@ -16,6 +16,13 @@ export const RESTORE_COMMANDS = Object.freeze([
   Object.freeze(['git', 'clean', '-fd']),
 ])
 
+/** D23 (T-0066): the restore commands as the one line R5 and UP-E09 print, joined with `&&`, so a
+ * `git checkout -- .` that fails never lets `git clean -fd` run (a shell without `&&`, such as
+ * Windows PowerShell 5.1, refuses the whole line, and nothing runs). */
+export function restoreCommandLine() {
+  return RESTORE_COMMANDS.map((command) => posixCommand(command)).join(' && ')
+}
+
 /** `ops` carrying a `report` code (M10, or an M12 conflict/UP-A11 outcome) are written, but not
  * counted here (traceability.md "Report" R2's own "M10 is not counted as updated"). */
 function countsFromOps(ops) {
@@ -117,12 +124,11 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
   // traceability.md "Report" R5; spec.en.md B4: the restore commands undo
   // the WHOLE upgrade, so they are only safe BEFORE any other change -- the fixed bare commands
   // alone, without that warning, let a teacher who edits first lose that edit too.
-  // Rendered as UP-E09 renders them (messages.mjs), so both print the same commands.
-  const [first, second] = RESTORE_COMMANDS.map((command) => posixCommand(command))
+  // The same one line UP-E09 prints (messages.mjs, D23).
   lines.push(
     zh
-      ? `R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 ${first} 和 ${second}`
-      : `R5: to undo the whole upgrade before making other changes, run ${first} then ${second}`,
+      ? `R5: 如果要撤銷整個升級，請在做其他變更之前執行 ${restoreCommandLine()}`
+      : `R5: to undo the whole upgrade before making other changes, run ${restoreCommandLine()}`,
   )
   return lines.join('\n') + '\n'
 }

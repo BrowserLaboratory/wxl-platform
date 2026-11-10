@@ -15,10 +15,8 @@ export async function runRestoreCommands({ cwd, env }) {
   }
 }
 
-/** `text` names both restore commands, `git checkout -- .` before `git clean -fd`. */
+/** `text` names the restore commands as one line, `git checkout -- . && git clean -fd` (D23): the
+ * clean never runs when the checkout fails. */
 export function expectRestoreOrder(text) {
-  const checkout = text.indexOf('git checkout -- .')
-  const clean = text.indexOf('git clean -fd')
-  expect(checkout, 'git checkout -- . is printed').toBeGreaterThanOrEqual(0)
-  expect(clean, 'git clean -fd is printed after git checkout -- .').toBeGreaterThan(checkout)
+  expect(text, 'the one-line restore command (D14, D23)').toContain('git checkout -- . && git clean -fd')
 }
