@@ -2,7 +2,7 @@
 id: T-0061
 title: Upgrade base provenance
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -195,4 +195,6 @@ epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第�
   - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE` and the tarball were removed. Three empty
     `create-wxl-upgrade-tmp-*` directories under the system temp dir date from 2026-11-09 14:01–14:03
     (test temp roots from an earlier session), not from this run; left as found.
+- 2026-11-10, landed: PR #70 squash-merged into `main` as `27ff2fd` (CI 10 of 10 passing, including
+  `fork-init-cross-os (windows-latest, 24)`, which ran U67(d)'s Windows skip). Status set to done.
 
