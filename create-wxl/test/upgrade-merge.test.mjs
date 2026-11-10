@@ -25,7 +25,7 @@ import { failAt, fsError } from './helpers/fail-at.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
-import { expectRestoreOrder } from './helpers/restore.mjs'
+import { expectRestoreLine } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '2222222222222222222222222222222222222222'
 const BASE_VERSION = '3.0.0'
@@ -550,7 +550,7 @@ describe("step 9's existingMode lstat fails closed", () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('README.md')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(1)
     } finally {
       await cleanupFixture(fixture, tmpRoot)

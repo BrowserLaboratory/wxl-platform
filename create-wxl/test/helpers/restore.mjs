@@ -17,6 +17,6 @@ export async function runRestoreCommands({ cwd, env }) {
 
 /** `text` names the restore commands as one line, `git checkout -- . && git clean -fd` (D23): the
  * clean never runs when the checkout fails. */
-export function expectRestoreOrder(text) {
+export function expectRestoreLine(text) {
   expect(text, 'the one-line restore command (D14, D23)').toContain('git checkout -- . && git clean -fd')
 }
