@@ -1,11 +1,11 @@
 # Spec 0005: create-wxl — `npm create wxl` makes a ready range
 
-Status: revision 2.2 (2026-11-10). Round 1 found four P0 findings with two root causes
+Status: revision 2.3 (2026-11-10). Round 1 found four P0 findings with two root causes
 (`review/round-1.md`); revision 2 applied its disposition (`review/disposition.md`, groups N1–N10) and
 the user's decisions D1–D2. Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met;
 revision 2.1 applies round 2's P1 groups Q1–Q6 (`review/disposition-2.md`) by decision D3, without
 another round. Revision 2.2 (2026-11-10, with `traceability.md` revision 2.2) widens entry rule 3 to git's
-NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Derived from `traceability.md`, which holds the fixed
+NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21). Derived from `traceability.md`, which holds the fixed
 lists this spec refers to (decisions in short, vocabulary, command grammar, language, step order,
 signals, error and warning codes, archive entry rules, pristine processing P1–P4, the `range.json`
 schema, the test-download override, setup questions S1–S6, git steps G0–G4, next steps N1–N8, the
@@ -140,7 +140,7 @@ following the system language; messages quoted from the fork-init engine stay in
 - **AC-12** `range.json` is byte-equal to the schema with repository and version from the source record and the commit downloaded, replacing any `range.json` in the archive. (C28)
 - **AC-13** `SIGINT`, `SIGTERM` or `SIGHUP` (including Ctrl-C at a question) during steps 3–10 exits 130 with the target as it was and no temporary directory left, further signals during the cleanup being ignored; during steps 11–13 exits 130 after CW-W05 lists what is left for that step; an unexpected error is CW-E14 with the same cleanup and exit 1. (C31, C56, C57)
 - **AC-14** With setup, `runForkInit` is called once with `{ projectRoot: target }` and exactly the object the last accepted `parseForkInitArgs` call returned, and the range's A1, A6–A8 and workflow reflect the answers as 0004 specifies; its warnings are printed; a non-zero `exitCode` or a throw ends with CW-E12 carrying the message and the finishing commands (`cd`, `pnpm install`, the quoted `pnpm fork:init` command, the printed G1, G2, G4), exit 1, the range and `range.json` left in place and no git step run. (C32–C34, C68)
-- **AC-15** With setup and the engine successful, every `runGit` call gets an environment whose only `GIT_*` variables are `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1`; with git 2.20 or later and an explicit identity the target is a repository on `main` with exactly one commit, `Create range from WXL <V>`, whose files are every file of the range (global excludes notwithstanding) and a clean working tree, with no template hook run; git missing, failing G0 or older than 2.20 → CW-W01 and no other git call; no explicit identity (`git config --get` exit 1 or empty) → CW-W02 after G1–G2; any other failing command → CW-W03 and the rest skipped; all exit 0 with N2 listing the printed forms of what is left. (C35–C38, C58, C59, C70)
+- **AC-15** With setup and the engine successful, every `runGit` call gets an environment whose only `GIT_*` variables are `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1`; with git 2.26 or later (0006's D21) and an explicit identity the target is a repository on `main` with exactly one commit, `Create range from WXL <V>`, whose files are every file of the range (global excludes notwithstanding) and a clean working tree, with no template hook run; git missing, failing G0 or older than 2.26 → CW-W01 and no other git call; no explicit identity (`git config --get` exit 1 or empty) → CW-W02 after G1–G2; any other failing command → CW-W03 and the rest skipped; all exit 0 with N2 listing the printed forms of what is left. (C35–C38, C58, C59, C70)
 - **AC-16** `--no-setup` extracts and applies P1–P4, calls neither the engine nor `runGit`, and prints exactly N1 and N8, with or without the override. (C39)
 - **AC-17** A successful run prints the next-step lines of `traceability.md` that apply, by id, in order. (C40)
 - **AC-18** The language follows the rule in `traceability.md` (CW-E01 and CW-E02 by environment only); both message tables have the same ids, each `zh-TW` text differing from its `en` text outside commands, paths and codes, and every CW message begins with its code. (C41)
