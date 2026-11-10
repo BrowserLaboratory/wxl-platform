@@ -43,3 +43,7 @@ Decisions D14, D16, D20, and the round 2 disposition's W4 and R-6.
 第 4 階段拆出的第三張票，也是 epic 0006 revision 3 的最後一張。還原指令改成先 `git checkout -- .` 再 `git clean -fd`，這樣就算 ignore 檔不見或被改，老師被 ignore 的檔案也不會被刪掉。報告會逐行列出升級刪掉的檔案；有衝突時，R4 會說明 `|||||||` 後面那段是哪個版本的內容；R4 的 `pnpm install` 與推 tag 兩行依條件出現。另外修正 `range.json` 的 `__proto__` key 被吃掉的問題，更新 GLOSSARY「設定紀錄」那句。最後跑完整的第 8 階段模擬：一個從 A 升級到 B 的靶場，以及一個用已發布的 3.0.0 建立、不帶 `--from` 升級的靶場。
 
 ## Comments
+- 2026-11-10: stage 8 step 5 uses the published `create-wxl@3.0.0` (W5's mechanism change,
+  confirmed under the user's authorisation of 2026-11-10; T-0061 Comments). From T-0061's stage 6
+  (F4): the restore order in UP-E09 (`messages.mjs`, both languages) and R5 (`upgrade-report.mjs`)
+  is this ticket's, with D14.

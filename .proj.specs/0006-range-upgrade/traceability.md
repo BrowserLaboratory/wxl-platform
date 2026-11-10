@@ -53,6 +53,12 @@ approved by the user, and decisions D18–D20 made with it. Round 2 found no P0 
 and two rounds are the ceiling, so revision 3.1 is self-checked and not reviewed again (0005's D3 is
 the precedent). Rows added in revision 3.1 start at U74.
 
+Revision 3.2 (2026-11-10) changes D18's wording only, by the user's approval of T-0061's stage 6
+disposition (finding F5, `.proj.research/2026-11-10-T-0061-stage6-review.md`): UP-E08 and a 404 on the
+tag download cannot show that the recorded commit is not a release (a deleted tag, for example), so
+their remedies say it could not be checked against its tag; UP-E12 keeps "not a release". No row,
+code or AC changes.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -76,7 +82,7 @@ Decisions this file relies on, in short (full record: the local research note
 | D15 | Step 5 refuses, before any download and with or without `--from`, a `range.json` that is not tracked and that the range's rules ignore: UP-E13 (OQ-026; 2026-11-09, T-0061 stage 1) |
 | D16 | R2 lists every path M6 deleted, after the counts and without a code; R4 says the `\|\|\|\|\|\|\|` section of a conflict block is the text of R1's base version (2026-11-09, T-0061 stage 1) |
 | D17 | A `--from <commit>` base is the content of that commit, whoever suggested it: not protected (B1); R1 says it was not checked against an upstream tag (2026-11-09, T-0061 stage 1) |
-| D18 | For a base from `range.json`, UP-E12, UP-E08 and a CW-E07 for status 404 on the tag download give the remedies in this order: `--from <version>` when the teacher knows the release the range came from (checked through its tag); `--from <commit>` with the recorded commit only when the teacher knows the range was made from it, since it is not a release; `git log -p -- range.json` to see who changed the record (2026-11-10, round 2 disposition W1) |
+| D18 | For a base from `range.json`, UP-E12, UP-E08 and a CW-E07 for status 404 on the tag download give the remedies in this order: `--from <version>` when the teacher knows the release the range came from (checked through its tag); `--from <commit>` with the recorded commit only when the teacher knows the range was made from it, since it is not a release (UP-E12) or could not be checked against its tag (UP-E08, the 404 CW-E07); `git log -p -- range.json` to see who changed the record (2026-11-10, round 2 disposition W1; the reason per code, revision 3.2) |
 | D19 | A git command of steps 4, 5 or 8 other than `git merge-file` (M12, UP-E11) that exits outside its documented codes, or that `runGit` rejects, is CW-E14 naming the command: for an exit the message carries `git <command> failed (exit code N): <stderr>`, and the implementation wraps a rejection so that its message names the command too; on the upgrade path CW-E14 thus also covers a known git failure, not only a bug, which 0005's "an unexpected error" wording does not say (2026-11-10, W7; as T-0026's D6) |
 | D20 | A completed run is one whose step 9 finished; a signal in step 10 still leaves a completed run, which prints R1–R5 in full and exits 130 (D8) (2026-11-10, W11) |
 
@@ -502,7 +508,7 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
   sets `CREATE_WXL_COMMIT`), U57, U63, U64. Rows still to test: U65–U73 (revision 3) and U74–U76
   (revision 3.1).
 - W5's step 5 runs the published `create-wxl@3.0.0` instead of the disposition's packed package with
-  `CREATE_WXL_COMMIT`; the reason is under the stage 8 steps, and the user is asked to confirm it.
+  `CREATE_WXL_COMMIT`; the reason is under the stage 8 steps; the user confirmed it on 2026-11-10.
 - Recorded, not changed (round 2): an emptied directory left after M6 (C-4); a partial commit after
   UP-E09 then a rerun (C-12); `.gitattributes` changes and the restore (C-13); a fork's full tree
   (C-16); step 9's temporary file name after an uncatchable signal (R-7); P-5's literal match against

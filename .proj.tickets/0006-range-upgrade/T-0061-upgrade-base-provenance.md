@@ -73,15 +73,26 @@ seam 全部是 0006-S1（0005-S1 的 `run`，argv 第一個位置參數是 `upgr
 | 0006-S1 | R1 標明 `--from <commit>` 的 base 沒有比對 tag（D17） | `upgrade-report.test.mjs` 新增 U71 | U71 / AC-10 | `--from <commit>`：句子出現；`--from <version>`、`range.json`：不出現；en 與 zh-TW 都驗。預期紅燈：句子還不存在 |
 | 0006-S1 | 新代碼在兩份訊息表都有 | `upgrade-messages.test.mjs` 的代碼清單加 UP-E12、UP-E13 | U26（代碼部分）/ AC-10 | en 與 zh-TW 都有 UP-E12、UP-E13，且以代碼開頭。預期紅燈：代碼還不存在 |
 
+### 2026-11-10 — test plan addendum（第 6 階段處置，使用者 2026-11-10「照提案」核准）
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0006-S1 | D18 的補救只出現在 D18 說的地方 | `upgrade-target.test.mjs` 新 describe（F10） | U66 / AC-5 | `range.json` base 下載成功、target 回 404：CW-E07 帶 target URL，不附補救；`range.json` 的 tag 回 500：CW-E07 不附補救。確認型 |
+| 0006-S1 | reject 之前已收到訊號仍是 exit 130 | `upgrade-preconditions.test.mjs` 新 describe（F14、B10） | U74 / AC-2 | step 4 的 `git status`、step 5 的 `check-ignore -- ./range.json`。確認型 |
+| 0006-S1 | `runGit` 對 `ls-files -z -- ./range.json` reject | `upgrade-ignored-record.test.mjs` U67(m)（F15） | U67 / AC-2 | CW-E14 帶 `git ls-files -z -- ./range.json` |
+| 0006-S1 | 訊息內容 | `upgrade-messages.test.mjs` 新 describe（F5～F8、F16、B8、B9、B11） | U26（代碼）/ AC-10、AC-5 | UP-E12 的原因與補救順序；UP-E08、CW-E07 的補救說「沒辦法經由 tag 驗證」（revision 3.2 D18）；UP-E13 的三個規則來源、補救與 `Range.json`；en 與 zh-TW |
+| 0006-S1 | 既有子案加強斷言 | U06、U65(b)(c)、U66(b)、U67(e)、U71（F11、F12、F13、F18） | 各列原 AC | U06、U67(e) 斷言 exit 0；U65(b)(c) 斷言沒有暫存殘留；U66(b) 斷言 URL；U71 補 `--from <version>` 的 zh-TW |
+
 ### 2026-11-10 — coverage report table
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| 0006-S1 | `upgrade-base`（U06、U65）、`upgrade-target`（U14(a) 的下載斷言、U16、U52、U66）、新檔 `upgrade-ignored-record`（U67）、`upgrade-preconditions`（U74 step 4）、`upgrade-report`（U71）、`upgrade-messages`（UP-E12、UP-E13）；prefactor 動到 11 個升級測試檔與 `ref-fetch-archive.mjs` | not measured：create-wxl 沒有安裝 coverage provider（與 T-0020～T-0027 相同） | U06、U16、U51、U52、U65、U66、U67、U71、U74（step 4）；AC-2、AC-3、AC-4、AC-5、AC-10 | U74 的 step 8 子案屬於 T-0062；U51 沒有修改，既有的中間子案已符合 revision 3.1 的列；D19 的 reject 包裝只對 step 4、5 有測試，step 8 留給 T-0062 |
+| 0006-S1 | `upgrade-base`（U06、U65）、`upgrade-target`（U14(a) 的下載斷言、U16、U52、U66）、新檔 `upgrade-ignored-record`（U67）、`upgrade-preconditions`（U74 step 4）、`upgrade-report`（U71）、`upgrade-messages`（UP-E12、UP-E13）；prefactor 動到 11 個升級測試檔與 `ref-fetch-archive.mjs` | not measured：create-wxl 沒有安裝 coverage provider（與 T-0020～T-0027 相同） | U06、U16、U51、U52、U65、U66、U67、U71、U74（step 4）；AC-2、AC-3、AC-4、AC-5、AC-10 | U74 的 step 8 子案屬於 T-0062；U51 沒有修改，既有的中間子案已符合 revision 3.1 的列；D19 的 reject 包裝只對 step 4、5 有測試，step 8 留給 T-0062；fixture 在 tag ref 回的是 `<repo>-<commit>/` 前綴的 archive，不是真實 tag 的 `<repo>-<version>/`，rule 2 只比對第一層是否一致所以行為相同，真實形狀由第 8 階段驗（F17） |
 | 0006-S2 | — | — | 第 8 階段：tag `v3.0.0` 的 UP-E12 與 `create-wxl@3.0.0` 靶場不帶 `--from` 的升級 | 第 8 階段另外記錄 |
 
 Checks at `2751498`, macOS (darwin arm64, Node v24.13.0), 2026-11-10:
 `pnpm --dir create-wxl test` → `Tests 650 passed (650)`；`pnpm test --run` → `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`。
+After stage 6's fixes (2026-11-10): `pnpm --dir create-wxl test` → `Test Files 36 passed (36) / Tests 660 passed (660)`; the root suite was not rerun, since stage 6 changed only `create-wxl/` and documents.
 
 Confirmation tests (green when written) and their mutation checks, each run and then restored:
 U65(c) — validating the base before the target download makes it fail; U66(b) — dropping
@@ -131,4 +142,32 @@ epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第�
   (`merge-plan.mjs` `planMerge`), so the test checks step 8 again; its assertions are unchanged.
   U65(b)'s fixture holds both `git~1/x` and `.git/x`: `git~1` is rejected only after T-0062, and
   `.git/x` makes the "comment checks first" order testable now.
+- 2026-11-10, stage 6: two `harness-reviewer` passes (Standards 25 findings, Spec 19; no high),
+  recorded with their dispositions in the local note `.proj.research/2026-11-10-T-0061-stage6-review.md`.
+  The user approved every proposal ("照提案"), including F5, which changed D18's wording
+  (`traceability.md` revision 3.2) and the new or stronger tests in the test plan addendum above.
+  Moved: S1 (one helper for the ignored-path check of D15 and P-5) and the stale comment in
+  `archive-rules.mjs` (F4) to T-0062; the restore order in UP-E09 and R5 (F4) stays with T-0063.
+  Recorded, not changed: S2, S4, S6, S7 (a note on U15), F17 (in the coverage table), F19.
+  Deviation (B12): U74's step 4 rejection case is its own `describe` at the end of
+  `upgrade-preconditions.test.mjs`, not inside the D6 block the test plan named; the cases are as
+  approved.
+- 2026-11-10: the user authorised the rest of this session's work to follow the agent's
+  recommendations ("後面都授權你，按照你的建議"); `npm publish` stays with the user, as the original
+  instruction said. Under it: stage 8 step 5 uses the published `create-wxl@3.0.0` (W5's
+  mechanism change, confirmed), and 0005's chain-analysis gap 2 is opened now as maintenance
+  ticket T-0064, to be done after the release.
+- Mutation checks (B13), each made on the stage 6 fix commit with the edit shown, the named test
+  run with `pnpm --dir create-wxl exec vitest run <file> -t "<name>"` failing, then the file
+  restored with `git checkout -- <file>`:
 
+  | Edit | Test that fails |
+  |---|---|
+  | `upgrade.mjs`: move the target download after the base's `readArchiveEntries` | `upgrade-base` U65(c) |
+  | `run-shared.mjs`: `remediesOn404 && status === 404` → `status === 404` | `upgrade-target` U66(b) |
+  | `run-shared.mjs`: `remediesOn404 && status === 404` → `remediesOn404` | `upgrade-target` F10(b) |
+  | `upgrade.mjs`: pass `remediesOn404: true` to the target's `downloadArchive` | `upgrade-target` F10(a) |
+  | `upgrade.mjs`: move the D15 block to the start of step 5 | `upgrade-ignored-record` U67(d)(j)(k)(l) |
+  | `upgrade.mjs`: `if (recordTracked.stdout === '')` → `if (true)` | `upgrade-ignored-record` U67(e) |
+  | `upgrade.mjs`: drop `baseCommit !== undefined &&` from step 6's equal-version check | `upgrade-target` U52(b), F22 |
+  | `upgrade.mjs`: drop `guard.throwIfRaised()` from `runGitNamed` | `upgrade-preconditions` F14 (both cases) |

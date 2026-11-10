@@ -47,3 +47,7 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1, `traceability.md`
 第 4 階段拆出的第二張票，處理磁碟上的檔名別名。Windows 的 8.3 短檔名（例如 `GITIGN~1` 指到 `.gitignore`）、HFS+ 會忽略的字元，以及父目錄的大小寫不同，都會讓升級碰到一個名字不同、實際上卻是同一個的檔案。這張票加上 P-9：讀檔前先比對磁碟上的實際檔名，不一致就不動，報 UP-A15。另外把 0005 的 rule 3 補到和 git 一樣，擋下 `git~1`、`.git:` 這類 `.git` 的別名。等 T-0061 完成後再開始，因為測試要用它做好的 tag archive fixture。
 
 ## Comments
+- 2026-11-10, from T-0061's stage 6: (S1) when step 8's git calls gain D19's rejection wrapping,
+  make one helper for "ignored path" (Vocabulary) and use it for both P-5 (`merge-plan.mjs`
+  `isIgnoredPath`) and D15 (`upgrade.mjs` step 5), so the two copies cannot drift; (F4) the comment
+  in `archive-rules.mjs` that says create-wxl always downloads by commit is stale since U16 and J6.
