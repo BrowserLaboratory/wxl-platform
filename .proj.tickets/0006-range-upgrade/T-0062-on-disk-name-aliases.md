@@ -38,7 +38,7 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1, `traceability.md`
   system; stage 5 checks whether a Windows runner can create a short name with
   `fsutil file setshortname`, and the coverage report records the real 8.3 case as not verified when
   it cannot (spec Testing Decisions).
-- [ ] Stage 8: a terminal run of the packed package (0006-S2) on macOS: an upstream path under a
+- [x] Stage 8: a terminal run of the packed package (0006-S2) on macOS: an upstream path under a
   directory whose letter case differs from the range's is untouched with UP-A15. The full simulation
   (U32) runs in T-0063.
 
@@ -120,4 +120,27 @@ Mutation checks, each made on the commit named, with the edit shown, the command
   rethrows a real permission error, so it surfaces as CW-E14, not UP-E11 -- T-0027's behaviour;
   exit 1 with nothing written still holds). The Windows criterion is unchecked until the PR's
   windows-latest job reports whether U68(c) ran or why it was skipped.
-
+- 2026-11-10, stage 7: project security review (`.claude/skills/security-review/SKILL.md`), report
+  `.proj.specs/0006-range-upgrade/review/security-T-0062.md`. 9 candidates, every one judged a
+  false positive by an independent reviewer (each an accepted risk in B1/B4, or behaviour D12/D13
+  specify); no confirmed finding, so nothing to fix. Five optional hardenings are recorded there,
+  not adopted.
+- 2026-11-10, stage 8 (0006-S2, surface: a terminal on macOS darwin arm64, APFS (case-insensitive),
+  Node v24.13.0, git 2.54.0; the package packed with `npm pack` at `7632168`, whose
+  `dist/source.json` names that commit; target `CREATE_WXL_COMMIT=77228175b45fa9b051db0cecbac13f1545e43d69`,
+  `main` as pushed; `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset; the upgrade run as
+  `npx --yes --package <tarball> create-wxl upgrade`):
+  - Range `rel` made by the published `npx --yes create-wxl@3.0.0 rel --author 'Stage Eight' --repo
+    wxl-test/rel --host github-pages </dev/null`: exit 0, `range.json` = `3.0.0` / `52192fa…`.
+    Then `platform/shared/` renamed to `platform/Shared/` with two `git mv` (a case-only rename on
+    APFS) and committed. The target adds `platform/shared/mergeChallenges.ts` and changes the
+    directory's two existing files.
+  - `upgrade`, no `--from`: exit 0; stderr only CW-W04; R1 base `3.0.0` (`52192fa…`), target
+    `7722817…`; R2 updated 61 added 23 deleted 0; R3 UP-A15 naming
+    `platform/shared/mergeChallenges.ts`, and UP-A8 for the two existing files (P-4 comes before P-9,
+    so the tracked `platform/Shared/…` names stop them first; spec order, "the first match
+    applies"); UP-A12. `platform/` still holds only `Shared/`, with its two files unchanged and no
+    `mergeChallenges.ts`; `git ls-files --others --ignored --exclude-standard` empty after the run
+    (not captured before it). `git clean -fd` then `git checkout -- .` gave an empty
+    `git status --porcelain=v1 --untracked-files=all`, `HEAD` unchanged.
+  - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE` and the tarball were removed.
