@@ -125,3 +125,14 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.3 and `traceability.
   - Upgrade with the real git: exit 0, past step 3 (UP-I01, the versions being equal).
   - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the temporary ranges were
     removed.
+- 2026-11-10, PR #76 CI (run `42830122682`, push `8912347`): 9 of 10 passed.
+  `fork-init-cross-os (macos-latest, 24)` failed in U66(c), a test this ticket did not touch:
+  `ENOENT: no such file or directory, lstat '…/create-wxl-upgrade-fixture-…/.git/objects/maintenance.lock'`.
+  - Cause: a fixture's `git commit` started git's detached auto-maintenance. Its lock file appeared
+    and vanished while the test snapshotted the tree. This is a flaky fixture, not a product fault.
+  - Fix, a deviation, test-only: `test/helpers/real-git.mjs`'s `verifyGit` now passes
+    `maintenance.auto=false` and `gc.auto=0` through `GIT_CONFIG_COUNT` (git 2.31+). Every fixture
+    commit goes through it.
+  - The publish fixtures spawn their own git and never snapshot `.git`, so they are left as they
+    are.
+  - `pnpm --dir create-wxl test` → `Tests 715 passed | 1 skipped (716)`.
