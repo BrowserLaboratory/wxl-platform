@@ -30,14 +30,14 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1 and `traceability.
 Decisions D14, D16, D20, and the round 2 disposition's W4 and R-6.
 
 - [x] Rows: U24, U26, U27, U28, U29, U31, U64 (its restore order), U70, U72, U76.
-- [ ] Row U32 (stage 8).
+- [x] Row U32 (stage 8).
 - [x] ACs reached: AC-6 (U64), AC-9 (U24), AC-10 (U26, U72, U76), AC-11 (U27–U29, U70), AC-12 (U31,
   the GLOSSARY sentence and its assertion in `upstream-config.test.mjs` changed together).
-- [ ] AC-13 (U32).
+- [x] AC-13 (U32).
 - [ ] Stage 5 runs U70 once with git 2.20 and records the version and result in the coverage report; a
   failure goes back to the user before the ticket closes (spec Testing Decisions).
 - [x] Stage 5 checks which code step 9 prints for a bug (round 2 K-5) and records it.
-- [ ] Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
+- [x] Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
   pushed commits A and B, with the branch deleted afterwards.
 
 ## Test plan
@@ -153,3 +153,44 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
   traceability R2, R4 and R5 specify); no confirmed finding, so nothing to fix. Optional hardenings
   are recorded there, not adopted. A first launch reused T-0062's workflow script, which named
   T-0062's diff; it was stopped before any result, and none was used.
+- 2026-11-10, stage 8 (0006-S2, U32; surface: a terminal on macOS darwin arm64, Node v24.13.0, git
+  2.54.0; `GITHUB_REPOSITORY` and `WXL_EXPECT_UPSTREAM` unset):
+  - A = `69d769cd852f37bc0e3fa6c6bc211b13a3ce3213`, this ticket's HEAD as pushed. The package was
+    packed there with `npm pack`, and its `dist/source.json` names A.
+  - B = `4e5ae0940cd359c747a9ef6f6de76992461f9dde`, on `sim/0006-upgrade`: A plus the five upstream
+    changes, committed with the commit skill and pushed.
+  - Every run of the packed package was `npx --yes --package <tarball> create-wxl …`. Commits
+    inside the temporary ranges are fixtures (the spec's exception to hard rule 5).
+  - Step 1: `sim` made with `CREATE_WXL_COMMIT=<A>`, exit 0.
+  - Step 2: in `sim`, the tagline set to `tagline: Teacher edit`, one line of
+    `staff-only/index.md` changed, `platform/public/teacher-note.txt` added; fixture commit
+    `7a8d20d`.
+  - Step 3 (`CREATE_WXL_COMMIT=<B>`, no `--from`): exit 1. CW-W04, then UP-E12 naming 3.0.0, A, and
+    tag `v3.0.0`'s `52192fa…`, with D18's remedies in order. stdout empty, status empty.
+  - Step 4 (`--from <A>`): exit 0; only CW-W04 on stderr.
+    - R1 names base 3.0.0 (A) and target 3.0.0 (B), with "the base was given by --from <commit> and
+      not checked against an upstream tag".
+    - R2: `updated 2 added 1 deleted 1`, then `R2: ".archive/guide/terminal.md"`.
+    - R3: exactly UP-A1 `platform/index.md`, then UP-A12.
+    - R4 holds the D16 sentence, `pnpm install` and the `v*` tag line; R5 is in D14's order.
+    - `platform/index.md` holds the block labelled `range`, `3.0.0` and `3.0.0`, with both taglines
+      and the base's tagline after `|||||||`.
+    - `staff-only/index.md` has no diff and `teacher-note.txt` is unchanged.
+    - `package.json` holds `sim:noop`, version `0.1.0` and the repository `wxl-test/sim`.
+    - `range.json` names B.
+    - After the block was replaced with `tagline: Teacher edit`, `pnpm install && pnpm build`
+      succeeded ("build complete").
+    - `git checkout -- .` then `git clean -fd` gave an empty
+      `git status --porcelain=v1 --untracked-files=all` at the fixture commit.
+  - Step 5: `rel` made by the published `npx --yes create-wxl@3.0.0 rel …`, exit 0.
+  - Step 6 (`CREATE_WXL_COMMIT=<B>`, no `--from`): exit 0; only CW-W04; no UP-I01 and no UP-E12.
+    - R1 names base 3.0.0 with `52192fa85fe7c6c7bf4cecb4c287d6f2876387a4`, which
+      `git rev-parse 'v3.0.0^{commit}'` prints in the upstream checkout. Its target is 3.0.0 (B),
+      and it carries no unchecked note.
+    - `range.json` names B.
+    - R2 was `updated 65 added 25 deleted 1`, with one path line; R3 had one item. Neither is pinned
+      by the spec.
+    - `git checkout -- .` then `git clean -fd` gave an empty status.
+  - Afterwards `sim/0006-upgrade` was deleted on `origin` and locally (`git ls-remote --heads origin
+    sim/0006-upgrade` prints nothing). `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the
+    temporary ranges were removed.
