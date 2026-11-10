@@ -66,6 +66,13 @@ as well (0005 revision 2.3), and AC-11 and B4 list the one ignored file the rest
 Rows U04, U31 and U70 change; no row is added. Built for ticket T-0065 and self-checked below; B4 also lists two git 2.26–2.35 behaviours that
 T-0065's stage 7 found (C1, C2).
 
+Revision 3.4 (2026-11-10) applies decisions D23 and D24 from revision 3's close-out chain analysis
+(`review/chain-analysis-revision-3.md`): R5 and UP-E09 print the restore commands as one line joined
+by `&&`, so `git clean -fd` never runs when `git checkout -- .` fails; and pre-check P-10 leaves an
+untracked path that exists untouched with UP-A15, an alias P-9 cannot see where `realpath` does not
+report the stored name. B1, B3 and B4 also state the consequences the chain analysis listed. Row U77
+is added; rows U26–U28 change. Built for ticket T-0066 and self-checked below.
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -94,6 +101,8 @@ Decisions this file relies on, in short (full record: the local research note
 | D20 | A completed run is one whose step 9 finished; a signal in step 10 still leaves a completed run, which prints R1–R5 in full and exits 130 (D8) (2026-11-10, W11) |
 | D21 | git's floor is 2.26, for the upgrade (step 3, UP-E02) and for create (0005's G0, CW-W01): before 2.26 git runs `core.fsmonitor=true` as a hook command with hook protocol version 1 by default, which may report no changes, so step 4's clean check could pass on a dirty tree (2.26 defaults to version 2; 2.36 reads the value as a boolean; B4 lists what remains), and before 2.25.2 `git check-ignore` ignores `!` re-inclusions (P-5, D15); Ubuntu 20.04's git 2.25.1 is not supported (2026-11-10, the user, after T-0063's comparison of git 2.20 and 2.54) |
 | D22 | `git checkout -- .` removes a directory standing where `HEAD` has a file, with every file in it, ignored ones included, whatever the restore order (measured with git 2.54 in both orders, U70 (d); read in git 2.20's and 2.54's `entry.c`); AC-11's clause on trees built from a commit excepts such a file and B4's Does not protect lists it (2026-11-10, T-0063's stage 6 finding F9, applied under the user's authorisation of that day) |
+| D23 | R5 and UP-E09 print the restore commands as one line, `git checkout -- . && git clean -fd`, so `git clean -fd` never runs when `git checkout -- .` fails (a shell without `&&`, such as Windows PowerShell 5.1, refuses the whole line); tests still run them one by one and require each to exit 0 (2026-11-10, revision 3's close-out chain env:Y1) |
+| D24 | Pre-check P-10: an untracked path that exists by `lstat` is left untouched, UP-A15; step 4 left no untracked file the range does not ignore and P-5 took the ignored ones, so such a path is reached through another name, one the native `realpath` did not report (P-9); this needs no file-system support (2026-11-10, close-out chains env:Y1, env:Y2, b3:Y2, fork:Y4, fork:Y5) |
 
 One correction to R6 ⑦'s wording, a fact: an upgrade can add files, which are untracked, so restoring
 needs `git clean -fd` as well as `git checkout -- .`. Because the tree had to be clean, ignored paths
@@ -187,7 +196,7 @@ With `--from`, only J1 and J3 apply (a present `range.json` must be a regular fi
 object, since step 9 rewrites it); J2, J4, J5 and J6 do not: a `--from <commit>` base is not checked against a tag (D17), and a
 `--from <version>` base is its tag's commit by construction (step 7). D15's check in step 5 applies either way.
 
-### Pre-checks (step 8, before the merge table; checked in order P-1 to P-9, the first match applies)
+### Pre-checks (step 8, before the merge table; checked in order P-1 to P-10, the first match applies)
 
 | # | Condition | Action | Report |
 |---|---|---|---|
@@ -200,6 +209,7 @@ object, since step 9 rewrites it); J2, J4, J5 and J6 do not: a `--from <commit>`
 | P-7 | p's last component, after NFC normalisation and case folding, is `.gitignore` (D9) | untouched | UP-A13 |
 | P-8 | p is a submodule (gitlink) or a path under one (D10) | untouched | UP-A14 |
 | P-9 | Let q be p when o exists by `lstat`, otherwise the deepest proper ancestor of p inside the range that exists by `lstat`, walking from the range root (it may be a regular file, as in U54's first case); when q is the range root, P-9 does not apply. q's name on disk and q differ after NFC normalisation of both (D12). An `lstat` error other than ENOENT or ENOTDIR, or a rejection of the native `realpath`, is UP-E11 naming p | untouched | UP-A15 |
+| P-10 | p is not tracked and exists by `lstat` (D24). An `lstat` error other than ENOENT or ENOTDIR is UP-E11 naming p | untouched | UP-A15 |
 
 P-9 catches the names P-4 cannot see because they are not in B ∪ T ∪ tracked: names the file system
 resolves to another entry (a Windows 8.3 short name such as `GITIGN~1` for `.gitignore`, HFS+
@@ -264,7 +274,7 @@ Every message begins with its code; values from outside are escaped as in 0005.
 | UP-E06 | J1, J3 or J4 broken | the rule's token |
 | UP-E07 | target version lower than base version | both versions |
 | UP-E08 | the tag archive's pax `comment` is not 40 lowercase hex | the tag; for a base from `range.json`, D18's remedies |
-| UP-E09 | a write failed or a signal arrived during step 9 | the path and error (for a signal: the signal), and the restore commands `git checkout -- .` then `git clean -fd` (D14) |
+| UP-E09 | a write failed or a signal arrived during step 9 | the path and error (for a signal: the signal), and the restore commands as one line, `git checkout -- . && git clean -fd` (D14, D23) |
 | UP-E10 | base version lower than 3.0.0 | the version, and that ranges before 3.0.0 cannot be upgraded by this tool |
 | UP-E11 | planning failed: a read error (P-9's `lstat` and native `realpath` included), or `git merge-file` exited outside 0–127, was rejected by `runGit` or was not read in full | the path and error |
 | UP-E12 | the base from `range.json` is not a release: tag `v<version>`'s archive names another 40-hex commit (J6, D11) | the version, both commits, why `range.json` may not record a release (it was written with `CREATE_WXL_COMMIT` or by a package packed at a commit other than its version's tag, the tag moved since, or someone changed the record), and D18's remedies |
@@ -287,7 +297,7 @@ Every message begins with its code; values from outside are escaped as in 0005.
 | UP-A12 | upstream changed files fork:init writes; rerun `pnpm fork:init` |
 | UP-A13 | upstream changed an ignore file; left as it is so ignored files and the restore commands stay safe; merge the rules by hand (D9) |
 | UP-A14 | a path at or inside a submodule; untouched, since the restore commands cannot undo changes there (D10) |
-| UP-A15 | the path's name on disk differs from upstream's (a short name, ignored characters, or letter case, in the path or a parent); untouched (D12) |
+| UP-A15 | the path's name on disk differs from upstream's (a short name, ignored characters, or letter case, in the path or a parent); untouched (D12; P-9, P-10) |
 
 ### Report
 
@@ -301,7 +311,7 @@ compared by UTF-16 code units (JavaScript's default string order) on the unescap
 | R2 | counts: updated, added, deleted (each equal to the number of paths so classified; M10 is not counted as updated); then one line per path M6 deleted, holding the escaped path, sorted by path, without a code (D16) |
 | R3 | one line per attention item: its UP-A code and the path, sorted by path (UP-A12 once, last) |
 | R4 | next steps: `git status` and `git diff`; resolve UP-A1 markers (search `<<<<<<<`) and the other items; when R3 holds UP-A1, a line saying that in a conflict block the section after `\|\|\|\|\|\|\|` is the text of R1's base version, so a base that is not the version the range came from means running R5's commands first (D16); `pnpm install` when the run wrote `package.json` or `pnpm-lock.yaml`; build and test; commit; for a range with `.github/workflows/deploy.yml`, push a new `v*` tag to deploy |
-| R5 | to undo the whole upgrade before making other changes: `git checkout -- .` then `git clean -fd` (D14) |
+| R5 | to undo the whole upgrade before making other changes: `git checkout -- . && git clean -fd` as one line (D14, D23) |
 
 ### Stage 8 simulation (0006-S2)
 
@@ -381,8 +391,8 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
 | U23 | merge | a new executable file in T (non-Windows) | mode | written with mode 0755 (umask 022) | AC-6 |
 | U24 | record | after a completed run | write | `range.json` `upstream` = target; other keys deep-equal and in order; created when absent; a top-level `__proto__` key kept; untouched after UP-E09 for a write failure | AC-9 |
 | U25 | exit | attention empty / non-empty | code | 0 / 0 | AC-10 |
-| U26 | report | the run of U17 | output | R1–R5 in order with their ids, in the run's language; R4 states, when R3 holds UP-A1, that the section after `\|\|\|\|\|\|\|` is the text of R1's base version (D16); R5 names `git checkout -- .` before `git clean -fd` (D14); every UP code exists in both message tables | AC-10 |
-| U27 | failure | `fs.rename` injected to fail on the 2nd write of step 9 | partial | UP-E09 naming the path and the restore commands, `git checkout -- .` before `git clean -fd` (D14), exit 1; after `git checkout -- . && git clean -fd` the porcelain status is empty and every tracked file equals `HEAD` | AC-11 |
+| U26 | report | the run of U17 | output | R1–R5 in order with their ids, in the run's language; R4 states, when R3 holds UP-A1, that the section after `\|\|\|\|\|\|\|` is the text of R1's base version (D16); R5 names `git checkout -- . && git clean -fd` as one line (D14, D23); every UP code exists in both message tables | AC-10 |
+| U27 | failure | `fs.rename` injected to fail on the 2nd write of step 9 | partial | UP-E09 naming the path and the restore commands as one line, `git checkout -- . && git clean -fd` (D14, D23), exit 1; after `git checkout -- . && git clean -fd` the porcelain status is empty and every tracked file equals `HEAD` | AC-11 |
 | U28 | signal | `SIGINT` at the checkpoint of step 7; `SIGTERM` during step 9; `SIGINT` at the checkpoint of step 10 (D8) | signal | exit 130; step 7: nothing written; step 9: UP-E09 with the signal and the restore commands in U27's order; step 10: R1–R5 printed in full; no temporary directory left | AC-11 |
 | U29 | restore | after the run of U17 | revert | `git checkout -- . && git clean -fd` gives an empty porcelain status and `HEAD`'s files; ignored files byte-identical to before the run | AC-11 |
 | U30 | entry | upstream manifest | script | `range:upgrade` exactly as specified (checked by a create-wxl test reading the root manifest) | AC-12 |
@@ -415,6 +425,7 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
 | U74 | repo | `runGit` stub: `git status` of step 4 exiting 128; `git ls-files -z` of step 8 exiting 128; `git check-ignore` of P-5 exiting 128 | D19 | CW-E14 naming the command, exit 1, nothing written | AC-2, AC-6 |
 | U75 | merge | reading o of a tracked file p with b ≢ t fails with `EACCES` (a wrapped `deps.fs`) | read | UP-E11 naming p, nothing written | AC-6 |
 | U76 | report | a run that writes `package.json`; one that writes `pnpm-lock.yaml` but not `package.json` (M5); one that writes neither; a range with `.github/workflows/deploy.yml`; one without | R4 | the `pnpm install` line present / present / absent; the `v*` tag line present / absent | AC-10 |
+| U77 | merge | B has a file `GITIGN~1` ≡ the range's `.gitignore`, T lacks it, and `deps.fs` is wrapped so that `GITIGN~1` acts as `.gitignore` in every function except `realpath`, which returns `<range root>/GITIGN~1` (a WSL `/mnt/c` model, where P-9 cannot see the alias) | P-10 | untouched, UP-A15; no R2 line for it; `.gitignore` unchanged; `git ls-files --others --ignored --exclude-standard` lists the same paths before and after the run | AC-6 |
 
 ## Self-check of the surface (revision 2)
 
@@ -545,4 +556,24 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
     later edit.
   - U70 gains a case; U70's other cases and their expected results are unchanged.
 - Stale text that revision 3.3 changes: `git-version.mjs`'s and `upgrade.mjs`'s comments naming 2.20.
+
+## Self-check of the surface (revision 3.4)
+
+- Row U77 reaches AC-6; every AC is still reached by a row. UP-A15 now comes from P-9 or P-10.
+- Changes checked against existing rules:
+  - P-10 cannot fire on a path the run should handle. Step 4 refuses any untracked file the range
+    does not ignore (`--untracked-files=all`), and P-5 has already left every ignored untracked
+    path. So an untracked p that exists by `lstat` is either reached through another name or a file
+    that appeared during the run (B4's Outside the model). Leaving it untouched is the conservative
+    result in both cases.
+  - P-10 checks p itself, not its ancestors. A new path under a directory that only an alias
+    reaches is still B4's stated limit: an empty untracked directory (for example one that an
+    earlier M6 emptied, C-4) does not show in `git status`, so testing ancestors would refuse such
+    paths.
+  - D23 changes the text of R5 and UP-E09 only; their conditions and exit codes are as before. The
+    tests run the commands one by one and require each to exit 0, which is what `&&` gives. Windows
+    PowerShell 5.1 refuses `&&` and runs neither command. PowerShell 7, bash, zsh and cmd run them
+    as written.
+  - The B1, B3 and B4 additions describe consequences of risks already accepted. Their controls
+    are unchanged, except that P-10 now covers the file-level alias that B4 had left to P-9.
 
