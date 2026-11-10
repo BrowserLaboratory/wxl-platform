@@ -1,10 +1,11 @@
 # Spec 0005: create-wxl — `npm create wxl` makes a ready range
 
-Status: revision 2.1 (2026-10-16). Round 1 found four P0 findings with two root causes
+Status: revision 2.2 (2026-11-10). Round 1 found four P0 findings with two root causes
 (`review/round-1.md`); revision 2 applied its disposition (`review/disposition.md`, groups N1–N10) and
 the user's decisions D1–D2. Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met;
 revision 2.1 applies round 2's P1 groups Q1–Q6 (`review/disposition-2.md`) by decision D3, without
-another round. Derived from `traceability.md`, which holds the fixed
+another round. Revision 2.2 (2026-11-10, with `traceability.md` revision 2.2) widens entry rule 3 to git's
+NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Derived from `traceability.md`, which holds the fixed
 lists this spec refers to (decisions in short, vocabulary, command grammar, language, step order,
 signals, error and warning codes, archive entry rules, pristine processing P1–P4, the `range.json`
 schema, the test-download override, setup questions S1–S6, git steps G0–G4, next steps N1–N8, the
@@ -83,7 +84,7 @@ following the system language; messages quoted from the fork-init engine stay in
   missing, from another version or with a changed engine.
 - **Download and extraction.** The archive is fetched from GitHub's codeload by full commit SHA, parsed
   strictly, and validated as a whole list (entry rules 1–4, including the pax `comment` equal to the
-  commit, no `.git` component, and no duplicate or case-colliding or file-under-file paths) before
+  commit, no `.git` component (nor one git treats as `.git` on NTFS or HFS+), and no duplicate or case-colliding or file-under-file paths) before
   anything is written; entries are written with normalised modes into a `mkdtemp` directory beside the
   target, processed (P1–P4), and moved into place after re-checking the target. GitHub archives apply
   the archived commit's own `export-ignore` (U1); P1–P2 cut upstream's changelog and open-question
@@ -133,7 +134,7 @@ following the system language; messages quoted from the fork-init engine stay in
 - **AC-6** Interactive: the first pass asks S1–S5 in order for the answers not given as flags (S4 for both hosts, required only for Cloudflare Pages); Enter takes the default; an invalid answer asks the same question again; answers are trimmed and S3 maps to the engine's host names; an engine rejection prints its message and, like `n` at the summary, starts the second pass asking every question with the current answers (flag values included) as defaults, where `-` clears S4 or S5; the summary shows the answers and the origin the engine will write; `y`, `yes` or Enter (trimmed, any case) proceed; EOF ends with CW-E15; no download happens before the summary is accepted. (C10, C11, C13, C51, C52, C63, C66)
 - **AC-7** A download that rejects (including an abort mid-body), returns a status other than 200, or has not delivered its whole body within the time limit ends with CW-E07 naming the URL, exit 1, the target unchanged and no temporary directory created. (C14)
 - **AC-8** `CREATE_WXL_COMMIT` of 40 lowercase hex characters prints CW-W04 and is requested from the source record's repository and written as `commit`; any other non-empty value ends with CW-E02 at step 2. (C15, C16)
-- **AC-9** An archive that is not valid gzip or tar, or an entry list breaking entry rules 1–5 (in any order of entries), ends with CW-E08 naming the rule and the first breaking entry as `traceability.md` defines, or the parse error, exit 1, with nothing written; pax and GNU metadata headers are not entries. (C17–C21, C55)
+- **AC-9** An archive that is not valid gzip or tar, or an entry list breaking entry rules 1–5 (in any order of entries), ends with CW-E08 naming the rule and the first breaking entry as `traceability.md` defines, or the parse error, exit 1, with nothing written; pax and GNU metadata headers are not entries, and a short-name component that git does not treat as `.git` (`PLATFO~1`, `GITIGN~1`, `a~1`) passes rule 3 (revision 2.2). (C17–C21, C55, C71)
 - **AC-10** With `--no-setup`, a valid archive yields, at the target, every archive file without its first component, byte-identical except the files P1–P4 change, with executable files 0755, other files 0644 and a newly created target 0755 (each masked by the umask), whether the target was missing, empty, or `.`; the run's temporary directory is gone afterwards; a file or non-empty directory created at the target by someone else after step 4 ends with CW-E04 at step 10, while an empty directory is used; a file-system error in steps 8–9 ends with CW-E09; a failed move ends with CW-E11 after moving back what was moved; in every failure case the target is as it was before the run, except for entries CW-E11 names as not moved back; every path the run writes, renames or removes lies under the target or its own temporary directory. (C22, C29, C30, C53, C54, C65, C69)
 - **AC-11** P1 keeps `CHANGELOG.md` up to and including `## [Unreleased]`; P2 keeps `OPEN-QUESTIONS.md` before its first line matching `^## OQ-\d{3} ` without trailing blank or `---` lines; kept lines end in LF; P3 sets `version` to `0.1.0` in fork-init's serialisation, other keys unchanged; markers match with or without a trailing `\r`; a missing file, missing marker, empty P2 result, BOM, unparsable or non-object manifest ends with CW-E10 naming the file and rule, the target unchanged. (C23–C27)
 - **AC-12** `range.json` is byte-equal to the schema with repository and version from the source record and the commit downloaded, replacing any `range.json` in the archive. (C28)

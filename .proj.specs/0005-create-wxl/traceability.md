@@ -13,7 +13,14 @@ the user's decisions D1 and D2 of 2026-10-16. Round 2 found no P0 (`review/round
 gate is met. Revision 2.1 (2026-10-16, decision D3) applies round 2's P1 groups Q1–Q6 and the P2
 fixes listed in `review/disposition-2.md`, without another review round; rows added in 2.1 start at
 C64. Row ids C01–C49 keep their meaning where they survive;
-rows added in revision 2 start at C50. The decisions this file relies on, in short (the full
+rows added in revision 2 start at C50. Revision 2.2 (2026-11-10) applies decision D13 of epic 0006's
+revision 3 (T-0061, `.proj.specs/0006-range-upgrade/traceability.md`): entry rule 3 also rejects the
+components git's `is_ntfs_dotgit` and `is_hfs_dotgit` treat as `.git`, so B1's "no entry can create a
+`.git` path" holds on NTFS and HFS+ as well as by name (this epic's chain analysis, gap 1); row C18
+gains those cases, row C71 is added, and the rule's text regains a backslash lost in formatting.
+In an input cell, `\uXXXX` inside a code span stands for the single code point U+XXXX; any other `\`
+is a literal backslash, as in C18's `a\b`. The
+decisions this file relies on, in short (the full
 record is the local research note `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
 | Id | Decision |
@@ -190,9 +197,13 @@ The whole list is checked before step 8. An entry list is valid only when:
 2. Every path's first component is the same, and the pax global header's `comment` equals the commit
    requested (when downloading by commit).
 3. After dropping the first component, a file's path is non-empty and does not end in `/`; every path
-   is relative, uses `/` only (no ``), has no component that is empty (a directory's single trailing
-   `/` excepted), `.`, `..`, or equal to `.git` ignoring case, no component ending in `.` or a space,
-   and no C0, DEL or C1 character.
+   is relative, uses `/` only (no `\`), has no component that is empty (a directory's single trailing
+   `/` excepted), `.`, `..`, or that git treats as `.git`, no component ending in `.` or a space, and
+   no C0, DEL or C1 character. A component git treats as `.git` is one that, compared ignoring ASCII
+   case, either (a) is `.git` or `git~1`, then zero or more `.` or space characters, then either nothing
+   or `:` followed by anything (git's `is_ntfs_dotgit`); or (b) equals `.git` after every U+200C–U+200F,
+   U+202A–U+202E, U+206A–U+206F and U+FEFF is removed, wherever it occurs (git's `is_hfs_dotgit`). Other short names (`PLATFO~1`, `GITIGN~1`) are not rejected
+   (revision 2.2).
 4. No two entries have the same path, or paths equal after Unicode NFC normalisation followed by
    JavaScript `toLowerCase()`; and no file's path is a proper prefix (followed by `/`) of another
    entry's path, whatever their order.
@@ -414,7 +425,7 @@ input written to its stdin, one answer per line.
 | C15 | download | `CREATE_WXL_COMMIT` 40 lowercase hex | override | CW-W04; `fetchArchive(repository, override)`; written to `range.json` | AC-8 |
 | C16 | download | `CREATE_WXL_COMMIT` short, uppercase, other text | reject | CW-E02 in step 2, before any question or download | AC-8 |
 | C17 | archive | symlink; hardlink; FIFO; char device; block device; GNU sparse | rule 1 | CW-E08 naming the path and rule 1; nothing written | AC-9 |
-| C18 | archive | after the prefix: `/abs`; `../x`; `a/../x`; `a//b`; `./x`; `a\b`; `.git/x`; `.GIT/x`; `a/x.`; `a/x `; a file `a/`; a name holding ESC | rule 3 | CW-E08 | AC-9 |
+| C18 | archive | after the prefix: `/abs`; `../x`; `a/../x`; `a//b`; `./x`; `a\b`; `.git/x`; `.GIT/x`; `git~1/x`; `GIT~1/x`; `git~1. :x/y`; `.git:x/y`; `.git::$INDEX_ALLOCATION/x`; `.g\u200cit/x`; `.G\u200cIT/x`; `\u200c.git/x`; `.git\ufeff/x`; `a/x.`; `a/x `; a file `a/`; a name holding ESC | rule 3 | CW-E08 | AC-9 |
 | C19 | archive | two first components; pax `comment` absent or another commit | rule 2 | CW-E08 | AC-9 |
 | C20 | archive | file `a` then `a/b`; `a/b` then file `a`; directory `a/` then file `a`; same path twice; `Readme.md` and `README.md`; only the prefix directory | rules 4–5 | CW-E08 naming the later entry, or rule 5 | AC-9 |
 | C21 | archive | pax global header with the right `comment`; GNU long-name header; ordinary files and directories | ok | accepted; headers not written as files | AC-9 |
@@ -467,6 +478,7 @@ input written to its stdin, one answer per line.
 | C68 | engine | summary `n`, S5 changed to `a<b` (engine rejects), then to `S8` | last parse | `runForkInit` receives exactly the object the last `parseForkInitArgs` call returned | AC-14 |
 | C69 | fs | a full interactive run with `fs` wrapped by a recorder | write scope | every path written, renamed or removed lies under the target or the run's temporary directory | AC-10 |
 | C70 | git env | `runGit` calls of C35 | isolation | each env has no `GIT_*` other than `GIT_TERMINAL_PROMPT=0` and `GIT_CONFIG_NOSYSTEM=1` | AC-15 |
+| C71 | archive | after the prefix: `PLATFO~1/x`; `GITIGN~1`; `a~1/b` | rule 3 (revision 2.2) | accepted | AC-9 |
 
 ## Self-check of the surface (revision 2)
 
@@ -512,3 +524,17 @@ input written to its stdin, one answer per line.
   - `GIT_CONFIG_NOSYSTEM=1` is the one addition to the git environment; tests isolate global
     configuration through `HOME` and `XDG_CONFIG_HOME`, which the runner keeps.
 
+## Self-check of the surface (revision 2.2)
+
+- Row C71 reaches AC-9; C18's added cases keep its code (CW-E08) and AC.
+- Changes checked against existing rules:
+  - The added names are the ones current git refuses into its index on every platform
+    (`core.protectNTFS`, true by default everywhere in current git; git releases before the December
+    2019 security fixes applied it only on Windows) or on macOS (`core.protectHFS`), and that
+    `git fsck` reports as `hasDotgit`; no path upstream holds at `v3.0.0` or at HEAD (2026-11-09) is one of them, so
+    create, the upgrade's archives and `checkPublish` (which also applies rule 3) accept every
+    upstream tree they accepted before.
+  - Rule 3 still accepts other short names: rejecting every `~1` would refuse names git accepts.
+  - A component ending in `.` or a space was already rejected, so `.git.` and `git~1 ` were refused
+    before; the new text adds `git~1`, `:` streams and HFS+ ignorable code points, and every case added
+    to C18 is one the old trailing-`.`/space clause does not reject.

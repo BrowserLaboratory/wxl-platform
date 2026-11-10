@@ -1055,3 +1055,10 @@ is untracked and ignored (a new code); or keep writing it and say in R5 that an 
 
 **Revisit when.** A teacher reports it, or the next epic that changes the upgrade's steps.
 
+**Decided on 2026-11-10 (epic 0006 revision 3, decision D15); closes when T-0061 lands.** The user chose the first
+option in T-0061's stage 1 interview: step 5 refuses, before any download and with or without
+`--from`, a `range.json` that is not tracked and that the range's rules ignore (UP-E13; matrix row
+U67). Reproduced on a terminal during that stage (`.proj.research/2026-11-09-t0061-stage1-facts.md`,
+scenarios S8a and S8b): no order of the restore commands restores or removes such a file. At T-0061's
+close-out, set the status to resolved and record the verifying evidence here.
+

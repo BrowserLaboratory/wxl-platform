@@ -2,12 +2,8 @@
 id: T-0061
 title: Upgrade base provenance and on-disk name aliases
 epic: 0006-range-upgrade
-status: pending
+status: processing
 blocked_by: []
-pending_reason: "Opened by epic 0006's chain analysis: chains X1-X3 cross from B3 to B4, so a ticket is required before the epic is called done (docs/agents/review.md). Every fix needs a spec decision first (stage 1), and the user decides when it runs; until then it stays pending."
-pending_evidence: ".proj.specs/0006-range-upgrade/review/chain-analysis.md (X1-X3, spec gaps 1-3); create-wxl/src/upgrade.mjs (J4/J5 accept any 40-hex commit; F25), create-wxl/src/merge-plan.mjs (classify: o ≡ b drives M5/M6; o read from disk by path; P-7 by name), create-wxl/src/upgrade-report.mjs (R2 counts only; R5 runs git clean -fd first), all at main 651e866."
-pending_on: 2026-11-09
-revisit_when: "The user schedules it, or before create-wxl's upgrade is recommended to teachers who share a range (co-teachers, pull requests)."
 ---
 
 ## Context
@@ -33,8 +29,9 @@ tracked files are recoverable (X3 excepted), and deploying needs the teacher's o
 ## Deliverable
 
 A teacher's upgrade cannot be steered by a base that is not upstream's without the teacher being told,
-and no path whose on-disk name differs from p (8.3 short names, HFS+ ignorable code points, case) is
-read, written or deleted.
+and no merge path whose on-disk name differs from p (8.3 short names, HFS+ ignorable code points,
+case) is written or deleted, except where spec B4 says P-9 may miss a letter-case alias;
+`range.json` is read and written by its literal name.
 
 ## Acceptance criteria
 
@@ -59,3 +56,22 @@ analysis, for that stage to decide:
 epic 0006 串連分析開出的後續票。能改 `range.json` 的人（共同授課老師、被合併的 PR），可以把 base 指向 fork network 裡自己做的 commit。這樣一來，升級可能把老師的修改蓋掉、刪掉老師的檔案，或在衝突區塊放進他寫的文字；在 Windows 上，還能藉 8.3 短檔名刪掉 `.gitignore`，之後的還原指令會刪掉老師被 ignore 的檔案。嚴重度低，要部署出去仍須老師自己 commit、push。修法（base 要和上游 tag 綁定、讀檔前確認磁碟上的實際檔名、調整還原指令順序等）都牽涉 spec 決策，要先回到第 1 階段。
 
 ## Comments
+
+- 2026-11-09, stage 1: the user settled decisions D11–D17 (record:
+  `.proj.research/2026-11-09-t0061-grill.md`), including OQ-026 (D15) and 0005's chain-analysis gap 1
+  (D13); 0005's gap 2 (B7's G4 hook) goes to a separate maintenance ticket, opened after asking the
+  user. The alias check above is stronger than this ticket first said: D12 compares the whole relative
+  path (the deepest existing ancestor when o is absent), not only the last component. This ticket runs
+  under the standing authorisation of 2026-11-07, which the user extended to it.
+- 2026-11-10, stage 2: `traceability.md` revision 3 and the spec are revised (rows U65–U73; codes
+  UP-E12, UP-E13, UP-A15); 0005's matrix is at revision 2.2. Acceptance criteria are traced at stage 4.
+- 2026-11-10, stage 2 self-check (workflow `wf_d98348ca-1d6`, 94 findings, 90 kept after independent
+  refutation, all applied; list in the local note `.proj.research/2026-11-10-t0061-stage2-selfcheck.md`). The user
+  scheduled this ticket on 2026-11-09, so the pause ended: status moved from pending to processing and
+  the pending fields were dropped (their text is in Git history). Code comments and strings revision 3
+  makes stale, to change at stage 5: `messages.mjs` UP-E09 comment and both UP-E09 messages (D14);
+  `upgrade-report.mjs` R5 comment and both R5 strings (D14); `upgrade.mjs` step 5 comment (J6, D15),
+  step 7 comment (a base from `range.json` is downloaded by tag, D11) and the tag-mode comment;
+  `merge-plan.mjs` P-7 rationale comment (the restore order). No published create-wxl prints R5:
+  v3.0.0 predates the upgrade code and rejects `upgrade` (0005 AC-2), so the old restore order reaches
+  teachers only if create-wxl is published from `main` before T-0061 lands.
