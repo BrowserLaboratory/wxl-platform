@@ -196,8 +196,9 @@ describe('SIGTERM right after step 9\'s first rename (U28(b))', () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expect(ioHelper.stderrText).toContain('git clean -fd')
+      // D14 (T-0063): `git checkout -- .` comes before `git clean -fd`.
       expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(ioHelper.stderrText.indexOf('git checkout -- .')).toBeLessThan(ioHelper.stderrText.indexOf('git clean -fd'))
       expect(exitCode).toBe(130)
 
       // The deletion (M6) and the first write already landed before the signal was noticed.
@@ -246,8 +247,9 @@ describe("SIGTERM right after range.json's own temporary file is written", () =>
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expect(ioHelper.stderrText).toContain('git clean -fd')
+      // D14 (T-0063): `git checkout -- .` comes before `git clean -fd`.
       expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(ioHelper.stderrText.indexOf('git checkout -- .')).toBeLessThan(ioHelper.stderrText.indexOf('git clean -fd'))
       expect(exitCode).toBe(130)
 
       expect(remainingTmpEntries(tmpRoot)).toEqual([])

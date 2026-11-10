@@ -228,6 +228,9 @@ describe('UP-E09 wording: the path/detail branch and the signal branch', () => {
 
     for (const text of [enPath, zhPath, enSignal, zhSignal]) {
       expect(text.startsWith('UP-E09')).toBe(true)
+      // D14 (T-0063): the restore commands, `git checkout -- .` before `git clean -fd`.
+      expect(text).toContain('git checkout -- .')
+      expect(text.indexOf('git checkout -- .')).toBeLessThan(text.indexOf('git clean -fd'))
     }
 
     expect(enSignal).toContain('SIGTERM')

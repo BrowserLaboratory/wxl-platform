@@ -6,6 +6,14 @@
 
 import { jsonValue } from './text.mjs'
 
+/** D14 (T-0063): the restore commands, in order -- `checkout` first, so a missing or changed
+ * ignore file is back before `clean` runs, and `clean` never deletes a file `HEAD`'s rules ignore.
+ * R5 and UP-E09 print them, and U70 runs them, from this one list. */
+export const RESTORE_COMMANDS = Object.freeze([
+  Object.freeze(['git', 'checkout', '--', '.']),
+  Object.freeze(['git', 'clean', '-fd']),
+])
+
 /** `ops` carrying a `report` code (M10, or an M12 conflict/UP-A11 outcome) are written, but not
  * counted here (traceability.md "Report" R2's own "M10 is not counted as updated"). */
 function countsFromOps(ops) {
@@ -92,10 +100,11 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
   // traceability.md "Report" R5; spec.en.md B4: the restore commands undo
   // the WHOLE upgrade, so they are only safe BEFORE any other change -- the fixed bare commands
   // alone, without that warning, let a teacher who edits first lose that edit too.
+  const [first, second] = RESTORE_COMMANDS.map((command) => command.join(' '))
   lines.push(
     zh
-      ? 'R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .'
-      : 'R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .',
+      ? `R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 ${first} 和 ${second}`
+      : `R5: to undo the whole upgrade before making other changes, run ${first} then ${second}`,
   )
   return lines.join('\n') + '\n'
 }

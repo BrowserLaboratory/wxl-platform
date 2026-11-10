@@ -263,7 +263,7 @@ describe('report text (U26)', () => {
       ])
       // R5 also warns to use the restore commands only BEFORE making other changes
       // (traceability.md "Report" R5; spec.en.md B4) -- not the bare commands alone.
-      expect(lines[r5]).toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
+      expect(lines[r5]).toBe('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -316,8 +316,8 @@ describe('report text (U26)', () => {
       ])
       // R5 also warns to use the restore commands only BEFORE making other changes
       // (traceability.md "Report" R5; spec.en.md B4).
-      expect(lines[r5]).toBe('R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .')
-      expect(lines[r5]).not.toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
+      expect(lines[r5]).toBe('R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git checkout -- . 和 git clean -fd')
+      expect(lines[r5]).not.toBe('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

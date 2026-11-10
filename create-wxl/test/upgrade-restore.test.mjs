@@ -1,5 +1,5 @@
 // 0006-S1 step 10's own restore path (traceability.md "Codes" R5, "Pre-checks" P-5): after a
-// completed run, `git clean -fd` then `git checkout -- .` gives back exactly `HEAD`'s own tree,
+// completed run, `git checkout -- .` then `git clean -fd` (D14, T-0063) gives back exactly `HEAD`'s own tree,
 // including an untracked, ignored file never touched by the plan. T-0027 increment 12 (U29);
 // ticket-specified new file, reusing U17's own fixture and run.
 
@@ -16,6 +16,7 @@ import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archiv
 import { verifyGit } from './helpers/real-git.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
+import { RESTORE_COMMANDS } from '../src/upgrade-report.mjs'
 
 const BASE_COMMIT = '9'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -70,7 +71,7 @@ async function cleanupFixture(fixture, tmpRoot) {
 }
 
 describe('restore after U17\'s run (U29)', () => {
-  it('git clean -fd then git checkout -- . gives an empty status and HEAD\'s own files, including the untracked ignored one', async () => {
+  it('git checkout -- . then git clean -fd gives an empty status and HEAD\'s own files, including the untracked ignored one', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ALL_BRANCHES, rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
@@ -87,8 +88,8 @@ describe('restore after U17\'s run (U29)', () => {
       tmpRoot = usedTmpRoot
       expect(exitCode).toBe(0)
 
-      await verifyGit(['clean', '-fd'], { cwd: fixture.root, env: fixture.env })
-      await verifyGit(['checkout', '--', '.'], { cwd: fixture.root, env: fixture.env })
+      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them.
+      for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: fixture.root, env: fixture.env })
 
       const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: fixture.root, env: fixture.env })
       expect(status.stdout).toBe('')

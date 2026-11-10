@@ -24,6 +24,7 @@ import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
 import { en } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
+import { RESTORE_COMMANDS } from '../src/upgrade-report.mjs'
 
 const BASE_COMMIT = '4'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -122,8 +123,8 @@ describe('upstream .gitignore changes (U63, D9)', () => {
         `R3: ${en['UP-A13']()} ${jsonValue('sub/.gitignore')}`,
       ])
 
-      await verifyGit(['clean', '-fd'], { cwd: fixture.root, env: fixture.env })
-      await verifyGit(['checkout', '--', '.'], { cwd: fixture.root, env: fixture.env })
+      // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them.
+      for (const [, ...args] of RESTORE_COMMANDS) await verifyGit(args, { cwd: fixture.root, env: fixture.env })
       expect(await readFile(scratchPath)).toEqual(scratchBefore)
     } finally {
       await cleanupFixture(fixture, tmpRoot)

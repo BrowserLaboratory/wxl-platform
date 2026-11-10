@@ -549,8 +549,9 @@ describe("step 9's existingMode lstat fails closed", () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('README.md')
-      expect(ioHelper.stderrText).toContain('git clean -fd')
+      // D14 (T-0063): `git checkout -- .` comes before `git clean -fd`.
       expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expect(ioHelper.stderrText.indexOf('git checkout -- .')).toBeLessThan(ioHelper.stderrText.indexOf('git clean -fd'))
       expect(exitCode).toBe(1)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
