@@ -529,14 +529,14 @@ describe("step 9's existingMode lstat fails closed", () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
-      // Two legitimate `lstat` calls for 'README.md' already happen in step 8 (P-3's
-      // `hasSymlinkInPath` and P-6's `isNonFileOther`); only the THIRD one, step 9's own
-      // `existingMode` read, is overridden here, matched by file name.
+      // Three legitimate `lstat` calls for 'README.md' already happen in step 8 (P-3's
+      // `hasSymlinkInPath`, P-6's `isNonFileOther` and, since T-0062, P-9's `hasNameAlias`); only
+      // the FOURTH one, step 9's own `existingMode` read, is overridden here, matched by file name.
       let matchCount = 0
       const lstatOverride = failAt('lstat', (_count, args) => {
         if (basename(args[0]) !== 'README.md') return null
         matchCount++
-        return matchCount === 3 ? fsError('EACCES', 'EACCES: permission denied') : null
+        return matchCount === 4 ? fsError('EACCES', 'EACCES: permission denied') : null
       })
       const { fs } = recordingFs({ lstat: lstatOverride })
 

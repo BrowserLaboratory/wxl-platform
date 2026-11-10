@@ -130,6 +130,51 @@ async function hasSymlinkInPath(fs, rangeRoot, path) {
   return false
 }
 
+/** P-9 (traceability.md "Pre-checks", Vocabulary "name on disk"; D12, T-0062): true when the name
+ * the file system stores for q differs from q, where q is `path` when `o` exists by `lstat`, and
+ * otherwise `path`'s deepest proper ancestor that exists, found by `lstat` walking from the range
+ * root (it may be a regular file). When q is the range root, P-9 does not apply. The comparison
+ * takes R, the range root's native realpath as step 3 resolved it, and Q, the native realpath of
+ * q, both with `\` turned into `/`; Q must start with R followed by `/` (or R itself when R
+ * already ends in `/`, a drive root), and the rest of Q must equal q once both are NFC-normalised.
+ * An `lstat` error other than ENOENT/ENOTDIR, or a `realpath` rejection, is a planning failure
+ * naming `path` (UP-E11). This catches what P-4 cannot see: a Windows 8.3 short name, HFS+
+ * ignorable code points, or letter case in a parent directory that B, T and tracked do not name. */
+async function hasNameAlias(fs, rangeRoot, realRangeRoot, path) {
+  const parts = path.split('/')
+  const lstatOk = async (rel) => {
+    try {
+      await fs.lstat(join(rangeRoot, ...rel))
+      return true
+    } catch (err) {
+      if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') return false
+      throw new PlanningError(path, err?.message ?? String(err))
+    }
+  }
+  let q = null
+  if (await lstatOk(parts)) {
+    q = parts
+  } else {
+    for (let i = 1; i < parts.length; i++) {
+      if (!(await lstatOk(parts.slice(0, i)))) break
+      q = parts.slice(0, i)
+    }
+  }
+  if (q === null) return false // q is the range root: P-9 does not apply
+  let realQ
+  try {
+    realQ = await fs.realpath(join(rangeRoot, ...q))
+  } catch (err) {
+    throw new PlanningError(path, err?.message ?? String(err))
+  }
+  const toSlash = (value) => String(value).replace(/\\/g, '/')
+  const root = toSlash(realRangeRoot)
+  const prefix = root.endsWith('/') ? root : `${root}/`
+  const resolved = toSlash(realQ)
+  if (!resolved.startsWith(prefix)) return true
+  return resolved.slice(prefix.length).normalize('NFC') !== q.join('/').normalize('NFC')
+}
+
 /** P-6 (traceability.md "Pre-checks"): true when `o` exists, is reached without crossing a
  * non-directory component (`ENOENT`/`ENOTDIR` both mean "nothing non-file is here" -- the same
  * reading as `readFileOrNull`/`hasSymlinkInPath`, above), is not a symbolic link (already ruled
@@ -416,6 +461,16 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
         attention.push({ path, code: 'UP-A14' })
         continue
       }
+
+      // P-9 (D12, T-0062): a path whose name on disk differs from `path` -- in itself, or in the
+      // deepest existing ancestor when `o` is absent -- is never read, written or deleted here.
+      // Checked last among the pre-checks, so a symbolic link stays UP-A7 (P-3) and a collision
+      // within B ∪ T ∪ tracked stays UP-A8 (P-4).
+      if (await hasNameAlias(deps.fs, rangeRoot, realRangeRoot, path)) {
+        attention.push({ path, code: 'UP-A15' })
+        continue
+      }
+      guard.throwIfRaised()
 
       // `o` is classified by `lstat` BEFORE any read -- P-3 (a symbolic link anywhere in `path`)
       // and P-6 (a present, non-symbolic-link, non-regular-file `o`), both just above, already
