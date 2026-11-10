@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import * as fsp from 'node:fs/promises'
 import { rm, readFile, writeFile, mkdir, symlink, stat, readdir } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
@@ -43,13 +44,16 @@ async function commitFiles(fixture, files) {
     await mkdir(join(fixture.root, ...rel.split('/').slice(0, -1)), { recursive: true })
     await writeFile(join(fixture.root, ...rel.split('/')), content)
   }
-  await verifyGit(['add', '-A'], { cwd: fixture.root, env: fixture.env })
-  await verifyGit([...COMMIT_ARGS, 'fixture files'], { cwd: fixture.root, env: fixture.env })
+  for (const args of [['add', '-A'], [...COMMIT_ARGS, 'fixture files']]) {
+    const out = await verifyGit(args, { cwd: fixture.root, env: fixture.env })
+    if (out.code !== 0) throw new Error(`fixture git ${args[0]} failed: ${out.stderr}`)
+  }
 }
 
 async function ignoredList(fixture) {
   const out = await verifyGit(['ls-files', '--others', '--ignored', '--exclude-standard'], { cwd: fixture.root, env: fixture.env })
-  return out.stdout ?? out
+  if (out.code !== 0) throw new Error(`git ls-files --ignored failed: ${out.stderr}`)
+  return out.stdout
 }
 
 async function runUpgrade(fixture, { fs, cwd } = {}) {
@@ -75,7 +79,8 @@ async function runUpgrade(fixture, { fs, cwd } = {}) {
     const ioHelper = makeIo()
     const exitCode = await run(['upgrade'], ioHelper.io, deps)
     const r3 = ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
-    return { exitCode, ioHelper, r3 }
+    const leftovers = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+    return { exitCode, ioHelper, r3, leftovers }
   } finally {
     await rm(tmpRoot, { recursive: true, force: true })
   }
@@ -87,15 +92,21 @@ async function cleanup(fixture, extra = []) {
   for (const dir of extra) await rm(dir, { recursive: true, force: true })
 }
 
-async function isCaseInsensitive(dir) {
-  await writeFile(join(dir, 'CaseProbe.tmp'), 'x')
+/** Probes the temporary volume (the fixture's own) in a directory of its own, never inside the
+ * range under test; only ENOENT means case-sensitive, any other error fails the test. */
+async function isCaseInsensitive() {
+  const dir = await makeTmpRoot('create-wxl-case-probe-')
   try {
-    await stat(join(dir, 'caseprobe.TMP'))
-    return true
-  } catch {
-    return false
+    await writeFile(join(dir, 'CaseProbe.tmp'), 'x')
+    try {
+      await stat(join(dir, 'caseprobe.TMP'))
+      return true
+    } catch (err) {
+      if (err?.code === 'ENOENT') return false
+      throw err
+    }
   } finally {
-    await rm(join(dir, 'CaseProbe.tmp'), { force: true })
+    await rm(dir, { recursive: true, force: true })
   }
 }
 
@@ -128,9 +139,8 @@ describe('U68: a name alias on disk -> untouched, UP-A15 (P-9)', () => {
     try {
       // traceability.md Seams: real-file-system letter-case aliases run only on macOS or Windows,
       // on a case-insensitive file system (P-9 relies on a native realpath reporting the stored name).
-      if (!['darwin', 'win32'].includes(process.platform) || !(await isCaseInsensitive(fixture.root))) {
-        ctx.skip()
-        return
+      if (!['darwin', 'win32'].includes(process.platform) || !(await isCaseInsensitive())) {
+        ctx.skip('P-9 relies on a native realpath reporting the stored name: macOS or Windows, on a case-insensitive file system only')
       }
       await commitFiles(fixture, { 'Platform/teacher.md': 'a teacher page\n' })
       fixture.targetEntries.push({ path: 'platform/', type: 'dir', mode: 0o755 })
@@ -150,22 +160,25 @@ describe('U68: a name alias on disk -> untouched, UP-A15 (P-9)', () => {
   })
 
   it('(c, Windows only) a real 8.3 short name GITIGN~1 for .gitignore, when the runner can give one -> UP-A15; .gitignore unchanged', async (ctx) => {
-    if (process.platform !== 'win32') {
-      ctx.skip()
-      return
-    }
+    if (process.platform !== 'win32') ctx.skip('Windows only: a real 8.3 short name')
     const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: RANGE_JSON })
     try {
       const gitignorePath = join(fixture.root, '.gitignore')
+      // The volume may already have given .gitignore the short name GITIGN~1; set it only when not.
+      let shortNameError
       try {
-        execFileSync('fsutil', ['file', 'setshortname', gitignorePath, 'GITIGN~1'], { stdio: 'pipe' })
         await stat(join(fixture.root, 'GITIGN~1'))
       } catch {
-        // Spec Testing Decisions: when the runner cannot give a file a short name, the real case
-        // is recorded as not verified, and the injected model in (a) stands.
-        ctx.skip()
-        return
+        try {
+          execFileSync('fsutil', ['file', 'setshortname', gitignorePath, 'GITIGN~1'], { stdio: 'pipe' })
+          await stat(join(fixture.root, 'GITIGN~1'))
+        } catch (err) {
+          shortNameError = String(err?.stderr ?? err?.message ?? err).trim()
+        }
       }
+      // Spec Testing Decisions: when the runner cannot give a file a short name, the real case is
+      // recorded as not verified, and the injected model in (a) stands.
+      if (shortNameError !== undefined) ctx.skip(`this runner cannot give .gitignore the short name GITIGN~1: ${shortNameError}`)
       const before = await readFile(gitignorePath, 'utf8')
       fixture.baseEntries.push({ path: 'GITIGN~1', type: 'file', mode: 0o644, content: before })
 
@@ -181,14 +194,11 @@ describe('U68: a name alias on disk -> untouched, UP-A15 (P-9)', () => {
 })
 
 describe('U69: names that agree are not reported; P-9 errors fail closed', () => {
-  const NFC_NAME = 'caf\u00e9.md'
+  const NFC_NAME = 'platform/caf\u00e9.md'
   const NFD_NAME = 'cafe\u0301.md'
 
-  it('(a) the range root reached through a symbolic link to it -> no UP-A15; README.md updated', async (ctx) => {
-    if (process.platform === 'win32') {
-      ctx.skip()
-      return
-    }
+  // Needs a symbolic link: skipped on Windows (spec Testing Decisions).
+  it.skipIf(process.platform === 'win32')('(a) the range root reached through a symbolic link to it -> no UP-A15; README.md updated', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: RANGE_JSON })
     const linkDir = await makeTmpRoot('create-wxl-upgrade-link-')
     try {
@@ -207,13 +217,13 @@ describe('U69: names that agree are not reported; P-9 errors fail closed', () =>
     const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: RANGE_JSON })
     try {
       await commitFiles(fixture, { [NFC_NAME]: 'base\n' })
-      fixture.baseEntries.push({ path: NFC_NAME, type: 'file', mode: 0o644, content: 'base\n' })
-      fixture.targetEntries.push({ path: NFC_NAME, type: 'file', mode: 0o644, content: 'target\n' })
+      fixture.baseEntries.push({ path: 'platform/', type: 'dir', mode: 0o755 }, { path: NFC_NAME, type: 'file', mode: 0o644, content: 'base\n' })
+      fixture.targetEntries.push({ path: 'platform/', type: 'dir', mode: 0o755 }, { path: NFC_NAME, type: 'file', mode: 0o644, content: 'target\n' })
       const fs = wrappedFs({ realpath: async (p, ...rest) => (await fsp.realpath(p, ...rest)).normalize('NFD') })
       const result = await runUpgrade(fixture, { fs })
       expect(result.exitCode).toBe(0)
       expect(result.r3.some((line) => line.includes('UP-A15'))).toBe(false)
-      expect(await readFile(join(fixture.root, NFC_NAME), 'utf8')).toBe('target\n')
+      expect(await readFile(join(fixture.root, ...NFC_NAME.split('/')), 'utf8')).toBe('target\n')
     } finally {
       await cleanup(fixture)
     }
@@ -291,6 +301,8 @@ describe('U69: names that agree are not reported; P-9 errors fail closed', () =>
       expect(result.exitCode).toBe(1)
       expect(result.ioHelper.stderrText).toMatch(/^UP-E11/m)
       expect(result.ioHelper.stderrText).toContain(jsonValue('README.md'))
+      expect(result.ioHelper.stderrText).toContain('EACCES')
+      expect(result.leftovers).toEqual([])
       expect(await snapshotTree(fixture.root)).toEqual(before)
     } finally {
       await cleanup(fixture)
@@ -300,7 +312,10 @@ describe('U69: names that agree are not reported; P-9 errors fail closed', () =>
   it('(g) deps.fs.lstat rejects with EACCES for an ancestor of an absent p during P-9 -> UP-E11 naming p, nothing written', async () => {
     const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: RANGE_JSON })
     try {
-      fixture.targetEntries.push({ path: 'src/new-from-upstream.txt', type: 'file', mode: 0o644, content: 'new\n' })
+      // M7 (b and t present, o absent): no write is planned for this path, so the parent check
+      // never lstats its ancestor and only P-9 can turn the error into UP-E11 (T-0062 stage 6, M1).
+      fixture.baseEntries.push({ path: 'src/gone.txt', type: 'file', mode: 0o644, content: 'base\n' })
+      fixture.targetEntries.push({ path: 'src/gone.txt', type: 'file', mode: 0o644, content: 'target\n' })
       const ancestor = join(fixture.root, 'src')
       let calls = 0
       // P-3 lstats every prefix of p first; only a later lstat of the same ancestor (P-9's walk)
@@ -315,7 +330,9 @@ describe('U69: names that agree are not reported; P-9 errors fail closed', () =>
       const result = await runUpgrade(fixture, { fs })
       expect(result.exitCode).toBe(1)
       expect(result.ioHelper.stderrText).toMatch(/^UP-E11/m)
-      expect(result.ioHelper.stderrText).toContain(jsonValue('src/new-from-upstream.txt'))
+      expect(result.ioHelper.stderrText).toContain(jsonValue('src/gone.txt'))
+      expect(result.ioHelper.stderrText).toContain('EACCES')
+      expect(result.leftovers).toEqual([])
       expect(await snapshotTree(fixture.root)).toEqual(before)
     } finally {
       await cleanup(fixture)

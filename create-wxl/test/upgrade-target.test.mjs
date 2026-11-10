@@ -3,7 +3,8 @@
 // ranges under `deps.tmpRoot` (D3), `cleanupTmpDirs` not stopping on one directory's own `rm`
 // failure (F14), the tag-mode comment rule (U16), and the 0005 archive-rule/pristine-rule codes
 // once both archives are downloaded (U15). T-0061: a base read from `range.json` is a tag download
-// too (U16's range.json cases, U66), and D18's remedies appear only for it (U66, F10). U15's "base"
+// too (U16's range.json cases, U66), and D18's remedies appear only for it (U66, F10). T-0062: U73,
+// entry rule 3's git `.git` aliases on both the target and the base archive (D13). U15's "base"
 // fetch failures reach the tag ref through `makeRefFetchArchive`'s `releases` option.
 
 import { describe, it, expect, vi } from 'vitest'
@@ -878,6 +879,26 @@ describe('U73: rule 3 on the upgrade path rejects git\'s .git aliases (D13)', ()
     expect(result.exitCode).toBe(1)
     expect(result.ioHelper.stderrText).toMatch(/^CW-E08/m)
     expect(result.ioHelper.stderrText).toContain('rule 3')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('a base (tag download) component git~1 -> CW-E08 rule 3, not UP-E12, exit 1, nothing written (T-0062 stage 6, L5)', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: {
+        'refs/tags/v3.1.0': {
+          body: pristineArchive(BASE_COMMIT, {
+            entries: [...PRISTINE_FIXTURE, { path: 'git~1/', type: 'dir', mode: 0o755 }, { path: 'git~1/x', type: 'file', mode: 0o644, content: 'x\n' }],
+          }),
+        },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+      },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E08/m)
+    expect(result.ioHelper.stderrText).toContain('rule 3')
+    expect(result.ioHelper.stderrText).not.toContain('UP-E12')
     expect(result.after).toEqual(result.before)
     expect(result.leftovers).toEqual([])
   })

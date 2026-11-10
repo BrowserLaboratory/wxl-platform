@@ -7,8 +7,9 @@
 import { join, resolve as resolvePath } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
 import { SignalAbort } from './signals.mjs'
-import { runGitNamed } from './git-named.mjs'
-import { planMerge, MergeFileError, PlanningError, isIgnoredPath } from './merge-plan.mjs'
+import { runGitNamed, isIgnoredPath } from './git-named.mjs'
+import { planMerge, MergeFileError, PlanningError } from './merge-plan.mjs'
+import { toSlash, foldAsciiCase } from './text.mjs'
 import { applyMerge } from './merge-apply.mjs'
 import { buildReport } from './upgrade-report.mjs'
 import { COMMIT_RE, VERSION_RE } from './patterns.mjs'
@@ -28,13 +29,6 @@ function isHigherVersion(a, b) {
   const partsA = versionParts(a)
   const partsB = versionParts(b)
   return isAtLeast(partsA, partsB) && !isAtLeast(partsB, partsA)
-}
-
-/** `\` is Windows' own path separator; `git rev-parse --show-toplevel`'s own output always uses
- * `/`, so comparing after turning `\` into `/` on both sides (traceability.md "Step order" row 3)
- * makes the comparison platform-neutral. */
-function toSlash(value) {
-  return value.replace(/\\/g, '/')
 }
 
 /** `git rev-parse`'s own stdout ends with exactly one trailing newline (amendment 3, 2026-11-07);
@@ -276,7 +270,6 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     }
     // J5 (inc 15): the repositories are compared after mapping only ASCII `[A-Z]` to lowercase,
     // not a case-sensitive `!==` (U11(b) pins this).
-    const foldAsciiCase = (value) => value.replace(/[A-Z]/g, (c) => c.toLowerCase())
     if (foldAsciiCase(upstream.repository) !== foldAsciiCase(deps.source.repository)) {
       io.stderr.write(t2['UP-E05']({ rangeRepository: upstream.repository, sourceRepository: deps.source.repository }) + '\n')
       return 1

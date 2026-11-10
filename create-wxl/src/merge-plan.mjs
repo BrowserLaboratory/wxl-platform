@@ -6,7 +6,8 @@
 
 import { join } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
-import { runGitNamed } from './git-named.mjs'
+import { runGitNamed, isIgnoredPath } from './git-named.mjs'
+import { toSlash } from './text.mjs'
 
 /** M12 (traceability.md: "Any other exit, a signal, or output not read in full -> UP-E11"):
  * `git merge-file` ended outside the `0`-`127` range it can legitimately exit with (a clean merge
@@ -167,7 +168,6 @@ async function hasNameAlias(fs, rangeRoot, realRangeRoot, path) {
   } catch (err) {
     throw new PlanningError(path, err?.message ?? String(err))
   }
-  const toSlash = (value) => String(value).replace(/\\/g, '/')
   const root = toSlash(realRangeRoot)
   const prefix = root.endsWith('/') ? root : `${root}/`
   const resolved = toSlash(realQ)
@@ -225,32 +225,6 @@ function isUnderSubmodule(path, submodulePaths) {
  * run (not per path), so this is an O(1) lookup here. */
 function hasCaseCollision(path, foldedGroups) {
   return foldedGroups.get(path.normalize('NFC').toLowerCase()).length > 1
-}
-
-/** P-5 and D15 (traceability.md "Pre-checks", step 5; Vocabulary's own "ignored path" -- "a path
- * that is not tracked and that `git check-ignore -q --no-index -- ./<path>` reports as ignored by
- * the range's rules"); shared by both since T-0062 (S1). `check-ignore`'s own exit codes are 0
- * (ignored) and 1 (not ignored); any other exit code, or a `runGit` rejection, is a bug naming the
- * command -- fail closed (D6, D19), never silently read as either answer. Called only for a path
- * the caller has already found untracked (a force-added, tracked file that also matches an ignore
- * rule is never P-5, and never D15). */
-export async function isIgnoredPath(deps, guard, rangeRoot, path) {
-  // `./` keeps the path literal: `check-ignore` refuses every pathspec magic (`--literal-pathspecs`
-  // included), and a path starting with `:` would otherwise be read as magic and check another path.
-  const name = `check-ignore -- ./${path}`
-  const result = await runGitNamed(
-    deps,
-    guard,
-    ['check-ignore', '-q', '--no-index', '--', `./${path}`],
-    { cwd: rangeRoot, env: buildGitEnv(deps.env) },
-    name,
-  )
-  // A signal this process already received while that `runGit` call was in flight wins over
-  // interpreting its result, the same way `runMergeFile` already does.
-  guard.throwIfRaised()
-  if (result.code === 0) return true
-  if (result.code === 1) return false
-  throw new Error(`git ${name} failed (exit code ${result.code}): ${result.stderr}`)
 }
 
 /** The merge table (rows checked in order; the first match applies), given `o`/`b`/`t` as
@@ -342,7 +316,8 @@ async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion
 }
 
 /**
- * `planMerge({ deps, guard, rangeRoot, baseDir, targetDir, baseVersion, targetVersion })` ->
+ * `planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir, targetDir, baseVersion, targetVersion })` ->
+ * (`realRangeRoot`: the range root's native realpath as step 3 resolved it, for P-9) ->
  * `{ ops, attention, mergeDir }`. `ops` is sorted by path, each `{ path, action: 'delete' |
  * 'write', content?, existedBefore?, report? }` (`report`, when present, is the UP-A code this op
  * also carries in `attention` -- used by the report stage to exclude an M10/M12-conflict write

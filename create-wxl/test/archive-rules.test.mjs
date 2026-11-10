@@ -448,9 +448,6 @@ describe('desync resistance (rule 1 cannot be hidden by a size mismatch)', () =>
   })
 })
 
-// P-04: the spec's rule 3 only excepts a directory's trailing `/` from the "no empty component"
-// rule -- it does not require one. A directory entry whose path does not end in `/` must still
-// be accepted.
 // 0005 revision 2.2 (D13, T-0062; C71): other short names are not `.git` and pass rule 3 -- git
 // itself accepts them, and rejecting every `~1` would refuse names upstream may hold.
 describe('rule 3 accepts short names that are not .git (C71)', () => {
@@ -475,6 +472,9 @@ describe('rule 3 accepts short names that are not .git (C71)', () => {
   })
 })
 
+// P-04: the spec's rule 3 only excepts a directory's trailing `/` from the "no empty component"
+// rule -- it does not require one. A directory entry whose path does not end in `/` must still
+// be accepted.
 describe('rule 3 accepts a directory typeflag without a trailing slash (P-04)', () => {
   it('a type-5 directory entry named without a trailing / is accepted', async () => {
     const tmpRoot = await makeTmpRoot()

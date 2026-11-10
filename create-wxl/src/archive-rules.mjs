@@ -9,6 +9,8 @@
 // list (first component stripped, classified kind) so step 8 writes from the SAME validated data,
 // never re-deriving a path or kind from `tar`'s own, un-stripped fields (C-01).
 
+import { foldAsciiCase } from './text.mjs'
+
 export class ArchiveRuleError extends Error {
   constructor(rule, path, { isCommentMarker = false } = {}) {
     super(`archive entry rule ${rule} broken${path === undefined ? '' : ` at ${path}`}`)
@@ -56,9 +58,6 @@ function checkFirstComponent(component, headerPath) {
  * (git's `is_hfs_dotgit`). Other short names (`PLATFO~1`, `GITIGN~1`) are not `.git`. */
 const HFS_IGNORABLE_RE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g
 const NTFS_DOTGIT_RE = /^(?:\.git|git~1)[. ]*(?::.*)?$/s
-function foldAsciiCase(value) {
-  return value.replace(/[A-Z]/g, (c) => c.toLowerCase())
-}
 function isGitAlias(component) {
   return NTFS_DOTGIT_RE.test(foldAsciiCase(component)) || foldAsciiCase(component.replace(HFS_IGNORABLE_RE, '')) === '.git'
 }
@@ -130,7 +129,8 @@ function checkCollisionAgainstSeen(entry, seen) {
  * `commit` is the commit rule 2's comment check compares against: the commit requested for a
  * download by commit (create, a `--from <commit>` base, the upgrade's target), or, for a tag
  * download (a `--from <version>` base, a base read from `range.json`), the tag archive's own
- * comment once `readArchiveEntries` has checked it (UP-E08, and J6's UP-E12).
+ * comment once `readArchiveEntries` has checked it (UP-E08, and J6's UP-E12); for publishing's own
+ * check of the local archive (`publish.mjs`, X7), the commit at `HEAD`.
  */
 export function checkEntryRules({ entries, comment }, { commit }) {
   // S-04: rule 5 (no file in the list) is checked after rule 2's comment, and the comment
