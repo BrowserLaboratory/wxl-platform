@@ -69,7 +69,7 @@ async function runUpgradeAgainst(fixture, depsOverrides = {}) {
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
@@ -247,7 +247,7 @@ describe('case collision (U53)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,
@@ -322,7 +322,7 @@ describe.skipIf(process.platform === 'win32')('executable mode (U23)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,
@@ -424,7 +424,7 @@ describe('P-6 and the parent check (U55)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,

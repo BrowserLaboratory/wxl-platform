@@ -80,7 +80,7 @@ async function runUpgradeAgainst(fixture, argv = ['upgrade']) {
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
@@ -192,7 +192,7 @@ describe('anchor file changes add UP-A12 (U59)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,

@@ -36,7 +36,7 @@ async function runUpgradeAgainst(fixture, runGit) {
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
@@ -144,7 +144,7 @@ describe('P-7 folding (D9)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,
@@ -248,7 +248,7 @@ describe('P-5 reads a path literally, never as pathspec magic', () => {
         const fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: [...PRISTINE_FIXTURE] }) },
           [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-        })
+        }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
         const deps = makeDeps({
           cwd: rangeRepo.root,
           tmpRoot,

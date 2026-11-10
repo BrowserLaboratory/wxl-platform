@@ -155,7 +155,7 @@ describe('U14: equal versions, different commits', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [OVERRIDE_COMMIT]: { body: pristineArchive(OVERRIDE_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       let inspected = false
       const checkpoint = vi.fn((name) => {
         if (name !== 'step-8') return
@@ -242,7 +242,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
@@ -282,7 +282,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const writeFile = failAt('writeFile', (count, args) => (args[0].endsWith('0-target-only.txt') ? fsError('EACCES') : null))
       const { fs } = recordingFs({ writeFile })
       const deps = makeDeps({
@@ -328,7 +328,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const writeFile = failAt('writeFile', (count, args) =>
         args[1].includes('"version": "0.1.0"') && args[1].includes('wxl-base') ? fsError('EACCES') : null,
       )
@@ -378,7 +378,7 @@ describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never re
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       // The base's own `makeTmpDir` call happens before the target's (traceability.md "Step
       // order" row 7: "base fully before target"), so the first directory `mkdtemp` ever creates
       // in this run is the base's own.
@@ -439,7 +439,7 @@ describe('U51: --from <commit> base version resolved only after download', () =>
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntriesWithVersion(version) }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({ cwd: fixture.root, tmpRoot, env: fixture.env, runGit: vi.fn(createSpawnGitRunner()), fetchArchive })
       const before = await snapshotTree(fixture.root)
       const beforeTmp = withoutRootMtime(await snapshotTree(tmpRoot))
@@ -668,13 +668,13 @@ describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> th
         fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: which === 'base' ? { status: 404, body: Buffer.alloc(0) } : { body: pristineArchive(BASE_COMMIT) },
           [FIXED_COMMIT]: which === 'target' ? new Error('network down') : { body: pristineArchive(FIXED_COMMIT) },
-        })
+        }, { releases: { ['3.0.0']: BASE_COMMIT } })
       } else {
         const entries = brokenEntries(kind)
         fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: which === 'base' ? entries : PRISTINE_FIXTURE }) },
           [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: which === 'target' ? entries : PRISTINE_FIXTURE }) },
-        })
+        }, { releases: { ['3.0.0']: BASE_COMMIT } })
       }
       const deps = makeDeps({
         cwd: fixture.root,

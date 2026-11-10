@@ -53,6 +53,26 @@ Decisions D11, D15, D17, D18, and D19 for steps 4 and 5.
   `--from` of a range made by the published `create-wxl@3.0.0` (the simulation's steps 5–6). The full
   simulation (U32) runs in T-0063.
 
+## Test plan
+
+### 2026-11-10 — test plan table（使用者 2026-11-10 核准，寫第一個測試之前）
+
+seam 全部是 0006-S1（0005-S1 的 `run`，argv 第一個位置參數是 `upgrade`）。「預期紅燈」是寫好測試、還沒改程式時的失敗原因；寫好就綠的列是確認型測試，照 0006 回顧的做法另做一次 mutation 檢查。
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0006-S1 | prefactor：`range.json` 的 base 可以用 tag ref 下載，現有測試全部維持綠燈 | `test/helpers/ref-fetch-archive.mjs` 的 `makeRefFetchArchive` 加 `releases: { [version]: commit }`，讓 `refs/tags/v<version>` 回傳和 `byRef[commit]` 相同的 archive；33 個呼叫點補上 `releases`。不改產品程式 | （無；Testing Decisions 的 prefactor） | 補完後全部 upgrade 測試仍是 184 passed；沒有任何測試改預期 |
+| 0006-S1 | 合法 `range.json`：base 經由 tag 下載，target 照舊用 commit | `upgrade-base.test.mjs` 的 U06 改預期 | U06 / AC-3 | `fetchArchive` 依序收到 `refs/tags/v<version>` 與 target commit；R1 的 base 是記錄的 version 與 commit。預期紅燈：現在收到的是 commit |
+| 0006-S1 | 記錄的 commit 不是 tag 的 commit → UP-E12 | `upgrade-base.test.mjs` 新增 U65 三個子案 | U65 / AC-3 | (a) comment 是另一個 40 hex：UP-E12 帶 version 與兩個 commit、D18 三項補救依序出現，exit 1，沒寫任何檔，`tmpRoot` 沒有 `create-wxl-upgrade-` 殘留；(b) 同 (a)，archive 另含 `git~1` 元件：仍是 UP-E12，不是 CW-E08；(c) 同 (a)，target 下載失敗：CW-E07（target）。預期紅燈：現在用 commit 下載，不會有 UP-E12 |
+| 0006-S1 | tag archive 的 comment 缺或不是 40 個小寫 hex → UP-E08 | `upgrade-target.test.mjs` 的 U16 加 `range.json` 子案 | U16 / AC-5 | `range.json` base：UP-E08 附 D18 補救；`--from <version>`：UP-E08 不附補救（既有子案保留）。預期紅燈：`range.json` 子案現在不走 tag |
+| 0006-S1 | tag 不存在或下載失敗 → CW-E07 | `upgrade-target.test.mjs` 新增 U66 三個子案 | U66 / AC-5 | `range.json` base 回 404：CW-E07 帶 URL 與 D18 補救；`--from <version>` 回 404：不附補救；`range.json` base 的 tag 下載被 reject（網路錯誤）：CW-E07 不附補救。都 exit 1、沒寫檔、沒殘留。預期紅燈：前兩項的補救文字還不存在 |
+| 0006-S1 | 沒被追蹤又被 ignore 的 `range.json` → UP-E13（D15），以及它和 J1～J5、step 6 的先後 | 新檔 `upgrade-ignored-record.test.mjs`，U67 十二個子案 | U67 / AC-2 | 存在且合法：UP-E13、`fetchArchive` 沒被呼叫；不存在＋`--from 3.0.0`：UP-E13；commit 等於 target：UP-E13 不是 UP-I01；是 symlink：UP-E06 `not-a-file`；tracked 且符合 ignore 規則：照常進行；`check-ignore` exit 128：CW-E14；`ls-files` exit 128：CW-E14；`runGit` 對 `check-ignore` reject `EIO`：CW-E14 帶 `git check-ignore`；只被 `.git/info/exclude` ignore：UP-E13；不存在、被 ignore、沒有 `--from`：UP-E04；不是 JSON 且被 ignore：UP-E06 `not-json`；repository 不同且被 ignore：UP-E05。每個拒絕都 exit 1、沒寫檔。預期紅燈：UP-E13 與 CW-E14 子案；UP-E04／E06／E05 子案是確認型 |
+| 0006-S1 | step 4 的 git 失敗 → CW-E14 帶指令名稱（D19） | `upgrade-preconditions.test.mjs` 的 D6 區塊加 U74 step 4 子案 | U74（step 4）/ AC-2 | `git status` exit 128：CW-E14 帶 `git status`（確認型，D6 已實作）；**新子案**：`runGit` 對 `git status` reject `EIO`：CW-E14 帶 `git status`（D19 要求包裝 reject）。預期紅燈：reject 子案，現在原樣拋出、不帶指令名稱 |
+| 0006-S1 | `--from <commit>` 的下載後檢查 | `upgrade-target.test.mjs` 的 U51 中間子案改寫 | U51 / AC-4 | 版本等於 target、commit 不同、沒有 `CREATE_WXL_COMMIT`：下載後 UP-I01，`fetchArchive` 兩份都被呼叫。確認型 |
+| 0006-S1 | `--from <version>` 解析到 target 的 commit | `upgrade-target.test.mjs` 的 U52 改寫 | U52 / AC-4 | 設 `CREATE_WXL_COMMIT=<tag 的 commit>`：兩份下載之後 UP-I01，`fetchArchive` 呼叫兩次，沒寫檔。確認型 |
+| 0006-S1 | R1 標明 `--from <commit>` 的 base 沒有比對 tag（D17） | `upgrade-report.test.mjs` 新增 U71 | U71 / AC-10 | `--from <commit>`：句子出現；`--from <version>`、`range.json`：不出現；en 與 zh-TW 都驗。預期紅燈：句子還不存在 |
+| 0006-S1 | 新代碼在兩份訊息表都有 | `upgrade-messages.test.mjs` 的代碼清單加 UP-E12、UP-E13 | U26（代碼部分）/ AC-10 | en 與 zh-TW 都有 UP-E12、UP-E13，且以代碼開頭。預期紅燈：代碼還不存在 |
+
 ## 給使用者（zh-TW）
 
 epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第一張。能改 `range.json` 的人（共同授課老師、被合併的 PR），原本可以把 base 指向 fork network 裡自己做的 commit，讓升級蓋掉老師的修改、刪掉老師的檔案，或在衝突區塊放進他寫的文字。這張票讓 `range.json` 記錄的 base 一律經由上游的 tag 下載，對不上就以 UP-E12 停下，並依序建議老師怎麼補救；被 ignore 的 `range.json` 在下載前就以 UP-E13 拒絕；用 `--from <commit>` 指定的 base，報告會標明沒有比對上游 tag。磁碟上的檔名別名交給 T-0062，還原指令順序與報告的新內容交給 T-0063。

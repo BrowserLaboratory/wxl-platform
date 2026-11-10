@@ -30,7 +30,7 @@ describe('U06: valid range.json -> base is its own commit and version', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
@@ -91,7 +91,7 @@ describe('U08: no range.json, --from <version> / --from <commit>', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,

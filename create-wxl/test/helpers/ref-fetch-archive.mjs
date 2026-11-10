@@ -32,10 +32,15 @@ export function tagArchive(version, { comment, repoName = DEFAULT_REPO_NAME, ent
 
 /** `byRef[ref]` is `{ status?, body }` for a resolved call, or an `Error` to reject with; a `ref`
  * not in `byRef` rejects (never silently falls back to a happy-path default -- a caller that
- * forgot to key a ref should see its own test fail loudly, not download the wrong archive). */
-export function makeRefFetchArchive(byRef) {
+ * forgot to key a ref should see its own test fail loudly, not download the wrong archive).
+ * `releases` (T-0061 prefactor; traceability.md J6, D11) maps a version to the commit its tag
+ * names: a request for `refs/tags/v<version>` then answers with `byRef[commit]`, whose pax
+ * `comment` is that commit -- the shape a base read from `range.json` is downloaded in once J6
+ * lands. An explicit `byRef['refs/tags/v<version>']` still wins. */
+export function makeRefFetchArchive(byRef, { releases = {} } = {}) {
   return vi.fn(async (_repository, ref) => {
-    const entry = byRef[ref]
+    const tagVersion = /^refs\/tags\/v(.+)$/.exec(ref)?.[1]
+    const entry = byRef[ref] ?? (tagVersion !== undefined && releases[tagVersion] !== undefined ? byRef[releases[tagVersion]] : undefined)
     if (entry === undefined) throw new Error(`makeRefFetchArchive: no fixture for ref ${ref}`)
     if (entry instanceof Error) throw entry
     return { status: entry.status ?? 200, body: entry.body }
