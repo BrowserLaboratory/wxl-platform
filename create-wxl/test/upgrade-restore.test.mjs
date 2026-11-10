@@ -2,7 +2,8 @@
 // U29 (T-0027 increment 12): after a completed run, `git checkout -- .` then `git clean -fd`
 // (D14, T-0063) gives back exactly `HEAD`'s own tree, including an untracked, ignored file never
 // touched by the plan; it reuses U17's own fixture and run. U61: a rerun after a commit.
-// U70 (T-0063): the same commands on trees built from a commit by hand, without an upgrade.
+// U70 (T-0063): the same commands on trees built from a commit by hand, without an upgrade; (d)
+// (T-0065, D22): the ignored file inside a directory standing where `HEAD` has a file is removed.
 
 import { describe, it, expect, vi } from 'vitest'
 import { mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises'
@@ -188,7 +189,7 @@ describe('re-run after a completed upgrade and commit (U61)', () => {
 // print them, on trees built from a commit -- the upgrade itself can no longer leave a missing or
 // changed ignore file (P-7), so these trees are made by hand. Cleaning first would delete the
 // ignored file in (a) and (b); `checkout` first brings the ignore file back before `clean` runs.
-describe('the restore commands keep every file HEAD ignores (U70, D14)', () => {
+describe('the restore commands keep every file HEAD ignores, except inside a directory where HEAD has a file (U70, D14, D22)', () => {
   const IGNORED = 'teacher notes, ignored\n'
   const cases = [
     {
@@ -217,6 +218,43 @@ describe('the restore commands keep every file HEAD ignores (U70, D14)', () => {
       },
     },
   ]
+
+  // D22 (revision 3.3, T-0065): git removes a directory standing where `HEAD` has a file, with every
+  // file in it, ignored ones included, so AC-11's clause on trees built from a commit excepts such a
+  // file. Run in both orders, since D22 says the order does not matter.
+  for (const [orderName, order] of [
+    ['RESTORE_COMMANDS (checkout first)', null],
+    ['clean first', [['clean', '-fd'], ['checkout', '--', '.']]],
+  ]) {
+    it(`(d) (c)'s tree with an ignored a/y.local beside a/x, ${orderName} -> empty status, HEAD's files; a/y.local is gone, notes.local byte-identical`, async () => {
+      const repo = await makeRangeRepo({ tree: { a: 'tracked file a\n', 'keep.txt': 'tracked\n' }, gitignore: '*.local\n' })
+      try {
+        await writeFile(join(repo.root, 'notes.local'), IGNORED)
+        const headTree = withoutIgnored(await snapshotTree(repo.root), ['notes.local'])
+        await unlink(join(repo.root, 'a'))
+        await mkdir(join(repo.root, 'a'))
+        await writeFile(join(repo.root, 'a', 'x'), 'untracked\n')
+        await writeFile(join(repo.root, 'a', 'y.local'), IGNORED)
+        const ignoredBefore = (await verifyGit(['ls-files', '--others', '--ignored', '--exclude-standard'], { cwd: repo.root, env: repo.env })).stdout
+        expect(ignoredBefore.split('\n').filter(Boolean).sort()).toEqual(['a/y.local', 'notes.local'])
+
+        if (order === null) {
+          await runRestoreCommands({ cwd: repo.root, env: repo.env })
+        } else {
+          for (const args of order) expect((await verifyGit(args, { cwd: repo.root, env: repo.env })).code).toBe(0)
+        }
+
+        const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: repo.root, env: repo.env })
+        expect(status.stdout).toBe('')
+        expect(withoutIgnored(await snapshotTree(repo.root), ['notes.local'])).toEqual(headTree)
+        expect(await readFile(join(repo.root, 'a'), 'utf8')).toBe('tracked file a\n')
+        expect(await readFile(join(repo.root, 'notes.local'))).toEqual(Buffer.from(IGNORED))
+      } finally {
+        await rm(repo.root, { recursive: true, force: true })
+        await rm(repo.env.HOME, { recursive: true, force: true })
+      }
+    })
+  }
 
   for (const { name, tree, gitignore, ignored, change } of cases) {
     it(`${name} -> empty status, HEAD's files, the ignored file byte-identical`, async () => {

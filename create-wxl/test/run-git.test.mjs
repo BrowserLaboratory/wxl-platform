@@ -310,7 +310,7 @@ describe('git steps — injected runGit', () => {
 
   it.each([
     ['ENOENT', () => Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' })],
-    ['git 2.19.0', { version: { code: 0, stdout: 'git version 2.19.0\n', stderr: '' } }],
+    ['git 2.25.1 (below the 2.26 floor, 0006 D21)', { version: { code: 0, stdout: 'git version 2.25.1\n', stderr: '' } }],
     ['git 2.9.5', { version: { code: 0, stdout: 'git version 2.9.5\n', stderr: '' } }],
     ['git --version exits 1', { version: { code: 1, stdout: '', stderr: '' } }],
     ['git --version prints unparsable output', { version: { code: 0, stdout: 'not git\n', stderr: '' } }],
@@ -330,6 +330,8 @@ describe('git steps — injected runGit', () => {
 
       expect(exitCode).toBe(0)
       expect(ioHelper.stderrText).toMatch(/^CW-W01/m)
+      // 0006 D21 (T-0065): the warning names the 2.26 floor.
+      expect(ioHelper.stderrText).toContain('older than 2.26')
       expect(ioHelper.stderrText).toContain('https://git-scm.com/downloads')
       expect(ioHelper.stderrText).not.toContain('--template')
       expect(ioHelper.stderrText).not.toContain('--force')
@@ -527,7 +529,7 @@ describe('git steps — injected runGit', () => {
   })
 
   it.each([
-    ['2.20.0', 'git version 2.20.0\n'],
+    ['2.26.0 (the inclusive floor, 0006 D21)', 'git version 2.26.0\n'],
     ['Apple Git suffix', 'git version 2.39.5 (Apple Git-154)\n'],
     ['Windows suffix', 'git version 2.45.1.windows.1\n'],
   ])('C36 control: %s is accepted, no CW-W01, G1 runs', async (_label, versionStdout) => {

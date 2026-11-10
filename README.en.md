@@ -38,6 +38,7 @@ It is built so that a teacher can prepare a class without running a server and a
 ## Prerequisites
 
 - **Node.js** >= 22.6 — `challenge:keygen`, `create:challenge`, `challenge:validate`, and `challenge:analyze` run through `node --experimental-strip-types`, which is unavailable on earlier releases. The remaining TypeScript scripts go through the bundled `tsx` and have no such floor. CI builds on Node 24.
+- **git** >= 2.26 — `npm create wxl`'s `git init` and first commit, and `pnpm range:upgrade`, need it (Ubuntu 20.04's git 2.25.1 is not supported).
 - **pnpm** >= 10 (`npm install -g pnpm`)
 - **Rust** toolchain (install via [rustup](https://rustup.rs/))
 - **wasm-pack** (`cargo install wasm-pack --version 0.14.0 --locked`) — pinned to the same version CI installs; not a package dependency; install it into your Rust toolchain
@@ -170,7 +171,7 @@ pnpm build
 ### Create a range with `npm create wxl`
 
 You don't have to fork the whole repository — this command creates a brand-new range directory
-directly (needs Node.js >= 22.6):
+directly (needs Node.js >= 22.6, and git >= 2.26 for the automatic `git init` and first commit):
 
 ```bash
 npm create wxl <folder>

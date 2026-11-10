@@ -18,6 +18,9 @@ revision 3 (T-0061, `.proj.specs/0006-range-upgrade/traceability.md`): entry rul
 components git's `is_ntfs_dotgit` and `is_hfs_dotgit` treat as `.git`, so B1's "no entry can create a
 `.git` path" holds on NTFS and HFS+ as well as by name (this epic's chain analysis, gap 1); row C18
 gains those cases, row C71 is added, and the rule's text regains a backslash lost in formatting.
+Revision 2.3 (2026-11-10) applies decision D21 of epic 0006's revision 3.3 (T-0065): G0's floor is
+git 2.26, shared with the upgrade's step 3, and Ubuntu 20.04's git 2.25.1 is not supported; rows
+C36, G0 and CW-W01 and the G0 text change. Self-checked without another round.
 In an input cell, `\uXXXX` inside a code span stands for the single code point U+XXXX; any other `\`
 is a literal backslash, as in C18's `a\b`. The
 decisions this file relies on, in short (the full
@@ -180,7 +183,7 @@ characters and shows it escaped.
 | CW-E13 | the package source record or engine is missing or inconsistent (step 2) | that the package is broken, and to retry with `npm create wxl@latest` |
 | CW-E14 | an unexpected error | the error's message |
 | CW-E15 | input ended (EOF) while a question was open | — |
-| CW-W01 | git not found, G0 exits non-zero, or git older than 2.20 | that the range is not a git repository yet, `https://git-scm.com/downloads`, and the printed forms of G1, G2, G4 |
+| CW-W01 | git not found, G0 exits non-zero, or git older than 2.26 | that the range is not a git repository yet, `https://git-scm.com/downloads`, and the printed forms of G1, G2, G4 |
 | CW-W02 | no explicit committer identity (G3) | `git config --global user.name "<your name>"`, `git config --global user.email "<you@example.com>"`, then the printed form of G4 |
 | CW-W03 | a git command exited non-zero (other than G3's exit 1) or `runGit` rejected with another error | the command, its stderr, and the printed forms of the remaining git commands |
 | CW-W04 | `CREATE_WXL_COMMIT` is set | the commit, and that it is not a release and is meant for testing |
@@ -278,13 +281,13 @@ shell and never from the target directory.
 
 | # | Command run (cwd = target) | Printed form (for N2, CW-E12, CW-W01–W05) |
 |---|---|---|
-| G0 | `git --version`, which must report 2.20 or later (detection; not a step of the range) | — |
+| G0 | `git --version`, which must report 2.26 or later (detection; not a step of the range; revision 2.3) | — |
 | G1 | `git init --template=`, then `git symbolic-ref HEAD refs/heads/main` | `git init` and `git symbolic-ref HEAD refs/heads/main` |
 | G2 | `git -c core.excludesFile= add -A --force` | `git add -A` |
 | G3 | `git config --get user.name` and `git config --get user.email` both exit 0 with non-empty output | — |
 | G4 | `git -c user.useConfigOnly=true -c commit.gpgsign=false -c core.hooksPath= commit --no-verify -m "Create range from WXL <V>"` | `git commit -m "Create range from WXL <V>"` with V substituted |
 
-G0 rejects, exits non-zero or reports a version below 2.20 → CW-W01, no other git command. G3: a
+G0 rejects, exits non-zero or reports a version below 2.26 → CW-W01, no other git command. G3: a
 `git config --get` exiting 1 or printing nothing → CW-W02 after G1–G2, no G4. Any other non-zero exit
 or rejection → CW-W03 and the rest skipped. `--force` is safe only on the fresh tree, so printed forms
 never carry it; `--template=` keeps the user's `init.templateDir` hooks out of the new repository. 
@@ -443,7 +446,7 @@ input written to its stdin, one answer per line.
 | C33 | engine | `runForkInit` returns `exitCode` 1 (fixture without A9); `runForkInit` throws | failure | CW-E12 with the message and the finishing commands; range and `range.json` stay; no git step; exit 1 | AC-14 |
 | C34 | engine | engine warnings | report | printed after the apply | AC-14 |
 | C35 | git | real git; explicit identity in an isolated `HOME`; a global `init.templateDir` with a `post-commit` hook writing a file; `commit.gpgsign=true` | G1–G4 | repository on `main`, exactly one commit `Create range from WXL <V>`, `git ls-files` equals the range's file list, `git status --porcelain --untracked-files=all` empty; the hook did not run | AC-15 |
-| C36 | git | `runGit` rejects `ENOENT` on G0; G0 reports 2.19.0 | CW-W01 | no further `runGit` call; exit 0; N2 lists the printed forms of G1, G2, G4 | AC-15 |
+| C36 | git | `runGit` rejects `ENOENT` on G0; G0 reports 2.25.1 (revision 2.3; 2.26.0 passes, the control) | CW-W01 | no further `runGit` call; exit 0; N2 lists the printed forms of G1, G2, G4 | AC-15 |
 | C37 | git | real git without identity (isolated `HOME` and `XDG_CONFIG_HOME`, system config off): `git config --get` exits 1 | CW-W02 | G1, G2 run; no G4; not CW-W03; exit 0; N2 lists the two config commands, then the printed G4 | AC-15 |
 | C38 | git | G2 exits 1 | CW-W03 | G3, G4 not run; exit 0; N2 lists the printed G2 and G4 | AC-15 |
 | C39 | `--no-setup` | valid run, with and without `CREATE_WXL_COMMIT` | scope | P1–P4 applied; no engine call; no `runGit` call; exactly N1 and N8 printed (CW-W04 does not add N2) | AC-16 |
@@ -538,3 +541,14 @@ input written to its stdin, one answer per line.
   - A component ending in `.` or a space was already rejected, so `.git.` and `git~1 ` were refused
     before; the new text adds `git~1`, `:` streams and HFS+ ignorable code points, and every case added
     to C18 is one the old trailing-`.`/space clause does not reject.
+
+## Self-check of the surface (revision 2.3)
+
+- Row C36 still reaches AC-15 with the same code (CW-W01) and the same result: no further `runGit`
+  call, exit 0, N2 listing G1, G2 and G4.
+- Changes checked against existing rules:
+  - The floor is one constant shared with the upgrade (`MINIMUM_GIT_VERSION`); CW-W01's text names it
+    from that constant, so the message changes with it and no fixed string repeats it.
+  - Create's own git steps (G1–G4) do not use the features behind D21 (`core.fsmonitor`, `git
+    check-ignore`); the floor is raised for create so that one range needs one git, and git 2.20–2.25
+    now gets CW-W01 instead of the git steps. The range itself is still made.

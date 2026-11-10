@@ -1,7 +1,7 @@
 # Traceability: 0006-range-upgrade
 
 `{type × field × boundary} → {expected behaviour → acceptance criterion}`. The spec is derived from
-this file. This epic depends on 0005 (`.proj.specs/0005-create-wxl/traceability.md`, revision 2.2 since this epic's revision 3): the
+this file. This epic depends on 0005 (`.proj.specs/0005-create-wxl/traceability.md`, revision 2.2 since this epic's revision 3, revision 2.3 since revision 3.3): the
 `run` function and its seam, the package source record, the download, the archive entry rules, the
 pristine processing P1–P4, the `range.json` schema, the language rule, the signals handling, the
 escaping of outside values, and the CW codes it names are 0005's.
@@ -59,6 +59,13 @@ tag download cannot show that the recorded commit is not a release (a deleted ta
 their remedies say it could not be checked against its tag; UP-E12 keeps "not a release". No row,
 code or AC changes.
 
+Revision 3.3 (2026-11-10) applies decisions D21 and D22, from T-0063's comparison of git 2.20 and
+2.54 and its stage 6 finding F9 (T-0063's Comments; local note
+`.proj.research/2026-11-10-git-2.20-vs-2.54.md`). Step 3's floor rises to git 2.26, for create's G0
+as well (0005 revision 2.3), and AC-11 and B4 list the one ignored file the restore commands remove.
+Rows U04, U31 and U70 change; no row is added. Built for ticket T-0065 and self-checked below; B4 also lists two git 2.26–2.35 behaviours that
+T-0065's stage 7 found (C1, C2).
+
 Decisions this file relies on, in short (full record: the local research note
 `.proj.research/2026-10-16-w45-create-wxl-upgrade-grill.md`):
 
@@ -85,6 +92,8 @@ Decisions this file relies on, in short (full record: the local research note
 | D18 | For a base from `range.json`, UP-E12, UP-E08 and a CW-E07 for status 404 on the tag download give the remedies in this order: `--from <version>` when the teacher knows the release the range came from (checked through its tag); `--from <commit>` with the recorded commit only when the teacher knows the range was made from it, since it is not a release (UP-E12) or could not be checked against its tag (UP-E08, the 404 CW-E07); `git log -p -- range.json` to see who changed the record (2026-11-10, round 2 disposition W1; the reason per code, revision 3.2) |
 | D19 | A git command of steps 4, 5 or 8 other than `git merge-file` (M12, UP-E11) that exits outside its documented codes, or that `runGit` rejects, is CW-E14 naming the command: for an exit the message carries `git <command> failed (exit code N): <stderr>`, and the implementation wraps a rejection so that its message names the command too; on the upgrade path CW-E14 thus also covers a known git failure, not only a bug, which 0005's "an unexpected error" wording does not say (2026-11-10, W7; as T-0026's D6) |
 | D20 | A completed run is one whose step 9 finished; a signal in step 10 still leaves a completed run, which prints R1–R5 in full and exits 130 (D8) (2026-11-10, W11) |
+| D21 | git's floor is 2.26, for the upgrade (step 3, UP-E02) and for create (0005's G0, CW-W01): before 2.26 git runs `core.fsmonitor=true` as a hook command with hook protocol version 1 by default, which may report no changes, so step 4's clean check could pass on a dirty tree (2.26 defaults to version 2; 2.36 reads the value as a boolean; B4 lists what remains), and before 2.25.2 `git check-ignore` ignores `!` re-inclusions (P-5, D15); Ubuntu 20.04's git 2.25.1 is not supported (2026-11-10, the user, after T-0063's comparison of git 2.20 and 2.54) |
+| D22 | `git checkout -- .` removes a directory standing where `HEAD` has a file, with every file in it, ignored ones included, whatever the restore order (measured with git 2.54 in both orders, U70 (d); read in git 2.20's and 2.54's `entry.c`); AC-11's clause on trees built from a commit excepts such a file and B4's Does not protect lists it (2026-11-10, T-0063's stage 6 finding F9, applied under the user's authorisation of that day) |
 
 One correction to R6 ⑦'s wording, a fact: an upgrade can add files, which are untracked, so restoring
 needs `git clean -fd` as well as `git checkout -- .`. Because the tree had to be clean, ignored paths
@@ -147,7 +156,7 @@ upgrade code (R4).
 |---|---|---|
 | 1 | Node version (0005 step 1) | CW-E01 |
 | 2 | Parse argv; `CREATE_WXL_COMMIT` grammar; package source record (0005 step 2) | CW-E02, CW-E13 |
-| 3 | Git and location: `git --version` reports 2.20 or later; `git rev-parse --show-toplevel` and `deps.cwd`, each resolved with `deps.fs.realpath` (the native one) and with `\` turned into `/`, are equal | UP-E02, UP-E01 |
+| 3 | Git and location: `git --version` reports 2.26 or later (D21); `git rev-parse --show-toplevel` and `deps.cwd`, each resolved with `deps.fs.realpath` (the native one) and with `\` turned into `/`, are equal | UP-E02, UP-E01 |
 | 4 | Clean repository: `git rev-parse --verify HEAD` succeeds; `git --no-optional-locks status --porcelain=v1 --untracked-files=all --ignore-submodules=none` prints nothing; `git ls-files -v` shows no lowercase tag (assume-unchanged) and no `S` (skip-worktree); none of `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer` (D7) exists under `git rev-parse --git-dir` | UP-E03 (with a reason token), CW-E14 (D19) |
 | 5 | Base: `--from` if given; otherwise `range.json` (below). Then, with or without `--from`: if `range.json` is not tracked (`git ls-files -z -- ./range.json` prints nothing) and `git check-ignore -q --no-index -- ./range.json` reports it ignored → UP-E13 (D15); `git check-ignore` exits 0 for ignored and 1 for not ignored, and `git ls-files` exiting other than 0, `git check-ignore` exiting other than 0 or 1, or `runGit` rejecting for either is CW-E14 naming the command (D19) | UP-E04, UP-E05, UP-E06, UP-E13, CW-E14 |
 | 6 | Target: the source record's commit, or `CREATE_WXL_COMMIT` (CW-W04). Before any download: if the base commit is known and equals the target commit → UP-I01; if the base version is known: lower than 3.0.0 → UP-E10, higher than the target version → UP-E07, equal with a different commit and no `CREATE_WXL_COMMIT` → UP-I01 | UP-I01, UP-E07, UP-E10 |
@@ -248,7 +257,7 @@ Every message begins with its code; values from outside are escaped as in 0005.
 | Code | Condition | The message also names |
 |---|---|---|
 | UP-E01 | not at the top level of a git work tree | the working directory, and that `upgrade` runs in the range's root |
-| UP-E02 | git cannot be spawned, or is older than 2.20 | the version found, `https://git-scm.com/downloads` |
+| UP-E02 | git cannot be spawned, or is older than 2.26 (D21) | the version found, `https://git-scm.com/downloads` |
 | UP-E03 | not clean: reason token `no-head`, `changes`, `assume-unchanged`, `skip-worktree`, or `in-progress` | the token, and `git status` |
 | UP-E04 | no `range.json` and no `--from` | `--from <version>` and `--from <commit>`, and that a range made with create-wxl has `range.json` |
 | UP-E05 | J5 broken | both repositories |
@@ -350,7 +359,7 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
 | U01 | argv | `upgrade --from 3.0.0`; `upgrade --from <40 hex>`; `--lang en upgrade` | grammar | accepted | AC-1 |
 | U02 | argv | `--from` without value; `--from v3.0.0`; short or uppercase SHA; a second positional; unknown or repeated flag; `upgrade --repo x/y` | grammar | CW-E02, nothing written | AC-1 |
 | U03 | repo | not a git repository; a subdirectory of the range; the range reached through a symbolic link to its root | location | UP-E01 / UP-E01 / accepted | AC-2 |
-| U04 | repo | `runGit` rejects `ENOENT`; `git --version` reports 2.19.0 | tool | UP-E02, exit 1 | AC-2 |
+| U04 | repo | `runGit` rejects `ENOENT`; `git --version` reports 2.25.1 (D21); 2.26.0 passes | tool | UP-E02, exit 1 / no UP-E02 | AC-2 |
 | U05 | repo | a modified tracked file; an untracked file; a staged change; no commit yet; a file marked assume-unchanged; one marked skip-worktree; `MERGE_HEAD` present; global `status.showUntrackedFiles=no` with an untracked file; `sequencer` present without `CHERRY_PICK_HEAD` (D7) | clean | UP-E03 with token `changes` / `changes` / `changes` / `no-head` / `assume-unchanged` / `skip-worktree` / `in-progress` / `changes` / `in-progress`, exit 1, nothing written | AC-2 |
 | U06 | record | valid `range.json` naming a release | base | base = its commit and version; `fetchArchive` receives `refs/tags/v<version>` for the base and the target's commit | AC-3 |
 | U07 | record | absent, no `--from` | J2 | UP-E04 | AC-3 |
@@ -377,7 +386,7 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
 | U28 | signal | `SIGINT` at the checkpoint of step 7; `SIGTERM` during step 9; `SIGINT` at the checkpoint of step 10 (D8) | signal | exit 130; step 7: nothing written; step 9: UP-E09 with the signal and the restore commands in U27's order; step 10: R1–R5 printed in full; no temporary directory left | AC-11 |
 | U29 | restore | after the run of U17 | revert | `git checkout -- . && git clean -fd` gives an empty porcelain status and `HEAD`'s files; ignored files byte-identical to before the run | AC-11 |
 | U30 | entry | upstream manifest | script | `range:upgrade` exactly as specified (checked by a create-wxl test reading the root manifest) | AC-12 |
-| U31 | 0005 | `create-wxl upgrade` | grammar | the upgrade path; `create-wxl <dir>` as 0005 revision 2.2 specifies (D13 adds rule-3 rejections; C02's `upgrade` cases follow U01 and U02; the GLOSSARY sentence that `upstream-config.test.mjs` pins for the setup record changes with W4; C18's existing cases and the other 0005 tests unchanged) | AC-12 |
+| U31 | 0005 | `create-wxl upgrade` | grammar | the upgrade path; `create-wxl <dir>` as 0005 revision 2.3 specifies (D13 adds rule-3 rejections; C02's `upgrade` cases follow U01 and U02; the GLOSSARY sentence that `upstream-config.test.mjs` pins for the setup record changes with W4; C36 and G0's floor follow D21; C18's existing cases and the other 0005 tests unchanged) | AC-12 |
 | U32 | stage 8 | simulation A → B in `sim`, and the release-based range `rel` (3.0.0) → B | 0006-S2 | exactly as listed | AC-13 |
 | U50 | target | base version 2.9.9 (`range.json`); `--from 2.9.9` | minimum | UP-E10 before any download | AC-4 |
 | U51 | target | `--from <commit>` whose archive's version is above the target's / equal to the target's, with a different commit and no `CREATE_WXL_COMMIT` / below 3.0.0 | post-download | UP-E07 / UP-I01 / UP-E10 after download (`fetchArchive` called for both archives), nothing written | AC-4 |
@@ -399,7 +408,7 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
 | U67 | record | `range.json` not tracked and ignored: present and valid; absent, with `--from <version>`; present, valid, with `upstream.commit` equal to the target's commit; a symbolic link; tracked and matching an ignore rule; `git check-ignore` exiting 128; `git ls-files -z -- ./range.json` exiting 128; `runGit` rejecting with `EIO` for `git check-ignore`; ignored only by `.git/info/exclude`; absent, ignored, no `--from`; not JSON and ignored; `upstream.repository` of another repository and ignored | D15 | UP-E13 before any download / UP-E13 before any download / UP-E13, not UP-I01 (step 5 precedes step 6) / UP-E06 `not-a-file` (J1 precedes D15) / proceeds / CW-E14 / CW-E14 / CW-E14 naming `git check-ignore` / UP-E13 / UP-E04 / UP-E06 `not-json` / UP-E05 (J1–J5 precede D15); each refusal exits 1 with nothing written | AC-2 |
 | U68 | merge | B has a file `GITIGN~1` ≡ the range's `.gitignore`, T lacks it, and `deps.fs` is wrapped so that `GITIGN~1` acts as `.gitignore` in every function and its `realpath` returns `<range root>/.gitignore` (an 8.3 model); on a case-insensitive file system, T adds `platform/new.txt` where the range's tracked directory is `Platform/` | P-9 | untouched, UP-A15 each; `.gitignore` and `Platform/` unchanged; no `platform/new.txt` written; `git ls-files --others --ignored --exclude-standard` lists the same paths before and after the run | AC-6, AC-8 |
 | U69 | merge | the range root reached through a symbolic link to it; a tracked NFC name (`platform/caf\u00e9.md`) for which `deps.fs.realpath` returns its NFD form (an HFS+ model); a tracked NFD name for which `deps.fs.realpath` also returns NFD (a repository made on Linux); a nested tracked path whose names agree, with `deps.fs.realpath` returning `\`-separated paths (a Windows model); a range root whose `deps.fs.realpath` returns `D:\` with a tracked `platform/a.md` whose `realpath` returns `D:\platform\a.md` (a drive-root model); `deps.fs.realpath` rejecting with `EACCES` for a tracked file p with b ≢ t that P-1 to P-8 do not stop; `deps.fs.lstat` rejecting with `EACCES` for an ancestor of an absent p | P-9 | no UP-A15 / no UP-A15 / no UP-A15 / no UP-A15 / no UP-A15 / UP-E11 naming p, nothing written / UP-E11 naming p, nothing written | AC-6 |
-| U70 | restore | trees the test builds from a commit: the tracked `.gitignore` deleted with an ignored file present; a tracked `sub/.gitignore` changed so it no longer ignores a file; tracked file `a` replaced by an untracked `a/x` (U54's first case) | D14 | R5's commands give an empty porcelain status and `HEAD`'s files; every file that `HEAD`'s ignore rules ignore byte-identical to before the commands | AC-11 |
+| U70 | restore | trees the test builds from a commit: the tracked `.gitignore` deleted with an ignored file present; a tracked `sub/.gitignore` changed so it no longer ignores a file; tracked file `a` replaced by an untracked `a/x` (U54's first case); the same with an ignored `a/y.local` beside `a/x`, run in both orders (D22) | D14, D22 | R5's commands give an empty porcelain status and `HEAD`'s files; every file that `HEAD`'s ignore rules ignore byte-identical to before the commands / the same, except that `a/y.local` is gone | AC-11 |
 | U71 | report | a base from `--from <commit>`; from `--from <version>`; from `range.json` | R1 | the not-checked sentence present / absent / absent, in both languages | AC-10 |
 | U72 | report | a run with three M6 paths, `z.md`, `a/b.md` and `B.md`, and an UP-A1 item; a run with no UP-A1 item | R2, R4 | after the counts line, exactly three `R2` path lines, `B.md`, `a/b.md`, `z.md` (UTF-16 code-unit order, not locale order; code-point order is not separately tested), and no other R2 path line; R4's D16 sentence present / absent; in both languages | AC-10 |
 | U73 | archive | a path in B or T with a component `git~1`, `GIT~1`, `git~1. :x`, `.git:x`, `.git::$INDEX_ALLOCATION`, `.g\u200cit`, `.G\u200cIT`, `\u200c.git` or `.git\ufeff`; components `PLATFO~1` and `GITIGN~1` | 0005 rule 3 (D13) | CW-E08 (rule 3) for each of the nine components git treats as `.git`, exit 1, nothing written in the range, no `create-wxl-upgrade-` entry left under `tmpRoot` / `PLATFO~1` and `GITIGN~1` accepted | AC-5 |
@@ -463,7 +472,8 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
     Unicode form of one name within B ∪ T ∪ tracked stays P-4's case.
   - D14 reverses C-4. `checkout` first also handles U54's file/directory swap: it removes the untracked
     directory standing where a tracked file goes (measured with git 2.54 and 2.50; read in git 2.20's
-    source; run with git 2.20 at stage 5 per the Testing Decisions). U70 and the stage 8 run exercise it.
+    source). U70 and the stage 8 run exercise it. Revision 3.3: the floor is 2.26 (D21), so the git 2.20
+    run the Testing Decisions asked for is not made.
   - D15 refuses before anything is written, so AC-9's "a missing file is created" and AC-11's restore
     stay true. It also refuses a `--from` run whose ignored `range.json` is absent, which step 9 would
     otherwise create.
@@ -513,3 +523,26 @@ the target's from the source record, but `CREATE_WXL_COMMIT` is set) and no UP-E
   UP-E09 then a rerun (C-12); `.gitattributes` changes and the restore (C-13); a fork's full tree
   (C-16); step 9's temporary file name after an uncatchable signal (R-7); P-5's literal match against
   an NFD name on disk (R-9); NTFS stream names under `realpath` (C-17, not verified).
+
+## Self-check of the surface (revision 3.3)
+
+- D21 changes one constant that create and the upgrade share (`MINIMUM_GIT_VERSION`), so UP-E02 and
+  0005's CW-W01 move together; their text names the floor from that constant. Rows U04 (2.25.1 is
+  refused, 2.26.0 passes) and 0005's C36 change; every AC is still reached by a row.
+- Changes checked against existing rules:
+  - A teacher with git 2.20–2.25 now gets UP-E02 before any download, as git older than 2.20 did
+    before; create still makes the range and prints CW-W01 with the git steps left to run (0005
+    AC-15).
+  - Git 2.26–2.34 with `merge.conflictStyle=zdiff3` set in a configuration it reads still stops
+    `git merge-file` (UP-E11, nothing written), and its `git checkout` fails too, the restore
+    commands' included; and git 2.26–2.35 with `core.fsmonitor=true` and
+    `core.fsmonitorHookVersion=1` can still pass step 4's clean check on a dirty tree. Both are listed
+    in B4 (T-0065's stage 7, C1 and C2), not changed.
+  - D22 narrows AC-11 to what git does: the exception covers only a file inside a directory that
+    stands where `HEAD` has a file. The upgrade itself never writes an ignored path (P-5), so after a
+    completed or failed run such a directory holds no ignored file, and AC-11's first clause still
+    holds; the exception arises only when one is placed there afterwards, which B4 already lists as a
+    later edit.
+  - U70 gains a case; U70's other cases and their expected results are unchanged.
+- Stale text that revision 3.3 changes: `git-version.mjs`'s and `upgrade.mjs`'s comments naming 2.20.
+

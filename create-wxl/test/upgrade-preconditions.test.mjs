@@ -123,10 +123,10 @@ describe('git tool', () => {
     }
   })
 
-  it('(2) git --version reports 2.19.0 -> UP-E02 naming the version found, exit 1', async () => {
+  it('(2) git --version reports 2.25.1 (below the 2.26 floor, D21) -> UP-E02 naming the version found and the floor, exit 1', async () => {
     const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
     try {
-      const { runGit } = makeGitStub({ version: { code: 0, stdout: 'git version 2.19.0\n', stderr: '' } })
+      const { runGit } = makeGitStub({ version: { code: 0, stdout: 'git version 2.25.1\n', stderr: '' } })
       const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
       const before = await snapshotTree(fixture.root)
       const ioHelper = makeIo()
@@ -135,7 +135,9 @@ describe('git tool', () => {
 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E02/m)
-      expect(ioHelper.stderrText).toContain('2.19.0')
+      expect(ioHelper.stderrText).toContain('2.25.1')
+      // D21 (T-0065): the message names the floor.
+      expect(ioHelper.stderrText).toContain('older than 2.26')
       // F23 (stage 6 disposition): the message points at where to get a newer git.
       expect(ioHelper.stderrText).toContain('https://git-scm.com/downloads')
       expect(deps.fetchArchive).not.toHaveBeenCalled()
@@ -146,12 +148,12 @@ describe('git tool', () => {
     }
   })
 
-  it('(3) git --version reports 2.20.0 (the inclusive lower bound) -> not UP-E02, proceeds', async () => {
+  it('(3) git --version reports 2.26.0 (the inclusive lower bound, D21) -> not UP-E02, proceeds', async () => {
     const fixture = await makeFixtureRange({ rangeJson: noOpRangeJson() })
     try {
       const real = createSpawnGitRunner()
       const { runGit } = makeGitStub({
-        version: { code: 0, stdout: 'git version 2.20.0\n', stderr: '' },
+        version: { code: 0, stdout: 'git version 2.26.0\n', stderr: '' },
         unknown: (args, opts) => real(args, opts),
       })
       const deps = makeDeps({ cwd: fixture.root, env: fixture.env, runGit: vi.fn(runGit) })
