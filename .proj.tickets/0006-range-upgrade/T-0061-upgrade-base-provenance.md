@@ -171,3 +171,8 @@ epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第�
   | `upgrade.mjs`: `if (recordTracked.stdout === '')` → `if (true)` | `upgrade-ignored-record` U67(e) |
   | `upgrade.mjs`: drop `baseCommit !== undefined &&` from step 6's equal-version check | `upgrade-target` U52(b), F22 |
   | `upgrade.mjs`: drop `guard.throwIfRaised()` from `runGitNamed` | `upgrade-preconditions` F14 (both cases) |
+- 2026-11-10, stage 7: project security review (`.claude/skills/security-review/SKILL.md`), report
+  `.proj.specs/0006-range-upgrade/review/security-T-0061.md`. 13 candidates, every one judged a
+  false positive by an independent reviewer; no confirmed finding, so nothing to fix. C1's optional
+  tightening of D18 is recorded there, not adopted.
+
