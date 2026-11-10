@@ -194,8 +194,9 @@ describe('U14: equal versions, different commits', () => {
       expect(inspected).toBe(true)
       expect(checkpoint).toHaveBeenCalledWith('step-8')
       expect(ioHelper.stderrText).toContain('CW-W04')
+      // J6 (D11, T-0061): a base read from range.json is downloaded through its tag.
       const refs = fetchArchive.mock.calls.map((call) => call[1]).sort()
-      expect(refs).toEqual([BASE_COMMIT, OVERRIDE_COMMIT].sort())
+      expect(refs).toEqual(['refs/tags/v3.0.0', OVERRIDE_COMMIT].sort())
       expect(ioHelper.stdoutText).not.toContain('UP-I01')
       expect(ioHelper.stderrText).not.toContain('UP-I01')
       expect(readdirSync(tmpRoot).filter((entryName) => entryName.startsWith('create-wxl-upgrade-'))).toEqual([])

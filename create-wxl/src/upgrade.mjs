@@ -225,6 +225,9 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // of the no-`--from` path (U10) is the `else` branch below.
   let baseCommit
   let baseVersion
+  // D11 (T-0061): a base read from `range.json` must be a release -- it is downloaded through
+  // upstream's own tag (step 7, J6); a `--from` base is not checked against a tag (D17).
+  const baseFromRecord = parsed.from === undefined
   if (parsed.from !== undefined) {
     const rangeJsonResult = await readRangeJson(deps)
     if (rangeJsonResult.token !== undefined) {
@@ -325,7 +328,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // repeating step 6's checks with the now-known base version/commit (amendment 2, U51/U52,
   // below) both apply here; a null/failing result here returns 1 after the shared function's own
   // message and own cleanup.
-  const baseRef = baseCommit ?? `refs/tags/v${baseVersion}`
+  const baseRef = baseFromRecord ? `refs/tags/v${baseVersion}` : (baseCommit ?? `refs/tags/v${baseVersion}`)
   const baseDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: baseRef })
   if (!baseDownload) return 1
   const targetDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: targetCommit })
@@ -335,8 +338,17 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // (`refs/tags/v<version>`), so rule 2 is replaced by "the comment is 40 lowercase hex" (and the
   // resolved comment becomes the commit rule 2 compares the REST of the archive's own path
   // prefix against) -- `readArchiveEntries`'s own `tag` parameter.
-  const baseTag = baseCommit === undefined ? `v${baseVersion}` : undefined
-  const baseResult = await readArchiveEntries({ io, t2, body: baseDownload.body, commit: baseCommit, tag: baseTag })
+  const baseTag = baseFromRecord || baseCommit === undefined ? `v${baseVersion}` : undefined
+  const baseResult = await readArchiveEntries({
+    io,
+    t2,
+    body: baseDownload.body,
+    commit: baseCommit,
+    tag: baseTag,
+    // J6 (D11): the tag's own comment must equal the commit range.json records.
+    expectedCommit: baseFromRecord ? baseCommit : undefined,
+    version: baseVersion,
+  })
   if (!baseResult) return 1
   // U52 (inc 22): in tag mode `baseResult` is `{ entries, commit }` -- the base commit a
   // version-form `--from` base never names on its own, now known from the tag's own pax comment.

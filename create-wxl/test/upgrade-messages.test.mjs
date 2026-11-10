@@ -191,6 +191,8 @@ describe('every UP-* message starts with its own code', () => {
     'UP-A13': {},
     // D10: added at the increment that adds the code (U64, P-8, a submodule path).
     'UP-A14': {},
+    // T-0061 (J6, D11, D18): added at the increment that adds the code (U65).
+    'UP-E12': { version: '3.0.0', recordedCommit: '1'.repeat(40), tagCommit: 'a'.repeat(40) },
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {

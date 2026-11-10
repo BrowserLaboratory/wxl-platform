@@ -182,6 +182,20 @@ function cwE07DetailText(lang, detail) {
   return lang === 'zh-TW' ? `下載失敗：${jsonValue(detail.message)}` : `the download failed: ${jsonValue(detail.message)}`
 }
 
+/** D18 (traceability.md revision 3.1; T-0061): the remedies for a base read from `range.json`
+ * that the upgrade refused, in this order -- `--from <version>` first (checked through upstream's
+ * tag), the recorded commit only when the teacher knows the range was made from it (it is not a
+ * release), then how to see who changed the record. */
+function d18RemediesText(lang) {
+  return lang === 'zh-TW'
+    ? '如果你知道這個靶場是從哪一版上游建立的，請用 --from <version> 重新執行（會經由上游的 tag 驗證）。' +
+        '記錄的 commit 不是發布版：只有確定這個靶場就是從它建立時，才用 --from <commit> 指定它。' +
+        'git log -p -- range.json 可以查出是誰改了這份紀錄。'
+    : "If you know the release this range came from, run the upgrade again with --from <version> (checked through upstream's tag). " +
+        'The recorded commit is not a release: name it with --from <commit> only if you know this range was made from it. ' +
+        'git log -p -- range.json shows who changed the record.'
+}
+
 export const en = {
   'UP-E01': ({ path }) =>
     `UP-E01: ${jsonValue(path)} is not the top level of a git work tree; run upgrade in the range's own root.`,
@@ -283,6 +297,12 @@ export const en = {
   'UP-E11': ({ path, detail }) =>
     `UP-E11: planning the merge failed at ${jsonValue(path)}: ` +
     (detail !== undefined ? jsonValue(detail) : `git merge-file did not finish normally.`),
+  // J6, D11, D18 (T-0061): the base read from range.json is not the commit upstream's tag names.
+  'UP-E12': ({ version, recordedCommit, tagCommit }) =>
+    `UP-E12: range.json records version ${jsonValue(version)} with commit ${jsonValue(recordedCommit)}, ` +
+    `but upstream's tag ${jsonValue(`v${version}`)} names commit ${jsonValue(tagCommit)}, so the recorded base is not an upstream release. ` +
+    `range.json may have been written with CREATE_WXL_COMMIT or by a package packed at another commit, the tag may have moved since, or someone may have changed the record. ` +
+    d18RemediesText('en'),
   'CW-E01': ({ running, minimum }) =>
     `CW-E01: the running Node.js ${jsonValue(running)} is older than the minimum ${jsonValue(minimum)}; install a newer Node.js from https://nodejs.org/.`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
@@ -416,6 +436,11 @@ export const zhTW = {
     `再執行 ${posixCommand(['git', 'checkout', '--', '.'])} 還原到 HEAD。`,
   'UP-E11': ({ path, detail }) =>
     `UP-E11：規劃合併時在 ${jsonValue(path)} 失敗：` + (detail !== undefined ? jsonValue(detail) : `git merge-file 沒有正常結束。`),
+  'UP-E12': ({ version, recordedCommit, tagCommit }) =>
+    `UP-E12：range.json 記錄的版本是 ${jsonValue(version)}、commit 是 ${jsonValue(recordedCommit)}，` +
+    `但上游的 tag ${jsonValue(`v${version}`)} 指向 commit ${jsonValue(tagCommit)}，所以記錄的 base 不是上游的發布版。` +
+    `可能的原因：range.json 是用 CREATE_WXL_COMMIT 或在其他 commit 打包的套件寫入的、這個 tag 之後被移動過，或是有人改了這份紀錄。` +
+    d18RemediesText('zh-TW'),
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>

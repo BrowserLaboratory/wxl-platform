@@ -14,14 +14,16 @@ import { makeTmpRoot } from './helpers/tmp.mjs'
 import { makeFixtureRange } from './helpers/fixture-range.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
+import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
+import { readdirSync } from 'node:fs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '1111111111111111111111111111111111111111'
 
-describe('U06: valid range.json -> base is its own commit and version', () => {
-  it("fetchArchive is called once for the base's commit and once for the target's", async () => {
+describe('U06: valid range.json -> base is its own commit and version, downloaded through its tag (J6, D11)', () => {
+  it("fetchArchive is called for refs/tags/v<version> first, then for the target's commit; R1 names the recorded version and commit", async () => {
     const fixture = await makeFixtureRange({
       rangeJson: { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.0.0', commit: BASE_COMMIT } },
     })
@@ -44,8 +46,10 @@ describe('U06: valid range.json -> base is its own commit and version', () => {
       await run(['upgrade'], ioHelper.io, deps)
 
       const refs = fetchArchive.mock.calls.map((call) => call[1])
-      expect(refs).toContain(BASE_COMMIT)
-      expect(refs).toContain(FIXED_COMMIT)
+      expect(refs).toEqual(['refs/tags/v3.0.0', FIXED_COMMIT])
+      const r1 = ioHelper.stdoutText.split('\n').find((line) => line.startsWith('R1:'))
+      expect(r1).toContain('"3.0.0"')
+      expect(r1).toContain(BASE_COMMIT)
     } finally {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
@@ -376,5 +380,96 @@ describe('U07: no range.json, no --from -> UP-E04', () => {
       await rm(fixture.root, { recursive: true, force: true })
       await rm(fixture.env.HOME, { recursive: true, force: true })
     }
+  })
+})
+
+// U65 (traceability.md revision 3.1, J6, D11, D18; T-0061): a base read from range.json is
+// downloaded through refs/tags/v<version>, and that archive's pax comment must equal the recorded
+// commit. `TAG_COMMIT` is the commit upstream's tag names; `BASE_COMMIT` is what range.json claims
+// (a fork-network commit, or a commit the tag no longer names).
+describe('U65: range.json names a commit that is not its tag\'s (J6)', () => {
+  const TAG_COMMIT = 'a'.repeat(40)
+  const RANGE_JSON = { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.0.0', commit: BASE_COMMIT } }
+
+  async function runCase(byRef) {
+    const fixture = await makeFixtureRange({ rangeJson: RANGE_JSON })
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const fetchArchive = makeRefFetchArchive(byRef)
+      const deps = makeDeps({
+        cwd: fixture.root,
+        tmpRoot,
+        env: fixture.env,
+        runGit: vi.fn(createSpawnGitRunner()),
+        packageVersion: '3.1.0',
+        source: { version: '3.1.0' },
+        fetchArchive,
+      })
+      const ioHelper = makeIo()
+      const before = await snapshotTree(fixture.root)
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+      const leftovers = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+      return { exitCode, ioHelper, before, after, leftovers, refs: fetchArchive.mock.calls.map((call) => call[1]) }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  }
+
+  function expectRemediesInOrder(text) {
+    const version = text.indexOf('--from <version>')
+    const commit = text.indexOf('--from <commit>')
+    const log = text.indexOf('git log -p -- range.json')
+    expect(version).toBeGreaterThan(-1)
+    expect(commit).toBeGreaterThan(version)
+    expect(log).toBeGreaterThan(commit)
+  }
+
+  it('(a) the tag archive names another commit -> UP-E12 with the version, both commits and D18\'s remedies in order; exit 1, nothing written, no temporary entry left', async () => {
+    const result = await runCase({
+      'refs/tags/v3.0.0': { body: pristineArchive(TAG_COMMIT) },
+      [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^UP-E12/m)
+    expect(result.ioHelper.stderrText).toContain('3.0.0')
+    expect(result.ioHelper.stderrText).toContain(BASE_COMMIT)
+    expect(result.ioHelper.stderrText).toContain(TAG_COMMIT)
+    expectRemediesInOrder(result.ioHelper.stderrText)
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(b) the same, with the tag archive also holding a `git~1` and a `.git` component -> UP-E12, not CW-E08 (the comment checks come first)', async () => {
+    const entries = [
+      ...PRISTINE_FIXTURE,
+      { path: 'git~1/', type: 'dir', mode: 0o755 },
+      { path: 'git~1/x', type: 'file', mode: 0o644, content: 'x\n' },
+      { path: '.git/', type: 'dir', mode: 0o755 },
+      { path: '.git/x', type: 'file', mode: 0o644, content: 'x\n' },
+    ]
+    const result = await runCase({
+      'refs/tags/v3.0.0': { body: pristineArchive(TAG_COMMIT, { entries }) },
+      [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^UP-E12/m)
+    expect(result.ioHelper.stderrText).not.toContain('CW-E08')
+    expect(result.after).toEqual(result.before)
+  })
+
+  it('(c) the same, with the target\'s download failing -> CW-E07 for the target (both archives are downloaded before either is validated)', async () => {
+    const result = await runCase({
+      'refs/tags/v3.0.0': { body: pristineArchive(TAG_COMMIT) },
+      [FIXED_COMMIT]: new Error('network down'),
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(FIXED_COMMIT)
+    expect(result.ioHelper.stderrText).not.toContain('UP-E12')
+    expect(result.refs).toEqual(['refs/tags/v3.0.0', FIXED_COMMIT])
+    expect(result.after).toEqual(result.before)
   })
 })

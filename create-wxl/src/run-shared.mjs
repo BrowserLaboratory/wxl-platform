@@ -96,7 +96,7 @@ export async function downloadArchive({ io, deps, t2, guard, repository, ref }) 
  * against (unchanged `checkEntryRules`), and the resolved commit is also returned (U52, inc 22:
  * `{ entries, commit: comment }`) so the caller can learn the base commit a tag download alone
  * never names. */
-export async function readArchiveEntries({ io, t2, body, commit, tag }) {
+export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCommit, version }) {
   let parsedArchive
   try {
     parsedArchive = await parseArchive(body)
@@ -115,6 +115,13 @@ export async function readArchiveEntries({ io, t2, body, commit, tag }) {
       return null
     }
     effectiveCommit = comment
+    // J6 (D11, T-0061): a base read from range.json must be the commit the tag names. Checked
+    // right after the comment's own shape and before every entry rule, so a mismatched archive is
+    // UP-E12 whatever else it holds.
+    if (expectedCommit !== undefined && comment !== expectedCommit) {
+      io.stderr.write(t2['UP-E12']({ version, recordedCommit: expectedCommit, tagCommit: comment }) + '\n')
+      return null
+    }
   }
   try {
     const entries = checkEntryRules(parsedArchive, { commit: effectiveCommit })
