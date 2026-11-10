@@ -34,7 +34,7 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1, `traceability.md`
   U68, U69, U73, U74's step 8 cases, U75; 0005's C18 added cases and C71.
 - [x] ACs reached: AC-5 (U73), AC-6 (U17, U57, U68, U69, U74, U75), AC-8 (U63, U68), and 0005's AC-9
   (C18, C71).
-- [ ] The real-file-system letter-case cases run only on macOS or Windows on a case-insensitive file
+- [x] The real-file-system letter-case cases run only on macOS or Windows on a case-insensitive file
   system; stage 5 checks whether a Windows runner can create a short name with
   `fsutil file setshortname`, and the coverage report records the real 8.3 case as not verified when
   it cannot (spec Testing Decisions).
@@ -144,3 +144,27 @@ Mutation checks, each made on the commit named, with the edit shown, the command
     (not captured before it). `git clean -fd` then `git checkout -- .` gave an empty
     `git status --porcelain=v1 --untracked-files=all`, `HEAD` unchanged.
   - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE` and the tarball were removed.
+- 2026-11-10, PR #72 CI (run `42798792930`, first push `ed18551`):
+  - windows-latest (`fork-init-cross-os (windows-latest, 24)`, git 2.56.0.windows.4):
+    `upgrade-aliases.test.mjs` 10 tests, 1 skipped. U68(a), U68(b) and U68(c) all passed. U68(c)
+    used a real 8.3 short name `GITIGN~1` for `.gitignore`, so the real 8.3 case is verified, and the
+    Windows criterion is checked. The one skip is U69(a), which needs a symbolic link. U68(b) also
+    passed on macos-latest.
+  - The same job failed in `upgrade-ignored.test.mjs`: both U74 step 8 rejection cases failed with
+    `EBUSY: resource busy or locked, rmdir '…\create-wxl-range-repo-…'` in the test's own cleanup.
+  - Cause: step 8 started the two `git ls-files` calls and the two pristine listings with
+    `Promise.all`. When one `runGit` rejected, `planMerge` rejected at once, while the other real
+    `git ls-files` still ran with the range as its working directory. The run then reported,
+    cleaned up and returned; on Windows, removing the range failed.
+  - This is a product defect, not only a test one. A rejection must not let the run return while a
+    child it started is still running. The same applies to the paired reads of b, t and the anchor
+    check.
+  - Fix, a deviation from the approved plan, applied under the user's authorisation of 2026-11-10:
+    - `merge-plan.mjs`'s `settleAll` waits for every operation, then rejects with the first
+      rejection in array order;
+    - it is used at all three `Promise.all` sites in `planMerge`;
+    - error text and exit codes are unchanged.
+  - Test, a stronger assertion and no new sub-case: both U74 step 8 rejection cases now count real
+    git calls still running and require 0 when `run()` returns. With `Promise.all` this was red on
+    macOS too (`expected 1 to be +0`); with `settleAll` it is green.
+  - `pnpm --dir create-wxl test` → `Test Files 37 passed (37) / Tests 696 passed | 1 skipped (697)`.
