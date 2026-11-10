@@ -120,12 +120,20 @@ describe('UP-E02 wording: with and without a detected version', () => {
     expect(enWith).not.toBe(enWithout)
     expect(zhWith).not.toBe(zhWithout)
   })
+})
 
-  it('names the floor, 2.26, in both languages, as create\'s CW-W01 does (D21, T-0065)', () => {
-    for (const text of [en['UP-E02']({ version: '2.25.1' }), zhTW['UP-E02']({ version: '2.25.1' }), en['CW-W01']({ remainingCommands: [] }), zhTW['CW-W01']({ remainingCommands: [] })]) {
-      expect(text).toMatch(/2\.26(?!\.)/)
-      expect(text).not.toContain('2.20')
-    }
+// D21 (revision 3.3, T-0065): the upgrade's UP-E02 and create's CW-W01 both name the 2.26 floor, from
+// the one constant they share.
+describe('git floor text (D21)', () => {
+  it.each([
+    ['UP-E02 en', () => en['UP-E02']({ version: '2.25.1' })],
+    ['UP-E02 zh-TW', () => zhTW['UP-E02']({ version: '2.25.1' })],
+    ['CW-W01 en (0005)', () => en['CW-W01']({ remainingCommands: [] })],
+    ['CW-W01 zh-TW (0005)', () => zhTW['CW-W01']({ remainingCommands: [] })],
+  ])('%s names 2.26 and not 2.20', (_label, render) => {
+    const text = render()
+    expect(text).toMatch(/2\.26(?!\.)/)
+    expect(text).not.toContain('2.20')
   })
 })
 

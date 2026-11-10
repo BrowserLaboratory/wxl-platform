@@ -14,7 +14,7 @@ import { MINIMUM_BASE_VERSION_TEXT } from './base-version.mjs'
 import { VERSION_RE } from './patterns.mjs'
 import { RESTORE_COMMANDS } from './upgrade-report.mjs'
 
-/** CW-W01's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
+/** CW-W01's and UP-E02's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
  * own default), not a hardcoded version repeated in both language tables. */
 const MINIMUM_GIT_VERSION_TEXT = MINIMUM_GIT_VERSION.join('.')
 
