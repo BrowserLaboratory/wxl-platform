@@ -5,7 +5,7 @@ Status: revision 2.3 (2026-11-10). Round 1 found four P0 findings with two root 
 the user's decisions D1–D2. Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met;
 revision 2.1 applies round 2's P1 groups Q1–Q6 (`review/disposition-2.md`) by decision D3, without
 another round. Revision 2.2 (2026-11-10, with `traceability.md` revision 2.2) widens entry rule 3 to git's
-NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21). Derived from `traceability.md`, which holds the fixed
+NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21), without another round. Derived from `traceability.md`, which holds the fixed
 lists this spec refers to (decisions in short, vocabulary, command grammar, language, step order,
 signals, error and warning codes, archive entry rules, pristine processing P1–P4, the `range.json`
 schema, the test-download override, setup questions S1–S6, git steps G0–G4, next steps N1–N8, the

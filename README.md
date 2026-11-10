@@ -38,6 +38,7 @@
 ## 環境需求
 
 - **Node.js** >= 22.6：`challenge:keygen`、`create:challenge`、`challenge:validate`、`challenge:analyze` 透過 `node --experimental-strip-types` 執行，較舊的版本沒有這個功能。其餘 TypeScript 腳本走內建的 `tsx`，沒有版本下限。CI 用 Node 24 建置。
+- **git** >= 2.26：`npm create wxl` 的 `git init` 與第一個 commit，以及 `pnpm range:upgrade`，都需要這個版本以上（Ubuntu 20.04 內建的 2.25.1 不支援）
 - **pnpm** >= 10（`npm install -g pnpm`）
 - **Rust** 工具鏈（用 [rustup](https://rustup.rs/) 安裝）
 - **wasm-pack**（`cargo install wasm-pack --version 0.14.0 --locked`）：版本與 CI 相同。它不是套件相依，要安裝到 Rust 工具鏈裡
@@ -169,7 +170,7 @@ pnpm build
 
 ### 用 `npm create wxl` 建立靶場
 
-不想 fork 整個 repo，也可以用這個指令直接建立一個全新的靶場資料夾（需要 Node.js >= 22.6）：
+不想 fork 整個 repo，也可以用這個指令直接建立一個全新的靶場資料夾（需要 Node.js >= 22.6；要自動 `git init` 並 commit 還需要 git >= 2.26）：
 
 ```bash
 npm create wxl <資料夾>

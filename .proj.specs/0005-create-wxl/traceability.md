@@ -19,8 +19,8 @@ components git's `is_ntfs_dotgit` and `is_hfs_dotgit` treat as `.git`, so B1's "
 `.git` path" holds on NTFS and HFS+ as well as by name (this epic's chain analysis, gap 1); row C18
 gains those cases, row C71 is added, and the rule's text regains a backslash lost in formatting.
 Revision 2.3 (2026-11-10) applies decision D21 of epic 0006's revision 3.3 (T-0065): G0's floor is
-git 2.26, shared with the upgrade's step 3, and Ubuntu 20.04's git 2.25.1 is not supported; row C36
-changes.
+git 2.26, shared with the upgrade's step 3, and Ubuntu 20.04's git 2.25.1 is not supported; rows
+C36, G0 and CW-W01 and the G0 text change. Self-checked without another round.
 In an input cell, `\uXXXX` inside a code span stands for the single code point U+XXXX; any other `\`
 is a literal backslash, as in C18's `a\b`. The
 decisions this file relies on, in short (the full
@@ -446,7 +446,7 @@ input written to its stdin, one answer per line.
 | C33 | engine | `runForkInit` returns `exitCode` 1 (fixture without A9); `runForkInit` throws | failure | CW-E12 with the message and the finishing commands; range and `range.json` stay; no git step; exit 1 | AC-14 |
 | C34 | engine | engine warnings | report | printed after the apply | AC-14 |
 | C35 | git | real git; explicit identity in an isolated `HOME`; a global `init.templateDir` with a `post-commit` hook writing a file; `commit.gpgsign=true` | G1–G4 | repository on `main`, exactly one commit `Create range from WXL <V>`, `git ls-files` equals the range's file list, `git status --porcelain --untracked-files=all` empty; the hook did not run | AC-15 |
-| C36 | git | `runGit` rejects `ENOENT` on G0; G0 reports 2.25.1 (revision 2.3) | CW-W01 | no further `runGit` call; exit 0; N2 lists the printed forms of G1, G2, G4 | AC-15 |
+| C36 | git | `runGit` rejects `ENOENT` on G0; G0 reports 2.25.1 (revision 2.3; 2.26.0 passes, the control) | CW-W01 | no further `runGit` call; exit 0; N2 lists the printed forms of G1, G2, G4 | AC-15 |
 | C37 | git | real git without identity (isolated `HOME` and `XDG_CONFIG_HOME`, system config off): `git config --get` exits 1 | CW-W02 | G1, G2 run; no G4; not CW-W03; exit 0; N2 lists the two config commands, then the printed G4 | AC-15 |
 | C38 | git | G2 exits 1 | CW-W03 | G3, G4 not run; exit 0; N2 lists the printed G2 and G4 | AC-15 |
 | C39 | `--no-setup` | valid run, with and without `CREATE_WXL_COMMIT` | scope | P1–P4 applied; no engine call; no `runGit` call; exactly N1 and N8 printed (CW-W04 does not add N2) | AC-16 |
