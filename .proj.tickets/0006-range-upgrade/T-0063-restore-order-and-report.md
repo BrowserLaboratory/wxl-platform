@@ -2,7 +2,7 @@
 id: T-0063
 title: Restore order, report additions and the stage 8 simulation
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: [T-0061, T-0062]
 ---
 
@@ -34,8 +34,10 @@ Decisions D14, D16, D20, and the round 2 disposition's W4 and R-6.
 - [x] ACs reached: AC-6 (U64), AC-9 (U24), AC-10 (U26, U72, U76), AC-11 (U27–U29, U70), AC-12 (U31,
   the GLOSSARY sentence and its assertion in `upstream-config.test.mjs` changed together).
 - [x] AC-13 (U32).
-- [ ] Stage 5 runs U70 once with git 2.20 and records the version and result in the coverage report; a
-  failure goes back to the user before the ticket closes (spec Testing Decisions).
+- [x] Stage 5 runs U70 once with git 2.20 and records the version and result in the coverage report; a
+  failure goes back to the user before the ticket closes (spec Testing Decisions). Superseded by the
+  user's decision of 2026-11-10: git's floor rises to 2.26 and Ubuntu 20.04 is not supported, so
+  the 2.20 run is not made (T-0065; Comments).
 - [x] Stage 5 checks which code step 9 prints for a bug (round 2 K-5) and records it.
 - [x] Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
   pushed commits A and B, with the branch deleted afterwards.
@@ -194,3 +196,17 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
   - Afterwards `sim/0006-upgrade` was deleted on `origin` and locally (`git ls-remote --heads origin
     sim/0006-upgrade` prints nothing). `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the
     temporary ranges were removed.
+- 2026-11-10, git 2.20 and 2.54 compared (two `harness-researcher` passes over git's release notes
+  2.21–2.56 and the v2.20.1 and v2.54.0 sources; local note `.proj.research/2026-11-10-git-2.20-vs-2.54.md`):
+  - U70's three cases read the same in both versions (`state.force = 1`; `remove_subtree()` ignores
+    the ignore rules; `clean` reads `.gitignore` from the work tree). F9 holds in 2.20 too.
+  - Git 2.20–2.25 differ elsewhere:
+    - `check-ignore` ignores `!` re-inclusions until 2.25.2;
+    - `core.fsmonitor=true` is run as a hook before 2.26 and may report no changes, so step 4's
+      clean check could pass on a dirty tree;
+    - `merge.conflictStyle=zdiff3` dies before 2.35, failing closed as UP-E11.
+  - The user decided on 2026-11-10: the floor rises to 2.26 for create and upgrade alike, and
+    Ubuntu 20.04 (git 2.25.1) is not supported. T-0065 carries the spec revision and the change;
+    the git 2.20 run of U70 is therefore not made.
+- 2026-11-10, landed: PR #74 squash-merged into `main` as `8455c34` (CI 10 of 10 passing, including
+  `fork-init-cross-os (windows-latest, 24)`). Status set to done.
