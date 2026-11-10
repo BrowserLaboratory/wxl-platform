@@ -227,8 +227,10 @@ export const en = {
     }
     return `UP-E10: the base version ${jsonValue(version)} is lower than ${MINIMUM_BASE_VERSION_TEXT}; a range from before ${MINIMUM_BASE_VERSION_TEXT} cannot be upgraded by this tool.`
   },
-  'UP-E08': ({ tag }) =>
-    `UP-E08: the tag ${jsonValue(tag)}'s archive comment is not 40 lowercase hexadecimal characters; the base commit could not be resolved.`,
+  // D18 (T-0061): `remedies` is set for a base read from range.json.
+  'UP-E08': ({ tag, remedies }) =>
+    `UP-E08: the tag ${jsonValue(tag)}'s archive comment is not 40 lowercase hexadecimal characters; the base commit could not be resolved.` +
+    (remedies ? ` ${d18RemediesText('en')}` : ''),
   // T-0027 increment 1 (traceability.md "Codes", attention items UP-A1-UP-A12): a fixed
   // description per code, never per-instance (the path itself is printed by R3, next to the
   // code, not inside this text) -- so every one of these takes no fields at all, trivially safe
@@ -314,7 +316,9 @@ export const en = {
     '.',
   'CW-E05': ({ missing }) => cwE05Text('en', missing),
   'CW-E06': ({ message }) => `CW-E06: the engine rejected the answers: ${jsonValue(message)}.`,
-  'CW-E07': ({ url, detail }) => `CW-E07: downloading ${jsonValue(url)} failed: ${cwE07DetailText('en', detail)}.`,
+  // D18 (T-0061): `remedies` is set only for a 404 on the tag download of a base read from range.json.
+  'CW-E07': ({ url, detail, remedies }) =>
+    `CW-E07: downloading ${jsonValue(url)} failed: ${cwE07DetailText('en', detail)}.` + (remedies ? ` ${d18RemediesText('en')}` : ''),
   'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
     parseError !== undefined
       ? `CW-E08: the archive could not be parsed: ${jsonValue(parseError)}.`
@@ -409,7 +413,9 @@ export const zhTW = {
     }
     return `UP-E10：base 版本 ${jsonValue(version)} 低於 ${MINIMUM_BASE_VERSION_TEXT}；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
   },
-  'UP-E08': ({ tag }) => `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。`,
+  'UP-E08': ({ tag, remedies }) =>
+    `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。` +
+    (remedies ? d18RemediesText('zh-TW') : ''),
   // These UP-A* texts use an ASCII colon after the code, like `R1:`/`R2:`
   // etc. elsewhere in the zh-TW report, instead of this table's own full-width "：" -- a R3 line
   // is `R3: ` (ASCII) followed by one of these, so the two would otherwise mix colon styles in
@@ -452,7 +458,8 @@ export const zhTW = {
     '。',
   'CW-E05': ({ missing }) => cwE05Text('zh-TW', missing),
   'CW-E06': ({ message }) => `CW-E06：引擎拒絕了這些答案：${jsonValue(message)}。`,
-  'CW-E07': ({ url, detail }) => `CW-E07：下載 ${jsonValue(url)} 失敗：${cwE07DetailText('zh-TW', detail)}。`,
+  'CW-E07': ({ url, detail, remedies }) =>
+    `CW-E07：下載 ${jsonValue(url)} 失敗：${cwE07DetailText('zh-TW', detail)}。` + (remedies ? d18RemediesText('zh-TW') : ''),
   'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
     parseError !== undefined
       ? `CW-E08：壓縮檔無法解析：${jsonValue(parseError)}。`

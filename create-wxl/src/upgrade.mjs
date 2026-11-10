@@ -329,7 +329,16 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // below) both apply here; a null/failing result here returns 1 after the shared function's own
   // message and own cleanup.
   const baseRef = baseFromRecord ? `refs/tags/v${baseVersion}` : (baseCommit ?? `refs/tags/v${baseVersion}`)
-  const baseDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: baseRef })
+  const baseDownload = await downloadArchive({
+    io,
+    deps,
+    t2,
+    guard,
+    repository: deps.source.repository,
+    ref: baseRef,
+    // D18: a 404 on the tag download of a base read from range.json carries the remedies.
+    remediesOn404: baseFromRecord,
+  })
   if (!baseDownload) return 1
   const targetDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: targetCommit })
   if (!targetDownload) return 1

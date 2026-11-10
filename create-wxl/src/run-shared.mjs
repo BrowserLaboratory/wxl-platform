@@ -42,7 +42,7 @@ export function isFileSystemError(err) {
  * being tied to `deps.source`/`commit`. Returns `{ body }`, or `null` after CW-E07 is already
  * printed; the caller's own `checkpoint('step-6')`/`guard.throwIfRaised()`/CW-W04 are unchanged by
  * this move, and so is `checkpoint('step-7')` (both stay at the call site). */
-export async function downloadArchive({ io, deps, t2, guard, repository, ref }) {
+export async function downloadArchive({ io, deps, t2, guard, repository, ref, remediesOn404 = false }) {
   const url = `https://codeload.github.com/${repository}/tar.gz/${ref}`
   const controller = new AbortController()
   // decision 6: a signal during the download aborts it through this same controller, instead of
@@ -77,7 +77,7 @@ export async function downloadArchive({ io, deps, t2, guard, repository, ref }) 
 
   guard.throwIfRaised() // P-17/C-14: a signal already received wins over a non-200 status
   if (status !== 200) {
-    io.stderr.write(t2['CW-E07']({ url, detail: { kind: 'status', status } }) + '\n')
+    io.stderr.write(t2['CW-E07']({ url, detail: { kind: 'status', status }, remedies: remediesOn404 && status === 404 }) + '\n')
     return null
   }
 
@@ -111,7 +111,7 @@ export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCo
   if (tag !== undefined) {
     const { comment } = parsedArchive
     if (typeof comment !== 'string' || !COMMIT_RE.test(comment)) {
-      io.stderr.write(t2['UP-E08']({ tag }) + '\n')
+      io.stderr.write(t2['UP-E08']({ tag, remedies: expectedCommit !== undefined }) + '\n')
       return null
     }
     effectiveCommit = comment

@@ -627,6 +627,8 @@ describe('U16: --from <version> tag archive comment missing or not 40 lowercase 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E08/m)
       expect(ioHelper.stderrText).toContain('v3.1.0')
+      // D18 (T-0061): the remedies are for a base read from range.json only.
+      expect(ioHelper.stderrText).not.toContain('--from <version>')
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
     } finally {
@@ -702,5 +704,104 @@ describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> th
       await rm(fixture.env.HOME, { recursive: true, force: true })
       await rm(tmpRoot, { recursive: true, force: true })
     }
+  })
+})
+
+// T-0061 (traceability.md revision 3.1, J6, D11, D18): a base read from range.json is downloaded
+// through its tag too, so UP-E08 and a 404 on that tag download apply to it, now with D18's
+// remedies; `--from <version>` and a network error keep 0005's message without them.
+async function runRecordedBaseCase({ byRef, argv = ['upgrade'], rangeJson }) {
+  const fixture = await makeFixtureRange({ rangeJson })
+  const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+  try {
+    const fetchArchive = makeRefFetchArchive(byRef)
+    const deps = makeDeps({
+      cwd: fixture.root,
+      tmpRoot,
+      env: fixture.env,
+      runGit: vi.fn(createSpawnGitRunner()),
+      packageVersion: '3.2.0',
+      source: { version: '3.2.0' },
+      fetchArchive,
+    })
+    const before = await snapshotTree(fixture.root)
+    const ioHelper = makeIo()
+    const exitCode = await run(argv, ioHelper.io, deps)
+    const after = await snapshotTree(fixture.root)
+    const leftovers = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+    return { exitCode, ioHelper, before, after, leftovers }
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+    await rm(fixture.env.HOME, { recursive: true, force: true })
+    await rm(tmpRoot, { recursive: true, force: true })
+  }
+}
+
+const RECORDED_BASE = { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.1.0', commit: BASE_COMMIT } }
+
+function expectD18Remedies(text) {
+  const version = text.indexOf('--from <version>')
+  const commit = text.indexOf('--from <commit>')
+  const log = text.indexOf('git log -p -- range.json')
+  expect(version).toBeGreaterThan(-1)
+  expect(commit).toBeGreaterThan(version)
+  expect(log).toBeGreaterThan(commit)
+}
+
+describe('U16: a base from range.json whose tag archive comment is missing or not 40 lowercase hex -> UP-E08 with D18\'s remedies', () => {
+  it.each([
+    ['no pax global header', undefined],
+    ['40 characters with one uppercase letter', `${'a'.repeat(39)}B`],
+  ])('%s -> UP-E08 naming v3.1.0, D18\'s remedies in order, not UP-E12; exit 1, nothing written, no temporary entry left', async (_label, comment) => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { body: tagArchive('3.1.0', { comment }) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^UP-E08/m)
+    expect(result.ioHelper.stderrText).toContain('v3.1.0')
+    expect(result.ioHelper.stderrText).not.toContain('UP-E12')
+    expectD18Remedies(result.ioHelper.stderrText)
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+})
+
+describe('U66: the tag download fails (J6)', () => {
+  it('(a) a base from range.json whose version has no tag (status 404) -> CW-E07 naming the URL, with D18\'s remedies in order', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { status: 404, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/refs/tags/v3.1.0`)
+    expectD18Remedies(result.ioHelper.stderrText)
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(b) --from <version> naming a version with no tag (status 404) -> CW-E07 naming the URL, without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      argv: ['upgrade', '--from', '3.1.0'],
+      byRef: { 'refs/tags/v3.1.0': { status: 404, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(c) a base from range.json whose tag download is rejected (a network error) -> CW-E07 without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': new Error('network down'), [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
   })
 })
