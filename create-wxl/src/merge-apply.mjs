@@ -40,7 +40,16 @@ function tempPathFor(rangeRoot, path) {
 function buildRangeJson(current, upstream) {
   if (Object.prototype.hasOwnProperty.call(current, 'upstream')) {
     const next = {}
-    for (const key of Object.keys(current)) next[key] = key === 'upstream' ? upstream : current[key]
+    // R-6 (T-0063): define each key as the object's own, as `JSON.parse` did -- a plain assignment
+    // of a `__proto__` key would set `next`'s prototype instead, and the key would be lost.
+    for (const key of Object.keys(current)) {
+      Object.defineProperty(next, key, {
+        value: key === 'upstream' ? upstream : current[key],
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
+    }
     return next
   }
   return { upstream, ...current }

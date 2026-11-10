@@ -74,6 +74,33 @@ describe('range.json after the plan (U24)', () => {
     }
   })
 
+  // R-6 (round 2 disposition W15; T-0063): `JSON.parse` makes `__proto__` an own key; rewriting
+  // `upstream` must keep it as one, with its value and position, not set the object's prototype.
+  it('⑥ a top-level __proto__ key keeps its value and position; upstream becomes the target', async () => {
+    const before = JSON.parse(
+      `{"__proto__":{"x":1},"upstream":${JSON.stringify(rangeJsonFor(BASE_COMMIT).upstream)},"y":2}`,
+    )
+    expect(Object.keys(before)).toEqual(['__proto__', 'upstream', 'y'])
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: before })
+    let tmpRoot
+    try {
+      const result = await runUpgradeAgainst(fixture)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(0)
+
+      const raw = await readFile(join(fixture.root, 'range.json'), 'utf8')
+      const expected = JSON.stringify(
+        JSON.parse(`{"__proto__":{"x":1},"upstream":${JSON.stringify(TARGET_UPSTREAM)},"y":2}`),
+        null,
+        2,
+      ) + '\n'
+      expect(raw).toBe(expected)
+      expect(raw).toContain('"__proto__": {')
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
   it('② a UP-E09 failure (step 9 write failure) leaves range.json byte-identical to before', async () => {
     // Reuses U27's own failure path (step 9's write failure).
     const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
