@@ -34,7 +34,7 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1, `traceability.md`
   U68, U69, U73, U74's step 8 cases, U75; 0005's C18 added cases and C71.
 - [x] ACs reached: AC-5 (U73), AC-6 (U17, U57, U68, U69, U74, U75), AC-8 (U63, U68), and 0005's AC-9
   (C18, C71).
-- [x] The real-file-system letter-case cases run only on macOS or Windows on a case-insensitive file
+- [ ] The real-file-system letter-case cases run only on macOS or Windows on a case-insensitive file
   system; stage 5 checks whether a Windows runner can create a short name with
   `fsutil file setshortname`, and the coverage report records the real 8.3 case as not verified when
   it cannot (spec Testing Decisions).
@@ -66,7 +66,7 @@ seam 全部是 0006-S1；0005 的 rule 3 另用 0005-S1（`archive-rules.test.mj
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| 0006-S1 | 新檔 `upgrade-aliases`（U68、U69）、`upgrade-target`（U73）、`upgrade-ignored`（U63 擴充、U74 step 8）、`upgrade-merge`（U17 斷言；U57、U75 對應既有測試）、`upgrade-messages`（UP-A15） | not measured：create-wxl 沒有安裝 coverage provider | U17、U57、U63、U68、U69、U73、U74（step 8）、U75；AC-5、AC-6、AC-8 | U68(b) 只在 macOS 或 Windows 的大小寫不敏感檔案系統上跑；U68(c) 只在 Windows 跑，而且 runner 做不出短檔名時會在執行時略過，結果看 CI 的 windows-latest job（本機 macOS 略過）；U69(g) 在 P-9 之前就由 parent check 報出同樣的 UP-E11，所以這一列分不出是誰擋下的 |
+| 0006-S1 | 新檔 `upgrade-aliases`（U68、U69）、`upgrade-target`（U73）、`upgrade-ignored`（U63 擴充、U74 step 8）、`upgrade-merge`（U17 斷言；U57、U75 對應既有測試）、`upgrade-messages`（UP-A15） | not measured：create-wxl 沒有安裝 coverage provider | U17、U57、U63、U68、U69、U73、U74（step 8）、U75；AC-5、AC-6、AC-8 | U68(b) 只在 macOS 或 Windows 的大小寫不敏感檔案系統上跑；U68(c) 只在 Windows 跑，runner 做不出短檔名時會附原因略過；本機 macOS 略過，Windows 的結果在 PR 的 windows-latest job 跑完後記錄（見 Comments） |
 | 0005-S1 | `archive-rules`（C18 新案例、C71） | not measured | 0005 C18、C71 / AC-9 | — |
 | 0006-S2 | — | — | 第 8 階段：macOS 上父目錄大小寫不同的路徑報 UP-A15 | 第 8 階段另外記錄 |
 
@@ -74,16 +74,17 @@ Checks at `600ff82`, macOS (darwin arm64, Node v24.13.0), 2026-11-10:
 `pnpm --dir create-wxl test` → `Test Files 37 passed (37) / Tests 694 passed | 1 skipped (695)` (the skip is U68(c), Windows only);
 `pnpm test --run` → `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`.
 
-Mutation checks, each made with the edit shown, the named test run with `pnpm --dir create-wxl exec vitest run <file> -t "<name>"` failing, then the file restored:
+Mutation checks, each made on the commit named, with the edit shown, the command run (it fails), then the file restored with `git checkout -- <file>`:
 
-| Edit | Test that fails |
-|---|---|
-| `archive-rules.mjs`: `isGitAlias(component)` → `component.toLowerCase() === '.git'` | `archive-rules` C18's nine new cases, `upgrade-target` U73's nine rejections |
-| `merge-plan.mjs`: drop the NFC normalisation in `hasNameAlias` | `upgrade-aliases` U69(b) |
-| `merge-plan.mjs`: normalise only the disk side | `upgrade-aliases` U69(c) |
-| `merge-plan.mjs`: drop the `\` → `/` conversion | `upgrade-aliases` U69(d), (e) |
-| `merge-plan.mjs`: always append `/` to R | `upgrade-aliases` U69(e) |
-| `merge-plan.mjs`: apply P-7 only when b and t are present | `upgrade-ignored` U63 (extended) |
+| Commit | Edit | Command that fails |
+|---|---|---|
+| `7053879` | `archive-rules.mjs`: `isGitAlias(component)` → `component.toLowerCase() === '.git'` | `pnpm --dir create-wxl exec vitest run test/upgrade-target.test.mjs test/archive-rules.test.mjs` (18 failures: C18's and U73's new cases) |
+| `cb37516` | `merge-plan.mjs` `hasNameAlias`: drop both `.normalize('NFC')` | `pnpm --dir create-wxl exec vitest run test/upgrade-aliases.test.mjs -t "U69"` ((b) fails) |
+| `cb37516` | `hasNameAlias`: drop the `.normalize('NFC')` on q only | same command ((c) fails) |
+| `cb37516` | `hasNameAlias`: `toSlash` returns its input unchanged | same command ((d) and (e) fail) |
+| `cb37516` | `hasNameAlias`: `prefix` is always `${root}/` | same command ((e) fails) |
+| `600ff82` | `merge-plan.mjs` P-7: add `b !== null && t !== null &&` to its condition | `pnpm --dir create-wxl exec vitest run test/upgrade-ignored.test.mjs -t "U63, P-7"` |
+| `bcc5b1c` | `merge-plan.mjs` `hasNameAlias`'s `lstatOk`: return `false` for every error | `pnpm --dir create-wxl exec vitest run test/upgrade-aliases.test.mjs -t "U69"` ((g) fails) |
 
 ## 給使用者（zh-TW）
 
@@ -100,8 +101,23 @@ Mutation checks, each made with the edit shown, the named test run with `pnpm --
     unchanged.
   - U73 and C71 were green when written: U73 was written after rule 3's implementation (the test
     plan expected it red). The rule 3 mutation above shows both catch the change.
-  - U57's rejecting stub and U75 map to existing tests ("runGit rejects for merge-file", "a read
-    error of an M12 path's own o"), which already assert exactly those rows; no new test.
-  - U17 already asserted `HEAD` and the index unchanged; the ignored-file assertion was added.
+  - U57's rejecting stub and U75 map to existing tests, which already assert exactly those rows;
+    no new test: `create-wxl/test/upgrade-merge.test.mjs:719` ("runGit rejects for merge-file") and
+    `:643` ("a read error of an M12 path's own o"), both at `600ff82`.
+  - U17 already asserted `HEAD` and the index unchanged (`create-wxl/test/upgrade-merge.test.mjs:167`
+    at `600ff82`); the ignored-file assertion was added.
+  - U69(g) was green when written, and stage 6 (S-4, M1) showed why: its fixture planned a write, so
+    the parent check reported the same UP-E11 even without P-9. It now uses an M7 path (no write),
+    and the mutation in the table above shows P-9 alone stops it.
   - S1 (from T-0061's stage 6) is done in the prefactor: P-5 and D15 share `isIgnoredPath`.
+- 2026-11-10, stage 6: Standards (30 findings, 3 medium) and Spec (17, 2 medium), no high; record and
+  dispositions in the local note `.proj.research/2026-11-10-T-0062-stage6-review.md`, applied under
+  the user's authorisation of 2026-11-10 ("後面都授權你，按照你的建議", which covers all later work,
+  T-0062 included). Fixes at `bcc5b1c`; `pnpm --dir create-wxl test` there →
+  `Test Files 37 passed (37) / Tests 696 passed | 1 skipped (697)`. Recorded, not changed: S-6 (the
+  ticket body follows T-0026's precedent of a Traditional Chinese test plan), S-19 (stage 1's Q12:
+  no glossary entry for implementation terms), SM-3, SM-5, SM-6, SM-7, SM-10, SM-11, and L1 (P-3
+  rethrows a real permission error, so it surfaces as CW-E14, not UP-E11 -- T-0027's behaviour;
+  exit 1 with nothing written still holds). The Windows criterion is unchecked until the PR's
+  windows-latest job reports whether U68(c) ran or why it was skipped.
 
