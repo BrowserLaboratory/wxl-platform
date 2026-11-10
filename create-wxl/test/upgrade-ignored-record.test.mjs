@@ -34,9 +34,11 @@ function gitWith(match, answer) {
   })
 }
 
-async function runCase({ fixture, argv = ['upgrade'], runGit }) {
+async function runCase({ fixture, argv = ['upgrade'], runGit, prepare }) {
   const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
   try {
+    // A case's own fixture edits run here, inside the try, so a failing edit still cleans up.
+    if (prepare) await prepare()
     const fetchArchive = makeRefFetchArchive(
       { [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
       { releases: { ['3.0.0']: BASE_COMMIT } },
@@ -90,7 +92,8 @@ describe('U67: an untracked range.json that the range ignores (D15)', () => {
     expect(result.ioHelper.stdoutText).not.toContain('UP-I01')
   })
 
-  it('(d) a symbolic link -> UP-E06 not-a-file (J1 precedes D15)', async () => {
+  // Spec Testing Decisions: tests needing symbolic links are skipped on Windows (T-0061 stage 6, F1).
+  it.skipIf(process.platform === 'win32')('(d) a symbolic link -> UP-E06 not-a-file (J1 precedes D15)', async () => {
     const fixture = await makeFixtureRange({
       beforeCommit: async (root) => {
         await IGNORE_RECORD(root)
@@ -102,15 +105,20 @@ describe('U67: an untracked range.json that the range ignores (D15)', () => {
     expect(result.ioHelper.stderrText).toContain('not-a-file')
   })
 
-  it('(e) tracked and matching an ignore rule -> proceeds (no UP-E13; the downloads happen)', async () => {
+  it('(e) tracked and matching an ignore rule -> proceeds to a completed run (exit 0, no UP-E13; the downloads happen)', async () => {
     const fixture = await makeFixtureRange({ rangeJson: RECORD })
-    await IGNORE_RECORD(fixture.root)
-    await verifyGit(['add', '.gitignore'], { cwd: fixture.root, env: fixture.env })
-    await verifyGit(
-      ['-c', 'user.name=WXL Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'ignore'],
-      { cwd: fixture.root, env: fixture.env },
-    )
-    const result = await runCase({ fixture })
+    const result = await runCase({
+      fixture,
+      prepare: async () => {
+        await IGNORE_RECORD(fixture.root)
+        await verifyGit(['add', '.gitignore'], { cwd: fixture.root, env: fixture.env })
+        await verifyGit(
+          ['-c', 'user.name=WXL Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'ignore'],
+          { cwd: fixture.root, env: fixture.env },
+        )
+      },
+    })
+    expect(result.exitCode).toBe(0)
     expect(result.ioHelper.stderrText).not.toContain('UP-E13')
     expect(result.fetchArchive).toHaveBeenCalled()
   })
@@ -119,14 +127,14 @@ describe('U67: an untracked range.json that the range ignores (D15)', () => {
     const fixture = await makeFixtureRange({ rangeJson: RECORD, beforeCommit: IGNORE_RECORD })
     const result = await runCase({ fixture, runGit: gitWith('check-ignore', { code: 128, stdout: '', stderr: 'fatal: boom\n' }) })
     expectRefusal(result, 'CW-E14')
-    expect(result.ioHelper.stderrText).toContain('git check-ignore')
+    expect(result.ioHelper.stderrText).toContain('git check-ignore -- ./range.json')
   })
 
   it('(g) git ls-files -z -- ./range.json exits 128 -> CW-E14 naming git ls-files', async () => {
     const fixture = await makeFixtureRange({ rangeJson: RECORD, beforeCommit: IGNORE_RECORD })
     const result = await runCase({ fixture, runGit: gitWith('ls-files', { code: 128, stdout: '', stderr: 'fatal: boom\n' }) })
     expectRefusal(result, 'CW-E14')
-    expect(result.ioHelper.stderrText).toContain('git ls-files')
+    expect(result.ioHelper.stderrText).toContain('git ls-files -z -- ./range.json')
   })
 
   it('(h) runGit rejects with EIO for git check-ignore -> CW-E14 naming git check-ignore (D19 wraps the rejection)', async () => {
@@ -134,15 +142,28 @@ describe('U67: an untracked range.json that the range ignores (D15)', () => {
     const eio = Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
     const result = await runCase({ fixture, runGit: gitWith('check-ignore', eio) })
     expectRefusal(result, 'CW-E14')
-    expect(result.ioHelper.stderrText).toContain('git check-ignore')
+    expect(result.ioHelper.stderrText).toContain('git check-ignore -- ./range.json')
   })
 
   it('(i) ignored only by .git/info/exclude -> UP-E13', async () => {
     const fixture = await makeFixtureRange({})
-    await mkdir(join(fixture.root, '.git', 'info'), { recursive: true })
-    await writeFile(join(fixture.root, '.git', 'info', 'exclude'), 'range.json\n')
-    await writeFile(join(fixture.root, 'range.json'), JSON.stringify(RECORD, null, 2) + '\n')
-    expectRefusal(await runCase({ fixture }), 'UP-E13')
+    const result = await runCase({
+      fixture,
+      prepare: async () => {
+        await mkdir(join(fixture.root, '.git', 'info'), { recursive: true })
+        await writeFile(join(fixture.root, '.git', 'info', 'exclude'), 'range.json\n')
+        await writeFile(join(fixture.root, 'range.json'), JSON.stringify(RECORD, null, 2) + '\n')
+      },
+    })
+    expectRefusal(result, 'UP-E13')
+  })
+
+  it('(m) runGit rejects with EIO for git ls-files -z -- ./range.json -> CW-E14 naming that command (D19; T-0061 stage 6, F15)', async () => {
+    const fixture = await makeFixtureRange({ rangeJson: RECORD, beforeCommit: IGNORE_RECORD })
+    const eio = Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
+    const result = await runCase({ fixture, runGit: gitWith('ls-files', eio) })
+    expectRefusal(result, 'CW-E14')
+    expect(result.ioHelper.stderrText).toContain('git ls-files -z -- ./range.json')
   })
 
   it('(j) absent, ignored, no --from -> UP-E04 (J2 precedes D15)', async () => {

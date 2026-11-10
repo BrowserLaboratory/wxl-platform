@@ -470,3 +470,45 @@ describe('U74 (step 4): runGit rejects a step 4 git command -> CW-E14 naming it 
     }
   })
 })
+
+// T-0061 stage 6 (F14, B10; D19): when `runGit` rejects a step 4 or step 5 git command after a
+// signal has already arrived, the run still exits 130 -- the rejection is not wrapped as CW-E14.
+describe('D19: a rejection after a signal still exits 130 (T-0061 stage 6, F14)', () => {
+  it.each([
+    ['git status (step 4)', (args) => args.includes('status'), { upstream: undefined }],
+    ['git check-ignore -- ./range.json (step 5)', (args) => args.includes('check-ignore') && args.includes('./range.json'), { ignore: true }],
+  ])('%s rejected after SIGINT -> exit 130, not CW-E14, nothing written', async (_label, matchesArgs, { ignore }) => {
+    const fixture = await makeFixtureRange({
+      rangeJson: noOpRangeJson(),
+      beforeCommit: ignore ? async (root) => writeFile(join(root, '.gitignore'), 'range.json\n') : undefined,
+    })
+    const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+    try {
+      const signals = new EventEmitter()
+      const realGit = createSpawnGitRunner()
+      let fired = false
+      const runGit = vi.fn(async (args, opts) => {
+        if (!fired && matchesArgs(args)) {
+          fired = true
+          signals.emit('SIGINT')
+          throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
+        }
+        return realGit(args, opts)
+      })
+      const before = await snapshotTree(fixture.root)
+      const deps = makeDeps({ cwd: fixture.root, tmpRoot, env: fixture.env, runGit, signals })
+      const ioHelper = makeIo()
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
+      const after = await snapshotTree(fixture.root)
+
+      expect(fired).toBe(true)
+      expect(exitCode).toBe(130)
+      expect(ioHelper.stderrText).not.toMatch(/^CW-E14/m)
+      expect(after).toEqual(before)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+      await rm(fixture.env.HOME, { recursive: true, force: true })
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})

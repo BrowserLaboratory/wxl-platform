@@ -2,10 +2,13 @@
 // names the base (U06), its absence without `--from` is UP-E04 (U07), `--from <version>`/
 // `--from <commit>` resolve the base directly whether or not `range.json` exists and `--from`
 // wins when both are present (U08, U09), every J1/J3/J4 shape failure of `range.json` without
-// `--from` is UP-E06 with its token (U10), and J5's repository comparison (U11).
+// `--from` is UP-E06 with its token (U10), and J5's repository comparison (U11). T-0061: a base
+// read from `range.json` is downloaded through its tag (U06) and must be the commit the tag names
+// (J6, U65).
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, writeFile, symlink, mkdir } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -15,7 +18,6 @@ import { makeFixtureRange } from './helpers/fixture-range.mjs'
 import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archive.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import { PRISTINE_FIXTURE } from './helpers/fixtures.mjs'
-import { readdirSync } from 'node:fs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { jsonValue } from '../src/text.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
@@ -43,8 +45,9 @@ describe('U06: valid range.json -> base is its own commit and version, downloade
         fetchArchive,
       })
       const ioHelper = makeIo()
-      await run(['upgrade'], ioHelper.io, deps)
+      const exitCode = await run(['upgrade'], ioHelper.io, deps)
 
+      expect(exitCode).toBe(0)
       const refs = fetchArchive.mock.calls.map((call) => call[1])
       expect(refs).toEqual(['refs/tags/v3.0.0', FIXED_COMMIT])
       const r1 = ioHelper.stdoutText.split('\n').find((line) => line.startsWith('R1:'))
@@ -458,6 +461,7 @@ describe('U65: range.json names a commit that is not its tag\'s (J6)', () => {
     expect(result.ioHelper.stderrText).toMatch(/^UP-E12/m)
     expect(result.ioHelper.stderrText).not.toContain('CW-E08')
     expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
   })
 
   it('(c) the same, with the target\'s download failing -> CW-E07 for the target (both archives are downloaded before either is validated)', async () => {
@@ -471,5 +475,6 @@ describe('U65: range.json names a commit that is not its tag\'s (J6)', () => {
     expect(result.ioHelper.stderrText).not.toContain('UP-E12')
     expect(result.refs).toEqual(['refs/tags/v3.0.0', FIXED_COMMIT])
     expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
   })
 })

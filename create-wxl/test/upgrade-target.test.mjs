@@ -2,7 +2,9 @@
 // rows 6-7): the no-op check (U12-U14, U50-U52), file-system errors building the two pristine
 // ranges under `deps.tmpRoot` (D3), `cleanupTmpDirs` not stopping on one directory's own `rm`
 // failure (F14), the tag-mode comment rule (U16), and the 0005 archive-rule/pristine-rule codes
-// once both archives are downloaded (U15).
+// once both archives are downloaded (U15). T-0061: a base read from `range.json` is a tag download
+// too (U16's range.json cases, U66), and D18's remedies appear only for it (U66, F10). U15's "base"
+// fetch failures reach the tag ref through `makeRefFetchArchive`'s `releases` option.
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, mkdtemp as fsMkdtemp } from 'node:fs/promises'
@@ -644,6 +646,8 @@ describe('U16: --from <version> tag archive comment missing or not 40 lowercase 
   })
 })
 
+// T-0061 (S7): the base's fixture is keyed by BASE_COMMIT; since J6 the request is for
+// refs/tags/v3.0.0, which `releases` maps to that same fixture (status 404 included).
 describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> the 0005 code, nothing written', () => {
   function brokenEntries(kind) {
     if (kind === 'rule1') {
@@ -793,6 +797,7 @@ describe('U66: the tag download fails (J6)', () => {
     })
     expect(result.exitCode).toBe(1)
     expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/refs/tags/v3.1.0`)
     expect(result.ioHelper.stderrText).not.toContain('--from <version>')
     expect(result.after).toEqual(result.before)
     expect(result.leftovers).toEqual([])
@@ -802,6 +807,36 @@ describe('U66: the tag download fails (J6)', () => {
     const result = await runRecordedBaseCase({
       rangeJson: RECORDED_BASE,
       byRef: { 'refs/tags/v3.1.0': new Error('network down'), [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+})
+
+// T-0061 stage 6 (F10): D18's remedies appear nowhere else -- not for the target's download, and
+// not for a status other than 404 on the tag download (step 7: "any other CW-E07 is 0005's message
+// unchanged").
+describe('D18 remedies appear only where D18 says (T-0061 stage 6, F10)', () => {
+  it('(a) a base from range.json downloads fine, the target returns 404 -> CW-E07 naming the target URL, without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { body: pristineArchive(BASE_COMMIT) }, [FIXED_COMMIT]: { status: 404, body: Buffer.alloc(0) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/${FIXED_COMMIT}`)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(b) a base from range.json whose tag download returns 500 -> CW-E07 without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { status: 500, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
     })
     expect(result.exitCode).toBe(1)
     expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)

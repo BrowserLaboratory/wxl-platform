@@ -4,7 +4,8 @@
 // classifier, the download window (`downloadArchive`, now taking the repository/ref to download
 // instead of being tied to `deps.source`/`commit`), and the archive-read/mkdtemp/extract/
 // pristine-apply window (`readArchiveEntries` also gained the optional `tag` parameter here, for
-// 0006's U16 tag-mode base).
+// 0006's tag-mode bases, and, with T-0061, `expectedCommit`/`tagVersion`/`remedies` for J6 and
+// D18; `downloadArchive` gained `remediesOn404`). The create path passes none of these.
 
 import { join } from 'node:path'
 import { SignalAbort } from './signals.mjs'
@@ -41,7 +42,10 @@ export function isFileSystemError(err) {
  * and 0006's step 7 (`upgrade.mjs`) share, now taking the repository/ref to download instead of
  * being tied to `deps.source`/`commit`. Returns `{ body }`, or `null` after CW-E07 is already
  * printed; the caller's own `checkpoint('step-6')`/`guard.throwIfRaised()`/CW-W04 are unchanged by
- * this move, and so is `checkpoint('step-7')` (both stay at the call site). */
+ * this move, and so is `checkpoint('step-7')` (both stay at the call site). `remediesOn404` (D18,
+ * T-0061) adds the recorded-base remedies to CW-E07 for a 404 status only -- never for a rejection,
+ * a timeout or another status; the upgrade sets it for the tag download of a base read from
+ * `range.json`. */
 export async function downloadArchive({ io, deps, t2, guard, repository, ref, remediesOn404 = false }) {
   const url = `https://codeload.github.com/${repository}/tar.gz/${ref}`
   const controller = new AbortController()
@@ -90,13 +94,16 @@ export async function downloadArchive({ io, deps, t2, guard, repository, ref, re
  * throwing for either of those two conditions; anything else (a bug) is rethrown. Without `tag`,
  * `commit` is compared against the archive's own pax comment exactly as rule 2 always has
  * (0005's own call site never passes `tag`, so its behaviour is unchanged, and the return value
- * stays the bare entry list). With `tag` (a version-form `--from` base), the comment is resolved
+ * stays the bare entry list). With `tag` (a `--from <version>` base, or a base read from
+ * `range.json`, whose tag is `v<tagVersion>`), the comment is resolved
  * first: when it is not a string matching `COMMIT_RE`, UP-E08 is printed instead of CW-E08 and
  * `commit` is never consulted; otherwise the comment itself becomes the `commit` rule 2 compares
  * against (unchanged `checkEntryRules`), and the resolved commit is also returned (U52, inc 22:
  * `{ entries, commit: comment }`) so the caller can learn the base commit a tag download alone
- * never names. */
-export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCommit, version }) {
+ * never names. `expectedCommit` (J6, T-0061: a base read from `range.json`) must then equal the
+ * comment, checked before every entry rule; otherwise UP-E12 names `tagVersion` and both commits.
+ * `remedies` (D18) adds the recorded-base remedies to UP-E08. */
+export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCommit, tagVersion, remedies = false }) {
   let parsedArchive
   try {
     parsedArchive = await parseArchive(body)
@@ -111,7 +118,7 @@ export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCo
   if (tag !== undefined) {
     const { comment } = parsedArchive
     if (typeof comment !== 'string' || !COMMIT_RE.test(comment)) {
-      io.stderr.write(t2['UP-E08']({ tag, remedies: expectedCommit !== undefined }) + '\n')
+      io.stderr.write(t2['UP-E08']({ tag, remedies }) + '\n')
       return null
     }
     effectiveCommit = comment
@@ -119,7 +126,7 @@ export async function readArchiveEntries({ io, t2, body, commit, tag, expectedCo
     // right after the comment's own shape and before every entry rule, so a mismatched archive is
     // UP-E12 whatever else it holds.
     if (expectedCommit !== undefined && comment !== expectedCommit) {
-      io.stderr.write(t2['UP-E12']({ version, recordedCommit: expectedCommit, tagCommit: comment }) + '\n')
+      io.stderr.write(t2['UP-E12']({ version: tagVersion, recordedCommit: expectedCommit, tagCommit: comment }) + '\n')
       return null
     }
   }

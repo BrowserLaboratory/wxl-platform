@@ -4,7 +4,8 @@
 // rule failures (CW-E10), setup questions (S1-S6's prompts, reasons and summary lines, CW-E05,
 // CW-E06, CW-E12, CW-E15), git steps (CW-W01-W03), "Next steps" lines (N1-N8), and the failure
 // and signal paths (CW-E09, CW-E11, CW-E14, CW-W05). Every UP-* text (0006's upgrade path:
-// UP-E01-E08, UP-E10, UP-I01) likewise begins with its code, in both tables.
+// UP-E01-E13, UP-I01, UP-A1-A14) likewise begins with its code, in both tables
+// (`upgrade-messages.test.mjs` checks the whole UP-* set).
 
 import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar, jsonStringifyEscaped } from './text.mjs'
 import { printedForms } from './git-steps.mjs'
@@ -182,18 +183,27 @@ function cwE07DetailText(lang, detail) {
   return lang === 'zh-TW' ? `下載失敗：${jsonValue(detail.message)}` : `the download failed: ${jsonValue(detail.message)}`
 }
 
-/** D18 (traceability.md revision 3.1; T-0061): the remedies for a base read from `range.json`
+/** D18 (traceability.md revision 3.2; T-0061): the remedies for a base read from `range.json`
  * that the upgrade refused, in this order -- `--from <version>` first (checked through upstream's
- * tag), the recorded commit only when the teacher knows the range was made from it (it is not a
- * release), then how to see who changed the record. */
-function d18RemediesText(lang) {
-  return lang === 'zh-TW'
-    ? '如果你知道這個靶場是從哪一版上游建立的，請用 --from <version> 重新執行（會經由上游的 tag 驗證）。' +
-        '記錄的 commit 不是發布版：只有確定這個靶場就是從它建立時，才用 --from <commit> 指定它。' +
-        'git log -p -- range.json 可以查出是誰改了這份紀錄。'
-    : "If you know the release this range came from, run the upgrade again with --from <version> (checked through upstream's tag). " +
-        'The recorded commit is not a release: name it with --from <commit> only if you know this range was made from it. ' +
-        'git log -p -- range.json shows who changed the record.'
+ * tag), the recorded commit only when the teacher knows the range was made from it, then how to see
+ * who changed the setup record. `reason` says why the recorded commit is in doubt: `'not-release'`
+ * for UP-E12 (the tag names another commit), `'unchecked'` for UP-E08 and a 404 on the tag
+ * download (the commit could not be checked against its tag; the tag may only have been deleted). */
+function recordedBaseRemediesText(lang, reason) {
+  if (lang === 'zh-TW') {
+    const doubt = reason === 'not-release' ? '記錄的 commit 不是發布版' : '記錄的 commit 沒辦法經由它的 tag 驗證'
+    return (
+      '如果你知道這個靶場是從哪一版上游建立的，請用 --from <version> 重新執行（會經由上游的 tag 驗證）。' +
+      `${doubt}：只有確定這個靶場就是從它建立時，才用 --from <commit> 指定它。` +
+      'git log -p -- range.json 可以查出是誰改了這份設定紀錄。'
+    )
+  }
+  const doubt = reason === 'not-release' ? 'The recorded commit is not a release' : 'The recorded commit could not be checked against its tag'
+  return (
+    "If you know the release this range came from, run the upgrade again with --from <version> (checked through upstream's tag). " +
+    `${doubt}: name it with --from <commit> only if you know this range was made from it. ` +
+    'git log -p -- range.json shows who changed the setup record.'
+  )
 }
 
 export const en = {
@@ -229,8 +239,8 @@ export const en = {
   },
   // D18 (T-0061): `remedies` is set for a base read from range.json.
   'UP-E08': ({ tag, remedies }) =>
-    `UP-E08: the tag ${jsonValue(tag)}'s archive comment is not 40 lowercase hexadecimal characters; the base commit could not be resolved.` +
-    (remedies ? ` ${d18RemediesText('en')}` : ''),
+    `UP-E08: the tag ${jsonValue(tag)}'s archive comment is not 40 lowercase hexadecimal characters; the commit the tag names could not be read.` +
+    (remedies ? ` ${recordedBaseRemediesText('en', 'unchecked')}` : ''),
   // T-0027 increment 1 (traceability.md "Codes", attention items UP-A1-UP-A12): a fixed
   // description per code, never per-instance (the path itself is printed by R3, next to the
   // code, not inside this text) -- so every one of these takes no fields at all, trivially safe
@@ -303,14 +313,14 @@ export const en = {
   'UP-E12': ({ version, recordedCommit, tagCommit }) =>
     `UP-E12: range.json records version ${jsonValue(version)} with commit ${jsonValue(recordedCommit)}, ` +
     `but upstream's tag ${jsonValue(`v${version}`)} names commit ${jsonValue(tagCommit)}, so the recorded base is not an upstream release. ` +
-    `range.json may have been written with CREATE_WXL_COMMIT or by a package packed at another commit, the tag may have moved since, or someone may have changed the record. ` +
-    d18RemediesText('en'),
+    `range.json may have been written with CREATE_WXL_COMMIT or by a package packed at a commit other than its version's tag, the tag may have moved since, or someone may have changed the setup record. ` +
+    recordedBaseRemediesText('en', 'not-release'),
   // D15 (OQ-026; T-0061): an untracked range.json that the range's rules ignore.
   'UP-E13': () =>
     `UP-E13: range.json is not tracked and the range's ignore rules ignore it, so the restore commands could not undo the upgrade's change to it. ` +
     `The rule may be in a .gitignore, in .git/info/exclude or in your core.excludesFile. ` +
     `Remove the rule and commit that change, together with range.json when it exists; or, when range.json exists, track it with git add -f -- range.json and commit it. ` +
-    `If a tracked file's name differs from range.json only in letter case, rename it to range.json with git mv and commit.`,
+    `If a tracked file's name differs from range.json only in letter case (such as Range.json), rename it to range.json with git mv and commit.`,
   'CW-E01': ({ running, minimum }) =>
     `CW-E01: the running Node.js ${jsonValue(running)} is older than the minimum ${jsonValue(minimum)}; install a newer Node.js from https://nodejs.org/.`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
@@ -324,7 +334,7 @@ export const en = {
   'CW-E06': ({ message }) => `CW-E06: the engine rejected the answers: ${jsonValue(message)}.`,
   // D18 (T-0061): `remedies` is set only for a 404 on the tag download of a base read from range.json.
   'CW-E07': ({ url, detail, remedies }) =>
-    `CW-E07: downloading ${jsonValue(url)} failed: ${cwE07DetailText('en', detail)}.` + (remedies ? ` ${d18RemediesText('en')}` : ''),
+    `CW-E07: downloading ${jsonValue(url)} failed: ${cwE07DetailText('en', detail)}.` + (remedies ? ` ${recordedBaseRemediesText('en', 'unchecked')}` : ''),
   'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
     parseError !== undefined
       ? `CW-E08: the archive could not be parsed: ${jsonValue(parseError)}.`
@@ -420,8 +430,8 @@ export const zhTW = {
     return `UP-E10：base 版本 ${jsonValue(version)} 低於 ${MINIMUM_BASE_VERSION_TEXT}；${MINIMUM_BASE_VERSION_TEXT} 之前的靶場無法用這個工具升級。`
   },
   'UP-E08': ({ tag, remedies }) =>
-    `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，無法解析出 base 的 commit。` +
-    (remedies ? d18RemediesText('zh-TW') : ''),
+    `UP-E08：tag ${jsonValue(tag)} 的 pax comment 不是 40 位小寫十六進位字元，讀不到 tag 指向的 commit。` +
+    (remedies ? recordedBaseRemediesText('zh-TW', 'unchecked') : ''),
   // These UP-A* texts use an ASCII colon after the code, like `R1:`/`R2:`
   // etc. elsewhere in the zh-TW report, instead of this table's own full-width "：" -- a R3 line
   // is `R3: ` (ASCII) followed by one of these, so the two would otherwise mix colon styles in
@@ -451,13 +461,13 @@ export const zhTW = {
   'UP-E12': ({ version, recordedCommit, tagCommit }) =>
     `UP-E12：range.json 記錄的版本是 ${jsonValue(version)}、commit 是 ${jsonValue(recordedCommit)}，` +
     `但上游的 tag ${jsonValue(`v${version}`)} 指向 commit ${jsonValue(tagCommit)}，所以記錄的 base 不是上游的發布版。` +
-    `可能的原因：range.json 是用 CREATE_WXL_COMMIT 或在其他 commit 打包的套件寫入的、這個 tag 之後被移動過，或是有人改了這份紀錄。` +
-    d18RemediesText('zh-TW'),
+    `可能的原因：range.json 是用 CREATE_WXL_COMMIT，或由在不是該版本 tag 的 commit 打包的套件寫入的、這個 tag 之後被移動過，或是有人改了這份設定紀錄。` +
+    recordedBaseRemediesText('zh-TW', 'not-release'),
   'UP-E13': () =>
     `UP-E13：range.json 沒有被 git 追蹤，又被靶場的 ignore 規則排除，還原指令沒辦法撤銷升級對它的改動。` +
     `這條規則可能在某個 .gitignore、.git/info/exclude，或你的 core.excludesFile 裡。` +
     `請移除這條規則並 commit，range.json 存在時一起 commit；或者在 range.json 存在時，用 git add -f -- range.json 把它納入追蹤並 commit。` +
-    `如果 tracked 的檔名和 range.json 只差在大小寫，請用 git mv 改名為 range.json 並 commit。`,
+    `如果被追蹤的檔名和 range.json 只差在大小寫（例如 Range.json），請用 git mv 改名為 range.json 並 commit。`,
   'CW-E01': ({ running, minimum }) =>
     `CW-E01：目前使用的 Node.js ${jsonValue(running)} 低於最低需求 ${jsonValue(minimum)}，請到 https://nodejs.org/ 下載較新版本。`,
   'CW-E02': ({ value, usage, reason = 'unknown', badValue }) =>
@@ -470,7 +480,7 @@ export const zhTW = {
   'CW-E05': ({ missing }) => cwE05Text('zh-TW', missing),
   'CW-E06': ({ message }) => `CW-E06：引擎拒絕了這些答案：${jsonValue(message)}。`,
   'CW-E07': ({ url, detail, remedies }) =>
-    `CW-E07：下載 ${jsonValue(url)} 失敗：${cwE07DetailText('zh-TW', detail)}。` + (remedies ? d18RemediesText('zh-TW') : ''),
+    `CW-E07：下載 ${jsonValue(url)} 失敗：${cwE07DetailText('zh-TW', detail)}。` + (remedies ? recordedBaseRemediesText('zh-TW', 'unchecked') : ''),
   'CW-E08': ({ rule, path, parseError, isCommentMarker }) =>
     parseError !== undefined
       ? `CW-E08：壓縮檔無法解析：${jsonValue(parseError)}。`

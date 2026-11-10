@@ -453,6 +453,7 @@ describe('R1 marks a --from <commit> base as not checked against an upstream tag
     ['--from <commit>, en -> present', ['upgrade', '--from', BASE_COMMIT], 'en', true],
     ['--from <commit>, zh-TW -> present', ['--lang', 'zh-TW', 'upgrade', '--from', BASE_COMMIT], 'zh-TW', true],
     ['--from <version>, en -> absent', ['upgrade', '--from', BASE_VERSION], 'en', false],
+    ['--from <version>, zh-TW -> absent', ['--lang', 'zh-TW', 'upgrade', '--from', BASE_VERSION], 'zh-TW', false],
     ['range.json, en -> absent', ['upgrade'], 'en', false],
     ['range.json, zh-TW -> absent', ['--lang', 'zh-TW', 'upgrade'], 'zh-TW', false],
   ])('%s', async (_label, argv, lang, present) => {

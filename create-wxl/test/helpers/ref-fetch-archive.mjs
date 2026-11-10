@@ -35,8 +35,11 @@ export function tagArchive(version, { comment, repoName = DEFAULT_REPO_NAME, ent
  * forgot to key a ref should see its own test fail loudly, not download the wrong archive).
  * `releases` (T-0061 prefactor; traceability.md J6, D11) maps a version to the commit its tag
  * names: a request for `refs/tags/v<version>` then answers with `byRef[commit]`, whose pax
- * `comment` is that commit -- the shape a base read from `range.json` is downloaded in once J6
- * lands. An explicit `byRef['refs/tags/v<version>']` still wins. */
+ * `comment` is that commit -- how a base read from `range.json` is downloaded (J6). The archive
+ * keeps `byRef[commit]`'s `<repo>-<commit>/` prefix rather than a real tag's `<repo>-<version>/`;
+ * rule 2 compares only that every entry shares one first component, so the behaviour is the same
+ * (the real tag's shape is checked at stage 8). An explicit `byRef['refs/tags/v<version>']` still
+ * wins. */
 export function makeRefFetchArchive(byRef, { releases = {} } = {}) {
   return vi.fn(async (_repository, ref) => {
     const tagVersion = /^refs\/tags\/v(.+)$/.exec(ref)?.[1]
