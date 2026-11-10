@@ -6,6 +6,8 @@
 
 import { join } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
+import { runGitNamed, isIgnoredPath } from './git-named.mjs'
+import { toSlash } from './text.mjs'
 
 /** M12 (traceability.md: "Any other exit, a signal, or output not read in full -> UP-E11"):
  * `git merge-file` ended outside the `0`-`127` range it can legitimately exit with (a clean merge
@@ -129,6 +131,50 @@ async function hasSymlinkInPath(fs, rangeRoot, path) {
   return false
 }
 
+/** P-9 (traceability.md "Pre-checks", Vocabulary "name on disk"; D12, T-0062): true when the name
+ * the file system stores for q differs from q, where q is `path` when `o` exists by `lstat`, and
+ * otherwise `path`'s deepest proper ancestor that exists, found by `lstat` walking from the range
+ * root (it may be a regular file). When q is the range root, P-9 does not apply. The comparison
+ * takes R, the range root's native realpath as step 3 resolved it, and Q, the native realpath of
+ * q, both with `\` turned into `/`; Q must start with R followed by `/` (or R itself when R
+ * already ends in `/`, a drive root), and the rest of Q must equal q once both are NFC-normalised.
+ * An `lstat` error other than ENOENT/ENOTDIR, or a `realpath` rejection, is a planning failure
+ * naming `path` (UP-E11). This catches what P-4 cannot see: a Windows 8.3 short name, HFS+
+ * ignorable code points, or letter case in a parent directory that B, T and tracked do not name. */
+async function hasNameAlias(fs, rangeRoot, realRangeRoot, path) {
+  const parts = path.split('/')
+  const lstatOk = async (rel) => {
+    try {
+      await fs.lstat(join(rangeRoot, ...rel))
+      return true
+    } catch (err) {
+      if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') return false
+      throw new PlanningError(path, err?.message ?? String(err))
+    }
+  }
+  let q = null
+  if (await lstatOk(parts)) {
+    q = parts
+  } else {
+    for (let i = 1; i < parts.length; i++) {
+      if (!(await lstatOk(parts.slice(0, i)))) break
+      q = parts.slice(0, i)
+    }
+  }
+  if (q === null) return false // q is the range root: P-9 does not apply
+  let realQ
+  try {
+    realQ = await fs.realpath(join(rangeRoot, ...q))
+  } catch (err) {
+    throw new PlanningError(path, err?.message ?? String(err))
+  }
+  const root = toSlash(realRangeRoot)
+  const prefix = root.endsWith('/') ? root : `${root}/`
+  const resolved = toSlash(realQ)
+  if (!resolved.startsWith(prefix)) return true
+  return resolved.slice(prefix.length).normalize('NFC') !== q.join('/').normalize('NFC')
+}
+
 /** P-6 (traceability.md "Pre-checks"): true when `o` exists, is reached without crossing a
  * non-directory component (`ENOENT`/`ENOTDIR` both mean "nothing non-file is here" -- the same
  * reading as `readFileOrNull`/`hasSymlinkInPath`, above), is not a symbolic link (already ruled
@@ -179,27 +225,6 @@ function isUnderSubmodule(path, submodulePaths) {
  * run (not per path), so this is an O(1) lookup here. */
 function hasCaseCollision(path, foldedGroups) {
   return foldedGroups.get(path.normalize('NFC').toLowerCase()).length > 1
-}
-
-/** P-5 (traceability.md "Pre-checks"; Vocabulary's own "ignored path" -- "a path that is not
- * tracked and that `git check-ignore -q --no-index -- ./<path>` reports as ignored by the range's rules"):
- * `check-ignore`'s own exit codes are 0 (ignored) and 1 (not ignored); any other exit code is a
- * bug, never silently read as either answer -- fail closed, the same convention D6 already uses
- * (`upgrade.mjs`'s `requireGitSuccess`). Called only for a path the caller has already excluded
- * from `tracked` (a force-added, tracked file that also matches an ignore rule is never P-5). */
-async function isIgnoredPath(deps, guard, rangeRoot, path) {
-  // `./` keeps the path literal: `check-ignore` refuses every pathspec magic (`--literal-pathspecs`
-  // included), and a path starting with `:` would otherwise be read as magic and check another path.
-  const result = await deps.runGit(['check-ignore', '-q', '--no-index', '--', `./${path}`], {
-    cwd: rangeRoot,
-    env: buildGitEnv(deps.env),
-  })
-  // A signal this process already received while that `runGit` call was in flight wins over
-  // interpreting its result, the same way `runMergeFile` already does.
-  guard.throwIfRaised()
-  if (result.code === 0) return true
-  if (result.code === 1) return false
-  throw new Error(`git check-ignore failed (exit code ${result.code}): ${result.stderr}`)
 }
 
 /** The merge table (rows checked in order; the first match applies), given `o`/`b`/`t` as
@@ -290,8 +315,20 @@ async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion
   throw new MergeFileError(path)
 }
 
+/** Like `Promise.all`, but waits for every operation to settle before rejecting with the first
+ * rejection in array order (PR #72's windows-latest run): a rejection must not let the run report
+ * and clean up while another `git` child still runs in the range, or a read still holds a file in a
+ * pristine directory (EBUSY removing it on Windows). */
+async function settleAll(promises) {
+  const settled = await Promise.allSettled(promises)
+  const rejected = settled.find((result) => result.status === 'rejected')
+  if (rejected !== undefined) throw rejected.reason
+  return settled.map((result) => result.value)
+}
+
 /**
- * `planMerge({ deps, guard, rangeRoot, baseDir, targetDir, baseVersion, targetVersion })` ->
+ * `planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir, targetDir, baseVersion, targetVersion })` ->
+ * (`realRangeRoot`: the range root's native realpath as step 3 resolved it, for P-9) ->
  * `{ ops, attention, mergeDir }`. `ops` is sorted by path, each `{ path, action: 'delete' |
  * 'write', content?, existedBefore?, report? }` (`report`, when present, is the UP-A code this op
  * also carries in `attention` -- used by the report stage to exclude an M10/M12-conflict write
@@ -299,16 +336,17 @@ async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion
  * updated"). `attention` is sorted by path, each `{ path, code }`. `mergeDir` is the lazily
  * created merge-inputs directory's path, or `undefined` when no path reached M12.
  */
-export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, baseVersion, targetVersion }) {
+export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir, targetDir, baseVersion, targetVersion }) {
   // D10 (traceability.md "Pre-checks" P-8): a SEPARATE `git ls-files -s -z` call, kept apart from
   // the plain `ls-files -z` call below (which lists only the TRACKED PATHS, not their index mode)
   // -- a gitlink is also a tracked path, so it is in BOTH results; only this one can tell it apart
   // from an ordinary file.
-  const [baseFiles, targetFiles, trackedResult, submoduleResult] = await Promise.all([
+  const [baseFiles, targetFiles, trackedResult, submoduleResult] = await settleAll([
     listFilesRecursive(deps.fs, baseDir),
     listFilesRecursive(deps.fs, targetDir),
-    deps.runGit(['ls-files', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
-    deps.runGit(['ls-files', '-s', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
+    // D19 (T-0062): a `runGit` rejection of either names the command in CW-E14.
+    runGitNamed(deps, guard, ['ls-files', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }, 'ls-files -z'),
+    runGitNamed(deps, guard, ['ls-files', '-s', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }, 'ls-files -s -z'),
   ])
   guard.throwIfRaised()
   if (trackedResult.code !== 0) {
@@ -358,7 +396,7 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
       // programming error.
       let b, t
       try {
-        ;[b, t] = await Promise.all([
+        ;[b, t] = await settleAll([
           baseFileSet.has(path) ? readFileOrNull(deps.fs, join(baseDir, ...path.split('/'))) : null,
           targetFileSet.has(path) ? readFileOrNull(deps.fs, join(targetDir, ...path.split('/'))) : null,
         ])
@@ -410,6 +448,16 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
         attention.push({ path, code: 'UP-A14' })
         continue
       }
+
+      // P-9 (D12, T-0062): a path whose name on disk differs from `path` -- in itself, or in the
+      // deepest existing ancestor when `o` is absent -- is never read, written or deleted here.
+      // Checked last among the pre-checks, so a symbolic link stays UP-A7 (P-3) and a collision
+      // within B ∪ T ∪ tracked stays UP-A8 (P-4).
+      if (await hasNameAlias(deps.fs, rangeRoot, realRangeRoot, path)) {
+        attention.push({ path, code: 'UP-A15' })
+        continue
+      }
+      guard.throwIfRaised()
 
       // `o` is classified by `lstat` BEFORE any read -- P-3 (a symbolic link anywhere in `path`)
       // and P-6 (a present, non-symbolic-link, non-regular-file `o`), both just above, already
@@ -569,7 +617,7 @@ export async function planMerge({ deps, guard, rangeRoot, baseDir, targetDir, ba
     for (const anchorPath of ANCHOR_PATHS) {
       let anchorB, anchorT
       try {
-        ;[anchorB, anchorT] = await Promise.all([
+        ;[anchorB, anchorT] = await settleAll([
           baseFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))) : null,
           targetFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))) : null,
         ])

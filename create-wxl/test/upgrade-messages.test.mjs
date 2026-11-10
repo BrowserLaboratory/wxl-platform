@@ -195,6 +195,8 @@ describe('every UP-* message starts with its own code', () => {
     'UP-E12': { version: '3.0.0', recordedCommit: '1'.repeat(40), tagCommit: 'a'.repeat(40) },
     // T-0061 (D15): added at the increment that adds the code (U67).
     'UP-E13': {},
+    // T-0062 (P-9, D12): added at the increment that adds the code (U68).
+    'UP-A15': {},
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {

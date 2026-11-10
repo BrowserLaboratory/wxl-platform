@@ -3,10 +3,12 @@
 // the range's own rules would ignore, are both left untouched and reported UP-A9 (U22). Two
 // approved extra sub-cases (ticket's 2026-11-09 comment): `git check-ignore` exiting other than 0
 // or 1, and `git ls-files -z` exiting non-zero, each fail closed as CW-E14 naming the command,
-// with nothing written.
+// with nothing written. T-0062: U74's step 8 cases (an exit of 128; `runGit` rejecting
+// `git ls-files -z` and `git ls-files -s -z`) and U63 extended to an ignore file upstream adds,
+// deletes, or already matches (P-7).
 
 import { describe, it, expect, vi } from 'vitest'
-import { readdir, readFile, rm } from 'node:fs/promises'
+import { readdir, readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
@@ -181,7 +183,8 @@ describe('git check-ignore fails closed', () => {
     try {
       const real = createSpawnGitRunner()
       const runGit = vi.fn(async (args, opts) => {
-        if (args[0] === 'check-ignore') return { code: 2, stdout: '', stderr: 'stubbed check-ignore failure' }
+        // U74 (revision 3.1): P-5's `git check-ignore` exiting 128 (any exit other than 0 or 1).
+        if (args[0] === 'check-ignore') return { code: 128, stdout: '', stderr: 'stubbed check-ignore failure' }
         return real(args, opts)
       })
       const before = withoutRootMtime(await snapshotTree(fixture.root))
@@ -227,6 +230,141 @@ describe('git ls-files -z fails closed', () => {
       expect(ioHelper.stderrText).toMatch(/^CW-E14/m)
       expect(ioHelper.stderrText).toContain('ls-files -z')
       expect(after).toEqual(before)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+async function readOptional(path) {
+  try {
+    return await readFile(path)
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null
+    throw err
+  }
+}
+
+// U74, step 8 (traceability.md revision 3.1, D19; T-0062): `runGit` rejecting step 8's own
+// `git ls-files -z` (the spawn failed, not an exit code) is CW-E14 naming the command.
+describe('git ls-files -z rejected in step 8 (U74, D19)', () => {
+  it('runGit rejects with EIO for step 8\'s git ls-files -z -> CW-E14 naming git ls-files -z, exit 1, nothing written', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['P5-existing'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    let inFlight = 0
+    const trackInFlight = (promise) => {
+      inFlight += 1
+      return promise.finally(() => { inFlight -= 1 })
+    }
+    try {
+      const real = createSpawnGitRunner()
+      const runGit = vi.fn(async (args, opts) => {
+        if (args.length === 2 && args[0] === 'ls-files' && args[1] === '-z') {
+          throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
+        }
+        return trackInFlight(real(args, opts))
+      })
+      const before = withoutRootMtime(await snapshotTree(fixture.root))
+      const result = await runUpgradeAgainst(fixture, runGit)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(1)
+      expect(result.ioHelper.stderrText).toMatch(/^CW-E14/m)
+      expect(result.ioHelper.stderrText).toContain('git ls-files -z failed')
+      expect(result.ioHelper.stderrText).toContain('EIO')
+      // PR #72 CI (windows-latest): the run must not return while the other step 8 git command still
+      // runs in the range, or its cleanup and the caller's races it (EBUSY removing the range on Windows).
+      expect(inFlight).toBe(0)
+      expect(withoutRootMtime(await snapshotTree(fixture.root))).toEqual(before)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+
+  it('runGit rejects with EIO for step 8\'s git ls-files -s -z -> CW-E14 naming git ls-files -s -z, exit 1, nothing written (T-0062 stage 6, L3)', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: ['P5-existing'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    let inFlight = 0
+    const trackInFlight = (promise) => {
+      inFlight += 1
+      return promise.finally(() => { inFlight -= 1 })
+    }
+    try {
+      const real = createSpawnGitRunner()
+      const runGit = vi.fn(async (args, opts) => {
+        if (args[0] === 'ls-files' && args[1] === '-s' && args[2] === '-z') {
+          throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
+        }
+        return trackInFlight(real(args, opts))
+      })
+      const before = withoutRootMtime(await snapshotTree(fixture.root))
+      const result = await runUpgradeAgainst(fixture, runGit)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(1)
+      expect(result.ioHelper.stderrText).toMatch(/^CW-E14/m)
+      expect(result.ioHelper.stderrText).toContain('git ls-files -s -z failed')
+      // PR #72 CI (windows-latest): the run must not return while the other step 8 git command still
+      // runs in the range, or its cleanup and the caller's races it (EBUSY removing the range on Windows).
+      expect(inFlight).toBe(0)
+      expect(withoutRootMtime(await snapshotTree(fixture.root))).toEqual(before)
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+// U63, extended (traceability.md revision 3.1, W9; T-0062): P-7 also leaves an ignore file upstream
+// adds (b absent) or deletes (t absent), and one the range already has as upstream's new version
+// (o ≡ t, b ≢ t), each reported UP-A13; the set of ignored paths is the same before and after.
+describe('upstream adds, deletes, or already matches a .gitignore (U63, P-7)', () => {
+  it('new/.gitignore (b absent), old/.gitignore (t absent), x/.gitignore (o ≡ t, b ≢ t) -> untouched, UP-A13 each; ignored list unchanged', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      for (const [rel, content] of [['old/.gitignore', '*.old\n'], ['x/.gitignore', '*.x\n']]) {
+        await mkdir(join(fixture.root, rel.split('/')[0]), { recursive: true })
+        await writeFile(join(fixture.root, ...rel.split('/')), content)
+      }
+      expect((await verifyGit(['add', '-A'], { cwd: fixture.root, env: fixture.env })).code).toBe(0)
+      const committed = await verifyGit(
+        ['-c', 'user.name=WXL Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'ignore files'],
+        { cwd: fixture.root, env: fixture.env },
+      )
+      expect(committed.code).toBe(0)
+      // L8 (stage 6): an untracked file only old/.gitignore ignores, so deleting old/.gitignore
+      // would change the ignored list -- the list assertion below can then fail.
+      await writeFile(join(fixture.root, 'old', 'keep.old'), 'teacher file\n')
+      fixture.baseEntries.push(
+        { path: 'old/', type: 'dir', mode: 0o755 },
+        { path: 'old/.gitignore', type: 'file', mode: 0o644, content: '*.old\n' },
+        { path: 'x/', type: 'dir', mode: 0o755 },
+        { path: 'x/.gitignore', type: 'file', mode: 0o644, content: '*.xbase\n' },
+      )
+      fixture.targetEntries.push(
+        { path: 'new/', type: 'dir', mode: 0o755 },
+        { path: 'new/.gitignore', type: 'file', mode: 0o644, content: '*.n\n' },
+        { path: 'x/', type: 'dir', mode: 0o755 },
+        { path: 'x/.gitignore', type: 'file', mode: 0o644, content: '*.x\n' },
+      )
+      const ignored = async () => {
+        const out = await verifyGit(['ls-files', '--others', '--ignored', '--exclude-standard'], { cwd: fixture.root, env: fixture.env })
+        expect(out.code).toBe(0)
+        return out
+      }
+      const ignoredBefore = (await ignored()).stdout
+      expect(ignoredBefore).toContain('old/keep.old')
+
+      const result = await runUpgradeAgainst(fixture, vi.fn(createSpawnGitRunner()))
+      tmpRoot = result.tmpRoot
+
+      expect(result.exitCode).toBe(0)
+      const r3Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R3:'))
+      for (const path of ['new/.gitignore', 'old/.gitignore', 'x/.gitignore']) {
+        expect(r3Lines).toContain(`R3: ${en['UP-A13']()} ${jsonValue(path)}`)
+      }
+      expect(await readOptional(join(fixture.root, 'new', '.gitignore'))).toBeNull()
+      expect(await readFile(join(fixture.root, 'old', '.gitignore'), 'utf8')).toBe('*.old\n')
+      expect(await readFile(join(fixture.root, 'x', '.gitignore'), 'utf8')).toBe('*.x\n')
+      expect((await ignored()).stdout).toBe(ignoredBefore)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }

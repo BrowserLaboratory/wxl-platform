@@ -4,7 +4,7 @@
 // rule failures (CW-E10), setup questions (S1-S6's prompts, reasons and summary lines, CW-E05,
 // CW-E06, CW-E12, CW-E15), git steps (CW-W01-W03), "Next steps" lines (N1-N8), and the failure
 // and signal paths (CW-E09, CW-E11, CW-E14, CW-W05). Every UP-* text (0006's upgrade path:
-// UP-E01-E13, UP-I01, UP-A1-A14) likewise begins with its code, in both tables
+// UP-E01-E13, UP-I01, UP-A1-A15) likewise begins with its code, in both tables
 // (`upgrade-messages.test.mjs` checks the whole UP-* set).
 
 import { jsonValue, posixCommand, posixQuoteWord, formatDirectoryArg, hasControlChar, jsonStringifyEscaped } from './text.mjs'
@@ -287,6 +287,9 @@ export const en = {
   // inside a submodule's own working tree.
   'UP-A14': () =>
     `UP-A14: the path is a submodule, or is inside one; it was left untouched, since the restore commands cannot undo a change there.`,
+  // P-9 (D12, T-0062).
+  'UP-A15': () =>
+    `UP-A15: the path's name on disk differs from upstream's (a short name, ignored characters, or letter case, in the path or a parent); it was left untouched.`,
   // T-0027 increment 10 (traceability.md "Codes" UP-E09): a write failed, or a signal arrived,
   // during step 9 (apply); names the path and the file-system error, or (for a signal) the signal
   // name, plus the fixed restore commands (traceability.md "Codes": "the restore commands
@@ -451,6 +454,7 @@ export const zhTW = {
     `UP-A12: 上游改了 pnpm fork:init 會寫入的檔案；請在解決所有注意項目後，用靶場原本的參數重新執行 pnpm fork:init；若靶場有部署用的 workflow，這個步驟也會一併更新它。`,
   'UP-A13': () => `UP-A13: 上游改了一個忽略規則檔；維持不動，讓忽略的檔案與還原指令都安全。請自行手動合併忽略規則。`,
   'UP-A14': () => `UP-A14: 這個路徑是子模組本身或在子模組裡面；維持不動，因為還原指令無法復原子模組內部的變更。`,
+  'UP-A15': () => `UP-A15: 這個路徑在磁碟上的實際名稱和上游的不同（短檔名、檔案系統會略過的字元或大小寫，在路徑本身或父目錄）；維持不動。`,
   'UP-E09': ({ path, signal, detail }) =>
     `UP-E09：` +
     (signal !== undefined ? `收到訊號（${jsonValue(signal)}）後停止套用合併結果` : `套用合併結果時在 ${jsonValue(path)} 失敗：${jsonValue(detail)}`) +

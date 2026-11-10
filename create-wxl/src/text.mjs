@@ -110,3 +110,18 @@ export function hasControlChar(str) {
   }
   return false
 }
+
+/** `\` is Windows' own path separator; comparing after turning `\` into `/` (traceability.md
+ * "Step order" row 3, Vocabulary "name on disk") makes a path comparison platform-neutral. Shared
+ * by step 3 and P-9 since T-0062. */
+export function toSlash(value) {
+  return String(value).replace(/\\/g, '/')
+}
+
+/** ASCII-only case folding (`[A-Z]` to lowercase), the way git's own `tolower` and J5's repository
+ * comparison fold -- never JavaScript's Unicode-aware lowercasing. Shared by J5 and entry rule 3
+ * since T-0062. */
+export function foldAsciiCase(value) {
+  return value.replace(/[A-Z]/g, (c) => c.toLowerCase())
+}
+
