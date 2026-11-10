@@ -75,3 +75,8 @@ epic 0006 串連分析開出的後續票。能改 `range.json` 的人（共同�
   `merge-plan.mjs` P-7 rationale comment (the restore order). No published create-wxl prints R5:
   v3.0.0 predates the upgrade code and rejects `upgrade` (0005 AC-2), so the old restore order reaches
   teachers only if create-wxl is published from `main` before T-0061 lands.
+- 2026-11-10, stage 3: round 2 found no P0 (`review/round-2.md`; 5 P1, 57 P2). The user approved the
+  disposition (`review/disposition-2.md`) and D18–D20; revision 3.1 applies it (rows U74–U76).
+  Carried into stage 5: change the GLOSSARY setup record sentence ("目前只有建立靶場的指令會寫入它")
+  together with its assertion in `upstream-config.test.mjs` (W4); fix `range.json`'s `__proto__` key
+  in `merge-apply.mjs` (R-6, U24); check which code step 9 prints for a bug (K-5).

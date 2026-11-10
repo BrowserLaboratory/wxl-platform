@@ -798,7 +798,7 @@ above, read "the settings-half epic" and "the setup-page epic".
 primary locale, as a top-level `"primaryLocale"` key in `range.json` (absent means `zh-TW`). The
 primary-locale layout epic reads it at build time, and the upgrade writes `"primaryLocale": "en"`
 when it moves a range off the old layout; 0006 already keeps every key other than `upstream`
-(`.proj.specs/0006-range-upgrade/traceability.md:254`, U24). The epic after it lets fork:init write a
+(`.proj.specs/0006-range-upgrade/traceability.md` "`range.json` after the plan", U24). The epic after it lets fork:init write a
 `range.json` holding only that key, which revises 0005's R2 ("fork:init never does") and makes
 `upstream` optional. Every other setting stays with this entry. Decisions R4, R11 and R13 of
 `.proj.research/2026-11-02-primary-locale-grill.md` (local, not committed).
