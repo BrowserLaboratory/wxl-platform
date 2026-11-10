@@ -2,7 +2,7 @@
 id: T-0062
 title: On-disk name aliases and the .git alias rule
 epic: 0006-range-upgrade
-status: todo
+status: processing
 blocked_by: [T-0061]
 ---
 
@@ -41,6 +41,26 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1, `traceability.md`
 - Stage 8: a terminal run of the packed package (0006-S2) on macOS: an upstream path under a
   directory whose letter case differs from the range's is untouched with UP-A15. The full simulation
   (U32) runs in T-0063.
+
+## Test plan
+
+### 2026-11-10 — test plan table（依使用者 2026-11-10 的授權「後面都授權你，按照你的建議」核准，寫第一個測試之前）
+
+seam 全部是 0006-S1；0005 的 rule 3 另用 0005-S1（`archive-rules.test.mjs` 透過 create 的 `run`）。「預期紅燈」是寫好測試、還沒改程式時的失敗原因；寫好就綠的列是確認型，另做 mutation 檢查。
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0006-S1 | prefactor：P-5 與 D15 共用一個「被 ignore 的路徑」helper（S1），step 8 的 git 呼叫改走 D19 的包裝；P-9 拿到 step 3 的 range root realpath；行為不變 | `merge-plan.mjs`、`upgrade.mjs`；不改測試 | （無） | 改完全部 create-wxl 測試仍是綠燈 |
+| 0005-S1 | rule 3 擋下 git 視為 `.git` 的元件（D13） | `archive-rules.test.mjs` rule 3 的 `it.each` 加 C18 的新案例；新增 C71 | 0005 C18、C71 / AC-9 | `git~1/x`、`GIT~1/x`、`git~1. :x/y`、`.git:x/y`、`.git::$INDEX_ALLOCATION/x`、`.g\u200cit/x`、`.G\u200cIT/x`、`\u200c.git/x`、`.git\ufeff/x` → CW-E08 rule 3；`PLATFO~1/x`、`GITIGN~1`、`a~1/b` 通過。預期紅燈：新拒絕案例 |
+| 0006-S1 | 升級路徑的 archive 也套用新 rule 3 | `upgrade-target.test.mjs` 新增 U73 | U73 / AC-5 | T 含上列九種元件之一 → CW-E08，exit 1，沒寫檔，沒有暫存殘留；`PLATFO~1`、`GITIGN~1` 通過。預期紅燈 |
+| 0006-S1 | 磁碟名稱別名 → UP-A15（P-9） | 新檔 `upgrade-aliases.test.mjs` 的 U68 | U68 / AC-6、AC-8 | (a) 8.3 模型：包裝 `deps.fs`，`GITIGN~1` 在每個函式都當成 `.gitignore`，realpath 回 `<root>/.gitignore`；B 有 `GITIGN~1` ≡ o，T 沒有 → UP-A15，`.gitignore` 不變，ignored 清單前後相同；(b) 大小寫不敏感檔案系統（只在 macOS、Windows 跑）：T 新增 `platform/new.txt`、靶場的 tracked 目錄是 `Platform/` → UP-A15，沒寫 `platform/new.txt`。預期紅燈 |
+| 0006-S1 | 名稱相同時不誤報、錯誤 fail closed | 同檔 U69 | U69 / AC-6 | range root 經 symlink；NFC 名稱、realpath 回 NFD（HFS+ 模型）；NFD 名稱、realpath 也回 NFD；`\` 分隔（Windows 模型）；`D:\` 磁碟根目錄模型 → 都沒有 UP-A15（確認型，P-9 加上後做 mutation）；realpath 對 tracked 檔 p 回 `EACCES`、lstat 對不存在 p 的祖先回 `EACCES` → UP-E11 帶 p，沒寫檔（預期紅燈） |
+| 0006-S1 | Windows 真的 8.3 短檔名 | 同檔，只在 Windows 跑 | U68 / AC-6 | 先用 `fsutil file setshortname` 給暫存檔一個短檔名；做不到就在執行時略過並寫明原因（coverage 表記為未驗證）；做得到就跑 X3 情境 → UP-A15、`.gitignore` 不變 |
+| 0006-S1 | P-7 的新增、刪除與 o ≡ t 分支 | `upgrade-ignored.test.mjs` U63 擴充 | U63 / AC-8 | `new/.gitignore`（b 不存在）、`old/.gitignore`（t 不存在）、`x/.gitignore`（o ≡ t、b ≢ t）→ 都沒動、各報 UP-A13；ignored 清單前後相同。確認型 |
+| 0006-S1 | U17 的 ignored 檔與 HEAD／index 不變 | `upgrade-merge.test.mjs` U17 加斷言 | U17 / AC-6 | 上游有改的目錄裡放一個 ignored 檔：逐 byte 不變；`git rev-parse HEAD` 與執行前相同、`git diff --cached` 為空。確認型 |
+| 0006-S1 | step 8 的 git 失敗（D19） | `upgrade-ignored.test.mjs` 既有兩個 fails-closed 區塊對應 U74；新增 reject 子案 | U74（step 8）/ AC-6 | `ls-files -z` exit 128、P-5 `check-ignore` exit 128 → CW-E14（既有，確認型）；`runGit` 對 step 8 的 `ls-files -z` reject `EIO` → CW-E14 帶指令名稱（新子案，預期紅燈） |
+| 0006-S1 | `merge-file` 被 reject → UP-E11 | `upgrade-merge.test.mjs` 既有「runGit rejects for merge-file」對應 U57 | U57 / AC-6 | 既有測試，確認型 |
+| 0006-S1 | 讀 o 失敗 → UP-E11 | `upgrade-merge.test.mjs` 新增 U75 | U75 / AC-6 | 包裝 `deps.fs`，讀 tracked 檔 p（b ≢ t）回 `EACCES` → UP-E11 帶 p，沒寫檔 |
 
 ## 給使用者（zh-TW）
 
