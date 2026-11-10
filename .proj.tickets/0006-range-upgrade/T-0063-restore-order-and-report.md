@@ -29,13 +29,15 @@ runs in full.
 Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1 and `traceability.md` revision 3.1.
 Decisions D14, D16, D20, and the round 2 disposition's W4 and R-6.
 
-- Rows: U24, U26, U27, U28, U29, U31, U64 (its restore order), U70, U72, U76, and U32 (stage 8).
-- ACs reached: AC-9 (U24), AC-10 (U26, U72, U76), AC-11 (U27–U29, U70), AC-12 (U31, the GLOSSARY
-  sentence and its assertion in `upstream-config.test.mjs` changed together), AC-13 (U32).
-- Stage 5 runs U70 once with git 2.20 and records the version and result in the coverage report; a
+- [x] Rows: U24, U26, U27, U28, U29, U31, U64 (its restore order), U70, U72, U76.
+- [ ] Row U32 (stage 8).
+- [x] ACs reached: AC-6 (U64), AC-9 (U24), AC-10 (U26, U72, U76), AC-11 (U27–U29, U70), AC-12 (U31,
+  the GLOSSARY sentence and its assertion in `upstream-config.test.mjs` changed together).
+- [ ] AC-13 (U32).
+- [ ] Stage 5 runs U70 once with git 2.20 and records the version and result in the coverage report; a
   failure goes back to the user before the ticket closes (spec Testing Decisions).
-- Stage 5 checks which code step 9 prints for a bug (round 2 K-5) and records it.
-- Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
+- [x] Stage 5 checks which code step 9 prints for a bug (round 2 K-5) and records it.
+- [ ] Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
   pushed commits A and B, with the branch deleted afterwards.
 
 ## Test plan
@@ -59,7 +61,7 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| 0006-S1 | `upgrade-report`（U26 改預期、U72、U76）、`upgrade-messages`（UP-E09 的順序）、`upgrade-failures`（U27）、`upgrade-signals`（U28 step 9 與 step 10 的 D20）、`upgrade-merge`、`upgrade-record`（U24 ⑥）、`upgrade-restore`（U29、U70）、`upgrade-submodule`（U64）、`upgrade-ignored`（P-7 的還原） | not measured：create-wxl 沒有安裝 coverage provider | U24、U26、U27、U28、U29、U64、U70、U72、U76；AC-9、AC-10、AC-11 | U70 用 git 2.20 跑一次：本機只有 git 2.54；從原始碼編譯 git 2.20.1 被這個 session 的權限分類器擋下（Comments），待使用者執行。U32 屬於第 8 階段 |
+| 0006-S1 | `upgrade-report`（U26 改預期、U72、U76）、`upgrade-messages`（UP-E09 的順序）、`upgrade-failures`（U27）、`upgrade-signals`（U28 step 9 與 step 10 的 D20）、`upgrade-merge`、`upgrade-record`（U24 ⑥）、`upgrade-restore`（U29、U70）、`upgrade-submodule`（U64）、`upgrade-ignored`（P-7 的還原） | not measured：create-wxl 沒有安裝 coverage provider | U24、U26、U27、U28、U29、U64、U70、U72、U76；AC-6、AC-9、AC-10、AC-11 | U70 用 git 2.20 跑一次：本機只有 git 2.54；從原始碼編譯 git 2.20.1 被這個 session 的權限分類器擋下（Comments），待使用者執行。U32 屬於第 8 階段 |
 | 0005-S1 | `upstream-config`（U10 斷言改為 W4 的新句子） | not measured | U31 / AC-12 | U31 其餘部分（`create-wxl <dir>`、C02、C18）是既有測試，沒有改 |
 
 ## 給使用者（zh-TW）
@@ -73,24 +75,28 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
   is this ticket's, with D14.
 - 2026-11-10, stage 5 records:
   - Commits `fb7c424` (D14), `9f1b602` (D16), `d112273` (U76), `83b0879` (R-6), `c2ac252` (U70),
-    `82db60c` (D20), `085980b` (W4), on `main` at `89a1e22`. `pnpm --dir create-wxl test` →
+    `82db60c` (D20), `085980b` (W4), on the ticket branch over `main` `89a1e22`; the test counts below are at `5319e90`. `pnpm --dir create-wxl test` →
     `Test Files 37 passed (37) / Tests 707 passed | 1 skipped (708)`; `pnpm test --run` →
     `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`.
-  - Mutations (each run, then reverted):
+  - Mutations (each run, then reverted with `git checkout -- create-wxl/src`):
 
-    | Mutation | Tests that fail |
-    |---|---|
-    | `RESTORE_COMMANDS` back to clean first | U70 (a) and (b); (c) stays green, as expected |
-    | R4 `pnpm install` only for `package.json` | U76, the `pnpm-lock.yaml` (M5) case |
-    | R4 `v*` tag line always | U76, the two cases without a deploy workflow |
-    | R4 `pnpm install` always | U76, the case that writes neither |
+    | Mutation (in `create-wxl/src/upgrade-report.mjs`) | Command | Tests that fail |
+    |---|---|---|
+    | `RESTORE_COMMANDS` back to clean first: swap its two entries | `npx vitest run test/upgrade-restore.test.mjs -t U70` | U70 (a) and (b); (c) stays green, as expected |
+    | `sed -i '' "s/(op.path === 'package.json' \|\| op.path === 'pnpm-lock.yaml')/(op.path === 'package.json')/"` | `npx vitest run test/upgrade-report.test.mjs -t U76` | U76, the `pnpm-lock.yaml` (M5) case |
+    | `sed -i '' "s/if (hasDeployWorkflow) lines.push/if (true) lines.push/"` | same | U76, the two cases without a deploy workflow |
+    | `sed -i '' "s/if (wroteDependencyFile(ops)) lines.push/if (true) lines.push/"` | same | U76, the case that writes neither |
 
   - Deviations:
     - U76's write check reads `package.json`'s new script, not the archive's bytes, because the
       pristine target rewrites `package.json`'s version.
     - The object-spread path of `range.json` (no `upstream` key yet) already keeps an own
-      `__proto__` key (checked with node), so only the path that replaces `upstream` changed.
-  - K-5 (round 2), checked in `merge-apply.mjs` at `83b0879`:
+      `__proto__` key (`node -e 'const c=JSON.parse("{\"__proto__\":{\"x\":1},\"y\":2}"); console.log(Object.keys({upstream:1,...c}))'`
+      prints `[ 'upstream', '__proto__', 'y' ]`), so only the path that replaces `upstream`
+      changed. Stage 6 adds U24 ⑦ for that path.
+  - K-5 (round 2), checked in `create-wxl/src/merge-apply.mjs` at `83b0879` (`:105-106` sorting; `:65`, `:109`
+    and `:119` `tempPathFor`; `:91`, `:115` and `:152` the `guard` checks outside a `try`;
+    `upgrade.mjs:576-579` the catch):
     - a bug thrown inside a delete's or a write's own `try` in step 9, including `range.json`'s
       write, is reported as UP-E09 with the restore commands, exit 1;
     - a bug thrown outside those `try` blocks reaches `runUpgrade`'s catch and is reported as
@@ -102,3 +108,40 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
     (`9d2e91e2faa2ea61ba0a70201d023b36f54d846314591a002c610ea2ab81c3e9`), but this session's
     auto-mode classifier refused to build it ("Code from External"). The user runs it, and a
     failure goes back to the user before this ticket closes (spec Testing Decisions).
+- 2026-11-10, stage 6: Standards (A1–A7, B1–B7, C1–C4, D1–D6) and Spec (F1–F13), no high finding;
+  record in the local note `.proj.research/2026-11-10-T-0063-stage6-review.md`. Applied under the
+  user's authorisation of 2026-11-10 ("後面都授權你，按照你的建議"):
+  - Fixed at `50078b5`:
+    - B1 (with D2, B5): `test/helpers/restore.mjs` runs the restore commands, each required to
+      exit 0, and checks their printed order.
+    - F4 (D4): R5 renders the commands with `posixCommand`, as UP-E09 does.
+    - B2, B4: U72 checks the deleted count and calls `buildReport` with unsorted deletes; removing
+      the sort at `upgrade-report.mjs:106` fails it (`npx vitest run test/upgrade-report.test.mjs`).
+    - B3, F7: U76 checks that the dependency file a case does not name is byte-identical.
+    - F8: U70 compares the ignored file as bytes and lists the ignored files again after the
+      commands.
+    - F3: U24 ⑦ covers the path with no `upstream` key.
+    - C1–C4, B6, F5, F6, F13, D6: comments, test names and file headers.
+    - `pnpm --dir create-wxl test` → `Test Files 37 passed (37) / Tests 709 passed | 1 skipped (710)`.
+  - Fixed in this record: A1 (the acceptance criteria are checkboxes, checked only where met), A3,
+    F11 (commands and pins added; the commits are on the ticket branch, not `main`), F10 (AC-6),
+    A6 and F12 (the test plan's D14 row did not list `upgrade-ignored.test.mjs`, whose P-7 restore
+    also moved to the shared commands).
+  - A2, F1: the git 2.20 run of U70 stays open, and its criterion stays unchecked. This session
+    cannot build git 2.20 (stage 5 records). The status stays `review` because the implementation is
+    done; the ticket does not close until the user has run it.
+  - Recorded, not changed:
+    - A4: the Traditional Chinese test plan follows T-0061's and T-0062's precedent (T-0062 S-6).
+    - A5: the user's authorisation covers all later work, this ticket included.
+    - A7: the GLOSSARY sentence is W4's wording verbatim. Its "只記從哪一版上游建立" contrasts
+      with the teacher's settings, which are not recorded yet.
+    - D1, D3: the code-unit comparison and `RESTORE_COMMANDS`'s two-entry shape are local and
+      unchanged.
+    - D5: `RESTORE_COMMANDS` stays in `upgrade-report.mjs`, as the test plan says.
+    - F2: a signal after `range.json`'s rename is reported as UP-E09, though step 9 finished.
+      This is earlier behaviour that this diff did not change; step 9 reads as checking the guard
+      after that write too.
+  - For the user (F9, inferred from git's checkout code, not measured): an ignored file inside a
+    directory that stands where a tracked file goes (`a/y.local` where `HEAD` has a file `a`) is
+    removed by `git checkout -- .` whatever the order, since git must remove the directory. AC-11
+    and B4 do not list this case. A spec revision could add it to B4's Does not protect.
