@@ -193,6 +193,20 @@ async function isNonFileOther(fs, rangeRoot, path) {
   return !st.isSymbolicLink() && !st.isFile()
 }
 
+/** P-10 (D24, T-0066): true when `path` exists by `lstat`. Step 4 left no untracked file that the
+ * range does not ignore, and P-5 already took the ignored ones, so an untracked `path` that exists
+ * is reached through another name on disk -- one the native `realpath` did not report (P-9). An
+ * `lstat` error other than ENOENT or ENOTDIR fails closed (UP-E11). */
+async function existsUntrackedAlias(fs, rangeRoot, path) {
+  try {
+    await fs.lstat(join(rangeRoot, ...path.split('/')))
+    return true
+  } catch (err) {
+    if (err?.code === 'ENOENT' || err?.code === 'ENOTDIR') return false
+    throw new PlanningError(path, err.message)
+  }
+}
+
 /** D10 (traceability.md "Pre-checks" P-8): parses `git ls-files -s -z`'s own stdout into the set
  * of paths whose INDEX entry is a gitlink (mode `160000`, a submodule) -- each NUL-terminated
  * entry is `<mode> <sha1> <stage>\t<path>`, unquoted (`-z`, the same convention `ls-files -z`'s
@@ -458,6 +472,13 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
         continue
       }
       guard.throwIfRaised()
+
+      // P-10 (D24, T-0066): an untracked path that exists is an alias P-9 could not see (a file
+      // system whose `realpath` does not report the stored name, such as WSL's `/mnt/c`).
+      if (!trackedSet.has(path) && (await existsUntrackedAlias(deps.fs, rangeRoot, path))) {
+        attention.push({ path, code: 'UP-A15' })
+        continue
+      }
 
       // `o` is classified by `lstat` BEFORE any read -- P-3 (a symbolic link anywhere in `path`)
       // and P-6 (a present, non-symbolic-link, non-regular-file `o`), both just above, already
