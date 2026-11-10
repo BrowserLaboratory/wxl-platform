@@ -845,3 +845,50 @@ describe('D18 remedies appear only where D18 says (T-0061 stage 6, F10)', () => 
     expect(result.leftovers).toEqual([])
   })
 })
+
+// U73 (traceability.md revision 3.1, D13; T-0062): the upgrade's archives pass the same widened
+// entry rule 3 as create's -- a component git treats as `.git` is CW-E08 rule 3 and nothing is
+// written; other short names are accepted.
+describe('U73: rule 3 on the upgrade path rejects git\'s .git aliases (D13)', () => {
+  async function runTarget(extraEntries) {
+    return runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: {
+        'refs/tags/v3.1.0': { body: pristineArchive(BASE_COMMIT) },
+        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: [...PRISTINE_FIXTURE, ...extraEntries] }) },
+      },
+    })
+  }
+
+  it.each([
+    ['git~1', 'git~1'],
+    ['GIT~1', 'GIT~1'],
+    ['git~1. :x', 'git~1. :x'],
+    ['.git:x', '.git:x'],
+    ['.git::$INDEX_ALLOCATION', '.git::$INDEX_ALLOCATION'],
+    ['.g\u200cit', '.g\u200cit'],
+    ['.G\u200cIT', '.G\u200cIT'],
+    ['\u200c.git', '\u200c.git'],
+    ['.git\ufeff', '.git\ufeff'],
+  ])('a target component %s -> CW-E08 rule 3, exit 1, nothing written, no temporary entry left', async (_label, component) => {
+    const result = await runTarget([
+      { path: `${component}/`, type: 'dir', mode: 0o755 },
+      { path: `${component}/x`, type: 'file', mode: 0o644, content: 'x\n' },
+    ])
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E08/m)
+    expect(result.ioHelper.stderrText).toContain('rule 3')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it.each([['PLATFO~1'], ['GITIGN~1']])('a target component %s is accepted (no CW-E08)', async (component) => {
+    const result = await runTarget([
+      { path: `${component}/`, type: 'dir', mode: 0o755 },
+      { path: `${component}/x`, type: 'file', mode: 0o644, content: 'x\n' },
+    ])
+    expect(result.ioHelper.stderrText).not.toContain('CW-E08')
+    expect(result.exitCode).toBe(0)
+  })
+})
+

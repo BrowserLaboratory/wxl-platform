@@ -49,12 +49,26 @@ function checkFirstComponent(component, headerPath) {
   }
 }
 
+/** 0005 revision 2.2 (D13, T-0062): a component git itself treats as `.git`. Compared ignoring
+ * ASCII case only (as git's own `tolower` does -- not JavaScript's Unicode-aware `/i`): either
+ * `.git` or `git~1`, then any run of `.` and spaces, then nothing or `:` and anything (git's
+ * `is_ntfs_dotgit`); or `.git` once every HFS+ ignorable code point is removed, wherever it occurs
+ * (git's `is_hfs_dotgit`). Other short names (`PLATFO~1`, `GITIGN~1`) are not `.git`. */
+const HFS_IGNORABLE_RE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/g
+const NTFS_DOTGIT_RE = /^(?:\.git|git~1)[. ]*(?::.*)?$/s
+function foldAsciiCase(value) {
+  return value.replace(/[A-Z]/g, (c) => c.toLowerCase())
+}
+function isGitAlias(component) {
+  return NTFS_DOTGIT_RE.test(foldAsciiCase(component)) || foldAsciiCase(component.replace(HFS_IGNORABLE_RE, '')) === '.git'
+}
+
 function checkComponents(relPath, headerPath) {
   if (relPath.includes('\\')) throw new ArchiveRuleError(3, headerPath)
   for (const component of relPath.split('/')) {
     if (component === '') throw new ArchiveRuleError(3, headerPath)
     if (component === '.' || component === '..') throw new ArchiveRuleError(3, headerPath)
-    if (component.toLowerCase() === '.git') throw new ArchiveRuleError(3, headerPath)
+    if (isGitAlias(component)) throw new ArchiveRuleError(3, headerPath)
     if (component.endsWith('.') || component.endsWith(' ')) throw new ArchiveRuleError(3, headerPath)
     if (CONTROL_CHAR_RE.test(component)) throw new ArchiveRuleError(3, headerPath)
   }
@@ -113,8 +127,10 @@ function checkCollisionAgainstSeen(entry, seen) {
  * breaking entry in archive order (D4: the path named is the entry's header path exactly as it
  * appears in the archive, including the first component), and returning the enriched list (each
  * entry's own fields plus `firstComponent`, `rest`, `kind`) for step 8 to write from directly.
- * `commit` is the commit requested (create-wxl always downloads by commit, so rule 2's comment
- * check always applies).
+ * `commit` is the commit rule 2's comment check compares against: the commit requested for a
+ * download by commit (create, a `--from <commit>` base, the upgrade's target), or, for a tag
+ * download (a `--from <version>` base, a base read from `range.json`), the tag archive's own
+ * comment once `readArchiveEntries` has checked it (UP-E08, and J6's UP-E12).
  */
 export function checkEntryRules({ entries, comment }, { commit }) {
   // S-04: rule 5 (no file in the list) is checked after rule 2's comment, and the comment

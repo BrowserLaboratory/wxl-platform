@@ -105,6 +105,20 @@ describe('entry rules', () => {
       ['a\\b', `${PREFIX}/a\\b`],
       ['.git/x', `${PREFIX}/.git/x`],
       ['.GIT/x', `${PREFIX}/.GIT/x`],
+      // 0005 revision 2.2 (D13, T-0062; C18): every component git itself treats as `.git` --
+      // `is_ntfs_dotgit` (`.git` or `git~1`, then dots or spaces, then nothing or `:` and anything)
+      // and `is_hfs_dotgit` (`.git` once U+200C-U+200F, U+202A-U+202E, U+206A-U+206F and U+FEFF are
+      // removed), both ignoring ASCII case. None of these is rejected by the trailing-dot/space
+      // clause alone.
+      ['git~1/x', `${PREFIX}/git~1/x`],
+      ['GIT~1/x', `${PREFIX}/GIT~1/x`],
+      ['git~1. :x/y', `${PREFIX}/git~1. :x/y`],
+      ['.git:x/y', `${PREFIX}/.git:x/y`],
+      ['.git::$INDEX_ALLOCATION/x', `${PREFIX}/.git::$INDEX_ALLOCATION/x`],
+      ['.g\u200cit/x', `${PREFIX}/.g\u200cit/x`],
+      ['.G\u200cIT/x', `${PREFIX}/.G\u200cIT/x`],
+      ['\u200c.git/x', `${PREFIX}/\u200c.git/x`],
+      ['.git\ufeff/x', `${PREFIX}/.git\ufeff/x`],
       ['a/x.', `${PREFIX}/a/x.`],
       ['a/x (trailing space)', `${PREFIX}/a/x `],
       // Empty content: `tar`'s own `Header.decode` reclassifies this as a directory and forces
@@ -437,6 +451,30 @@ describe('desync resistance (rule 1 cannot be hidden by a size mismatch)', () =>
 // P-04: the spec's rule 3 only excepts a directory's trailing `/` from the "no empty component"
 // rule -- it does not require one. A directory entry whose path does not end in `/` must still
 // be accepted.
+// 0005 revision 2.2 (D13, T-0062; C71): other short names are not `.git` and pass rule 3 -- git
+// itself accepts them, and rejecting every `~1` would refuse names upstream may hold.
+describe('rule 3 accepts short names that are not .git (C71)', () => {
+  it.each([
+    ['PLATFO~1/x', 'PLATFO~1/x'],
+    ['GITIGN~1', 'GITIGN~1'],
+    ['a~1/b', 'a~1/b'],
+  ])('%s is accepted and written', async (_label, rel) => {
+    const tmpRoot = await makeTmpRoot()
+    try {
+      const entries = []
+      const parts = rel.split('/')
+      for (let i = 1; i < parts.length; i++) entries.push({ path: `${PREFIX}/${parts.slice(0, i).join('/')}/`, type: 'dir', mode: 0o755 })
+      entries.push({ path: `${PREFIX}/${rel}`, type: 'file', mode: 0o644, content: 'x' })
+      const result = await runFixture(tmpRoot, buildFixtureArchive(entries))
+      expect(result.exitCode).toBe(0)
+      expect(result.ioHelper.stderrText).toBe('')
+      expect(await readFile(join(result.target, ...parts), 'utf8')).toBe('x')
+    } finally {
+      await rm(tmpRoot, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('rule 3 accepts a directory typeflag without a trailing slash (P-04)', () => {
   it('a type-5 directory entry named without a trailing / is accepted', async () => {
     const tmpRoot = await makeTmpRoot()
