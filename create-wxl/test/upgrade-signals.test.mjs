@@ -18,6 +18,7 @@ import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archiv
 import { makeSignalingCheckpoint } from './helpers/checkpoint-signal.mjs'
 import { recordingFs } from './helpers/fs-recorder.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
+import { expectRestoreOrder } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '8'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -196,8 +197,7 @@ describe('SIGTERM right after step 9\'s first rename (U28(b))', () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expect(ioHelper.stderrText).toContain('git clean -fd')
-      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(130)
 
       // The deletion (M6) and the first write already landed before the signal was noticed.
@@ -246,8 +246,7 @@ describe("SIGTERM right after range.json's own temporary file is written", () =>
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expect(ioHelper.stderrText).toContain('git clean -fd')
-      expect(ioHelper.stderrText).toContain('git checkout -- .')
+      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(130)
 
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
@@ -260,7 +259,7 @@ describe("SIGTERM right after range.json's own temporary file is written", () =>
 })
 
 describe('SIGINT at the step-10 checkpoint (U28, D8)', () => {
-  it('lets R1-R5 print in full, then exits 130, no temporary directory left', async () => {
+  it('lets R1-R5 print in full, then exits 130; a completed run (D20): range.json names the target, R5 in D14\'s order; no temporary directory left', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M7'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
     try {
@@ -275,6 +274,10 @@ describe('SIGINT at the step-10 checkpoint (U28, D8)', () => {
       for (const id of ['R1:', 'R2:', 'R3:', 'R4:', 'R5:']) {
         expect(ioHelper.stdoutText).toContain(id)
       }
+      // D20 (T-0063): step 9 finished, so this is a completed run -- `range.json` already names the
+      // target, and R5 gives the restore commands in D14's order.
+      expect(JSON.parse(await readFile(join(fixture.root, 'range.json'), 'utf8')).upstream.commit).toBe(FIXED_COMMIT)
+      expect(ioHelper.stdoutText).toContain('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
     } finally {
       await cleanupFixture(fixture, tmpRoot)

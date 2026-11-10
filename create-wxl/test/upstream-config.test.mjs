@@ -366,7 +366,9 @@ describe('U4-U10', () => {
 
     const setupRecordEntry = cutEntry(glossary, '**setup record（設定紀錄）**:')
     expect(setupRecordEntry).toContain(sharedSentence)
-    expect(setupRecordEntry).toContain('目前只有建立靶場的指令會寫入它')
+    // W4 (0006 round 2; T-0063): the upgrade writes the setup record too.
+    expect(setupRecordEntry).toContain('建立靶場的指令與升級都會寫入它')
+    expect(setupRecordEntry).not.toContain('目前只有建立靶場的指令會寫入它')
     expect(setupRecordEntry).toContain('開發模組照它套用設定是之後的事')
 
     const devModuleEntry = cutEntry(glossary, '**dev module（開發模組）**:')

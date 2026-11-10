@@ -1,10 +1,20 @@
 // Step 10 (traceability.md "Step order" row 10, "Report"): prints R1-R5, one per line, each
 // starting with its own id, in the run's language (`t2`). R3 renders each attention item through the
-// language table's own UP-A* text. R4 (traceability.md "Report" R4) is a fixed body of next-steps
-// advice plus two conditional bullets: `pnpm install` only when the run wrote `package.json` or
-// `pnpm-lock.yaml`, and the deploy-tag push only for a range with `.github/workflows/deploy.yml`.
+// language table's own UP-A* text. R2 lists every path M6 deleted after the counts (D16). R4
+// (traceability.md "Report" R4) is a fixed body of next-steps advice plus three conditional bullets:
+// D16's `|||||||` line only when R3 holds UP-A1, `pnpm install` only when the run wrote
+// `package.json` or `pnpm-lock.yaml`, and the deploy-tag push only for a range with
+// `.github/workflows/deploy.yml`.
 
-import { jsonValue } from './text.mjs'
+import { jsonValue, posixCommand } from './text.mjs'
+
+/** D14 (T-0063): the restore commands, in order -- `checkout` first, so a missing or changed
+ * ignore file is back before `clean` runs, and `clean` never deletes a file `HEAD`'s rules ignore.
+ * R5 and UP-E09 print them, and U70 runs them, from this one list. */
+export const RESTORE_COMMANDS = Object.freeze([
+  Object.freeze(['git', 'checkout', '--', '.']),
+  Object.freeze(['git', 'clean', '-fd']),
+])
 
 /** `ops` carrying a `report` code (M10, or an M12 conflict/UP-A11 outcome) are written, but not
  * counted here (traceability.md "Report" R2's own "M10 is not counted as updated"). */
@@ -34,9 +44,10 @@ function wroteDependencyFile(ops) {
   return ops.some((op) => op.action === 'write' && (op.path === 'package.json' || op.path === 'pnpm-lock.yaml'))
 }
 
-/** R4 (traceability.md "Report"): a fixed body of next-steps advice, plus two conditional
- * bullets, each its own `R4:` line (mirrors R3's own one-line-per-item convention). */
-function buildR4Lines(lang2, { ops, hasDeployWorkflow }) {
+/** R4 (traceability.md "Report"): a fixed body of next-steps advice, plus three conditional
+ * bullets (D16's `|||||||` line, `pnpm install`, the `v*` tag), each its own `R4:` line (mirrors
+ * R3's own one-line-per-item convention). */
+function buildR4Lines(lang2, { ops, attention, hasDeployWorkflow }) {
   const zh = lang2 === 'zh-TW'
   const lines = [
     zh ? 'R4: 執行 git status 與 git diff' : 'R4: run git status and git diff',
@@ -47,6 +58,16 @@ function buildR4Lines(lang2, { ops, hasDeployWorkflow }) {
       ? 'R4: 處理上面的衝突標記（搜尋 <<<<<<<）與其他注意項目'
       : 'R4: resolve the conflict markers above (search for <<<<<<<) and the other attention items',
   ]
+  // D16 (T-0063): when R3 holds UP-A1, say whose text the `|||||||` section of a conflict block is.
+  // Like the bullet above, it never names the code itself.
+  if (attention.some((item) => item.code === 'UP-A1')) {
+    lines.push(
+      zh
+        ? 'R4: 衝突區塊裡 ||||||| 之後的段落是 R1 所列 base 版本的內容；如果這個 base 不是靶場原本所依據的版本，請先執行 R5 的指令'
+        : 'R4: in a conflict block, the section after ||||||| is the text of the base version in R1; ' +
+            'if that base is not the version the range came from, run the R5 commands first',
+    )
+  }
   if (wroteDependencyFile(ops)) lines.push(zh ? 'R4: 執行 pnpm install' : 'R4: run pnpm install')
   lines.push(zh ? 'R4: build 並測試' : 'R4: build and test')
   lines.push('R4: commit')
@@ -80,6 +101,10 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
       ? `R2: 更新 ${counts.updated} 新增 ${counts.added} 刪除 ${counts.deleted}`
       : `R2: updated ${counts.updated} added ${counts.added} deleted ${counts.deleted}`,
   )
+  // D16 (T-0063): then every path M6 deleted (the only deleting row), sorted by UTF-16 code units,
+  // without a code.
+  const deletedPaths = ops.filter((op) => op.action === 'delete').map((op) => op.path)
+  for (const path of deletedPaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) lines.push(`R2: ${jsonValue(path)}`)
   // T-0027 verification follow-up (item 1/2): each attention line is rendered through `t2`
   // (traceability.md:206 "in the run's language"), the same en/zh-TW UP-A* message table every
   // other code already uses -- UP-A12 (T-0027 increment 20, U59) is not tied to any one path
@@ -88,14 +113,16 @@ export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targe
   for (const item of sortAttention(attention)) {
     lines.push(item.code === 'UP-A12' ? `R3: ${t2[item.code]()}` : `R3: ${t2[item.code]()} ${jsonValue(item.path)}`)
   }
-  lines.push(...buildR4Lines(lang2, { ops, hasDeployWorkflow }))
+  lines.push(...buildR4Lines(lang2, { ops, attention, hasDeployWorkflow }))
   // traceability.md "Report" R5; spec.en.md B4: the restore commands undo
   // the WHOLE upgrade, so they are only safe BEFORE any other change -- the fixed bare commands
   // alone, without that warning, let a teacher who edits first lose that edit too.
+  // Rendered as UP-E09 renders them (messages.mjs), so both print the same commands.
+  const [first, second] = RESTORE_COMMANDS.map((command) => posixCommand(command))
   lines.push(
     zh
-      ? 'R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .'
-      : 'R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .',
+      ? `R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 ${first} 和 ${second}`
+      : `R5: to undo the whole upgrade before making other changes, run ${first} then ${second}`,
   )
   return lines.join('\n') + '\n'
 }

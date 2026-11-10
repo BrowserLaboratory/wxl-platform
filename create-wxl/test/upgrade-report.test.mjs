@@ -1,8 +1,9 @@
 // 0006-S1 step 10 (traceability.md "Report"): a completed run exits 0 whether or not it has
-// attention items (U25); this file also covers U59, U26 and U62.
+// attention items (U25); this file also covers U59, U26, U62, U72 and U76.
 
 import { describe, it, expect, vi } from 'vitest'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -15,6 +16,7 @@ import { PRISTINE_FIXTURE, README_CONTENT } from './helpers/fixtures.mjs'
 import { snapshotTree } from './helpers/snapshot.mjs'
 import { en, zhTW } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
+import { buildReport } from '../src/upgrade-report.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '6'.repeat(40)
@@ -71,6 +73,12 @@ function idIndex(lines, id, { last = false } = {}) {
   return last ? indices[indices.length - 1] : indices[0]
 }
 
+// D16 (traceability.md "Report" R4; T-0063): printed only when R3 holds UP-A1.
+const R4_BASE_SECTION_EN =
+  'R4: in a conflict block, the section after ||||||| is the text of the base version in R1; ' +
+  'if that base is not the version the range came from, run the R5 commands first'
+const R4_BASE_SECTION_ZH = 'R4: 衝突區塊裡 ||||||| 之後的段落是 R1 所列 base 版本的內容；如果這個 base 不是靶場原本所依據的版本，請先執行 R5 的指令'
+
 function rangeJsonFor(baseCommit) {
   return { upstream: { repository: engineModule.UPSTREAM_SLUG, version: BASE_VERSION, commit: baseCommit } }
 }
@@ -93,6 +101,16 @@ async function runUpgradeAgainst(fixture, argv = ['upgrade']) {
   const ioHelper = makeIo()
   const exitCode = await run(argv, ioHelper.io, deps)
   return { exitCode, ioHelper, tmpRoot }
+}
+
+/** The file's bytes, or `null` when it does not exist. */
+async function readOptional(path) {
+  try {
+    return await readFile(path)
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null
+    throw err
+  }
 }
 
 async function cleanupFixture(fixture, tmpRoot) {
@@ -249,6 +267,8 @@ describe('report text (U26)', () => {
         `R1: create-wxl "3.1.0"; base "3.0.0" (commit "${BASE_COMMIT}"); target "3.1.0" (commit "${FIXED_COMMIT}")`,
       )
       expect(lines[r2]).toBe('R2: updated 2 added 1 deleted 1') // same counts as U17.
+      // D16 (T-0063): then one line per path M6 deleted, without a code.
+      expect(lines.filter((line) => line.startsWith('R2:'))).toEqual([lines[r2], `R2: ${jsonValue('m6-upstream-removed.txt')}`])
 
       const r3Lines = lines.filter((line) => line.startsWith('R3:'))
       expect(r3Lines).toEqual(expectedR3Lines(en))
@@ -257,13 +277,14 @@ describe('report text (U26)', () => {
       expect(r4Lines).toEqual([
         'R4: run git status and git diff',
         'R4: resolve the conflict markers above (search for <<<<<<<) and the other attention items',
+        R4_BASE_SECTION_EN, // R3 holds UP-A1 (M12-conflict).
         'R4: run pnpm install', // ALL_BRANCHES' M10 writes pnpm-lock.yaml.
         'R4: build and test',
         'R4: commit',
       ])
       // R5 also warns to use the restore commands only BEFORE making other changes
       // (traceability.md "Report" R5; spec.en.md B4) -- not the bare commands alone.
-      expect(lines[r5]).toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
+      expect(lines[r5]).toBe('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -297,6 +318,7 @@ describe('report text (U26)', () => {
         `R1: create-wxl "3.1.0"；base 版本 "3.0.0"（commit "${BASE_COMMIT}"）；target 版本 "3.1.0"（commit "${FIXED_COMMIT}"）`,
       )
       expect(lines[r2]).toBe('R2: 更新 2 新增 1 刪除 1')
+      expect(lines.filter((line) => line.startsWith('R2:'))).toEqual([lines[r2], `R2: ${jsonValue('m6-upstream-removed.txt')}`])
       expect(lines[r1]).not.toBe(
         `R1: create-wxl "3.1.0"; base "3.0.0" (commit "${BASE_COMMIT}"); target "3.1.0" (commit "${FIXED_COMMIT}")`,
       )
@@ -310,14 +332,15 @@ describe('report text (U26)', () => {
       expect(r4Lines).toEqual([
         'R4: 執行 git status 與 git diff',
         'R4: 處理上面的衝突標記（搜尋 <<<<<<<）與其他注意項目',
+        R4_BASE_SECTION_ZH, // R3 有 UP-A1（M12-conflict）。
         'R4: 執行 pnpm install', // ALL_BRANCHES' M10 寫入 pnpm-lock.yaml。
         'R4: build 並測試',
         'R4: commit',
       ])
       // R5 also warns to use the restore commands only BEFORE making other changes
       // (traceability.md "Report" R5; spec.en.md B4).
-      expect(lines[r5]).toBe('R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git clean -fd 和 git checkout -- .')
-      expect(lines[r5]).not.toBe('R5: to undo the whole upgrade before making other changes, run git clean -fd then git checkout -- .')
+      expect(lines[r5]).toBe('R5: 如果要撤銷整個升級，請在做其他變更之前依序執行 git checkout -- . 和 git clean -fd')
+      expect(lines[r5]).not.toBe('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
     }
@@ -393,6 +416,110 @@ describe('report text (U26)', () => {
       expect(en[code]).toBeTypeOf('function')
       expect(zhTW[code]).toBeTypeOf('function')
     }
+  })
+})
+
+// U72 (traceability.md revision 3.1, D16; T-0063): R2 lists every M6 path after the counts, sorted
+// by UTF-16 code units, without a code; R4's D16 line follows whether R3 holds UP-A1.
+describe('R2 lists M6 paths and R4 explains the ||||||| section (U72, D16)', () => {
+  for (const [lang, argv, d16] of [
+    ['en', ['upgrade'], R4_BASE_SECTION_EN],
+    ['zh-TW', ['--lang', 'zh-TW', 'upgrade'], R4_BASE_SECTION_ZH],
+  ]) {
+    it(`${lang}: three M6 paths and an UP-A1 item -> R2 path lines B.md, a/b.md, z.md; the D16 line present`, async () => {
+      const fixture = await buildUpgradeFixtures({ branches: ['U72-m6-three', 'M12-conflict'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+      let tmpRoot
+      try {
+        const result = await runUpgradeAgainst(fixture, argv)
+        tmpRoot = result.tmpRoot
+        expect(result.exitCode).toBe(0)
+        const lines = result.ioHelper.stdoutText.split('\n')
+        const r2Lines = lines.filter((line) => line.startsWith('R2:'))
+        // The deleted count equals the number of path lines (traceability.md "Report" R2).
+        expect(r2Lines[0]).toMatch(lang === 'en' ? / deleted 3$/ : / 刪除 3$/)
+        expect(r2Lines.slice(1)).toEqual(['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`))
+        expect(lines.filter((line) => line.startsWith('R4:'))).toContain(d16)
+      } finally {
+        await cleanupFixture(fixture, tmpRoot)
+      }
+    })
+
+    it(`${lang}: the same M6 paths and no UP-A1 item -> the same R2 path lines; no D16 line`, async () => {
+      const fixture = await buildUpgradeFixtures({ branches: ['U72-m6-three'], rangeJson: rangeJsonFor(BASE_COMMIT) })
+      let tmpRoot
+      try {
+        const result = await runUpgradeAgainst(fixture, argv)
+        tmpRoot = result.tmpRoot
+        expect(result.exitCode).toBe(0)
+        const lines = result.ioHelper.stdoutText.split('\n')
+        expect(lines.filter((line) => line.startsWith('R2:')).slice(1)).toEqual(
+          ['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`),
+        )
+        expect(lines.some((line) => line.includes('|||||||'))).toBe(false)
+      } finally {
+        await cleanupFixture(fixture, tmpRoot)
+      }
+    })
+  }
+})
+
+// U76 (traceability.md revision 3.1, R4; T-0063): R4's `pnpm install` and `v*` tag lines follow
+// their conditions. Confirmation: the code predates the row; each case also checks what the run wrote.
+describe("R4's conditional lines (U76)", () => {
+  const PNPM = 'R4: run pnpm install'
+  const TAG = 'R4: push a new v* tag to deploy'
+  for (const { name, branches, written, pnpm, tag } of [
+    { name: 'writes package.json (M5), no deploy workflow', branches: ['U76-package-json'], written: 'package.json', pnpm: true, tag: false },
+    { name: 'writes pnpm-lock.yaml (M5) but not package.json, with a deploy workflow', branches: ['U76-lock-m5', 'U26-deploy-workflow'], written: 'pnpm-lock.yaml', pnpm: true, tag: true },
+    { name: 'writes neither, no deploy workflow', branches: ['M6'], written: undefined, pnpm: false, tag: false },
+  ]) {
+    it(`${name} -> pnpm install ${pnpm ? 'present' : 'absent'}; v* tag ${tag ? 'present' : 'absent'}`, async () => {
+      const fixture = await buildUpgradeFixtures({ branches, rangeJson: rangeJsonFor(BASE_COMMIT) })
+      let tmpRoot
+      try {
+        const before = {
+          'package.json': await readOptional(join(fixture.root, 'package.json')),
+          'pnpm-lock.yaml': await readOptional(join(fixture.root, 'pnpm-lock.yaml')),
+        }
+        const result = await runUpgradeAgainst(fixture)
+        tmpRoot = result.tmpRoot
+        expect(result.exitCode).toBe(0)
+        // The run did write the file (the pristine target rewrites package.json's version, so the
+        // check is on the content upstream changed, not on the archive's bytes).
+        if (written === 'package.json') expect(await readFile(join(fixture.root, written), 'utf8')).toContain('sim:noop')
+        if (written === 'pnpm-lock.yaml') expect(await readFile(join(fixture.root, written), 'utf8')).toBe('lockfile v1 target\n')
+        // Neither dependency file the case does not name was written (stage 6, B3).
+        for (const other of ['package.json', 'pnpm-lock.yaml'].filter((path) => path !== written)) {
+          expect(await readOptional(join(fixture.root, other))).toEqual(before[other])
+        }
+        const r4Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R4:'))
+        expect(r4Lines.includes(PNPM)).toBe(pnpm)
+        expect(r4Lines.includes(TAG)).toBe(tag)
+      } finally {
+        await cleanupFixture(fixture, tmpRoot)
+      }
+    })
+  }
+
+  // `planMerge` already sorts its ops, so the runs above cannot tell whether `buildReport` sorts R2's
+  // path lines itself; this calls it with the deletes out of order (stage 6, B2).
+  it('buildReport sorts R2 path lines itself, by UTF-16 code units, whatever order the ops come in', () => {
+    const report = buildReport({
+      lang2: 'en',
+      toolVersion: TARGET_VERSION,
+      baseVersion: BASE_VERSION,
+      baseCommit: BASE_COMMIT,
+      targetVersion: TARGET_VERSION,
+      targetCommit: FIXED_COMMIT,
+      ops: ['z.md', 'a/b.md', 'B.md'].map((path) => ({ path, action: 'delete' })),
+      attention: [],
+      hasDeployWorkflow: false,
+      t2: en,
+    })
+    expect(report.split('\n').filter((line) => line.startsWith('R2:'))).toEqual([
+      'R2: updated 0 added 0 deleted 3',
+      ...['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`),
+    ])
   })
 })
 
