@@ -7,7 +7,8 @@
 import { join, resolve as resolvePath } from 'node:path'
 import { buildGitEnv } from './git-env.mjs'
 import { SignalAbort } from './signals.mjs'
-import { planMerge, MergeFileError, PlanningError } from './merge-plan.mjs'
+import { runGitNamed } from './git-named.mjs'
+import { planMerge, MergeFileError, PlanningError, isIgnoredPath } from './merge-plan.mjs'
 import { applyMerge } from './merge-apply.mjs'
 import { buildReport } from './upgrade-report.mjs'
 import { COMMIT_RE, VERSION_RE } from './patterns.mjs'
@@ -66,20 +67,6 @@ const IN_PROGRESS_MARKERS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'B
 function requireGitSuccess(command, result) {
   if (result.code !== 0) {
     throw new Error(`git ${command} failed (exit code ${result.code}): ${result.stderr}`)
-  }
-}
-
-/** D19 (traceability.md revision 3.1; T-0061): runs one git command of steps 4 and 5 and, when
- * `runGit` rejects (not an exit code -- the spawn itself failed), rethrows it as a bug whose
- * message names the command, so CW-E14 says which git command failed. A signal already received,
- * or a `SignalAbort`, passes through unchanged so the run still exits 130. */
-async function runGitNamed(deps, guard, args, opts, name) {
-  try {
-    return await deps.runGit(args, opts)
-  } catch (err) {
-    if (err instanceof SignalAbort) throw err
-    guard.throwIfRaised()
-    throw new Error(`git ${name} failed: ${err?.message ?? String(err)}`, { cause: err })
   }
 }
 
@@ -312,22 +299,11 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   )
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('ls-files -z -- ./range.json', recordTracked)
-  if (recordTracked.stdout === '') {
-    const recordIgnored = await runGitNamed(
-      deps,
-      guard,
-      ['check-ignore', '-q', '--no-index', '--', './range.json'],
-      { cwd: deps.cwd, env: gitEnv },
-      'check-ignore -- ./range.json',
-    )
-    guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
-    if (recordIgnored.code === 0) {
-      io.stderr.write(t2['UP-E13']() + '\n')
-      return 1
-    }
-    if (recordIgnored.code !== 1) {
-      requireGitSuccess('check-ignore -- ./range.json', recordIgnored)
-    }
+  // S1 (T-0062): the same "ignored path" check P-5 uses (traceability.md Vocabulary), so the two
+  // cannot drift; its own git failures are CW-E14 naming the command (D19).
+  if (recordTracked.stdout === '' && (await isIgnoredPath(deps, guard, deps.cwd, 'range.json'))) {
+    io.stderr.write(t2['UP-E13']() + '\n')
+    return 1
   }
 
   // Step 6: gathers the checks written by increments 6 (commit
@@ -512,6 +488,8 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       deps,
       guard,
       rangeRoot: deps.cwd,
+      // P-9 (D12, T-0062): the range root's native realpath, as step 3 resolved it.
+      realRangeRoot: realCwd,
       baseDir: baseTmpDir,
       targetDir: targetTmpDir,
       baseVersion,
