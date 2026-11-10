@@ -69,6 +69,20 @@ function requireGitSuccess(command, result) {
   }
 }
 
+/** D19 (traceability.md revision 3.1; T-0061): runs one git command of steps 4 and 5 and, when
+ * `runGit` rejects (not an exit code -- the spawn itself failed), rethrows it as a bug whose
+ * message names the command, so CW-E14 says which git command failed. A signal already received,
+ * or a `SignalAbort`, passes through unchanged so the run still exits 130. */
+async function runGitNamed(deps, guard, args, opts, name) {
+  try {
+    return await deps.runGit(args, opts)
+  } catch (err) {
+    if (err instanceof SignalAbort) throw err
+    guard.throwIfRaised()
+    throw new Error(`git ${name} failed: ${err?.message ?? String(err)}`, { cause: err })
+  }
+}
+
 /** J1 (`lstat`: absent, or a regular file) then J3 (parses as JSON,
  * and is an object) for `range.json` at `deps.cwd` -- the shape increment 13's `--from` branch and
  * increment 14's no-`--from` branch both need. Returns `{ absent: true }` when there is no
@@ -164,15 +178,18 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // Step 4 (traceability.md "Step order" row 4): a clean repository, checked in this order so a
   // missing HEAD (no-head) is never misreported through the other checks' own behaviour on a
   // headless repository.
-  const headCheck = await deps.runGit(['rev-parse', '--verify', 'HEAD'], { cwd: deps.cwd, env: gitEnv })
+  const headCheck = await runGitNamed(deps, guard, ['rev-parse', '--verify', 'HEAD'], { cwd: deps.cwd, env: gitEnv }, 'rev-parse --verify HEAD')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   if (headCheck.code !== 0) {
     io.stderr.write(t2['UP-E03']({ reason: 'no-head' }) + '\n')
     return 1
   }
-  const statusResult = await deps.runGit(
+  const statusResult = await runGitNamed(
+    deps,
+    guard,
     ['--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all', '--ignore-submodules=none'],
     { cwd: deps.cwd, env: gitEnv },
+    'status',
   )
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('status', statusResult)
@@ -180,7 +197,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     io.stderr.write(t2['UP-E03']({ reason: 'changes' }) + '\n')
     return 1
   }
-  const lsFilesResult = await deps.runGit(['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv })
+  const lsFilesResult = await runGitNamed(deps, guard, ['ls-files', '-v'], { cwd: deps.cwd, env: gitEnv }, 'ls-files -v')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('ls-files -v', lsFilesResult)
   for (const line of lsFilesResult.stdout.split('\n')) {
@@ -195,7 +212,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       return 1
     }
   }
-  const gitDirResult = await deps.runGit(['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv })
+  const gitDirResult = await runGitNamed(deps, guard, ['rev-parse', '--git-dir'], { cwd: deps.cwd, env: gitEnv }, 'rev-parse --git-dir')
   guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
   requireGitSuccess('rev-parse --git-dir', gitDirResult)
   const gitDir = parseGitDirStdout(deps, gitDirResult.stdout)
@@ -219,12 +236,18 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   // directly; `--from <version>` sets only `baseVersion`, leaving `baseCommit` unknown until step
   // 7's download resolves the tag; either way `range.json`'s own commit/version is never read
   // (U08) -- but when `--from` is given AND `range.json` is present, it still has to pass J1
-  // (`lstat`: absent, or a regular file) and J3 (parses as JSON, and is an object); J2, J4 and J5
-  // do not apply with `--from` (U09). Absent `--from`, read the base from `range.json`. J2 (inc
-  // 11): an absent `range.json` without `--from` is UP-E04, not a bug. Full J1/J3/J4 validation
-  // of the no-`--from` path (U10) is the `else` branch below.
+  // (`lstat`: absent, or a regular file) and J3 (parses as JSON, and is an object); J2, J4, J5 and
+  // J6 do not apply with `--from` (U09, D17). Absent `--from`, read the base from `range.json`. J2
+  // (inc 11): an absent `range.json` without `--from` is UP-E04, not a bug. Full J1/J3/J4/J5
+  // validation of the no-`--from` path (U10) is the `else` branch below; J6 (the recorded commit
+  // is the commit of tag `v<version>`, D11) is checked in step 7, on the tag's own archive. After
+  // J1-J5, with or without `--from`, D15 refuses an untracked `range.json` the range ignores.
   let baseCommit
   let baseVersion
+  // D11 (T-0061): a base read from `range.json` must be a release -- it is downloaded through
+  // upstream's own tag (step 7, J6). A `--from <commit>` base is not checked against a tag (D17);
+  // a `--from <version>` base is its tag's commit by construction.
+  const baseFromRecord = parsed.from === undefined
   if (parsed.from !== undefined) {
     const rangeJsonResult = await readRangeJson(deps)
     if (rangeJsonResult.token !== undefined) {
@@ -275,6 +298,38 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
     baseVersion = upstream.version
   }
 
+  // D15 (OQ-026; T-0061): with or without `--from`, after J1-J5 and before step 6, a `range.json`
+  // that is not tracked and that the range's rules ignore is refused -- step 9 would write it, and
+  // the restore commands could neither restore nor remove an ignored, untracked file. The path is
+  // given as `./range.json` so both commands read it literally. `check-ignore` exits 0 (ignored)
+  // or 1 (not ignored); any other result of either command is CW-E14 naming it (D19).
+  const recordTracked = await runGitNamed(
+    deps,
+    guard,
+    ['ls-files', '-z', '--', './range.json'],
+    { cwd: deps.cwd, env: gitEnv },
+    'ls-files -z -- ./range.json',
+  )
+  guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
+  requireGitSuccess('ls-files -z -- ./range.json', recordTracked)
+  if (recordTracked.stdout === '') {
+    const recordIgnored = await runGitNamed(
+      deps,
+      guard,
+      ['check-ignore', '-q', '--no-index', '--', './range.json'],
+      { cwd: deps.cwd, env: gitEnv },
+      'check-ignore -- ./range.json',
+    )
+    guard.throwIfRaised() // candidate 13 (stage 7): a signal already received wins over interpreting this result
+    if (recordIgnored.code === 0) {
+      io.stderr.write(t2['UP-E13']() + '\n')
+      return 1
+    }
+    if (recordIgnored.code !== 1) {
+      requireGitSuccess('check-ignore -- ./range.json', recordIgnored)
+    }
+  }
+
   // Step 6: gathers the checks written by increments 6 (commit
   // equal), 17 (U50's floor), 16 (U13's downgrade) and 18 (U14's equal-version no-op) into one
   // function, callable again in step 7 once the base's version/commit are actually known
@@ -318,28 +373,54 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   deps.checkpoint('step-7')
   guard.throwIfRaised()
 
-  // Step 7 (bare, inc 10; U08, inc 12; U14, inc 18): download the base -- by commit, or for a
-  // version-form base, from its tag -- then the target (traceability.md "Step order" row 7);
+  // Step 7 (bare, inc 10; U08, inc 12; U14, inc 18; J6, T-0061): download the base -- through its
+  // tag `refs/tags/v<version>` for a base read from `range.json` (D11) or a `--from <version>`
+  // base, by commit for a `--from <commit>` base -- then the target by commit (traceability.md
+  // "Step order" row 7);
   // validate both, then build each into its own pristine range under `deps.tmpRoot` (`run-shared.mjs`'s
   // shared functions), base fully before target. The tag-mode comment rule (U16, below) and
   // repeating step 6's checks with the now-known base version/commit (amendment 2, U51/U52,
   // below) both apply here; a null/failing result here returns 1 after the shared function's own
   // message and own cleanup.
-  const baseRef = baseCommit ?? `refs/tags/v${baseVersion}`
-  const baseDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: baseRef })
+  const baseRef = baseFromRecord ? `refs/tags/v${baseVersion}` : (baseCommit ?? `refs/tags/v${baseVersion}`)
+  const baseDownload = await downloadArchive({
+    io,
+    deps,
+    t2,
+    guard,
+    repository: deps.source.repository,
+    ref: baseRef,
+    // D18: a 404 on the tag download of a base read from range.json carries the remedies.
+    remediesOn404: baseFromRecord,
+  })
   if (!baseDownload) return 1
   const targetDownload = await downloadArchive({ io, deps, t2, guard, repository: deps.source.repository, ref: targetCommit })
   if (!targetDownload) return 1
 
-  // U16 (inc 20): a version-form `--from` base has no known commit yet; its download is a tag
-  // (`refs/tags/v<version>`), so rule 2 is replaced by "the comment is 40 lowercase hex" (and the
-  // resolved comment becomes the commit rule 2 compares the REST of the archive's own path
-  // prefix against) -- `readArchiveEntries`'s own `tag` parameter.
-  const baseTag = baseCommit === undefined ? `v${baseVersion}` : undefined
-  const baseResult = await readArchiveEntries({ io, t2, body: baseDownload.body, commit: baseCommit, tag: baseTag })
+  // U16 (inc 20) and J6 (T-0061): a tag download -- a `--from <version>` base, whose commit is
+  // unknown until now, or a base read from `range.json` -- replaces rule 2 with "the comment is 40
+  // lowercase hex" (the resolved comment becomes the commit rule 2 compares the rest of the
+  // archive's own path prefix against) -- `readArchiveEntries`'s own `tag` parameter. For a base
+  // read from `range.json` the comment must also equal the recorded commit (`expectedCommit`, J6,
+  // UP-E12), and UP-E08 carries D18's remedies (`remedies`).
+  const baseTag = baseFromRecord || baseCommit === undefined ? `v${baseVersion}` : undefined
+  const baseResult = await readArchiveEntries({
+    io,
+    t2,
+    body: baseDownload.body,
+    // In tag mode `commit` is never consulted; only a `--from <commit>` base passes it.
+    commit: baseTag === undefined ? baseCommit : undefined,
+    tag: baseTag,
+    // J6 (D11): the tag's own comment must equal the commit range.json records.
+    expectedCommit: baseFromRecord ? baseCommit : undefined,
+    tagVersion: baseVersion,
+    // D18: UP-E08 for a base read from range.json carries the remedies.
+    remedies: baseFromRecord,
+  })
   if (!baseResult) return 1
-  // U52 (inc 22): in tag mode `baseResult` is `{ entries, commit }` -- the base commit a
-  // version-form `--from` base never names on its own, now known from the tag's own pax comment.
+  // U52 (inc 22): in tag mode `baseResult` is `{ entries, commit }` -- the commit the tag names,
+  // read from its own pax comment: a `--from <version>` base learns its commit here, and for a base
+  // read from `range.json` it equals the recorded one (J6).
   const baseEntries = baseTag === undefined ? baseResult : baseResult.entries
   if (baseTag !== undefined) baseCommit = baseResult.commit
   const targetEntries = await readArchiveEntries({ io, t2, body: targetDownload.body, commit: targetCommit })
@@ -507,6 +588,8 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
       attention: planResult.attention,
       hasDeployWorkflow,
       t2,
+      // D17: R1 marks a `--from <commit>` base as not checked against an upstream tag.
+      baseUnchecked: parsed.from !== undefined && COMMIT_RE.test(parsed.from),
     }),
   )
   guard.throwIfRaised()

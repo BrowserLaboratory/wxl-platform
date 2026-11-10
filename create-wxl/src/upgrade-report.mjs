@@ -54,17 +54,26 @@ function buildR4Lines(lang2, { ops, hasDeployWorkflow }) {
   return lines
 }
 
-export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targetVersion, targetCommit, ops, attention, hasDeployWorkflow, t2 }) {
+export function buildReport({ lang2, toolVersion, baseVersion, baseCommit, targetVersion, targetCommit, ops, attention, hasDeployWorkflow, t2, baseUnchecked = false }) {
   const zh = lang2 === 'zh-TW'
   const counts = countsFromOps(ops)
   const lines = []
+  // D17 (traceability.md "Report" R1; T-0061): a `--from <commit>` base is whatever that commit
+  // holds -- R1 says it was not checked against an upstream tag.
+  const uncheckedNote = baseUnchecked
+    ? zh
+      ? '；base 由 --from <commit> 指定，沒有比對上游的 tag'
+      : '; the base was given by --from <commit> and not checked against an upstream tag'
+    : ''
   lines.push(
     zh
       ? `R1: create-wxl ${jsonValue(toolVersion)}；base 版本 ${jsonValue(baseVersion)}（commit ${jsonValue(baseCommit)}）；` +
-          `target 版本 ${jsonValue(targetVersion)}（commit ${jsonValue(targetCommit)}）`
+          `target 版本 ${jsonValue(targetVersion)}（commit ${jsonValue(targetCommit)}）` +
+          uncheckedNote
       // Names the commit the same way the zh-TW text above already does.
       : `R1: create-wxl ${jsonValue(toolVersion)}; base ${jsonValue(baseVersion)} (commit ${jsonValue(baseCommit)}); ` +
-          `target ${jsonValue(targetVersion)} (commit ${jsonValue(targetCommit)})`,
+          `target ${jsonValue(targetVersion)} (commit ${jsonValue(targetCommit)})` +
+          uncheckedNote,
   )
   lines.push(
     zh

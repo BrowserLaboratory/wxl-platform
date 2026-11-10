@@ -36,7 +36,7 @@ async function runUpgradeAgainst(fixture, runGit) {
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
@@ -144,7 +144,7 @@ describe('P-7 folding (D9)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,
@@ -211,7 +211,9 @@ describe('git ls-files -z fails closed', () => {
     try {
       const real = createSpawnGitRunner()
       const runGit = vi.fn(async (args, opts) => {
-        if (args[0] === 'ls-files' && args[1] === '-z') return { code: 128, stdout: '', stderr: 'stubbed ls-files failure' }
+        // Step 8's own `git ls-files -z` (two arguments) -- not step 5's `git ls-files -z -- ./range.json`
+        // (D15, T-0061), which this stub would otherwise stop first, leaving step 8 untested.
+        if (args.length === 2 && args[0] === 'ls-files' && args[1] === '-z') return { code: 128, stdout: '', stderr: 'stubbed ls-files failure' }
         return real(args, opts)
       })
       const before = withoutRootMtime(await snapshotTree(fixture.root))
@@ -248,7 +250,7 @@ describe('P-5 reads a path literally, never as pathspec magic', () => {
         const fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: [...PRISTINE_FIXTURE] }) },
           [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-        })
+        }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
         const deps = makeDeps({
           cwd: rangeRepo.root,
           tmpRoot,

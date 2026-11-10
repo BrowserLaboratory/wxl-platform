@@ -95,7 +95,7 @@ describe.skipIf(process.platform === 'win32')('symlinks (U20)', () => {
     const fetchArchive = makeRefFetchArchive({
       [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
       [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-    })
+    }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
     const deps = makeDeps({
       cwd: rangeRepo.root,
       tmpRoot,
@@ -175,7 +175,7 @@ describe.skipIf(process.platform === 'win32')('a symbolic link to a socket is ne
     const fetchArchive = makeRefFetchArchive({
       [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
       [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-    })
+    }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
     const deps = makeDeps({
       cwd: rangeRepo.root,
       tmpRoot,
@@ -224,7 +224,7 @@ describe('hard link (U60)', () => {
       const fetchArchive = makeRefFetchArchive({
         ['4'.repeat(40)]: { body: pristineArchive('4'.repeat(40), { entries: fixture.baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: '4'.repeat(40) } })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot: tmpRootInner,

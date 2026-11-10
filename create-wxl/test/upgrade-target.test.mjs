@@ -2,7 +2,9 @@
 // rows 6-7): the no-op check (U12-U14, U50-U52), file-system errors building the two pristine
 // ranges under `deps.tmpRoot` (D3), `cleanupTmpDirs` not stopping on one directory's own `rm`
 // failure (F14), the tag-mode comment rule (U16), and the 0005 archive-rule/pristine-rule codes
-// once both archives are downloaded (U15).
+// once both archives are downloaded (U15). T-0061: a base read from `range.json` is a tag download
+// too (U16's range.json cases, U66), and D18's remedies appear only for it (U66, F10). U15's "base"
+// fetch failures reach the tag ref through `makeRefFetchArchive`'s `releases` option.
 
 import { describe, it, expect, vi } from 'vitest'
 import { rm, mkdtemp as fsMkdtemp } from 'node:fs/promises'
@@ -155,7 +157,7 @@ describe('U14: equal versions, different commits', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [OVERRIDE_COMMIT]: { body: pristineArchive(OVERRIDE_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       let inspected = false
       const checkpoint = vi.fn((name) => {
         if (name !== 'step-8') return
@@ -194,8 +196,9 @@ describe('U14: equal versions, different commits', () => {
       expect(inspected).toBe(true)
       expect(checkpoint).toHaveBeenCalledWith('step-8')
       expect(ioHelper.stderrText).toContain('CW-W04')
+      // J6 (D11, T-0061): a base read from range.json is downloaded through its tag.
       const refs = fetchArchive.mock.calls.map((call) => call[1]).sort()
-      expect(refs).toEqual([BASE_COMMIT, OVERRIDE_COMMIT].sort())
+      expect(refs).toEqual(['refs/tags/v3.0.0', OVERRIDE_COMMIT].sort())
       expect(ioHelper.stdoutText).not.toContain('UP-I01')
       expect(ioHelper.stderrText).not.toContain('UP-I01')
       expect(readdirSync(tmpRoot).filter((entryName) => entryName.startsWith('create-wxl-upgrade-'))).toEqual([])
@@ -242,7 +245,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
@@ -282,7 +285,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const writeFile = failAt('writeFile', (count, args) => (args[0].endsWith('0-target-only.txt') ? fsError('EACCES') : null))
       const { fs } = recordingFs({ writeFile })
       const deps = makeDeps({
@@ -328,7 +331,7 @@ describe('D3: file-system errors under tmpRoot in step 7', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const writeFile = failAt('writeFile', (count, args) =>
         args[1].includes('"version": "0.1.0"') && args[1].includes('wxl-base') ? fsError('EACCES') : null,
       )
@@ -378,7 +381,7 @@ describe('cleanupTmpDirs (F14): one failed rm never stops the rest, and never re
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       // The base's own `makeTmpDir` call happens before the target's (traceability.md "Step
       // order" row 7: "base fully before target"), so the first directory `mkdtemp` ever creates
       // in this run is the base's own.
@@ -439,7 +442,7 @@ describe('U51: --from <commit> base version resolved only after download', () =>
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntriesWithVersion(version) }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
-      })
+      }, { releases: { ['3.0.0']: BASE_COMMIT } })
       const deps = makeDeps({ cwd: fixture.root, tmpRoot, env: fixture.env, runGit: vi.fn(createSpawnGitRunner()), fetchArchive })
       const before = await snapshotTree(fixture.root)
       const beforeTmp = withoutRootMtime(await snapshotTree(tmpRoot))
@@ -496,24 +499,29 @@ describe('U51: --from <commit> base version resolved only after download', () =>
 })
 
 describe('U52: --from <version> resolving to the target commit -> UP-I01, nothing written', () => {
+  // Revision 3.1 (U52, W8; T-0061): case (c) sets CREATE_WXL_COMMIT to the tag's commit, a commit
+  // other than the source record's; every case asserts both downloads happened (UP-I01 comes only
+  // after them, since a --from <version> base's commit is unknown before the tag is read).
+  const OVERRIDE_TAG_COMMIT = '4444444444444444444444444444444444444444'
   const CASES = [
-    ["(a) --from 3.1.0, target 3.2.0, tag's commit equals the target's", '3.1.0', '3.2.0'],
-    ["(b) --from 3.2.0, target 3.2.0, tag's commit equals the target's", '3.2.0', '3.2.0'],
+    ["(a) --from 3.1.0, target 3.2.0, tag's commit equals the target's", '3.1.0', '3.2.0', undefined],
+    ["(b) --from 3.2.0, target 3.2.0, tag's commit equals the target's", '3.2.0', '3.2.0', undefined],
+    ["(c) --from 3.2.0, target 3.2.0, CREATE_WXL_COMMIT set to the tag's commit", '3.2.0', '3.2.0', OVERRIDE_TAG_COMMIT],
   ]
 
-  it.each(CASES)('%s', async (_label, fromVersion, targetVersion) => {
+  it.each(CASES)('%s', async (_label, fromVersion, targetVersion, override) => {
     const fixture = await makeFixtureRange({})
     const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
     try {
       const tagRef = `refs/tags/v${fromVersion}`
       const fetchArchive = makeRefFetchArchive({
-        [tagRef]: { body: tagArchive(fromVersion, { comment: FIXED_COMMIT }) },
-        [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) },
+        [tagRef]: { body: tagArchive(fromVersion, { comment: override ?? FIXED_COMMIT }) },
+        [override ?? FIXED_COMMIT]: { body: pristineArchive(override ?? FIXED_COMMIT) },
       })
       const deps = makeDeps({
         cwd: fixture.root,
         tmpRoot,
-        env: fixture.env,
+        env: override === undefined ? fixture.env : { ...fixture.env, CREATE_WXL_COMMIT: override },
         runGit: vi.fn(createSpawnGitRunner()),
         packageVersion: targetVersion,
         source: { version: targetVersion },
@@ -529,7 +537,7 @@ describe('U52: --from <version> resolving to the target commit -> UP-I01, nothin
       expect(exitCode).toBe(0)
       expect(ioHelper.stdoutText).toMatch(/^UP-I01/m)
       const refs = fetchArchive.mock.calls.map((call) => call[1])
-      expect(refs).toContain(tagRef)
+      expect(refs).toEqual([tagRef, override ?? FIXED_COMMIT])
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
       // F06 (amendment 6, stage 6 disposition): only (a) can tell "UP-I01 carries the BASE's own
@@ -626,6 +634,8 @@ describe('U16: --from <version> tag archive comment missing or not 40 lowercase 
       expect(exitCode).toBe(1)
       expect(ioHelper.stderrText).toMatch(/^UP-E08/m)
       expect(ioHelper.stderrText).toContain('v3.1.0')
+      // D18 (T-0061): the remedies are for a base read from range.json only.
+      expect(ioHelper.stderrText).not.toContain('--from <version>')
       expect(afterTmp).toEqual(beforeTmp)
       expect(after).toEqual(before)
     } finally {
@@ -636,6 +646,8 @@ describe('U16: --from <version> tag archive comment missing or not 40 lowercase 
   })
 })
 
+// T-0061 (S7): the base's fixture is keyed by BASE_COMMIT; since J6 the request is for
+// refs/tags/v3.0.0, which `releases` maps to that same fixture (status 404 included).
 describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> the 0005 code, nothing written', () => {
   function brokenEntries(kind) {
     if (kind === 'rule1') {
@@ -668,13 +680,13 @@ describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> th
         fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: which === 'base' ? { status: 404, body: Buffer.alloc(0) } : { body: pristineArchive(BASE_COMMIT) },
           [FIXED_COMMIT]: which === 'target' ? new Error('network down') : { body: pristineArchive(FIXED_COMMIT) },
-        })
+        }, { releases: { ['3.0.0']: BASE_COMMIT } })
       } else {
         const entries = brokenEntries(kind)
         fetchArchive = makeRefFetchArchive({
           [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: which === 'base' ? entries : PRISTINE_FIXTURE }) },
           [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: which === 'target' ? entries : PRISTINE_FIXTURE }) },
-        })
+        }, { releases: { ['3.0.0']: BASE_COMMIT } })
       }
       const deps = makeDeps({
         cwd: fixture.root,
@@ -701,5 +713,135 @@ describe('U15: either archive rejected, hostile, or lacking a P1/P2 marker -> th
       await rm(fixture.env.HOME, { recursive: true, force: true })
       await rm(tmpRoot, { recursive: true, force: true })
     }
+  })
+})
+
+// T-0061 (traceability.md revision 3.1, J6, D11, D18): a base read from range.json is downloaded
+// through its tag too, so UP-E08 and a 404 on that tag download apply to it, now with D18's
+// remedies; `--from <version>` and a network error keep 0005's message without them.
+async function runRecordedBaseCase({ byRef, argv = ['upgrade'], rangeJson }) {
+  const fixture = await makeFixtureRange({ rangeJson })
+  const tmpRoot = await makeTmpRoot('create-wxl-upgrade-tmp-')
+  try {
+    const fetchArchive = makeRefFetchArchive(byRef)
+    const deps = makeDeps({
+      cwd: fixture.root,
+      tmpRoot,
+      env: fixture.env,
+      runGit: vi.fn(createSpawnGitRunner()),
+      packageVersion: '3.2.0',
+      source: { version: '3.2.0' },
+      fetchArchive,
+    })
+    const before = await snapshotTree(fixture.root)
+    const ioHelper = makeIo()
+    const exitCode = await run(argv, ioHelper.io, deps)
+    const after = await snapshotTree(fixture.root)
+    const leftovers = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
+    return { exitCode, ioHelper, before, after, leftovers }
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+    await rm(fixture.env.HOME, { recursive: true, force: true })
+    await rm(tmpRoot, { recursive: true, force: true })
+  }
+}
+
+const RECORDED_BASE = { upstream: { repository: engineModule.UPSTREAM_SLUG, version: '3.1.0', commit: BASE_COMMIT } }
+
+function expectD18Remedies(text) {
+  const version = text.indexOf('--from <version>')
+  const commit = text.indexOf('--from <commit>')
+  const log = text.indexOf('git log -p -- range.json')
+  expect(version).toBeGreaterThan(-1)
+  expect(commit).toBeGreaterThan(version)
+  expect(log).toBeGreaterThan(commit)
+}
+
+describe('U16: a base from range.json whose tag archive comment is missing or not 40 lowercase hex -> UP-E08 with D18\'s remedies', () => {
+  it.each([
+    ['no pax global header', undefined],
+    ['40 characters with one uppercase letter', `${'a'.repeat(39)}B`],
+  ])('%s -> UP-E08 naming v3.1.0, D18\'s remedies in order, not UP-E12; exit 1, nothing written, no temporary entry left', async (_label, comment) => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { body: tagArchive('3.1.0', { comment }) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^UP-E08/m)
+    expect(result.ioHelper.stderrText).toContain('v3.1.0')
+    expect(result.ioHelper.stderrText).not.toContain('UP-E12')
+    expectD18Remedies(result.ioHelper.stderrText)
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+})
+
+describe('U66: the tag download fails (J6)', () => {
+  it('(a) a base from range.json whose version has no tag (status 404) -> CW-E07 naming the URL, with D18\'s remedies in order', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { status: 404, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/refs/tags/v3.1.0`)
+    expectD18Remedies(result.ioHelper.stderrText)
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(b) --from <version> naming a version with no tag (status 404) -> CW-E07 naming the URL, without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      argv: ['upgrade', '--from', '3.1.0'],
+      byRef: { 'refs/tags/v3.1.0': { status: 404, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/refs/tags/v3.1.0`)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(c) a base from range.json whose tag download is rejected (a network error) -> CW-E07 without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': new Error('network down'), [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+})
+
+// T-0061 stage 6 (F10): D18's remedies appear nowhere else -- not for the target's download, and
+// not for a status other than 404 on the tag download (step 7: "any other CW-E07 is 0005's message
+// unchanged").
+describe('D18 remedies appear only where D18 says (T-0061 stage 6, F10)', () => {
+  it('(a) a base from range.json downloads fine, the target returns 404 -> CW-E07 naming the target URL, without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { body: pristineArchive(BASE_COMMIT) }, [FIXED_COMMIT]: { status: 404, body: Buffer.alloc(0) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).toContain(`https://codeload.github.com/${engineModule.UPSTREAM_SLUG}/tar.gz/${FIXED_COMMIT}`)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
+  })
+
+  it('(b) a base from range.json whose tag download returns 500 -> CW-E07 without the remedies', async () => {
+    const result = await runRecordedBaseCase({
+      rangeJson: RECORDED_BASE,
+      byRef: { 'refs/tags/v3.1.0': { status: 500, body: Buffer.alloc(0) }, [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT) } },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.ioHelper.stderrText).toMatch(/^CW-E07/m)
+    expect(result.ioHelper.stderrText).not.toContain('--from <version>')
+    expect(result.after).toEqual(result.before)
+    expect(result.leftovers).toEqual([])
   })
 })

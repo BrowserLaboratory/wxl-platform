@@ -79,7 +79,7 @@ describe('submodule paths (D10, U64)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,

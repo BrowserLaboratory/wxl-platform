@@ -1,15 +1,17 @@
 # Spec 0006: range upgrade — take in a new upstream release
 
-Status: revision 2 (2026-10-16). Round 1 of adversarial review found no P0 (`review/round-1.md`), so
-the stage 3 gate is met; revision 2 applies the round 1 disposition (`review/disposition.md`, groups
-U1–U9) and the user's decisions D1–D2, and by D1 round 2 is not run. `traceability.md` has since
-moved to revision 2.5 (D7 to D10, decided during T-0026 and T-0027); this text names them where they
-change a criterion. Derived from `traceability.md`,
+Status: revision 3.1 (2026-11-10). Round 1 of adversarial review found no P0 (`review/round-1.md`);
+revision 2 applied its disposition (`review/disposition.md`, groups U1–U9) and the user's decisions
+D1–D2, and by D1 round 2 was not run then. Revisions 2.1–2.5 (D7 to D10) came from T-0026 and T-0027.
+Revision 3 applies D11 to D17 from T-0061's stage 1 (the chain analysis's X1–X3 and spec gaps,
+OQ-026, and 0005's rule 3 gap) and was reviewed in round 2 with the frozen prompt, which found no P0 (`review/round-2.md`);
+revision 3.1 applies round 2's disposition (`review/disposition-2.md`, D18 to D20) without another
+round. This text names the decisions where they change a criterion. 0005 is committed, and its matrix revision 2.2 (D13) is part of this revision. Derived from `traceability.md`,
 which holds the fixed lists this spec refers to (decisions in short, vocabulary, command grammar, step
-order, base rules J1–J5, pre-checks P-1–P-8, merge table M4–M12 and the parent check, fork:init-derived
-content, the `range.json` update, codes UP-E01–E11, UP-I01 and UP-A1–A14, the report R1–R5, the stage 8
+order, base rules J1–J6, pre-checks P-1–P-9, merge table M4–M12 and the parent check, fork:init-derived
+content, the `range.json` update, codes UP-E01–E13, UP-I01 and UP-A1–A15, the report R1–R5, the stage 8
 simulation) and the seams 0006-S1 and S2. This epic depends on 0005 (`.proj.specs/0005-create-wxl/`,
-revision 2): it reuses 0005's `run` function, package source record, download, archive entry rules,
+traceability revision 2.2): it reuses 0005's `run` function, package source record, download, archive entry rules,
 pristine processing P1–P4, `range.json` schema, language rule, signal handling, output escaping and
 the CW codes it names.
 
@@ -25,8 +27,8 @@ release, which is what the workshop's maintainer wants to avoid: "後面老師�
 ## Solution
 
 In the range's root, `pnpm range:upgrade` runs the newest `create-wxl`'s upgrade command. It reads
-`range.json` to find the upstream commit the range came from, downloads that commit and the newest
-release, builds both as pristine ranges, and merges what upstream changed into the range three ways:
+`range.json` to find the upstream release the range came from, downloads that release and the newest
+one, builds both as pristine ranges, and merges what upstream changed into the range three ways:
 upstream's change is applied where the teacher did not touch the file; the teacher's version is kept
 where upstream did not touch it; where both changed a text file, git's merge writes the result or
 conflict markers showing the teacher's lines, the old upstream lines and the new ones. Every case it
@@ -35,7 +37,9 @@ collisions, files that became directories — is kept as the teacher's and liste
 files that fork:init writes, the report says to rerun `pnpm fork:init`. Nothing is committed: the
 teacher reviews with `git diff`, resolves what is listed, and commits — or undoes the whole upgrade
 with two git commands. A range without `range.json` (a fork, a clone) can name its base with `--from`,
-from version 3.0.0 on.
+from version 3.0.0 on. A base read from `range.json` must be an upstream release: the upgrade checks
+it through upstream's own tag, so whoever changes `range.json` can name only another upstream release
+as base, never content of their own (B3).
 
 ## User Stories
 
@@ -51,6 +55,8 @@ from version 3.0.0 on.
 10. As a teacher, I want to be told when upstream changed what fork:init configured, so that my deployment settings stay current.
 11. As a teacher, I want messages in Traditional Chinese or English, and an upgrade that needs attention not to look like a failure, so that I understand the result.
 12. As the upstream maintainer, I want the upgrade proven on two real pushed commits with a teacher-style change in between, so that the first real upgrade after the workshop works.
+13. As a teacher who shares a range with co-teachers or accepts pull requests, I want the upgrade to refuse a recorded base that is not an upstream release, so that a changed `range.json` cannot make the merge use, as upstream's, content that is not an upstream release.
+14. As a teacher, I want every file a completed upgrade deleted listed by path, so that I notice a deletion I did not expect.
 
 ## Implementation Decisions
 
@@ -62,13 +68,23 @@ from version 3.0.0 on.
   after `realpath`); the repository has a commit and is clean by a status that lists every untracked
   file and ignores no submodule, with no assume-unchanged or skip-worktree files and no unfinished
   merge, rebase, cherry-pick, revert or bisect.
-- **Base and target.** The base is `range.json`'s `upstream` (J1–J5) or `--from`; the target is the
-  package source record's commit (or 0005's test override, with its warning). No-op, downgrade and the
+- **Base and target.** The base is `range.json`'s `upstream` (J1–J6) or `--from`; the target is the
+  package source record's commit (or 0005's test override, with its warning). A base from
+  `range.json` is downloaded through upstream's tag `v<version>` and must be that tag's commit (J6,
+  D11; ADR-0009), so its version and content are a release's; a `--from <version>` base is its tag's commit by
+  construction, a `--from <commit>` base is not checked against a tag (D17), and neither is the target,
+  whose trust is the package's (B2). When a base from `range.json` is refused with UP-E12 or UP-E08, or its tag
+  download gives CW-E07 for status 404, the message gives D18's remedies in D18's order; the other
+  refusals of `range.json` (UP-E04, UP-E05, UP-E06, UP-E13) do not. Step 5 refuses a `range.json`
+  that is not tracked and that the range's rules ignore (D15), since the restore commands could not
+  undo writing it. No-op, downgrade and the
   3.0.0 minimum are checked before downloading when the base is known, and again after downloading
   when only the archive tells (a `--from <commit>`'s version, a `--from <version>`'s commit from the
   tag archive's pax `comment`). `fetchArchive` receives a ref: a commit, or `refs/tags/v<version>`.
 - **Pristine ranges.** Both archives pass 0005's entry rules and P1–P4 in separate `mkdtemp`
-  directories under `tmpRoot`. Because every base is 3.0.0 or later, both carry 0005's `export-ignore`.
+  directories under `tmpRoot`. Because every base is 3.0.0 or later, both carry 0005's
+  `export-ignore`. 0005's entry rule 3 also rejects the names git treats as `.git` on NTFS and HFS+
+  (D13; 0005 revision 2.2).
 - **Plan, then apply.** Every path in B ∪ T ∪ tracked is decided by the pre-checks and the merge table
   before the first write, including every `git merge-file` run; comparisons normalise CRLF in text
   files. Apply deletes first, then writes each file through a new file renamed into place, then
@@ -76,13 +92,23 @@ from version 3.0.0 on.
   conflict-style setting does not change the output; its exit status distinguishes conflicts (1–127)
   from errors.
 - **Safety rules.** Paths through symbolic links, ignored paths, case- or Unicode-colliding paths and
-  file/directory mismatches are never written; the parent check drops a write blocked by a file the
+  file/directory mismatches are never written, nor is a path whose name on disk differs from p, in
+  itself or a parent (P-9: the native `realpath` of the path, or, when it is absent, of its deepest
+  existing proper ancestor, P-9 not applying when that is the range root; taken relative to the range
+  root's, with `\` turned into `/`, both sides compared after NFC normalisation; D12; this holds on the
+  default file systems CI verifies, APFS on macOS, NTFS on Windows and case-sensitive ext4 on Linux; B4
+  lists the rest), nor a path at or under a submodule (P-8, D10); the parent check drops a write blocked by a file the
   plan does not delete; a clean merge of a `.json` file must still parse.
 - **`range.json`** is excluded from the merge and rewritten after the apply step: `upstream` becomes the
   target, other keys are kept.
-- **Nothing is committed or staged.** Because the tree was clean and ignored paths are untouched,
-  `git clean -fd` then `git checkout -- .` restores `HEAD` exactly; the report says to use them only
-  before other changes.
+- **Nothing is committed or staged.** Because the tree was clean, ignored paths and ignore files
+  are untouched, and step 5 refused an untracked `range.json` that the range ignores (D15),
+  `git checkout -- .` then `git clean -fd` restores `HEAD` exactly, except as B4 lists; `checkout` runs
+  first so that `clean` applies `HEAD`'s ignore rules (D14). The report says to use them only before
+  other changes.
+- **Report.** R2 lists every path the merge deleted after its counts; R4 says, when R3 holds UP-A1, that a conflict
+  block's `|||||||` section is the text of R1's base version; R1 says when a `--from <commit>` base was not
+  checked against an upstream tag (D16, D17).
 - **Exit codes**: 0 when the run completed, with or without attention items (the report lists them;
   pnpm would print a failure for any other code), and for a no-op; 1 on an error; 130 on a signal, including one in step 10, where the report still prints in full
   first (D8).
@@ -91,28 +117,28 @@ from version 3.0.0 on.
 
 | # | Boundary | Protects | Does not protect | Outside the model |
 |---|---|---|---|---|
-| B1 | GitHub archives → the teacher's range | Both archives are chosen by commit (a `--from <version>` through its tag, then pinned by the archive's own `comment`) and pass 0005's entry rules; R1 prints both commits; writes stay inside the range, never pass through a symbolic link in it, never touch an ignored path, and replace files by rename so a hard link's other name is not changed | A tag upstream moves; a `--from` the teacher states wrongly (a base newer than the real one hides upstream's changes in between: R1 shows the base used) | GitHub serving different content for a commit (as 0005 B1) |
+| B1 | GitHub archives → the teacher's range | Both archives are chosen by commit (a base from `range.json` or a `--from <version>` through its tag, then pinned by the archive's own `comment`) and pass 0005's entry rules, which include git's NTFS and HFS+ aliases of `.git` (D13); a tag moved or deleted after a range was made stops that range's upgrade from `range.json` (UP-E12, or CW-E07 for a deleted tag) instead of changing its base; R1 prints both commits; writes stay inside the range, never pass through a symbolic link in it, never touch an ignored path or a path whose name on disk differs from p (P-9; B4 lists the limits of P-9), and replace files by rename so a hard link's other name is not changed | A tag upstream moves, for a `--from <version>` base: the tag as it is now decides the base (R1 prints it); a `--from <commit>` makes that commit's content the base, whoever suggested it: with b chosen to equal o, M5 replaces a teacher's changed file with t, M6 deletes a teacher's file, a clean M12 drops chosen lines, and a conflict block's `\|\|\|\|\|\|\|` section holds that commit's text; R1 says the base was not checked against a tag (D17); a `--from` the teacher states wrongly (a base newer than the real one hides upstream's changes in between: R1 shows the base used) | GitHub serving different content for a commit (as 0005 B1) |
 | B2 | npm registry → the teacher's machine | As 0005 B2; `npx --yes` runs the newest `create-wxl` without a prompt by design (R4); R1 prints the running version | The teacher runs whatever `create-wxl@latest` is at that moment, possibly a cached one | A compromised npm account or registry |
-| B3 | `range.json` (in the teacher's repository) → the upgrade | `lstat` refuses a link or non-file (J1); content validated (J3, J4); another repository refused (J5); the base is printed (R1) | Anyone who can change `range.json` in the teacher's repository (a co-teacher, a merged pull request) can pick another valid upstream or fork-network commit as base, making the upgrade skip upstream changes in between | — |
-| B4 | The upgrade → the teacher's repository and work | Refuses an unclean or mid-operation repository; reads status without optional locks; never commits, stages, or changes refs; keeps the teacher's content in every case it cannot settle and lists it; the restore commands undo every change it made | Conflict markers written into text files until resolved; a clean text merge that is semantically wrong (only `.json` parsing is checked); the restore commands, run after later edits, discard those edits too (R5 warns) | Another process changing the range during the run |
+| B3 | `range.json` (in the teacher's repository) → the upgrade | `lstat` refuses a link or non-file (J1); content validated (J3, J4); another repository refused (J5); the commit must be the commit of upstream's tag for the version, which a fork cannot supply (J6, ADR-0009); an untracked `range.json` that the range ignores is refused (D15); the base is printed (R1) | Anyone who can change `range.json` in the teacher's repository (a co-teacher, a merged pull request) can name another upstream release, up to the target (UP-E07), as base: one newer than the release the range came from skips upstream's changes in between (as a wrong `--from` does in B1); an older one re-merges changes the range already has, giving more conflicts and attention items; a version equal to the target's (UP-I01) or above it (UP-E07) ends the run before any download, so the range can be held back from upstream's releases without an error; R1 shows the base used | — |
+| B4 | The upgrade → the teacher's repository and work | Refuses an unclean or mid-operation repository; reads status without optional locks; never commits, stages, or changes refs; never writes or deletes a merge path whose name on disk differs from p (P-9; `range.json` is kept out of the merge by P-1 and read and written by its literal name); keeps the teacher's content in every case it cannot settle and lists it; lists every file a completed run deleted (R2); the restore commands undo every change it made, except as this row's Does not protect lists (D14, D15) | Conflict markers written into text files until resolved; a clean text merge that is semantically wrong (only `.json` parsing is checked); the restore commands, run after later edits, discard those edits too (R5 warns); on a file system whose `realpath` does not report the stored name (a case-insensitive Linux file system such as ext4 casefold, and Linux's view of NTFS, vfat or CIFS, as in WSL's `/mnt/c` or a mounted share), P-9 may miss a short-name or letter-case alias, and other volumes on macOS and Windows (SMB, exFAT) are not verified; on a case-insensitive file system, a tracked letter-case variant of `range.json` (such as `Range.json`) may be read by J1 as the record and rewritten by step 9, and D15's case-sensitive `git ls-files -- ./range.json` may report it untracked (inferred, not measured; J6 still requires a release base); P-5 and D15 count the teacher's `.git/info/exclude` and global `core.excludesFile` as the range's rules; the restore commands run in the teacher's own shell, which reads the system and global git configuration that the upgrade's own git commands do not (for example `core.autocrlf` in Git for Windows' system configuration) | Another process changing the range during the run; upstream itself shipping names that the file system resolves to one another or to an ignore file that does not exist yet, or special names such as an NTFS stream or a reserved device name (B2's trust) |
 | B5 | Terminal output → the teacher's terminal | As 0005 B5: outside values escaped | — | — |
 | B6 | Deployed range → learners | Unchanged: nothing the upgrade writes is deployed until the teacher commits and pushes | — | — |
 
 ## Acceptance Criteria
 
 - **AC-1** The grammar accepts `upgrade` with `--from <X.Y.Z>`, `--from <40 hex>` and `--lang` on either side; any other `--from`, a missing value, another positional, an unknown, repeated or create-only flag ends with CW-E02 naming it, exit 1, nothing written. (U01, U02)
-- **AC-2** Each failed precondition ends before any download with exit 1 and nothing written: outside the top level → UP-E01 (a symbolic-linked path to the root is accepted); git missing or older than 2.20 → UP-E02; not clean → UP-E03 with the token of `traceability.md`, whatever the user's `status.showUntrackedFiles`. (U03–U05)
-- **AC-3** The base follows `--from` when given and `range.json` otherwise; `--from <commit>`'s version comes from the base archive's manifest and appears in R1; J1–J5 failures give the codes and tokens of `traceability.md`; with `--from`, only J1 and J3 apply; repository comparison ignores ASCII case; each failure exits 1 with nothing written. (U06–U11)
-- **AC-4** Equal commits, or equal versions without `CREATE_WXL_COMMIT`, give UP-I01 with exit 0 and nothing written, before any download when the base is known and right after downloading otherwise; a base version above the target's gives UP-E07 and one below 3.0.0 gives UP-E10, at the same points; a rerun after a completed, committed upgrade gives UP-I01. (U12–U14, U50–U52, U61)
-- **AC-5** A failed, hostile or unprocessable archive ends with 0005's code, and a tag archive without a 40-hex `comment` with UP-E08; each exits 1 with nothing written in the range and no `create-wxl-upgrade-` entry under `tmpRoot`. (U15, U16)
-- **AC-6** In one run whose fixture has one path for every branch of P-2 and M4–M12, each path ends as its row states and R2 and R3 report exactly those; a clean M12 merge is written, an overlapping one carries the four marker lines with the three labels whatever `merge.conflictStyle` says; teacher-own files are untouched and unreported; a new executable file is written 0755; case-only renames give UP-A8; a file replaced by a directory works and the reverse gives UP-A10, as does a write blocked by a kept file; CRLF-only differences count as equal; `merge-file` exiting 255 gives UP-E11 with nothing written; an unparsable clean `.json` merge keeps the range's file with UP-A11. (U17–U19, U21, U23, U53–U58)
+- **AC-2** Each failed precondition ends before any download with exit 1 and nothing written: outside the top level → UP-E01 (a symbolic-linked path to the root is accepted); git missing or older than 2.20 → UP-E02; not clean → UP-E03 with the token of `traceability.md`, whatever the user's `status.showUntrackedFiles`; a `range.json` that is not tracked and that the range's rules ignore → UP-E13, with or without `--from`, and `git ls-files` exiting other than 0, `git check-ignore` exiting other than 0 or 1, or `runGit` rejecting for either → CW-E14 naming the command (D15); this check follows J1–J5 and precedes step 6, so a symbolic link is UP-E06 and an equal commit is still UP-E13; a git command of step 4 exiting outside its documented codes (so not `git rev-parse --verify HEAD`'s UP-E03 `no-head`), or rejected by `runGit` → CW-E14 naming it (D19). (U03–U05, U67, U74)
+- **AC-3** The base follows `--from` when given and `range.json` otherwise; `--from <commit>`'s version comes from the base archive's manifest and appears in R1; J1–J6 failures give the codes and tokens of `traceability.md`; with `--from`, only J1 and J3 apply; repository comparison ignores ASCII case; a base from `range.json` is downloaded through tag `v<version>` and its archive must name `upstream.commit`, else UP-E12 (J6), while a `--from <version>` base is its tag's commit by construction and a `--from <commit>` base is not checked against a tag (D11, D17); each failure exits 1 with nothing written. (U06–U11, U65)
+- **AC-4** Equal commits, or equal versions without `CREATE_WXL_COMMIT`, give UP-I01 with exit 0 and nothing written, before any download when the base is known and, otherwise, after step 7 has downloaded and validated both archives; a base version above the target's gives UP-E07 and one below 3.0.0 gives UP-E10, at the same points; a rerun after a completed, committed upgrade gives UP-I01. (U12–U14, U50–U52, U61)
+- **AC-5** A failed, hostile or unprocessable archive ends with 0005's code, and a tag archive whose pax `comment` is absent or not 40 lowercase hex with UP-E08, for a `--from <version>` base and a base from `range.json` alike, before UP-E12 and before every other entry rule; a missing tag for a base from `range.json` with CW-E07; an entry with a component git treats as `.git` on NTFS or HFS+ with CW-E08, while `PLATFO~1` and `GITIGN~1` are accepted (D13); each exits 1 with nothing written in the range and no `create-wxl-upgrade-` entry under `tmpRoot`. (U15, U16, U66, U73)
+- **AC-6** In one run whose fixture has one path for every branch of P-2 and M4–M12, each path ends as its row states and R2 and R3 report exactly those; a clean M12 merge is written, an overlapping one carries the four marker lines with the three labels whatever `merge.conflictStyle` says; teacher-own files are untouched and unreported; a new executable file is written 0755; case-only renames give UP-A8; a file replaced by a directory works and the reverse gives UP-A10, as does a write blocked by a kept file; CRLF-only differences count as equal; `merge-file` exiting 255 gives UP-E11 with nothing written; an unparsable clean `.json` merge keeps the range's file with UP-A11; a path whose name on disk differs from p, in itself or a parent, is untouched with UP-A15, while a range root reached through a symbolic link, a name equal after NFC or a `\`-separated `realpath` result is not reported, and an `lstat` error other than ENOENT or ENOTDIR, or a rejection of the native `realpath`, gives UP-E11 naming p (D12); a path that is a submodule or lies under one is untouched with UP-A14, and after the run the status has no line for the submodule (D10); a read error of o, or `git merge-file` exiting outside 0–127 or rejected by `runGit`, gives UP-E11, and another git command of step 8 exiting outside its documented codes or rejected by `runGit` gives CW-E14 naming it (D19); after every run `HEAD` is as before and `git diff --cached` is empty. (U17–U19, U21, U23, U53–U58, U64, U68, U69, U74, U75)
 - **AC-7** A path that is or passes through a symbolic link (tracked or ignored) is untouched and reported UP-A7 and the link's outside target keeps its content and modification time; a hard-linked tracked file written by M5 leaves its outside name unchanged. (U20, U60)
-- **AC-8** An ignored file at a path upstream changes, and a path upstream adds that the range ignores, are untouched and reported UP-A9. A `.gitignore` upstream changes is untouched and reported UP-A13, so the set of ignored paths does not change (D9). (U22, U63)
-- **AC-9** After a completed run, `range.json`'s `upstream` equals the target's repository, version and commit, other top-level keys are deep-equal and in their order, a missing file is created; after UP-E09 it is unchanged. (U24)
-- **AC-10** A completed run exits 0 whether or not attention items exist; the report prints R1–R5 by id in order and in the run's language, R2's counts equal the paths so classified, R3 lists every attention item with its code, UP-A12 appears exactly when an anchor file has b ≢ t; every UP code exists in both message tables; paths are escaped. (U25, U26, U59, U62)
-- **AC-11** A write failure or a signal in step 9 prints UP-E09 with the path or signal and the restore commands (exit 1, or 130 for a signal); a signal in step 7 writes nothing (exit 130); no temporary directory is left; after a completed or a failed run, `git clean -fd && git checkout -- .` gives an empty porcelain status, `HEAD`'s files, and ignored files byte-identical to before the run. (U27–U29)
-- **AC-12** The upstream manifest's `range:upgrade` is exactly `npx --yes create-wxl@latest upgrade`; `create-wxl upgrade` takes the upgrade path and `create-wxl <dir>` behaves as 0005 specifies (0005's tests other than C02's `upgrade` cases unchanged and passing). (U30, U31)
-- **AC-13** Stage 8 (0006-S2): the simulation of `traceability.md` produces exactly the listed results on the pushed commits A and B, and the simulation branch is deleted afterwards. (U32)
+- **AC-8** An ignored file at a path upstream changes, and a path upstream adds that the range ignores, are untouched and reported UP-A9. A `.gitignore` upstream adds, changes or deletes is untouched and reported UP-A13, and no merge path whose name on disk differs from p is written or deleted (P-9; D9, D12). On the default file systems CI verifies (APFS on macOS, NTFS on Windows, case-sensitive ext4 on Linux), `git ls-files --others --ignored --exclude-standard` lists the same paths before and after the run, except as B4 lists. (U22, U63, U68)
+- **AC-9** After a completed run, `range.json`'s `upstream` equals the target's repository, version and commit, other top-level keys are deep-equal and in their order, a missing file is created, and a top-level `__proto__` key is kept; after UP-E09 for a write failure it is unchanged. (U24)
+- **AC-10** A completed run (step 9 finished, D20) exits 0 whether or not attention items exist, unless a signal arrives in step 10, which prints R1–R5 in full and exits 130 (D8); the report prints R1–R5 by id in order and in the run's language, R2's counts equal the paths so classified, R3 lists every attention item with its code, UP-A12 appears exactly when an anchor file has b ≢ t; R1 says when a `--from <commit>` base was not checked against an upstream tag; R2 lists every M6 path after its counts; R4 says, when R3 holds UP-A1, that the `|||||||` section is the base version's text; R5 names `git checkout -- .` before `git clean -fd` (D14, D16, D17); the R1, R2 and R4 additions appear in both languages, and R4's `pnpm install` and `v*` tag lines appear exactly under their conditions; every UP code exists in both message tables; paths are escaped. (U25, U26, U59, U62, U71, U72, U76)
+- **AC-11** A write failure or a signal in step 9 prints UP-E09 with the path or signal and the restore commands, `git checkout -- .` before `git clean -fd` (exit 1, or 130 for a signal); a signal in step 7 writes nothing (exit 130); a signal in step 10 prints R1–R5 in full, then exits 130 (D8); no temporary directory is left; after a completed or a failed run, `git checkout -- . && git clean -fd` gives an empty porcelain status, `HEAD`'s files, and ignored files byte-identical to before the run; on a tree built from a commit by deleting or changing a tracked ignore file, or by replacing a tracked file with an untracked directory, the same commands give an empty porcelain status, `HEAD`'s files, and every file that `HEAD`'s ignore rules ignore byte-identical to before the commands (D14). (U27–U29, U70)
+- **AC-12** The upstream manifest's `range:upgrade` is exactly `npx --yes create-wxl@latest upgrade`; `create-wxl upgrade` takes the upgrade path and `create-wxl <dir>` behaves as 0005 revision 2.2 specifies (0005's tests pass unchanged, with three exceptions: C02's `upgrade` cases change as AC-1 specifies; the rule-3 cases revision 2.2 adds to C18, with the new row C71 (D13), are added and pass; and the assertion in `upstream-config.test.mjs` that pins the GLOSSARY sentence for the setup record changes with that sentence, which says the upgrade writes the record too). (U30, U31)
+- **AC-13** Stage 8 (0006-S2): the simulation of `traceability.md` produces exactly the listed results on the pushed commits A and B, the UP-E12 refusal before `--from <A>` and the upgrade without `--from` of a range made by create-wxl 3.0.0 included, and the simulation branch is deleted afterwards. (U32)
 
 ## Testing Decisions
 
@@ -120,19 +146,37 @@ from version 3.0.0 on.
   message id, code and named path) at seam 0006-S1, with real git in temporary repositories whose
   global configuration is isolated, and fixture archives built as in 0005 (entry lists, raw headers,
   pax `comment`); no test reaches the network.
-- One fixture covers every branch of the pre-checks and merge table at once (U17), so a branch cannot
-  be satisfied by another's behaviour; the restore check (U29) runs after it.
+- One fixture covers P-2 and every row of the merge table at once (U17), so a branch cannot be
+  satisfied by another's behaviour; the other pre-checks have rows of their own (P-9: U68, U69); the
+  restore check (U29) runs after U17.
 - Tests that need symbolic links or the executable bit skip on Windows; the cross-OS job still runs the
   rest there.
+- Tests that build `range.json` serve its base as a tag archive whose `comment` is the recorded commit
+  (J6).
+- P-9 is tested with a wrapped `deps.fs` that maps an alias to its entry in every function (`lstat`,
+  `realpath`, reads and `unlink` included) for names CI file systems are not known to produce, or
+  produce on one runner only (Windows 8.3 short names, an HFS+ NFD form of an NFC name, `\`-separated
+  `realpath` results), and with the real file system for letter case in a parent directory, run only
+  on macOS or Windows on a case-insensitive file system. Whether a Windows runner can give a file a
+  short name (`fsutil file setshortname`) is checked at stage 5; when it can, a Windows-only test runs
+  the real case; when it cannot, the ticket's coverage report records the real 8.3 case as not
+  verified.
+- The restore order is tested on trees the test builds from a commit (U70), since the upgrade itself
+  can no longer leave a missing or changed ignore file. Stage 5 also runs U70 once with git 2.20, the
+  floor of step 3, and records the version and result in the ticket's coverage report; if it fails, D14
+  and step 3's floor go back to the user through a spec revision before the ticket closes.
 - Prior art: 0005-S1's tests (same function and fixtures), `tests/unit/scripts/fork-init.test.ts`.
+- Stage 8 also upgrades, without `--from`, a range made by the published create-wxl 3.0.0, whose
+  `range.json` records a release, so J6's passing path runs against the real tag (W5).
 - Stage 8 is a terminal run against two pushed commits (R10), the surface where an upgrade runs: an
-  explicit override of the preview-deployment rule, recorded with 0005's under OQ-017. `pnpm
+  explicit override of the preview-deployment rule, recorded with 0005's under OQ-022. `pnpm
   range:upgrade` through the registry cannot run before publishing; the user checks it after
   publishing, with 0005's `npm create` check (OQ-021).
 
 ## Out of Scope
 
-- Inferring the base from a fork's git history (E5); bases older than 3.0.0.
+- Inferring the base from a fork's git history (E5); bases older than 3.0.0; checking a
+  `--from <commit>` base against upstream's tags or history (D17).
 - Migrations beyond the three-way merge (transforming a teacher's own challenges when a format
   changes): added to create-wxl when the first format change needs one, since the newest code always
   runs (R4).
@@ -156,3 +200,6 @@ from version 3.0.0 on.
   script (0005), and ranges created at the workshop gain it from their first upgrade, which a teacher
   starts with `npx create-wxl@latest upgrade`.
 - This epic supersedes 0004's plan of 0006 as the setup record epic (OQ-020).
+- ADR-0008 commits the upgrade to move the old locale layout, in the teacher's range and in the base
+  pristine range, before it merges. The layout epic (OQ-024) will revise step 8's "nothing is
+  written", the anchor files and AC-6 to do so; this revision does not.

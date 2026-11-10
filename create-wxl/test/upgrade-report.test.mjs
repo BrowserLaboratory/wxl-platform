@@ -80,7 +80,7 @@ async function runUpgradeAgainst(fixture, argv = ['upgrade']) {
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
@@ -192,7 +192,7 @@ describe('anchor file changes add UP-A12 (U59)', () => {
       const fetchArchive = makeRefFetchArchive({
         [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: baseEntries }) },
         [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: targetEntries }) },
-      })
+      }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
       const deps = makeDeps({
         cwd: rangeRepo.root,
         tmpRoot,
@@ -426,6 +426,43 @@ describe('ANSI escape in a target path (U62)', () => {
       expect(result.ioHelper.stdoutText).toBe('')
     } finally {
       await cleanupFixture(fixture, tmpRoot)
+    }
+  })
+})
+
+// U71 (traceability.md revision 3.1, D17; T-0061): R1 says when a `--from <commit>` base was not
+// checked against an upstream tag; a `--from <version>` base (its tag's commit) and a base read
+// from range.json (J6) are checked, so R1 says nothing there. Both languages.
+describe('R1 marks a --from <commit> base as not checked against an upstream tag (U71)', () => {
+  const NOT_CHECKED = { en: 'not checked against an upstream tag', 'zh-TW': '沒有比對上游的 tag' }
+
+  async function r1For(argv) {
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: rangeJsonFor(BASE_COMMIT) })
+    let tmpRoot
+    try {
+      const result = await runUpgradeAgainst(fixture, argv)
+      tmpRoot = result.tmpRoot
+      expect(result.exitCode).toBe(0)
+      return result.ioHelper.stdoutText.split('\n').find((line) => line.startsWith('R1:'))
+    } finally {
+      await cleanupFixture(fixture, tmpRoot)
+    }
+  }
+
+  it.each([
+    ['--from <commit>, en -> present', ['upgrade', '--from', BASE_COMMIT], 'en', true],
+    ['--from <commit>, zh-TW -> present', ['--lang', 'zh-TW', 'upgrade', '--from', BASE_COMMIT], 'zh-TW', true],
+    ['--from <version>, en -> absent', ['upgrade', '--from', BASE_VERSION], 'en', false],
+    ['--from <version>, zh-TW -> absent', ['--lang', 'zh-TW', 'upgrade', '--from', BASE_VERSION], 'zh-TW', false],
+    ['range.json, en -> absent', ['upgrade'], 'en', false],
+    ['range.json, zh-TW -> absent', ['--lang', 'zh-TW', 'upgrade'], 'zh-TW', false],
+  ])('%s', async (_label, argv, lang, present) => {
+    const r1 = await r1For(argv)
+    expect(r1).toBeDefined()
+    if (present) expect(r1).toContain(NOT_CHECKED[lang])
+    else {
+      expect(r1).not.toContain(NOT_CHECKED.en)
+      expect(r1).not.toContain(NOT_CHECKED['zh-TW'])
     }
   })
 })

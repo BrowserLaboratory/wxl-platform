@@ -798,7 +798,7 @@ above, read "the settings-half epic" and "the setup-page epic".
 primary locale, as a top-level `"primaryLocale"` key in `range.json` (absent means `zh-TW`). The
 primary-locale layout epic reads it at build time, and the upgrade writes `"primaryLocale": "en"`
 when it moves a range off the old layout; 0006 already keeps every key other than `upstream`
-(`.proj.specs/0006-range-upgrade/traceability.md:254`, U24). The epic after it lets fork:init write a
+(`.proj.specs/0006-range-upgrade/traceability.md` "`range.json` after the plan", U24). The epic after it lets fork:init write a
 `range.json` holding only that key, which revises 0005's R2 ("fork:init never does") and makes
 `upstream` optional. Every other setting stays with this entry. Decisions R4, R11 and R13 of
 `.proj.research/2026-11-02-primary-locale-grill.md` (local, not committed).
@@ -1054,4 +1054,11 @@ is untracked and ignored (a new code); or keep writing it and say in R5 that an 
 **Not blocked.** T-0027 and the epic's close-out.
 
 **Revisit when.** A teacher reports it, or the next epic that changes the upgrade's steps.
+
+**Decided on 2026-11-10 (epic 0006 revision 3, decision D15); closes when T-0061 lands.** The user chose the first
+option in T-0061's stage 1 interview: step 5 refuses, before any download and with or without
+`--from`, a `range.json` that is not tracked and that the range's rules ignore (UP-E13; matrix row
+U67). Reproduced on a terminal during that stage (`.proj.research/2026-11-09-t0061-stage1-facts.md`,
+scenarios S8a and S8b): no order of the restore commands restores or removes such a file. At T-0061's
+close-out, set the status to resolved and record the verifying evidence here.
 

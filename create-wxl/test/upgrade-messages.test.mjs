@@ -191,6 +191,10 @@ describe('every UP-* message starts with its own code', () => {
     'UP-A13': {},
     // D10: added at the increment that adds the code (U64, P-8, a submodule path).
     'UP-A14': {},
+    // T-0061 (J6, D11, D18): added at the increment that adds the code (U65).
+    'UP-E12': { version: '3.0.0', recordedCommit: '1'.repeat(40), tagCommit: 'a'.repeat(40) },
+    // T-0061 (D15): added at the increment that adds the code (U67).
+    'UP-E13': {},
   }
 
   it('every UP-* id is present in both tables and its text starts with its own code', () => {
@@ -286,5 +290,70 @@ describe('report line text (R1, R2, R4, R5) exists in both languages and differs
     // R1 names the commit in both languages.
     expect(linesFor(reportEn, 'R1:')[0]).toContain('commit')
     expect(linesFor(reportZh, 'R1:')[0]).toContain('commit')
+  })
+})
+
+// T-0061 stage 6 (F5, F6, F7, F8, F16, B8, B9; traceability.md revision 3.2 D18): the content of the
+// messages T-0061 adds or extends, in both languages, beyond "begins with its code".
+describe('T-0061 message content: UP-E12, UP-E13, and the remedies of UP-E08 and CW-E07', () => {
+  const REMEDY_ORDER = ['--from <version>', '--from <commit>', 'git log -p -- range.json']
+  function expectRemediesInOrder(text) {
+    const at = REMEDY_ORDER.map((needle) => text.indexOf(needle))
+    expect(at[0]).toBeGreaterThan(-1)
+    expect(at[1]).toBeGreaterThan(at[0])
+    expect(at[2]).toBeGreaterThan(at[1])
+  }
+  const E12 = { version: '3.0.0', recordedCommit: '1'.repeat(40), tagCommit: 'a'.repeat(40) }
+
+  it('UP-E12 says the recorded commit is not a release, names a package packed at a commit other than its version\'s tag, and gives the remedies in order (en, zh-TW)', () => {
+    const enText = en['UP-E12'](E12)
+    const zhText = zhTW['UP-E12'](E12)
+    expect(enText).toContain('is not a release')
+    expect(enText).toContain("other than its version's tag")
+    expect(enText).toContain('the setup record')
+    expect(zhText).toContain('不是發布版')
+    expect(zhText).toContain('不是該版本 tag 的 commit')
+    expect(zhText).toContain('設定紀錄')
+    expectRemediesInOrder(enText)
+    expectRemediesInOrder(zhText)
+  })
+
+  it('UP-E08 with remedies says the recorded commit could not be checked against its tag, not that it is not a release; without remedies it names no --from (en, zh-TW)', () => {
+    for (const [table, checked, notRelease, unread] of [
+      [en, 'could not be checked against its tag', 'is not a release', 'the commit the tag names could not be read'],
+      [zhTW, '沒辦法經由它的 tag 驗證', '不是發布版', '讀不到 tag 指向的 commit'],
+    ]) {
+      const withRemedies = table['UP-E08']({ tag: 'v3.0.0', remedies: true })
+      expect(withRemedies).toContain(checked)
+      expect(withRemedies).not.toContain(notRelease)
+      expect(withRemedies).toContain(unread)
+      expectRemediesInOrder(withRemedies)
+      expect(table['UP-E08']({ tag: 'v3.0.0' })).not.toContain('--from')
+    }
+  })
+
+  it('CW-E07 with remedies says the recorded commit could not be checked against its tag; without remedies it is 0005\'s message (en, zh-TW)', () => {
+    const args = { url: 'https://codeload.github.com/x/y/tar.gz/refs/tags/v3.0.0', detail: { kind: 'status', status: 404 } }
+    for (const [table, checked, notRelease] of [
+      [en, 'could not be checked against its tag', 'is not a release'],
+      [zhTW, '沒辦法經由它的 tag 驗證', '不是發布版'],
+    ]) {
+      const withRemedies = table['CW-E07']({ ...args, remedies: true })
+      expect(withRemedies).toContain(checked)
+      expect(withRemedies).not.toContain(notRelease)
+      expectRemediesInOrder(withRemedies)
+      expect(table['CW-E07'](args)).not.toContain('--from')
+    }
+  })
+
+  it('UP-E13 names the three places a rule can be, both remedies, and the letter-case rename with Range.json as the example; zh-TW says 被追蹤, never "tracked"', () => {
+    for (const table of [en, zhTW]) {
+      const text = table['UP-E13']()
+      for (const needle of ['.git/info/exclude', 'core.excludesFile', 'git add -f -- range.json', 'git mv', 'Range.json']) {
+        expect(text).toContain(needle)
+      }
+    }
+    expect(zhTW['UP-E13']()).not.toContain('tracked')
+    expect(zhTW['UP-E13']()).toContain('被追蹤')
   })
 })

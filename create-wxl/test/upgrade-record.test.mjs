@@ -30,7 +30,7 @@ async function runUpgradeAgainst(fixture, argv = ['upgrade'], depsOverrides = {}
   const fetchArchive = makeRefFetchArchive({
     [BASE_COMMIT]: { body: pristineArchive(BASE_COMMIT, { entries: fixture.baseEntries }) },
     [FIXED_COMMIT]: { body: pristineArchive(FIXED_COMMIT, { entries: fixture.targetEntries }) },
-  })
+  }, { releases: { [BASE_VERSION]: BASE_COMMIT } })
   const deps = makeDeps({
     cwd: fixture.root,
     tmpRoot,
