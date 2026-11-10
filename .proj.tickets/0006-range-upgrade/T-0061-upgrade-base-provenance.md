@@ -1,6 +1,6 @@
 ---
 id: T-0061
-title: Upgrade base provenance and on-disk name aliases
+title: Upgrade base provenance
 epic: 0006-range-upgrade
 status: processing
 blocked_by: []
@@ -28,32 +28,34 @@ tracked files are recoverable (X3 excepted), and deploying needs the teacher's o
 
 ## Deliverable
 
-A teacher's upgrade cannot be steered by a base that is not upstream's without the teacher being told,
-and no merge path whose on-disk name differs from p (8.3 short names, HFS+ ignorable code points,
-case) is written or deleted, except where spec B4 says P-9 may miss a letter-case alias;
-`range.json` is read and written by its literal name.
+A base read from `range.json` is downloaded through upstream's tag and must be that release's commit,
+so a changed record cannot hand the merge content that is not upstream's without the upgrade stopping
+(UP-E12) and telling the teacher what to do (D18). An untracked `range.json` that the range ignores is
+refused before anything is written (UP-E13). A `--from <commit>` base is marked in R1 as not checked.
+Git failures in steps 4 and 5 are CW-E14 naming the command.
+
+This ticket is the first of three after stage 4 (2026-11-10): the on-disk name aliases and the `.git`
+alias rule moved to T-0062, the restore order, the report additions and the stage 8 simulation to
+T-0063. Chains X1 and X2 close here; X3 closes in T-0062 and T-0063.
 
 ## Acceptance criteria
 
-To be traced to rows of a revised `traceability.md` after stage 1. Options recorded by the chain
-analysis, for that stage to decide:
+Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1 and `traceability.md` revision 3.1.
+Decisions D11, D15, D17, D18, and D19 for steps 4 and 5.
 
-- Bind `range.json`'s commit to an upstream tag: download `refs/tags/v<upstream.version>` and require
-  its pax `comment` to equal `upstream.commit` (a fork cannot supply a tag in upstream's namespace);
-  also closes F25. On a mismatch: refuse with a new code, or require `--from` to confirm.
-- A general alias pre-check before o is read: `fs.realpath.native` of an existing o must end in p's
-  own last component; otherwise the path is untouched and reported. Also closes the `.git` alias
-  writes (security-T-0027 candidates 01/14).
-- R5's order: `git checkout -- .` before `git clean -fd`, so the clean applies HEAD's ignore rules
-  (changes D2 ⑭).
-- List M6's deletions of files that exist in the range; R4 says the `|||||||` section is the base's.
-- Correct spec gaps 1-3 of the chain analysis (B3's "Does not protect", the self-check's "the base's
-  lines are upstream's", AC-8 and D9's name-level guarantee), and decide whether a teacher running
-  `--from <commit>` on someone's advice is inside the model.
+- **Prefactor first:** every test that builds a `range.json` base serves it as a tag archive whose
+  `comment` is the recorded commit (spec Testing Decisions), and the seam isolates `HOME` and
+  `XDG_CONFIG_HOME` as 0005-S1 does (W3); the suite stays green before J6 lands.
+- Rows: U06, U16, U51, U52, U65, U66, U67, U71, and U74's step 4 case.
+- ACs reached: AC-2 (U67, U74), AC-3 (U06, U65), AC-4 (U51, U52), AC-5 (U16, U66), AC-10 (U71).
+- Stage 8: a terminal run of the packed package (0006-S2): UP-E12 with D18's remedies against the
+  real tag `v3.0.0` for a range whose `range.json` names another commit, and the upgrade without
+  `--from` of a range made by the published `create-wxl@3.0.0` (the simulation's steps 5–6). The full
+  simulation (U32) runs in T-0063.
 
 ## 給使用者（zh-TW）
 
-epic 0006 串連分析開出的後續票。能改 `range.json` 的人（共同授課老師、被合併的 PR），可以把 base 指向 fork network 裡自己做的 commit。這樣一來，升級可能把老師的修改蓋掉、刪掉老師的檔案，或在衝突區塊放進他寫的文字；在 Windows 上，還能藉 8.3 短檔名刪掉 `.gitignore`，之後的還原指令會刪掉老師被 ignore 的檔案。嚴重度低，要部署出去仍須老師自己 commit、push。修法（base 要和上游 tag 綁定、讀檔前確認磁碟上的實際檔名、調整還原指令順序等）都牽涉 spec 決策，要先回到第 1 階段。
+epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第一張。能改 `range.json` 的人（共同授課老師、被合併的 PR），原本可以把 base 指向 fork network 裡自己做的 commit，讓升級蓋掉老師的修改、刪掉老師的檔案，或在衝突區塊放進他寫的文字。這張票讓 `range.json` 記錄的 base 一律經由上游的 tag 下載，對不上就以 UP-E12 停下，並依序建議老師怎麼補救；被 ignore 的 `range.json` 在下載前就以 UP-E13 拒絕；用 `--from <commit>` 指定的 base，報告會標明沒有比對上游 tag。磁碟上的檔名別名交給 T-0062，還原指令順序與報告的新內容交給 T-0063。
 
 ## Comments
 
@@ -80,3 +82,9 @@ epic 0006 串連分析開出的後續票。能改 `range.json` 的人（共同�
   Carried into stage 5: change the GLOSSARY setup record sentence ("目前只有建立靶場的指令會寫入它")
   together with its assertion in `upstream-config.test.mjs` (W4); fix `range.json`'s `__proto__` key
   in `merge-apply.mjs` (R-6, U24); check which code step 9 prints for a bug (K-5).
+- 2026-11-10, stage 4: the user approved splitting the work into T-0061 (this ticket, base
+  provenance), T-0062 (on-disk name aliases, `.git` alias rule, step 8 git failures) and T-0063
+  (restore order, report additions, stage 8 simulation). The title, file name and branch were
+  shortened to `upgrade-base-provenance` (the branch had not been pushed). Items carried to stage 5
+  above go to the ticket that owns them: the GLOSSARY sentence, `__proto__` and step 9's bug code to
+  T-0063; the stale comments to the ticket that changes each file.
