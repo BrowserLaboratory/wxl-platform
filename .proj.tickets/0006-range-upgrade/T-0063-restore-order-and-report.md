@@ -141,7 +141,15 @@ seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mj
     - F2: a signal after `range.json`'s rename is reported as UP-E09, though step 9 finished.
       This is earlier behaviour that this diff did not change; step 9 reads as checking the guard
       after that write too.
-  - For the user (F9, inferred from git's checkout code, not measured): an ignored file inside a
+  - For the user (F9; measured after the review with git 2.54.0 in a temporary repository: `HEAD`
+    with `.gitignore` `*.local` and a file `a`; `a` replaced by a directory holding `a/x` and the
+    ignored `a/y.local`; `git checkout -- .` exited 0 and left the file `a`, without `a/y.local`): an ignored file inside a
     directory that stands where a tracked file goes (`a/y.local` where `HEAD` has a file `a`) is
     removed by `git checkout -- .` whatever the order, since git must remove the directory. AC-11
     and B4 do not list this case. A spec revision could add it to B4's Does not protect.
+- 2026-11-10, stage 7: project security review (`.claude/skills/security-review/SKILL.md`), report
+  `.proj.specs/0006-range-upgrade/review/security-T-0063.md`. 8 candidates, every one judged a
+  false positive by an independent reviewer (each an accepted risk in B1, B4 or B5, or behaviour that
+  traceability R2, R4 and R5 specify); no confirmed finding, so nothing to fix. Optional hardenings
+  are recorded there, not adopted. A first launch reused T-0062's workflow script, which named
+  T-0062's diff; it was stopped before any result, and none was used.
