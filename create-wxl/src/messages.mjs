@@ -15,7 +15,7 @@ import { VERSION_RE } from './patterns.mjs'
 import { RESTORE_COMMANDS } from './upgrade-report.mjs'
 
 /** CW-W01's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
- * own default), not a hardcoded "2.20" repeated in both language tables. */
+ * own default), not a hardcoded version repeated in both language tables. */
 const MINIMUM_GIT_VERSION_TEXT = MINIMUM_GIT_VERSION.join('.')
 
 /** Candidate 22 (stage 7): the fallback UP-E10 prints when `jsonStringifyEscaped` cannot (a

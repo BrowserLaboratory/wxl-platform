@@ -218,6 +218,31 @@ describe('the restore commands keep every file HEAD ignores (U70, D14)', () => {
     },
   ]
 
+  // D22 (revision 3.3, T-0065): git removes a directory standing where `HEAD` has a file, with every
+  // file in it, ignored ones included, so the ignored-file clause of AC-11 excepts this one file.
+  it("(d) (c)'s tree with an ignored a/y.local beside a/x -> empty status, HEAD's files; a/y.local is gone, notes.local byte-identical", async () => {
+    const repo = await makeRangeRepo({ tree: { a: 'tracked file a\n', 'keep.txt': 'tracked\n' }, gitignore: '*.local\n' })
+    try {
+      await writeFile(join(repo.root, 'notes.local'), IGNORED)
+      const headTree = withoutIgnored(await snapshotTree(repo.root), ['notes.local'])
+      await unlink(join(repo.root, 'a'))
+      await mkdir(join(repo.root, 'a'))
+      await writeFile(join(repo.root, 'a', 'x'), 'untracked\n')
+      await writeFile(join(repo.root, 'a', 'y.local'), IGNORED)
+
+      await runRestoreCommands({ cwd: repo.root, env: repo.env })
+
+      const status = await verifyGit(['status', '--porcelain=v1', '--untracked-files=all'], { cwd: repo.root, env: repo.env })
+      expect(status.stdout).toBe('')
+      expect(withoutIgnored(await snapshotTree(repo.root), ['notes.local'])).toEqual(headTree)
+      expect(await readFile(join(repo.root, 'a'), 'utf8')).toBe('tracked file a\n')
+      expect(await readFile(join(repo.root, 'notes.local'))).toEqual(Buffer.from(IGNORED))
+    } finally {
+      await rm(repo.root, { recursive: true, force: true })
+      await rm(repo.env.HOME, { recursive: true, force: true })
+    }
+  })
+
   for (const { name, tree, gitignore, ignored, change } of cases) {
     it(`${name} -> empty status, HEAD's files, the ignored file byte-identical`, async () => {
       const repo = await makeRangeRepo({ tree, gitignore })

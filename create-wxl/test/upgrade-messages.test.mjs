@@ -120,6 +120,13 @@ describe('UP-E02 wording: with and without a detected version', () => {
     expect(enWith).not.toBe(enWithout)
     expect(zhWith).not.toBe(zhWithout)
   })
+
+  it('names the floor, 2.26, in both languages, as create\'s CW-W01 does (D21, T-0065)', () => {
+    for (const text of [en['UP-E02']({ version: '2.25.1' }), zhTW['UP-E02']({ version: '2.25.1' }), en['CW-W01']({ remainingCommands: [] }), zhTW['CW-W01']({ remainingCommands: [] })]) {
+      expect(text).toMatch(/2\.26(?!\.)/)
+      expect(text).not.toContain('2.20')
+    }
+  })
 })
 
 describe('--lang zh-TW upgrade in a non-git folder', () => {

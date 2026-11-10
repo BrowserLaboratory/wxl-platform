@@ -115,7 +115,7 @@ async function runUpgradeBody(parsed, io, deps, t2, lang2, guard, { hasOverride,
   deps.checkpoint('step-3')
   guard.throwIfRaised()
 
-  // Step 3 (traceability.md "Step order" row 3): `git --version` must report 2.20 or later
+  // Step 3 (traceability.md "Step order" row 3): `git --version` must report 2.26 or later (D21)
   // before anything else -- a rejection (git cannot be spawned, U04(1)) and an unparsable or too
   // old a version (U04(2)) are reported the same way; `undefined` is passed to the message when
   // there is no version string to show.
