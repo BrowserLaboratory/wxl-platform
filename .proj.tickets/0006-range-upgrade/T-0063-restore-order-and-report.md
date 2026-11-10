@@ -2,7 +2,7 @@
 id: T-0063
 title: Restore order, report additions and the stage 8 simulation
 epic: 0006-range-upgrade
-status: todo
+status: processing
 blocked_by: [T-0061, T-0062]
 ---
 
@@ -37,6 +37,23 @@ Decisions D14, D16, D20, and the round 2 disposition's W4 and R-6.
 - Stage 5 checks which code step 9 prints for a bug (round 2 K-5) and records it.
 - Stage 8: the simulation of `traceability.md` "Stage 8 simulation (0006-S2)", steps 1–6, on the
   pushed commits A and B, with the branch deleted afterwards.
+
+## Test plan
+
+### 2026-11-10 — test plan table（依使用者 2026-11-10 的授權「後面都授權你，按照你的建議」核准，寫第一個測試之前）
+
+seam 全部是 0006-S1；GLOSSARY 那句另用 0005 的 `upstream-config.test.mjs`。「預期紅燈」是寫好測試、還沒改程式時的失敗原因；寫好就綠的列是確認型，另做 mutation 檢查。還原指令只有一個來源：`upgrade-report.mjs` 匯出的 `RESTORE_COMMANDS`，R5、UP-E09 與 U70 都用它。
+
+| Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
+|---|---|---|---|---|
+| 0006-S1 | 還原指令先 `git checkout -- .` 再 `git clean -fd`（D14） | `upgrade-report.test.mjs`（U26 的 R5，兩種語言）、`upgrade-failures.test.mjs`（U27）、`upgrade-signals.test.mjs`（U28 step 9）、`upgrade-merge.test.mjs`、`upgrade-messages.test.mjs`（UP-E09） | U26、U27、U28 / AC-10、AC-11 | 斷言兩個指令的先後位置，不只是都出現；UP-E09 的寫入失敗與訊號兩種文字、兩種語言。預期紅燈：現在是 clean 在前 |
+| 0006-S1 | R2 逐行列出 M6 刪掉的路徑；R4 在有 UP-A1 時說明 `\|\|\|\|\|\|\|` 段落（D16） | `upgrade-report.test.mjs` 新增 U72 | U72、U26 / AC-10 | 三個 M6 路徑 `z.md`、`a/b.md`、`B.md` → 計數行之後剛好三行 `R2`，順序 `B.md`、`a/b.md`、`z.md`（UTF-16 code unit），沒有其他 R2 路徑行；有 UP-A1 項目 → D16 句出現，沒有 → 不出現；兩種語言。預期紅燈 |
+| 0006-S1 | R4 的 `pnpm install` 與 `v*` tag 兩行依條件出現 | `upgrade-report.test.mjs` 新增 U76 | U76 / AC-10 | 寫了 `package.json`／只寫 `pnpm-lock.yaml`（M5）／都沒寫 → 出現／出現／不出現；有／沒有 `.github/workflows/deploy.yml` → 出現／不出現。確認型（程式已有），做 mutation |
+| 0006-S1 | `range.json` 頂層的 `__proto__` key 保留（R-6） | `upgrade-record.test.mjs` U24 新增 ⑥ | U24 / AC-9 | `{"__proto__":{"x":1},"upstream":{…},"y":2}` → 完成後 `__proto__` 仍是自己的 key、值與位置不變，`upstream` 換成 target。預期紅燈 |
+| 0006-S1 | 還原順序在 ignore 檔不見或被改時保住被 ignore 的檔案（D14） | `upgrade-restore.test.mjs` 新增 U70，依 `RESTORE_COMMANDS` 執行 | U70 / AC-11 | 從 commit 建出的樹：(a) tracked 的 `.gitignore` 被刪、被 ignore 的檔案在；(b) tracked 的 `sub/.gitignore` 被改成不再 ignore 某檔；(c) tracked 檔 `a` 被換成 untracked 的 `a/x` → 跑完兩個指令後 porcelain status 為空、檔案等於 `HEAD`、`HEAD` 的 ignore 規則 ignore 的檔案逐 byte 不變。確認型（`RESTORE_COMMANDS` 換回舊順序時 (a)、(b) 應該紅燈，當作 mutation）；另用 git 2.20 跑一次 |
+| 0006-S1 | U29、U64 的還原改用新順序 | `upgrade-restore.test.mjs` U29、`upgrade-submodule.test.mjs` U64 改用 `RESTORE_COMMANDS` | U29、U64 / AC-6、AC-11 | 既有斷言不變（status 為空、`HEAD` 的檔案、ignored 檔逐 byte 不變）。確認型 |
+| 0006-S1 | 完成的執行 = step 9 已結束（D20） | `upgrade-signals.test.mjs` 既有 step 10 的 SIGINT 對應 U28 | U28 / AC-11 | R1～R5 完整印出、exit 130、沒有暫存殘留；補上 R5 的新順序。確認型 |
+| 0005-S1 | GLOSSARY「設定紀錄」那句改為「建立靶場的指令與升級都會寫入它」（W4） | `upstream-config.test.mjs` U10 的斷言與 `GLOSSARY.md` 一起改 | U31 / AC-12 | 斷言新句子，舊句不再出現。預期紅燈 |
 
 ## 給使用者（zh-TW）
 
