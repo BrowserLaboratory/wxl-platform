@@ -2,7 +2,7 @@
 id: T-0065
 title: Git floor 2.26 and the restore exception
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -136,3 +136,5 @@ Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.3 and `traceability.
   - The publish fixtures spawn their own git and never snapshot `.git`, so they are left as they
     are.
   - `pnpm --dir create-wxl test` → `Tests 715 passed | 1 skipped (716)`.
+- 2026-11-10, landed: PR #76 squash-merged into `main` as `de9c0d4` (CI 10 of 10 passing on the
+  second push `38635d9`, after the maintenance-lock fix). Status set to done.
