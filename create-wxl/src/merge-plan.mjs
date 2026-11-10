@@ -358,8 +358,9 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
   const [baseFiles, targetFiles, trackedResult, submoduleResult] = await Promise.all([
     listFilesRecursive(deps.fs, baseDir),
     listFilesRecursive(deps.fs, targetDir),
-    deps.runGit(['ls-files', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
-    deps.runGit(['ls-files', '-s', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }),
+    // D19 (T-0062): a `runGit` rejection of either names the command in CW-E14.
+    runGitNamed(deps, guard, ['ls-files', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }, 'ls-files -z'),
+    runGitNamed(deps, guard, ['ls-files', '-s', '-z'], { cwd: rangeRoot, env: buildGitEnv(deps.env) }, 'ls-files -s -z'),
   ])
   guard.throwIfRaised()
   if (trackedResult.code !== 0) {

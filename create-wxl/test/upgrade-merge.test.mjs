@@ -97,6 +97,9 @@ describe('merge table (U17)', () => {
     let tmpRoot
     try {
       const beforeHead = await verifyGit(['rev-parse', 'HEAD'], { cwd: fixture.root, env: fixture.env })
+      // U17 (revision 3.1, W11; T-0062): the fixture's ignored file at the root, a directory
+      // upstream changes, stays byte-identical.
+      const scratchBefore = await readFile(join(fixture.root, 'scratch.local'))
       const teacherOwnedPath = join(fixture.root, 'teacher-owned.txt')
       const teacherOwnedBefore = { content: await readFile(teacherOwnedPath), mtimeMs: (await stat(teacherOwnedPath)).mtimeMs }
 
@@ -163,6 +166,7 @@ describe('merge table (U17)', () => {
       expect(afterHead.stdout).toBe(beforeHead.stdout)
       const diffCached = await verifyGit(['diff', '--cached', '--name-only'], { cwd: fixture.root, env: fixture.env })
       expect(diffCached.stdout).toBe('')
+      expect(await readFile(join(fixture.root, 'scratch.local'))).toEqual(scratchBefore)
 
       const remainingTmp = readdirSync(tmpRoot).filter((name) => name.startsWith('create-wxl-upgrade-'))
       expect(remainingTmp).toEqual([])
