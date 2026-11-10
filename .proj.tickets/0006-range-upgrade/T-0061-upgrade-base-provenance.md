@@ -2,7 +2,7 @@
 id: T-0061
 title: Upgrade base provenance
 epic: 0006-range-upgrade
-status: processing
+status: review
 blocked_by: []
 ---
 
@@ -43,12 +43,12 @@ T-0063. Chains X1 and X2 close here; X3 closes in T-0062 and T-0063.
 Spec `.proj.specs/0006-range-upgrade/spec.en.md` revision 3.1 and `traceability.md` revision 3.1.
 Decisions D11, D15, D17, D18, and D19 for steps 4 and 5.
 
-- **Prefactor first:** every test that builds a `range.json` base serves it as a tag archive whose
+- [x] **Prefactor first:** every test that builds a `range.json` base serves it as a tag archive whose
   `comment` is the recorded commit (spec Testing Decisions), and the seam isolates `HOME` and
   `XDG_CONFIG_HOME` as 0005-S1 does (W3); the suite stays green before J6 lands.
-- Rows: U06, U16, U51, U52, U65, U66, U67, U71, and U74's step 4 case.
-- ACs reached: AC-2 (U67, U74), AC-3 (U06, U65), AC-4 (U51, U52), AC-5 (U16, U66), AC-10 (U71).
-- Stage 8: a terminal run of the packed package (0006-S2): UP-E12 with D18's remedies against the
+- [x] Rows: U06, U16, U51, U52, U65, U66, U67, U71, and U74's step 4 case.
+- [x] ACs reached: AC-2 (U67, U74), AC-3 (U06, U65), AC-4 (U51, U52), AC-5 (U16, U66), AC-10 (U71).
+- [ ] Stage 8: a terminal run of the packed package (0006-S2): UP-E12 with D18's remedies against the
   real tag `v3.0.0` for a range whose `range.json` names another commit, and the upgrade without
   `--from` of a range made by the published `create-wxl@3.0.0` (the simulation's steps 5–6). The full
   simulation (U32) runs in T-0063.
@@ -72,6 +72,22 @@ seam 全部是 0006-S1（0005-S1 的 `run`，argv 第一個位置參數是 `upgr
 | 0006-S1 | `--from <version>` 解析到 target 的 commit | `upgrade-target.test.mjs` 的 U52 改寫 | U52 / AC-4 | 設 `CREATE_WXL_COMMIT=<tag 的 commit>`：兩份下載之後 UP-I01，`fetchArchive` 呼叫兩次，沒寫檔。確認型 |
 | 0006-S1 | R1 標明 `--from <commit>` 的 base 沒有比對 tag（D17） | `upgrade-report.test.mjs` 新增 U71 | U71 / AC-10 | `--from <commit>`：句子出現；`--from <version>`、`range.json`：不出現；en 與 zh-TW 都驗。預期紅燈：句子還不存在 |
 | 0006-S1 | 新代碼在兩份訊息表都有 | `upgrade-messages.test.mjs` 的代碼清單加 UP-E12、UP-E13 | U26（代碼部分）/ AC-10 | en 與 zh-TW 都有 UP-E12、UP-E13，且以代碼開頭。預期紅燈：代碼還不存在 |
+
+### 2026-11-10 — coverage report table
+
+| Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
+|---|---|---|---|---|
+| 0006-S1 | `upgrade-base`（U06、U65）、`upgrade-target`（U14(a) 的下載斷言、U16、U52、U66）、新檔 `upgrade-ignored-record`（U67）、`upgrade-preconditions`（U74 step 4）、`upgrade-report`（U71）、`upgrade-messages`（UP-E12、UP-E13）；prefactor 動到 11 個升級測試檔與 `ref-fetch-archive.mjs` | not measured：create-wxl 沒有安裝 coverage provider（與 T-0020～T-0027 相同） | U06、U16、U51、U52、U65、U66、U67、U71、U74（step 4）；AC-2、AC-3、AC-4、AC-5、AC-10 | U74 的 step 8 子案屬於 T-0062；U51 沒有修改，既有的中間子案已符合 revision 3.1 的列；D19 的 reject 包裝只對 step 4、5 有測試，step 8 留給 T-0062 |
+| 0006-S2 | — | — | 第 8 階段：tag `v3.0.0` 的 UP-E12 與 `create-wxl@3.0.0` 靶場不帶 `--from` 的升級 | 第 8 階段另外記錄 |
+
+Checks at `2751498`, macOS (darwin arm64, Node v24.13.0), 2026-11-10:
+`pnpm --dir create-wxl test` → `Tests 650 passed (650)`；`pnpm test --run` → `Test Files 136 passed (136) / Tests 4861 passed | 1 skipped (4862)`。
+
+Confirmation tests (green when written) and their mutation checks, each run and then restored:
+U65(c) — validating the base before the target download makes it fail; U66(b) — dropping
+`remediesOn404 &&` makes it fail; U67(d)(j)(k)(l) — moving D15 before J1–J5 makes all four fail;
+U67(e) — dropping the "untracked only" condition makes it fail; U52(b) and F22 — dropping step 6's
+`baseCommit !== undefined` makes them fail.
 
 ## 給使用者（zh-TW）
 
