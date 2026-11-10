@@ -315,6 +315,17 @@ async function runMergeFile({ deps, guard, rangeRoot, baseVersion, targetVersion
   throw new MergeFileError(path)
 }
 
+/** Like `Promise.all`, but waits for every operation to settle before rejecting with the first
+ * rejection in array order (PR #72's windows-latest run): a rejection must not let the run report
+ * and clean up while another `git` child still runs in the range, or a read still holds a file in a
+ * pristine directory (EBUSY removing it on Windows). */
+async function settleAll(promises) {
+  const settled = await Promise.allSettled(promises)
+  const rejected = settled.find((result) => result.status === 'rejected')
+  if (rejected !== undefined) throw rejected.reason
+  return settled.map((result) => result.value)
+}
+
 /**
  * `planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir, targetDir, baseVersion, targetVersion })` ->
  * (`realRangeRoot`: the range root's native realpath as step 3 resolved it, for P-9) ->
@@ -330,7 +341,7 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
   // the plain `ls-files -z` call below (which lists only the TRACKED PATHS, not their index mode)
   // -- a gitlink is also a tracked path, so it is in BOTH results; only this one can tell it apart
   // from an ordinary file.
-  const [baseFiles, targetFiles, trackedResult, submoduleResult] = await Promise.all([
+  const [baseFiles, targetFiles, trackedResult, submoduleResult] = await settleAll([
     listFilesRecursive(deps.fs, baseDir),
     listFilesRecursive(deps.fs, targetDir),
     // D19 (T-0062): a `runGit` rejection of either names the command in CW-E14.
@@ -385,7 +396,7 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
       // programming error.
       let b, t
       try {
-        ;[b, t] = await Promise.all([
+        ;[b, t] = await settleAll([
           baseFileSet.has(path) ? readFileOrNull(deps.fs, join(baseDir, ...path.split('/'))) : null,
           targetFileSet.has(path) ? readFileOrNull(deps.fs, join(targetDir, ...path.split('/'))) : null,
         ])
@@ -606,7 +617,7 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
     for (const anchorPath of ANCHOR_PATHS) {
       let anchorB, anchorT
       try {
-        ;[anchorB, anchorT] = await Promise.all([
+        ;[anchorB, anchorT] = await settleAll([
           baseFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(baseDir, ...anchorPath.split('/'))) : null,
           targetFileSet.has(anchorPath) ? readFileOrNull(deps.fs, join(targetDir, ...anchorPath.split('/'))) : null,
         ])

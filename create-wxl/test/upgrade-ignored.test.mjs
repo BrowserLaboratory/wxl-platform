@@ -251,13 +251,18 @@ describe('git ls-files -z rejected in step 8 (U74, D19)', () => {
   it('runGit rejects with EIO for step 8\'s git ls-files -z -> CW-E14 naming git ls-files -z, exit 1, nothing written', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['P5-existing'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
+    let inFlight = 0
+    const trackInFlight = (promise) => {
+      inFlight += 1
+      return promise.finally(() => { inFlight -= 1 })
+    }
     try {
       const real = createSpawnGitRunner()
       const runGit = vi.fn(async (args, opts) => {
         if (args.length === 2 && args[0] === 'ls-files' && args[1] === '-z') {
           throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
         }
-        return real(args, opts)
+        return trackInFlight(real(args, opts))
       })
       const before = withoutRootMtime(await snapshotTree(fixture.root))
       const result = await runUpgradeAgainst(fixture, runGit)
@@ -266,6 +271,9 @@ describe('git ls-files -z rejected in step 8 (U74, D19)', () => {
       expect(result.ioHelper.stderrText).toMatch(/^CW-E14/m)
       expect(result.ioHelper.stderrText).toContain('git ls-files -z failed')
       expect(result.ioHelper.stderrText).toContain('EIO')
+      // PR #72 CI (windows-latest): the run must not return while the other step 8 git command still
+      // runs in the range, or its cleanup and the caller's races it (EBUSY removing the range on Windows).
+      expect(inFlight).toBe(0)
       expect(withoutRootMtime(await snapshotTree(fixture.root))).toEqual(before)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
@@ -275,13 +283,18 @@ describe('git ls-files -z rejected in step 8 (U74, D19)', () => {
   it('runGit rejects with EIO for step 8\'s git ls-files -s -z -> CW-E14 naming git ls-files -s -z, exit 1, nothing written (T-0062 stage 6, L3)', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['P5-existing'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot
+    let inFlight = 0
+    const trackInFlight = (promise) => {
+      inFlight += 1
+      return promise.finally(() => { inFlight -= 1 })
+    }
     try {
       const real = createSpawnGitRunner()
       const runGit = vi.fn(async (args, opts) => {
         if (args[0] === 'ls-files' && args[1] === '-s' && args[2] === '-z') {
           throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' })
         }
-        return real(args, opts)
+        return trackInFlight(real(args, opts))
       })
       const before = withoutRootMtime(await snapshotTree(fixture.root))
       const result = await runUpgradeAgainst(fixture, runGit)
@@ -289,6 +302,9 @@ describe('git ls-files -z rejected in step 8 (U74, D19)', () => {
       expect(result.exitCode).toBe(1)
       expect(result.ioHelper.stderrText).toMatch(/^CW-E14/m)
       expect(result.ioHelper.stderrText).toContain('git ls-files -s -z failed')
+      // PR #72 CI (windows-latest): the run must not return while the other step 8 git command still
+      // runs in the range, or its cleanup and the caller's races it (EBUSY removing the range on Windows).
+      expect(inFlight).toBe(0)
       expect(withoutRootMtime(await snapshotTree(fixture.root))).toEqual(before)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
