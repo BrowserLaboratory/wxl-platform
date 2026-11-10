@@ -193,6 +193,12 @@ const BRANCH_SPECS = {
     base: { 'README.en.md': 'base readme, English\n' },
     target: { 'README.en.md': 'base readme, English, updated by upstream\n' },
   },
+  // D16 (U72, T-0063): three M6 paths whose sorted order differs between UTF-16 code units
+  // (`B.md` < `a/b.md` < `z.md`) and a locale-aware sort; o derives from base (o ≡ b), T lacks them.
+  'U72-m6-three': {
+    base: { 'z.md': 'z\n', 'a/b.md': 'a/b\n', 'B.md': 'B\n' },
+    baseDirs: ['a/'],
+  },
   // T-0027 increment 21 (U26): a range that already has `.github/workflows/deploy.yml`, equal on
   // base and target (M4, untouched) -- R4's own "push a new v* tag to deploy" bullet is
   // conditional on this file's presence after the run, not on any attention item or write.
