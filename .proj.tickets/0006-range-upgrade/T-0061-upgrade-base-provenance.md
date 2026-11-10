@@ -48,7 +48,7 @@ Decisions D11, D15, D17, D18, and D19 for steps 4 and 5.
   `XDG_CONFIG_HOME` as 0005-S1 does (W3); the suite stays green before J6 lands.
 - [x] Rows: U06, U16, U51, U52, U65, U66, U67, U71, and U74's step 4 case.
 - [x] ACs reached: AC-2 (U67, U74), AC-3 (U06, U65), AC-4 (U51, U52), AC-5 (U16, U66), AC-10 (U71).
-- [ ] Stage 8: a terminal run of the packed package (0006-S2): UP-E12 with D18's remedies against the
+- [x] Stage 8: a terminal run of the packed package (0006-S2): UP-E12 with D18's remedies against the
   real tag `v3.0.0` for a range whose `range.json` names another commit, and the upgrade without
   `--from` of a range made by the published `create-wxl@3.0.0` (the simulation's steps 5–6). The full
   simulation (U32) runs in T-0063.
@@ -175,4 +175,24 @@ epic 0006 串連分析開出的後續票，第 4 階段拆成三張，這是第�
   `.proj.specs/0006-range-upgrade/review/security-T-0061.md`. 13 candidates, every one judged a
   false positive by an independent reviewer; no confirmed finding, so nothing to fix. C1's optional
   tightening of D18 is recorded there, not adopted.
+- 2026-11-10, stage 8 (0006-S2, surface: a terminal on macOS darwin arm64, Node v24.13.0; the
+  package packed with `npm pack` at `c3abc8e`, whose `dist/source.json` names that commit; target
+  `CREATE_WXL_COMMIT=d26a7e2e4182a7c5df1be8b4b736bdcac3e6d9b6`, `main` as pushed; `GITHUB_REPOSITORY`
+  and `WXL_EXPECT_UPSTREAM` unset; every run as `npx --yes --package <tarball> create-wxl …`):
+  - Range `rel` made by the published `npx --yes create-wxl@3.0.0 rel --author 'Stage Eight' --repo
+    wxl-test/rel --host github-pages </dev/null`: exit 0, one commit, `range.json` = `3.0.0` /
+    `52192fa85fe7c6c7bf4cecb4c287d6f2876387a4` (the commit of the annotated tag `v3.0.0`).
+  - (A) `upgrade` in `rel`, no `--from`: exit 0; stderr only CW-W04; no UP-E12; R1 `base "3.0.0"
+    (commit "52192fa…")`, target `d26a7e2…`, without the not-checked note; R2 updated 63 added 23
+    deleted 0; R3 UP-A12; `range.json` names `d26a7e2…`. J6 passed against the real tag archive
+    from codeload (covers stage 7's C11). `git clean -fd` then `git checkout -- .` gave an empty
+    `git status --porcelain=v1 --untracked-files=all`.
+  - (B) a copy of `rel` whose committed `range.json` names `4fe2cad7fac9606fd93bcd0ee6c56279d4c68299`:
+    exit 1; CW-W04 then UP-E12 naming 3.0.0, `4fe2cad…` and the tag's `52192fa…`, the reasons and
+    D18's three remedies in order; stdout empty; status empty and `HEAD` unchanged.
+  - (C) a copy whose `range.json` is untracked and ignored by `.gitignore`, `--lang zh-TW`: exit 1;
+    UP-E13 in Traditional Chinese only (no CW-W04: step 5 stops before step 6); status empty.
+  - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE` and the tarball were removed. Three empty
+    `create-wxl-upgrade-tmp-*` directories under the system temp dir date from 2026-11-09 14:01–14:03
+    (test temp roots from an earlier session), not from this run; left as found.
 
