@@ -2,7 +2,7 @@
 id: T-0062
 title: On-disk name aliases and the .git alias rule
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: [T-0061]
 ---
 
@@ -168,3 +168,6 @@ Mutation checks, each made on the commit named, with the edit shown, the command
     git calls still running and require 0 when `run()` returns. With `Promise.all` this was red on
     macOS too (`expected 1 to be +0`); with `settleAll` it is green.
   - `pnpm --dir create-wxl test` → `Test Files 37 passed (37) / Tests 696 passed | 1 skipped (697)`.
+- 2026-11-10, landed: PR #72 squash-merged into `main` as `279eac5` (CI 10 of 10 passing on the second
+  push `ba2f2f8`, including `fork-init-cross-os (windows-latest, 24)`, where U68(c) ran a real 8.3
+  short name). Status set to done.
