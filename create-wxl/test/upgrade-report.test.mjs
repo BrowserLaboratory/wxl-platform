@@ -2,7 +2,8 @@
 // attention items (U25); this file also covers U59, U26 and U62.
 
 import { describe, it, expect, vi } from 'vitest'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { run } from '../src/run.mjs'
 import { makeDeps, FIXED_COMMIT } from './helpers/deps.mjs'
 import { makeIo } from './helpers/io.mjs'
@@ -445,6 +446,37 @@ describe('R2 lists M6 paths and R4 explains the ||||||| section (U72, D16)', () 
           ['B.md', 'a/b.md', 'z.md'].map((path) => `R2: ${jsonValue(path)}`),
         )
         expect(lines.some((line) => line.includes('|||||||'))).toBe(false)
+      } finally {
+        await cleanupFixture(fixture, tmpRoot)
+      }
+    })
+  }
+})
+
+// U76 (traceability.md revision 3.1, R4; T-0063): R4's `pnpm install` and `v*` tag lines follow
+// their conditions. Confirmation: the code predates the row; each case also checks what the run wrote.
+describe("R4's conditional lines (U76)", () => {
+  const PNPM = 'R4: run pnpm install'
+  const TAG = 'R4: push a new v* tag to deploy'
+  for (const { name, branches, written, pnpm, tag } of [
+    { name: 'writes package.json (M5), no deploy workflow', branches: ['U76-package-json'], written: 'package.json', pnpm: true, tag: false },
+    { name: 'writes pnpm-lock.yaml (M5) but not package.json, with a deploy workflow', branches: ['U76-lock-m5', 'U26-deploy-workflow'], written: 'pnpm-lock.yaml', pnpm: true, tag: true },
+    { name: 'writes neither, no deploy workflow', branches: ['M6'], written: undefined, pnpm: false, tag: false },
+  ]) {
+    it(`${name} -> pnpm install ${pnpm ? 'present' : 'absent'}; v* tag ${tag ? 'present' : 'absent'}`, async () => {
+      const fixture = await buildUpgradeFixtures({ branches, rangeJson: rangeJsonFor(BASE_COMMIT) })
+      let tmpRoot
+      try {
+        const result = await runUpgradeAgainst(fixture)
+        tmpRoot = result.tmpRoot
+        expect(result.exitCode).toBe(0)
+        // The run did write the file (the pristine target rewrites package.json's version, so the
+        // check is on the content upstream changed, not on the archive's bytes).
+        if (written === 'package.json') expect(await readFile(join(fixture.root, written), 'utf8')).toContain('sim:noop')
+        if (written === 'pnpm-lock.yaml') expect(await readFile(join(fixture.root, written), 'utf8')).toBe('lockfile v1 target\n')
+        const r4Lines = result.ioHelper.stdoutText.split('\n').filter((line) => line.startsWith('R4:'))
+        expect(r4Lines.includes(PNPM)).toBe(pnpm)
+        expect(r4Lines.includes(TAG)).toBe(tag)
       } finally {
         await cleanupFixture(fixture, tmpRoot)
       }

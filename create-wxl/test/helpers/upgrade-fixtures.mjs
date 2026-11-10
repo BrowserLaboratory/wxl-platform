@@ -193,6 +193,15 @@ const BRANCH_SPECS = {
     base: { 'README.en.md': 'base readme, English\n' },
     target: { 'README.en.md': 'base readme, English, updated by upstream\n' },
   },
+  // U76 (T-0063): R4's `pnpm install` line follows a written `package.json` (M5) or a written
+  // `pnpm-lock.yaml` alone (M5, not only M10); o derives from base (o ≡ b) in both.
+  'U76-package-json': {
+    target: { 'package.json': JSON.stringify({ name: 'wxl', version: '3.0.0', scripts: { 'sim:noop': 'node -e ""' } }, null, 2) + '\n' },
+  },
+  'U76-lock-m5': {
+    base: { 'pnpm-lock.yaml': 'lockfile v1 base\n' },
+    target: { 'pnpm-lock.yaml': 'lockfile v1 target\n' },
+  },
   // D16 (U72, T-0063): three M6 paths whose sorted order differs between UTF-16 code units
   // (`B.md` < `a/b.md` < `z.md`) and a locale-aware sort; o derives from base (o ≡ b), T lacks them.
   'U72-m6-three': {
