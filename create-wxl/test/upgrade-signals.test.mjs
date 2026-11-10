@@ -277,6 +277,10 @@ describe('SIGINT at the step-10 checkpoint (U28, D8)', () => {
       for (const id of ['R1:', 'R2:', 'R3:', 'R4:', 'R5:']) {
         expect(ioHelper.stdoutText).toContain(id)
       }
+      // D20 (T-0063): step 9 finished, so this is a completed run -- `range.json` already names the
+      // target, and R5 gives the restore commands in D14's order.
+      expect(JSON.parse(await readFile(join(fixture.root, 'range.json'), 'utf8')).upstream.commit).toBe(FIXED_COMMIT)
+      expect(ioHelper.stdoutText).toContain('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
     } finally {
       await cleanupFixture(fixture, tmpRoot)
