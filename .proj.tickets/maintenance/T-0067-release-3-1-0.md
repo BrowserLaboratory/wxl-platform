@@ -2,7 +2,7 @@
 id: T-0067
 title: Release 3.1.0 and publish create-wxl
 epic: maintenance
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -41,8 +41,8 @@ No spec covers the release itself; `create-wxl`'s publish gate X1–X9
 - [x] R1: both manifests at 3.1.0; `create-wxl` tests pass
 - [x] R2: CHANGELOG 3.1.0 entry, `## [Unreleased]` above it
 - [x] R3: both READMEs' upgrade subsection; `upstream-config.test.mjs` passes
-- [ ] R4: `v3.1.0` on the merge commit, GitHub Release with R2's notes, `check-publish.mjs` exit 0
-- [ ] R5: `npm view create-wxl version` prints `3.1.0` (the user)
+- [x] R4: `v3.1.0` on the merge commit, GitHub Release with R2's notes, `check-publish.mjs` exit 0
+- [x] R5: `npm view create-wxl version` prints `3.1.0` (the user)
 
 ## Comments
 
@@ -58,3 +58,26 @@ No spec covers the release itself; `create-wxl`'s publish gate X1–X9
   item（注意項目） does not declare itself new while already in use"): the README's upgrade subsection
   is the first Chinese prose to use 「注意項目」, so `GLOSSARY.md` drops its `_新造詞_` line, as epic 0005's U10
   did for 「設定紀錄」. `pnpm vitest run tests/unit/site/glossary.test.ts` → `290 passed`.
+
+### 2026-11-11 — released and published
+
+- PR #79 (the epic 0006 revision 3 close-out) landed as `75dd72e` and PR #80 as `b4d3fd0`, both by
+  squash with CI 10 of 10 passing; #80's second push `3a6a021` carried the glossary fix above.
+- `v3.1.0` was tagged (annotated, "WXL 3.1.0") at `b4d3fd0` and pushed. The release workflow (run
+  `43003462752`) passed, built `wxl-v3.1.0.zip` and created the GitHub Release; its notes were
+  replaced with R2's CHANGELOG entry, title "WXL 3.1.0".
+- A local `node scripts/check-publish.mjs` in `create-wxl/` stopped first at X8 (no `dist/` before
+  `prepare-dist.mjs`, which `prepublishOnly` runs first), then, after `prepare-dist.mjs`, at X9:
+  `npm whoami` answered `401 Unauthorized`, the npm login having expired again as at 3.0.0. X9's
+  message ("the npm name is already maintained by someone else") does not distinguish a failed
+  `npm whoami` from another maintainer.
+- The user ran `npm login` and `npm publish` in `create-wxl/` on `main` at `b4d3fd0`.
+  `prepublishOnly` passed X1-X9; the upload (34 files, 112.6 kB, shasum `be7acba…d5de`) was
+  accepted with `PUT 202` and staged. A second `npm publish` answered `409 … previously staged
+  version "3.1.0"`, as at 3.0.0; nothing changed.
+- Verified from the registry: `npm view create-wxl version` → `3.1.0`, `dist-tags.latest` = `3.1.0`,
+  `time["3.1.0"]` = `2026-11-11T12:59:41.680Z`, `gitHead` = `b4d3fd0…`. In an empty folder,
+  `npm create --yes wxl@latest smoke-range -- --no-setup` exited 0, printed its next steps, and wrote
+  `range.json` with version `3.1.0` and commit `b4d3fd0…`; the range's `package.json` carries
+  `range:upgrade` and its `README.md` the upgrade subsection.
+- `create-wxl/dist/` and `create-wxl/LICENSE`, which the publish runs create, were removed afterwards.
