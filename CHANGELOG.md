@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## ✨ [3.1.0] - 2026-11-11
+
+> 靶場可以升級了：在靶場裡執行 `pnpm range:upgrade`，就能用三方合併把上游的新版本帶進來，老師的修改會保留下來。另外，短連結改為帶語系代碼，題目清單也會列出每一道題目。
+
+### ✨ 新增 (Added)
+
+- `create-wxl upgrade`（靶場裡的 `pnpm range:upgrade`）會把上游新版本以三方合併帶進靶場：
+  - 上游改了、老師沒改的檔案直接更新；兩邊都改過的地方標上三個標籤的衝突標記；拿不準的路徑保留老師的版本，列在注意項目裡。
+  - 升級不會 commit，不會碰被 ignore 的檔案與 submodule，也不會跟隨符號連結。
+  - 報告依序列出計數、刪掉的每個檔案、注意項目與後續步驟，最後附上一行還原指令。
+  - 用 3.0.0 建立的靶場還沒有這個 script，第一次升級請執行 `npx --yes create-wxl@latest upgrade`。
+  ([#65]、[#67]、[#70]、[#72]、[#74]、[#78])
+- 題目短連結帶語系代碼：複製按鈕改發 `/en/c/NNN` 或 `/zh-TW/c/NNN`，每道題目產生四條 redirect 規則；舊的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開。 ([#54])
+- 每個語系的題目清單與首頁都列出每一道題目，還沒翻譯的題目帶語系標記。 ([#58])
+- 打開不存在的翻譯網址時，改走保底頁並顯示提示；切換語系時，如果那個語系沒有對應版本，就留在原頁，並提供回到頁面本身語系的選項。 ([#50]、[#52]、[#56])
+- 非 Cloudflare Pages 的建置（例如 GitHub Pages）中，複製按鈕改為顯示並複製題目頁的網址；點一下網址文字就會全選。 ([#39]、[#42])
+- pre-commit hook 依 staged 的內容重新產生並 stage `_redirects`；`pnpm create:challenge` 建題後也會重新產生，並以結束狀態 1、2、3 區分結果。 ([#36]、[#38]、[#43]、[#44])
+
+### 🔄 變更 (Changed)
+
+- 建立靶場與升級都需要 git 2.26 以上；Ubuntu 20.04 內建的 git 2.25.1 不再支援。用較舊的 git 建立靶場時，靶場照樣建立，但會印出 CW-W01，列出要自己執行的 git 指令。 ([#76])
+- 語系偏好只在使用者明確選擇時才寫入，冷載入只會導向實際存在的翻譯。 ([#50]、[#52])
+
+### 🐛 修復 (Fixed)
+
+- `create-wxl` 與 `pnpm fork:init` 把 `--origin` 正確說明成靶場網址，不再只說是短連結的網址。 ([#41])
+- pre-commit hook 在中斷、git 失敗與第一個 commit 時都能乾淨收尾；失去英文題目的繁中說明頁會被拒絕。 ([#43]、[#44])
+
+### 🔒 安全性 (Security)
+
+- 升級只接受上游的發布版作為 base：`range.json` 記錄的 commit 必須是該版本 tag 的 commit，否則以 UP-E12 停下。這樣就算有人改了 `range.json`，也無法讓升級拿 fork 裡的內容當成上游。 ([#70])
+- 磁碟上名稱和上游不同的路徑一律保持不動（UP-A15），包括 8.3 短檔名、大小寫或 Unicode 正規化不同的名稱；`realpath` 不回報實際名稱的檔案系統（例如 WSL 的 `/mnt/c`）也涵蓋。archive 裡 git 視為 `.git` 的名稱（`git~1`、`.git:`、HFS+ 會忽略的字元）一律拒絕。 ([#72]、[#78])
+- 還原指令改為 `git checkout -- . && git clean -fd`：先還原 ignore 檔，`checkout` 失敗時也不會執行 `clean`，老師被 ignore 的檔案不會因此被刪掉。 ([#74]、[#78])
+
+[#36]: https://github.com/BrowserLaboratory/wxl-platform/pull/36
+[#38]: https://github.com/BrowserLaboratory/wxl-platform/pull/38
+[#39]: https://github.com/BrowserLaboratory/wxl-platform/pull/39
+[#41]: https://github.com/BrowserLaboratory/wxl-platform/pull/41
+[#42]: https://github.com/BrowserLaboratory/wxl-platform/pull/42
+[#43]: https://github.com/BrowserLaboratory/wxl-platform/pull/43
+[#44]: https://github.com/BrowserLaboratory/wxl-platform/pull/44
+[#50]: https://github.com/BrowserLaboratory/wxl-platform/pull/50
+[#52]: https://github.com/BrowserLaboratory/wxl-platform/pull/52
+[#54]: https://github.com/BrowserLaboratory/wxl-platform/pull/54
+[#56]: https://github.com/BrowserLaboratory/wxl-platform/pull/56
+[#58]: https://github.com/BrowserLaboratory/wxl-platform/pull/58
+[#65]: https://github.com/BrowserLaboratory/wxl-platform/pull/65
+[#67]: https://github.com/BrowserLaboratory/wxl-platform/pull/67
+[#70]: https://github.com/BrowserLaboratory/wxl-platform/pull/70
+[#72]: https://github.com/BrowserLaboratory/wxl-platform/pull/72
+[#74]: https://github.com/BrowserLaboratory/wxl-platform/pull/74
+[#76]: https://github.com/BrowserLaboratory/wxl-platform/pull/76
+[#78]: https://github.com/BrowserLaboratory/wxl-platform/pull/78
+
 ## 💥 [3.0.0] - 2026-10-17
 
 > WXL 平台的第一個版本：一個讓老師不用架伺服器就能備課、讓學生回家也能練習的純前端 web 資安靶場，附四道示範題，網站在 https://wxl.browserlab.online；老師可以 fork 後執行 `pnpm fork:init`，或用 `npm create wxl` 直接建立自己的靶場。

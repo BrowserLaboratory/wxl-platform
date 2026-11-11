@@ -198,6 +198,30 @@ npm create wxl <folder> -- --no-setup
 > `create-wxl` is published on npm from 3.0.0; the command downloads the upstream release that
 > matches the package's version to build the range.
 
+### Upgrade a range: `pnpm range:upgrade`
+
+When upstream publishes a new release, run this at the range's top level:
+
+```bash
+pnpm range:upgrade
+```
+
+It downloads the upstream release the range was made from and the newest one, then makes a
+three-way merge with your range: files upstream changed and you did not are updated; places both
+sides changed get conflict markers; paths it cannot settle keep your version and are listed as
+attention items in the report. It never commits and never touches ignored files; the report ends
+with the restore command, which undoes the whole upgrade if you run it before making other changes.
+
+It needs git 2.26 or later and a clean working tree. A range made with 3.0.0 has no
+`range:upgrade` script yet; for its first upgrade, run:
+
+```bash
+npx --yes create-wxl@latest upgrade
+```
+
+> A range not made with `npm create wxl` (no `range.json`) names the upstream release it came from
+> with `--from <version>`.
+
 ### After forking: rewrite the project identity
 
 Run `fork:init` with its required flags:

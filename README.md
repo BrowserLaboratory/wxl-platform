@@ -195,6 +195,24 @@ npm create wxl <資料夾> -- --no-setup
 
 > `create-wxl` 從 3.0.0 起發布在 npm 上；指令會下載與套件同一版的上游來建立靶場。
 
+### 升級靶場：`pnpm range:upgrade`
+
+上游發布新版之後，在靶場的最上層執行：
+
+```bash
+pnpm range:upgrade
+```
+
+它會下載靶場建立時的上游版本與最新版本，再和你的靶場做三方合併：上游改了、你沒改的檔案直接更新；兩邊都改過的地方標上衝突標記；拿不準的路徑保持你的版本，列在報告的注意項目裡。升級不會 commit，也不會動到被 ignore 的檔案；報告最後一行附上還原指令，在做其他變更之前執行就能整個撤銷。
+
+需要 git 2.26 以上，而且工作樹必須是乾淨的。用 3.0.0 建立的靶場還沒有 `range:upgrade` 這個 script，第一次升級改用：
+
+```bash
+npx --yes create-wxl@latest upgrade
+```
+
+> 靶場若不是由 `npm create wxl` 建立（沒有 `range.json`），加上 `--from <版本>` 指出它從哪一版上游建立。
+
 ### fork 之後：改寫專案身分
 
 帶必要參數執行 `fork:init`：
