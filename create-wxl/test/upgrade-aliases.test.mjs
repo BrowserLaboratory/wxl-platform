@@ -193,6 +193,36 @@ describe('U68: a name alias on disk -> untouched, UP-A15 (P-9)', () => {
   })
 })
 
+// U77 (revision 3.4, D24, P-10; T-0066): where `realpath` does not report the stored name (WSL's
+// `/mnt/c`, modelled here: the alias resolves to `.gitignore` in every function, but `realpath`
+// returns the alias itself), P-9 cannot see the alias; P-10 still can, since step 4 left no
+// untracked file that is not ignored, so an untracked path that exists is reached through another name.
+describe('U77: an untracked path that exists is an alias (P-10, D24)', () => {
+  it('B has GITIGN~1 ≡ .gitignore, T lacks it, realpath reports GITIGN~1 itself -> UP-A15; .gitignore not deleted', async () => {
+    const fixture = await buildUpgradeFixtures({ branches: [], rangeJson: RANGE_JSON })
+    try {
+      const gitignorePath = join(fixture.root, '.gitignore')
+      const before = await readFile(gitignorePath, 'utf8')
+      fixture.baseEntries.push({ path: 'GITIGN~1', type: 'file', mode: 0o644, content: before })
+      const ignoredBefore = await ignoredList(fixture)
+      const alias = join(fixture.root, 'GITIGN~1')
+      const realRoot = await fsp.realpath(fixture.root)
+      const fs = wrappedFs({ mapPath: (p) => (p === alias ? gitignorePath : p) })
+      fs.realpath = async (p, ...rest) => (p === alias ? join(realRoot, 'GITIGN~1') : fsp.realpath(p, ...rest))
+
+      const result = await runUpgrade(fixture, { fs })
+
+      expect(result.exitCode).toBe(0)
+      expect(hasA15(result.r3, 'GITIGN~1')).toBe(true)
+      expect(result.ioHelper.stdoutText).not.toContain(`R2: ${jsonValue('GITIGN~1')}`)
+      expect(await readFile(gitignorePath, 'utf8')).toBe(before)
+      expect(await ignoredList(fixture)).toEqual(ignoredBefore)
+    } finally {
+      await cleanup(fixture)
+    }
+  })
+})
+
 describe('U69: names that agree are not reported; P-9 errors fail closed', () => {
   const NFC_NAME = 'platform/caf\u00e9.md'
   const NFD_NAME = 'cafe\u0301.md'

@@ -12,7 +12,7 @@ import { printedForms } from './git-steps.mjs'
 import { MINIMUM_GIT_VERSION } from './git-version.mjs'
 import { MINIMUM_BASE_VERSION_TEXT } from './base-version.mjs'
 import { VERSION_RE } from './patterns.mjs'
-import { RESTORE_COMMANDS } from './upgrade-report.mjs'
+import { restoreCommandLine } from './upgrade-report.mjs'
 
 /** CW-W01's and UP-E02's minimum-version text (S-10), one source with the actual check (`isGitVersionOk`'s
  * own default), not a hardcoded version repeated in both language tables. */
@@ -293,15 +293,14 @@ export const en = {
     `UP-A15: the path's name on disk differs from upstream's (a short name, ignored characters, or letter case, in the path or a parent); it was left untouched.`,
   // T-0027 increment 10 (traceability.md "Codes" UP-E09): a write failed, or a signal arrived,
   // during step 9 (apply); names the path and the file-system error, or (for a signal) the signal
-  // name, plus the restore commands in D14's order (`RESTORE_COMMANDS`: `git checkout -- .` then
-  // `git clean -fd`; T-0063).
+  // name, plus the restore commands as one line in D14's order (`restoreCommandLine`: `git checkout
+  // -- . && git clean -fd`; D14 T-0063, D23 T-0066).
   'UP-E09': ({ path, signal, detail }) =>
     `UP-E09: ` +
     (signal !== undefined
       ? `a signal (${jsonValue(signal)}) stopped the upgrade while applying the plan`
       : `applying the plan failed at ${jsonValue(path)}: ${jsonValue(detail)}`) +
-    `; the range may be partially changed. Run ${posixCommand(RESTORE_COMMANDS[0])} then ` +
-    `${posixCommand(RESTORE_COMMANDS[1])} to restore it to HEAD.`,
+    `; the range may be partially changed. Run ${restoreCommandLine()} to restore it to HEAD.`,
   // T-0027 increment 18 (traceability.md "Codes" UP-E11): planning (step 8) failed -- `git
   // merge-file` exited outside 0-127 (or was ended by a signal, `code` `null`), or its output was
   // not read in full (traceability.md's own wording for this code; no code path exercises that
@@ -459,8 +458,7 @@ export const zhTW = {
   'UP-E09': ({ path, signal, detail }) =>
     `UP-E09：` +
     (signal !== undefined ? `收到訊號（${jsonValue(signal)}）後停止套用合併結果` : `套用合併結果時在 ${jsonValue(path)} 失敗：${jsonValue(detail)}`) +
-    `；靶場可能已經被部分改動。請執行 ${posixCommand(RESTORE_COMMANDS[0])}，` +
-    `再執行 ${posixCommand(RESTORE_COMMANDS[1])} 還原到 HEAD。`,
+    `；靶場可能已經被部分改動。請執行 ${restoreCommandLine()} 還原到 HEAD。`,
   'UP-E11': ({ path, detail }) =>
     `UP-E11：規劃合併時在 ${jsonValue(path)} 失敗：` + (detail !== undefined ? jsonValue(detail) : `git merge-file 沒有正常結束。`),
   'UP-E12': ({ version, recordedCommit, tagCommit }) =>

@@ -18,7 +18,7 @@ import { makeRefFetchArchive, pristineArchive } from './helpers/ref-fetch-archiv
 import { makeSignalingCheckpoint } from './helpers/checkpoint-signal.mjs'
 import { recordingFs } from './helpers/fs-recorder.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
-import { expectRestoreOrder } from './helpers/restore.mjs'
+import { expectRestoreLine } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '8'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -197,7 +197,7 @@ describe('SIGTERM right after step 9\'s first rename (U28(b))', () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(130)
 
       // The deletion (M6) and the first write already landed before the signal was noticed.
@@ -246,7 +246,7 @@ describe("SIGTERM right after range.json's own temporary file is written", () =>
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('SIGTERM')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(130)
 
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
@@ -275,9 +275,9 @@ describe('SIGINT at the step-10 checkpoint (U28, D8)', () => {
         expect(ioHelper.stdoutText).toContain(id)
       }
       // D20 (T-0063): step 9 finished, so this is a completed run -- `range.json` already names the
-      // target, and R5 gives the restore commands in D14's order.
+      // target, and R5 gives the restore commands as D14's and D23's one line.
       expect(JSON.parse(await readFile(join(fixture.root, 'range.json'), 'utf8')).upstream.commit).toBe(FIXED_COMMIT)
-      expect(ioHelper.stdoutText).toContain('R5: to undo the whole upgrade before making other changes, run git checkout -- . then git clean -fd')
+      expect(ioHelper.stdoutText).toContain('R5: to undo the whole upgrade before making other changes, run git checkout -- . && git clean -fd')
       expect(remainingTmpEntries(tmpRoot)).toEqual([])
     } finally {
       await cleanupFixture(fixture, tmpRoot)

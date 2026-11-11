@@ -17,7 +17,7 @@ import { makeTmpRoot } from './helpers/tmp.mjs'
 import { createSpawnGitRunner } from '../src/git-runner.mjs'
 import { en, zhTW } from '../src/messages.mjs'
 import { buildReport } from '../src/upgrade-report.mjs'
-import { expectRestoreOrder } from './helpers/restore.mjs'
+import { expectRestoreLine } from './helpers/restore.mjs'
 
 describe('UP-E10 wording: a present-but-invalid-format version is "not valid", not "lower than 3.0.0"', () => {
   it('en and zh-TW both begin with UP-E10 and distinguish an invalid format from a too-low version', () => {
@@ -244,7 +244,7 @@ describe('UP-E09 wording: the path/detail branch and the signal branch', () => {
 
     for (const text of [enPath, zhPath, enSignal, zhSignal]) {
       expect(text.startsWith('UP-E09')).toBe(true)
-      expectRestoreOrder(text) // D14 (T-0063): the restore commands
+      expectRestoreLine(text) // D14 (T-0063): the restore commands
     }
 
     expect(enSignal).toContain('SIGTERM')

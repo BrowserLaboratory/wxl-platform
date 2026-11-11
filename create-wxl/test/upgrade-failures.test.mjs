@@ -16,7 +16,7 @@ import { recordingFs } from './helpers/fs-recorder.mjs'
 import { failAt, fsError } from './helpers/fail-at.mjs'
 import { verifyGit } from './helpers/real-git.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
-import { expectRestoreOrder, runRestoreCommands } from './helpers/restore.mjs'
+import { expectRestoreLine, runRestoreCommands } from './helpers/restore.mjs'
 
 const BASE_COMMIT = '7'.repeat(40)
 const BASE_VERSION = '3.0.0'
@@ -69,7 +69,7 @@ describe('range.json write failure', () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('range.json')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(1)
 
       // No temporary file of step 9 is left in the range (their names are unique, so list them).
@@ -98,7 +98,7 @@ describe('a non-file-system error after the first operation of step 9', () => {
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('pnpm-lock.yaml')
       expect(ioHelper.stderrText).toContain('boom: not a file-system error')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(1)
     } finally {
       await cleanupFixture(fixture, tmpRoot)
@@ -122,7 +122,7 @@ describe('write failure during step 9 (U27)', () => {
 
       expect(ioHelper.stderrText).toMatch(/^UP-E09/m)
       expect(ioHelper.stderrText).toContain('pnpm-lock.yaml')
-      expectRestoreOrder(ioHelper.stderrText) // D14 (T-0063)
+      expectRestoreLine(ioHelper.stderrText) // D14 (T-0063)
       expect(exitCode).toBe(1)
 
       // D14 (T-0063): the restore commands exactly as R5 and UP-E09 print them, each exiting 0.
