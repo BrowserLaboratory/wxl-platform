@@ -54,3 +54,7 @@ No spec covers the release itself; `create-wxl`'s publish gate X1–X9
   `Tests 716 passed | 1 skipped (717)`, `upstream-config.test.mjs` included.
 - Before tagging (T-0029's lesson): run `node scripts/check-publish.mjs` in `create-wxl/` on the merge commit once the
   tag is pushed, and confirm `npm whoami` before `npm publish`.
+- 2026-11-11, PR #80's first CI run: root `test` failed in `tests/unit/site/glossary.test.ts` ("attention
+  item（注意項目） does not declare itself new while already in use"): the README's upgrade subsection
+  is the first Chinese prose to use 「注意項目」, so `GLOSSARY.md` drops its `_新造詞_` line, as epic 0005's U10
+  did for 「設定紀錄」. `pnpm vitest run tests/unit/site/glossary.test.ts` → `290 passed`.
