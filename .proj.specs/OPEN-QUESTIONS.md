@@ -1033,7 +1033,7 @@ the next teacher workshop.
 ## OQ-026 — Should the upgrade write a `range.json` that the teacher's range ignores?
 
 **Deferred on:** 2026-11-09
-**Status:** open
+**Status:** resolved
 
 **Reason.** Raised by T-0027's stage 7 security review (candidate 19,
 `.proj.specs/0006-range-upgrade/review/security-T-0027.md`); the user chose to defer it on 2026-11-09.
@@ -1061,4 +1061,12 @@ option in T-0061's stage 1 interview: step 5 refuses, before any download and wi
 U67). Reproduced on a terminal during that stage (`.proj.research/2026-11-09-t0061-stage1-facts.md`,
 scenarios S8a and S8b): no order of the restore commands restores or removes such a file. At T-0061's
 close-out, set the status to resolved and record the verifying evidence here.
+
+**Resolved on 2026-11-11 (epic 0006 revision 3 close-out).** T-0061 landed as PR #70 (`27ff2fd`) and
+the rest of revision 3 as T-0062 to T-0066 (last: PR #78, `93ba74b`). Step 5's check is
+`create-wxl/src/upgrade.mjs` (UP-E13, before any download); `create-wxl/test/upgrade-ignored-record.test.mjs`
+covers matrix row U67: refused before any download when `range.json` is present, when it is absent
+under `--from`, and when only `.git/info/exclude` ignores it; a tracked `range.json` proceeds. It
+passes in CI on macOS, Windows and Ubuntu (PR #78's run among them). The restore-order finding behind this question is recorded in
+spec 0006 B4 (D14, D23).
 

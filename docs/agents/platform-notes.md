@@ -26,6 +26,15 @@ always open the Browser panel.
   there, and reading one of them returns the other.
 - `git check-ignore` refuses every pathspec magic, `--literal-pathspecs` included (exit 128, git
   2.54.0). Pass a path as `./<path>` to read it literally.
+- A `git commit` in a fixture can start git's detached auto-maintenance, whose
+  `.git/objects/maintenance.lock` appears and vanishes while a test walks the tree (ENOENT on `lstat`,
+  PR #76's macos-latest run). `create-wxl/test/helpers/real-git.mjs`'s `verifyGit` passes
+  `maintenance.auto=false` and `gc.auto=0` through `GIT_CONFIG_COUNT`; a helper that spawns git on
+  its own and then snapshots `.git` needs the same.
+- Never let a run return while a child process it started still runs in the range: on Windows the
+  caller's `rm` of that directory then fails with `EBUSY` (PR #72's windows-latest run). `Promise.all`
+  rejects at the first failure and leaves the rest running; `merge-plan.mjs`'s `settleAll` waits for
+  every operation first.
 
 ## Search and local servers
 

@@ -2,7 +2,7 @@
 id: T-0066
 title: Chain fixes from revision 3's close-out
 epic: 0006-range-upgrade
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -110,3 +110,6 @@ epic 0006 第 3 版收尾的串連分析，找到幾條跨越信任邊界的鏈�
       `git status --porcelain=v1 --untracked-files=all`.
     - The zh-TW R5: `R5: 如果要撤銷整個升級，請在做其他變更之前執行 git checkout -- . && git clean -fd`.
   - Afterwards `create-wxl/dist/`, `create-wxl/LICENSE`, the tarball and the range were removed.
+- 2026-11-11, landed: PR #78 squash-merged into `main` as `93ba74b` (CI 10 of 10 passing on
+  `e2d2468`). Status set to done. This is the last ticket of revision 3; the epic close-out (evidence
+  report, retrospective, OQ-026) lands in the same PR as this record.
