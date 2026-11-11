@@ -62,3 +62,71 @@
 - **T-0061**（`pending`）：串連分析的 X1～X3，需要先做 spec 決策。
 - **ADR 候選**：沒有新的。D3～D10 是 spec 0006 的決策，留在 traceability。
 - **範圍外的觀察**：每次 push 時，GitHub 都提示 `main` 上有 82 個 Dependabot 警告（35 high、32 moderate、15 low）。它們和本 epic 無關，各 ticket 的第 7 階段也都明列不含依賴掃描。是否要另外開一個依賴維護的 ticket 或 epic，由使用者決定。
+
+---
+
+# 回顧：epic 0006 第 3 版（revision 3～3.4）
+
+日期：2026-11-10。依 `docs/agents/workflow.md` 的 Epic close-out 第 3 步執行。
+
+範圍：從 T-0061 第 1 階段（2026-11-09），到 T-0066 改為 done 的紀錄（本收尾 PR）。
+
+## 結果
+
+- **Ticket**：5 張，每張都用 squash 合併，另外各有一個改 `done` 的紀錄 PR。
+  - T-0061（升級的 base 必須是上游發布版）：#70、#71。
+  - T-0062（磁碟名稱別名）：#72、#73。
+  - T-0063（還原順序、報告補充、第 8 階段完整模擬）：#74、#75。
+  - T-0065（git 最低版本 2.26）：#76、#77。
+  - T-0066（串連分析開出的修正）：#78、本收尾 PR。
+- **Spec**：0006 從 revision 3 改到 3.4，決策 D11～D24；0005 從 2.2 改到 2.3。
+  - revision 3 經 round 2 審查，沒有 P0。
+  - 3.1 套用 round 2 的處置。
+  - 3.2～3.4 都只做自我檢查，沒有再審。
+- **測試**：create-wxl 從 623 個（T-0027）增加到 660（T-0061）、696（T-0062）、709（T-0063）、715（T-0065），再到 716（T-0066）。根目錄維持 4,861 個（1 skipped）。
+- **安全**：
+  - 五份第 7 階段報告共 48 個候選。T-0065 確認 2 項 low，寫進 spec；T-0066 確認 2 項 low，在 spec 修正。其餘都是誤報。
+  - 收尾的串連分析找到跨界的 low 鏈，開出 T-0066 修掉，見 `review/chain-analysis-revision-3.md`。
+- **第 8 階段**：每張 ticket 都用打包後的套件在 macOS 終端機上跑過。
+  - T-0063 照 traceability 完整跑完 0006-S2 的步驟 1～6，一次全部符合預期，包括 `pnpm build` 與還原。
+  - T-0065 用回報 2.25.1 的假 git，驗證 CW-W01 與 UP-E02。
+- **CI**：
+  - #72 第一輪在 windows-latest 失敗。原因是 step 8 的 `Promise.all` 提早 reject，另一個 git 子程序還在執行；這是真的產品缺陷，改用 `settleAll` 修正。
+  - #76 第一輪在 macos-latest 失敗。原因是 fixture 的 commit 在背景啟動 git maintenance，屬於會隨機失敗的測試；已在測試 helper 關掉。
+
+## 做得好的地方
+
+| 觀察 | 證據 |
+|---|---|
+| 跨 OS 的 CI 抓到本機 macOS 測不到的真缺陷：子程序還在跑，升級就先清理並返回 | PR #72 run `42798792930`；T-0062 Comments |
+| 用 release notes 與原始碼比較 git 2.20 和 2.54，查出兩個會影響安全的舊版行為（fsmonitor、`!` 否定規則）；使用者據此把 git 最低版本提高到 2.26，取代無法執行的 2.20 實測 | T-0063 Comments；T-0065 |
+| 收尾的串連分析從三個攻擊者位置各自找鏈，再逐條獨立查證，找到 X3 的最終影響在 WSL 上重新出現的路徑；T-0066 用兩個不依賴檔案系統的修正把它切斷 | `chain-analysis-revision-3.md`；T-0066 |
+| 第 8 階段先執行，再寫紀錄，每項主張都附上指令輸出 | 各 ticket 的 stage 8 紀錄 |
+
+## 要改的地方
+
+| # | 觀察 | 證據 | 提案 |
+|---|---|---|---|
+| 1 | 連續三張 ticket（T-0063、T-0065、T-0066）在送第 6 階段審查時，都還沒寫 coverage report、沒改 status、沒勾 AC；三次都被 Standards 軸指出 | 三張 ticket 的 stage 6 紀錄（A1、F1/F2） | 送第 6 階段之前，先完成 coverage report table、勾選已達成的 AC、把 status 改為 review，再擷取 review packet。屬通用流程，提給 harness-agile |
+| 2 | 修訂驗收條件時漏改同一條規則的其他敘述（AC-10 沒有跟著 D23 改；P-10 沒有補進其他提到 P-9 的地方） | T-0066 stage 6 F4、F9 | 改一條規則前，先 grep 所有提到它的地方（決策編號、預先檢查編號、指令字串），列成清單逐一處理。屬通用流程（全域守則第 3 條的落實） |
+| 3 | zh-TW 的 `synced_from_sha` 寫成 commit hash，應該是 `spec.en.md` 的 blob hash | T-0065 stage 6 #1 | `docs/agents/language.md` 已寫明是 blob hash；同步時一律用 `git hash-object` 取值。屬操作疏失，已更正 |
+| 4 | 一次 `git merge --no-edit` 產生了沒有經過 commit skill 的 merge commit；另一次重用 workflow 腳本時，帶著上一張 ticket 的情境；安全報告裡寫了一個自己推測的完整 SHA。三者都在推送或採用結果前發現並重做 | T-0065 分支的合併；T-0063 stage 7 紀錄；security-T-0063 | 合併 main 時一律用 `--no-commit`，再以 commit skill 產生訊息；workflow 腳本一律重寫情境，不重用；引用 SHA 一律從 `git rev-parse` 取得。屬通用流程 |
+| 5 | 這個 session 的權限分類器擋下「從外部原始碼編譯 git 2.20」，原本 spec 要求的最低版本實測無法執行 | T-0063 stage 5 紀錄 | 需要特定版本工具的驗證，在第 1 階段就確認能不能執行；不能的話先決定替代做法（例如讀碼比較加上調整最低版本）。屬通用流程 |
+| 6 | 測試 fixture 的 `git commit` 會啟動 git 的背景 maintenance，造成 macOS CI 隨機失敗 | PR #76 run `42830122682` | `docs/agents/platform-notes.md` 補上這一條，以及 `Promise.all` 搭配子程序在 Windows 上的 EBUSY。屬 wxl 專屬，這個收尾 PR 一併更新 |
+
+## 採用情況
+
+| # | 落點 |
+|---|---|
+| 1、2、4、5 | harness-agile 的提案（通用流程），依 upstream-first 的做法等上游更新後同步 |
+| 3 | 已更正，不另外改流程 |
+| 6 | `docs/agents/platform-notes.md`，這個收尾 PR 一併更新 |
+
+## ADR 與 open question
+
+- **OQ-026**（`range.json` 被老師自己 ignore）：已由 T-0061 的 D15 處理，本收尾 PR 在 OPEN-QUESTIONS.md 改為 resolved，並附上驗證證據。
+- **ADR 候選**：沒有新的。D21（git 最低版本）是產品支援範圍的決定，記在 traceability 與 README。
+- **留給之後**：
+  - 在 step 4 加上 `-c core.fsmonitor=`，需要在兩個 git 版本上實測（security-T-0065 的可選強化）。
+  - P-10 不檢查上層資料夾（B4）。
+  - T-0064（G4 hooks）照原計畫在發布後處理。

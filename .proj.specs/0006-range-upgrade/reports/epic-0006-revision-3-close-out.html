@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0006 第 3 版收尾證據報告</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --text: #1d2330; --muted: #5b6475; --line: #d9dde5;
+  --accent: #1f5fbf; --accent-soft: #e6eefb; --ok: #2f7a4b; --warn: #a15c07;
+  --sans: -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171d; --surface: #1c2028; --text: #e4e7ee; --muted: #9aa3b5; --line: #2f3542;
+    --accent: #7fb0ff; --accent-soft: #1e2b44; --ok: #7fd39f; --warn: #f0b35c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 var(--sans); }
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 6px; }
+h2 { font-size: 1.2rem; margin: 40px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+p.meta { color: var(--muted); margin: 0 0 24px; font-size: .92rem; }
+.answer { background: var(--accent-soft); border-left: 4px solid var(--accent); padding: 16px 20px; border-radius: 4px; }
+.answer strong { color: var(--accent); }
+code { font-family: var(--mono); font-size: .88em; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { background: var(--bg); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+.tier-v { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.tier-i { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier-e { color: var(--muted); font-weight: 600; white-space: nowrap; }
+ol.chain li { margin-bottom: 6px; }
+.decision { border: 1px solid var(--accent); border-radius: 4px; padding: 14px 18px; background: var(--surface); }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0006 第 3 版收尾：交付內容與證據</h1>
+<p class="meta">2026-11-10 · 範圍：T-0061、T-0062、T-0063、T-0065、T-0066 · spec 0006 revision 3～3.4、0005 revision 2.3 · main <code>93ba74b</code></p>
+
+<div class="answer">
+<p><strong>結論：revision 3 的五張 ticket 都已合併到 main，可以發布。</strong>依 spec 的信任邊界，revision 2 串連分析的 X1～X3 都已關閉。收尾時新的串連分析只找到 low 的鏈，已由 T-0066 修掉兩個關鍵環節；其餘的鏈都寫進 spec，列為已接受的風險。五份第 7 階段報告都沒有 high 或 medium，確認的 4 項 low 都已寫進 spec 或修正。</p>
+</div>
+
+<h2>要決定的事</h2>
+<p>升級功能（<code>create-wxl upgrade</code>）還沒發布。revision 3 讓這個功能補上幾項保護：</p>
+<ul>
+<li>base 必須是上游的發布版；</li>
+<li>名稱別名不會讓檔案被誤刪；</li>
+<li>還原不會刪掉被 ignore 的檔案；</li>
+<li>git 有最低版本要求。</li>
+</ul>
+<p>這份報告回答一個問題：這些保護有沒有證據支撐，足以讓 create-wxl 3.1.0 帶著升級功能發布。</p>
+
+<h2>交付內容</h2>
+<div class="scroll"><table>
+<tr><th>Ticket</th><th>交付</th><th>PR／合併</th><th>第 7 階段</th></tr>
+<tr><td>T-0061</td><td>從 <code>range.json</code> 讀到的 base 改經由上游 tag 下載，commit 必須相符（J6、UP-E12）；沒被追蹤又被 ignore 的 <code>range.json</code> 會被拒絕（UP-E13）；<code>--from &lt;commit&gt;</code> 時 R1 會標示 base 沒有比對 tag</td><td>#70 <code>27ff2fd</code>、#71</td><td>13 個候選，0 項確認</td></tr>
+<tr><td>T-0062</td><td>P-9：磁碟上名稱和上游不同的路徑保持不動，回報 UP-A15；rule 3 擋下 git 視為 <code>.git</code> 的別名；step 8 失敗時等所有子程序結束才返回</td><td>#72 <code>279eac5</code>、#73</td><td>9 個候選，0 項確認</td></tr>
+<tr><td>T-0063</td><td>還原指令改為先 checkout 再 clean（D14）；R2 列出刪掉的檔案、R4 說明 <code>|||||||</code> 段落（D16）；保留 <code>__proto__</code>；完整跑過第 8 階段模擬</td><td>#74 <code>8455c34</code>、#75</td><td>8 個候選，0 項確認</td></tr>
+<tr><td>T-0065</td><td>git 最低版本 2.26，建立靶場與升級共用（D21）；寫明還原會刪掉「檔案變成資料夾」時資料夾裡被 ignore 的檔案（D22）</td><td>#76 <code>de9c0d4</code>、#77</td><td>8 個候選，2 項 low 寫進 B4</td></tr>
+<tr><td>T-0066</td><td>還原指令印成一行 <code>&amp;&amp;</code>（D23）；P-10：沒被追蹤卻存在的路徑視為別名（D24）</td><td>#78 <code>93ba74b</code></td><td>10 個候選，2 項 low 在 spec 修正</td></tr>
+</table></div>
+
+<h2>證據鏈</h2>
+<ol class="chain">
+<li>每張 ticket 都先有 test plan，再寫紅燈測試，最後轉綠；確認型測試都做了 mutation 檢查，紀錄在各 ticket。</li>
+<li>create-wxl 的測試從 623 個增加到 716 個，每個 PR 的 CI 都跑 macOS、Windows、Ubuntu 三種 OS。</li>
+<li>第 8 階段用打包後的套件，在 macOS 終端機上跑過每張 ticket 的行為。T-0063 照 traceability 完整跑完模擬的步驟 1～6，包括 <code>pnpm build</code> 與還原。</li>
+<li>第 6、7 階段由獨立的 reviewer 執行。每個安全候選都再交給另一個 reviewer 判定是不是誤報。</li>
+<li>收尾的串連分析從三個攻擊者位置各自找鏈，跨界的 low 鏈由 T-0066 切斷。</li>
+</ol>
+
+<h2>代價與沒有解決的事</h2>
+<ul>
+<li>git 2.20～2.25 的老師（例如 Ubuntu 20.04）用不了升級。建立靶場時改為收到 CW-W01，git 步驟要自己執行。</li>
+<li>Windows PowerShell 5.1 不接受 <code>&amp;&amp;</code>，老師要分開執行兩個還原指令。spec 已寫明做法。</li>
+<li>B4 仍然接受幾種情況：經由資料夾別名到達的新路徑；git 2.26～2.35 的 fsmonitor hook 版本 1；zdiff3 讓 checkout 失敗。</li>
+<li>這些情況都沒有實測：WSL <code>/mnt/c</code>、PowerShell、git 2.26～2.35，以及 APFS 上的 NFC 等價名稱。</li>
+</ul>
+
+<h2>證據表</h2>
+<div class="scroll"><table>
+<tr><th>主張</th><th>層級</th><th>來源</th></tr>
+<tr><td>五張 ticket 都已 squash 合併到 main</td><td class="tier-v">已驗證</td><td><code>git log origin/main</code>：<code>27ff2fd</code>、<code>279eac5</code>、<code>8455c34</code>、<code>de9c0d4</code>、<code>93ba74b</code></td></tr>
+<tr><td>create-wxl 測試 716 passed、1 skipped</td><td class="tier-v">已驗證</td><td><code>pnpm --dir create-wxl test</code>（T-0066 第 6 階段紀錄）</td></tr>
+<tr><td>五份第 7 階段報告沒有 high 或 medium</td><td class="tier-v">已驗證</td><td><code>review/security-T-0061.md</code>、<code>-T-0062</code>、<code>-T-0063</code>、<code>-T-0065</code>、<code>-T-0066</code></td></tr>
+<tr><td>第 8 階段完整模擬一次全部符合預期</td><td class="tier-v">已驗證</td><td>T-0063 的 stage 8 紀錄（A <code>69d769c</code>、B <code>4e5ae09</code>）</td></tr>
+<tr><td>git 2.20 與 2.54 在 U70 的三個情境結果相同</td><td class="tier-i">推論</td><td>讀 v2.20.1、v2.54.0 的 <code>entry.c</code>、<code>builtin/clean.c</code>（T-0063 Comments），沒有實際執行 2.20</td></tr>
+<tr><td>git 2.26 之前 fsmonitor 預設使用 hook protocol V1</td><td class="tier-e">外部</td><td>git v2.36.0 <code>Documentation/config/core.txt</code></td></tr>
+<tr><td>P-10 在 WSL <code>/mnt/c</code> 上擋得住 8.3 別名</td><td class="tier-i">推論</td><td>U77 的模擬（<code>realpath</code> 回傳別名本身），沒有在 WSL 上實測</td></tr>
+<tr><td>還原指令那一行在 bash 上以 0 結束，工作樹恢復乾淨</td><td class="tier-v">已驗證</td><td>T-0066 的 stage 8 紀錄（<code>bash -c</code>）</td></tr>
+<tr><td>PowerShell 5.1 拒絕 <code>&amp;&amp;</code>，兩個指令都不會執行</td><td class="tier-e">外部</td><td>PowerShell 的語法文件（pipeline chain operator 從 PowerShell 7 才有），沒有實測</td></tr>
+<tr><td>串連分析找到的跨界鏈都是 low</td><td class="tier-v">已驗證</td><td><code>review/chain-analysis-revision-3.md</code>（每條鏈都經獨立查證）</td></tr>
+</table></div>
+
+<h2>這份報告不主張的事</h2>
+<ul>
+<li>不代表整個專案沒有安全問題。各份報告都只看這次的 diff，也沒有做相依套件掃描。</li>
+<li>不包含 create-wxl 3.1.0 發布本身。發布由另一張 maintenance ticket 處理。</li>
+<li>文中出現的 PowerShell、WSL 行為與 git 舊版行為，都不是實測結果。</li>
+</ul>
+
+<h2>需要你回答的問題</h2>
+<div class="decision">要以這個 main（<code>93ba74b</code>）發布 create-wxl 3.1.0 嗎？</div>
+</main>
+</body>
+</html>
