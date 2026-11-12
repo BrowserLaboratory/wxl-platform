@@ -30,7 +30,7 @@ Spec 0009 revision 3.
 
 - [x] Rows W01–W12.
 - [x] ACs reached: AC-4, and AC-5's W11.
-- [ ] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` prints MR1's object;
+- [x] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` prints MR1's object;
   `node scripts/check-publish.mjs` exits 1 with a named check; the PR's CI passes, including the
   workflow tests. No `v*` tag is pushed (D10).
 
@@ -166,3 +166,10 @@ Spec 0009 revision 3.
   - (b) `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed:
     X3 (no local tag v<version> exists at HEAD)`, exit 1.
   - Afterwards `create-wxl/dist/` and `create-wxl/LICENSE` were removed. No `v*` tag was pushed.
+- 2026-11-12, stage 8, CI part (RP0 (c); surface: GitHub Actions on PR #86, push `4c84f51`, run
+  `43249239624`, checked with `gh pr checks 86`): 10 of 10 passed. The `test` job runs `pnpm test --run`,
+  which holds the workflow tests of W01–W12 (`tests/unit/workflows/publish-npm.test.ts`,
+  `upstream-only-jobs.test.ts`, `trigger-branches.test.ts`, and T52 in
+  `tests/unit/scripts/fork-init.test.ts`); the four `fork-init-cross-os` jobs run T52 too. The new
+  workflow itself did not run: no `v*` tag was pushed (D10). Stage 8 is complete: RP0 (a), (b) and
+  (c) are recorded.
