@@ -132,3 +132,15 @@ Spec 0009 revision 3.
       the epic's retrospective, since they change shared process documents;
     - STD-23: the A-mode kept line is stated in the places the spec names;
     - SEC-12, SEC-20: for the close-out's chain analysis and retrospective.
+- 2026-11-13, rebased onto `main` `42a0cba` (after #86 and #87) with `git rebase --onto origin/main
+  4c84f51`: `98d8ae7` → `6dd8801`, `44875a3` → `d687b24`, `5ce6e5a` → `1766caf`, `56d8e5d` →
+  `2b60aae`, `075c3af` → `b136b5b`, and the stage 6–7 record → `f7167bb`. At `f7167bb`:
+  `pnpm test --run` → `Test Files 137 passed (137) / Tests 4910 passed | 1 skipped (4911)`;
+  `pnpm --dir create-wxl test` → `Tests 787 passed | 1 skipped (788)`;
+  `python3 scripts/verify-project.py` → `PASS`.
+- 2026-11-13, stage 8, terminal part (RP0 (a), (b); surface: a terminal on macOS darwin arm64,
+  Node v24.13.0, git 2.54.0, at `f7167bb`), after `pnpm --dir create-wxl install
+  --frozen-lockfile`, in `create-wxl/`: (a) `npm pkg get repository` → MR1's object, exit 0;
+  (b) `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed: X3
+  (no local tag v<version> exists at HEAD)`, exit 1. `create-wxl/dist/` and `create-wxl/LICENSE`
+  were removed afterwards.
