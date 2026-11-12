@@ -59,7 +59,7 @@ Spec 0009 revision 3.
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| 0009-S2 | `tests/unit/workflows/publish-npm.test.ts`：W1～W8 共 25 個（W4 三個 action 各一、W7 十三個字串各一）、W12 三列；`upstream-only-jobs.test.ts` 新增三個；`trigger-branches.test.ts` 的註解；`fork-init.test.ts` 的 T52（W10、W11） | not measured：YAML 與原始文字的靜態檢查，沒有 coverage 可量。重現（repo 根目錄）：`pnpm vitest run tests/unit/workflows tests/unit/scripts/fork-init.test.ts` | W01～W12；AC-4、AC-5 的 W11 | workflow 真的在 GitHub Actions 上執行（OIDC、environment `npm`、`npm stage publish`）只能在 T-0073 的 S8-01 驗證：npm 沒有測試用的 staging 目標（O3），而且依 D10 本票不推 tag。fork 上 job 被跳過也只有靜態證據（B3） |
+| 0009-S2 | `tests/unit/workflows/publish-npm.test.ts`：W1～W8 共 24 個（W4 三個 action 各一、W7 十三個字串各一），另有 `exists` 一個與 W7 之外的「沒有 `${{ }}`」一個，W12 三列；`upstream-only-jobs.test.ts` 新增三個；`trigger-branches.test.ts` 的註解；`fork-init.test.ts` 的 T52（W10、W11） | not measured：YAML 與原始文字的靜態檢查，沒有 coverage 可量。重現（repo 根目錄）：`pnpm vitest run tests/unit/workflows tests/unit/scripts/fork-init.test.ts` | W01～W12；AC-4、AC-5 的 W11 | workflow 真的在 GitHub Actions 上執行（OIDC、environment `npm`、`npm stage publish`）只能在 T-0073 的 S8-01 驗證：npm 沒有測試用的 staging 目標（O3），而且依 D10 本票不推 tag。fork 上 job 被跳過也只有靜態證據（B3） |
 
 ## 給使用者（zh-TW）
 
@@ -75,7 +75,7 @@ Spec 0009 revision 3.
   newest 11.x (`npm view npm dist-tags` → `next-11: 11.21.2`, published 2026-11-04), with
   `engines.node` `^20.17.0 || >=22.9.0` (`npm view npm@11.21.2 engines`), so Node 24 runs it.
   - W01–W08 (`pnpm vitest run tests/unit/workflows/publish-npm.test.ts` at the repository root):
-    all 28 tests red (`ENOENT … publish-npm.yml`) before the file existed, green after it. The
+    all 28 tests (24 for W1–W8, 1 `exists`, 3 for W12) red (`ENOENT … publish-npm.yml`) before the file existed, green after it. The
     workflow is one artifact fixed key by key by traceability, so it went in as one step rather
     than key by key.
   - Mutation checks, each turning at least one test red and then restored:
@@ -89,3 +89,68 @@ Spec 0009 revision 3.
   - `pnpm test --run` at `dac0b20` → `Test Files 137 passed (137) / Tests 4909 passed | 1 skipped
     (4910)`.
   - No `v*` tag was pushed (D10).
+- 2026-11-12, stage 6 (workflow `wf_9ff899bd-f0d`; local note
+  `.proj.research/2026-11-12-T-0071-stage6-review.md`): Standards 21 findings (0 high, 3 medium),
+  Spec 13 (0 high). Challenged by `harness-challenger`: STD-09, STD-11, STD-13, S-05, S-06
+  refuted; S-09's challenger failed and the finding is kept. Applied under the user's authorisation
+  of 2026-11-12:
+  - The red evidence per rule (STD-01, STD-02, S-02). Every W rule, W09 and W10 now has a mutation
+    that turns its own test red; each was applied to `.github/workflows/publish-npm.yml` alone,
+    run with `pnpm vitest run tests/unit/workflows tests/unit/scripts/fork-init.test.ts` at the
+    repository root, and restored (a throwaway script in the session's scratchpad, not
+    committed; each mutation is the exact edit named below):
+
+    | Row | Mutation | Test that turned red |
+    |---|---|---|
+    | W1 | add `workflow_dispatch:` | `W1: triggers only on pushed v* tags` |
+    | W2 | rename job `stage` → `publish` | `W2: has exactly one job, stage, …` (and every test reading `jobs.stage`) |
+    | W3 | `permissions: read-all`; `environment: npm-x`; `id-token: read` | `W3: grants nothing at the top, …` (each) |
+    | W4 | drop `persist-credentials: false`; give pnpm `with: version` | `W4: each action's with is exactly as specified` (each) |
+    | W4 | checkout comment `# v6` | `W4: actions/checkout uses release.yml's pin and version comment` (stage 5) |
+    | W5 | `npm@latest`; `npm@11.14.1` (stage 5) | `W5: step 4 installs one exact npm 11.y.z …` |
+    | W6 | swap steps 5 and 6; step 6 gains `working-directory` | `W6: exactly eight steps, …` |
+    | W7 | a comment `# secrets.X`; `npm stage publish --provenance` | `W7: the raw file never contains secrets.` / `… --provenance` |
+    | W8 | job gains `timeout-minutes`; a run step gains `shell: bash` | `W8: the workflow, job and step key sets are closed` |
+    | W09 | `if:` owner changed; job gains `env` | `publish-npm.yml's stage job if: …`, `… sets no env`, the six-count |
+    | W10 | the `if:` line removed | T52 (`--author x --rebrand acme --repo me/x …`) |
+    | W12 | the command reversed (`origin/main HEAD`) | the three `exits as expected at …` rows and W6 |
+
+    The workflow went in as one artifact, after its 28 tests were written; this table is the
+    per-rule evidence the single red run (`ENOENT`) did not give.
+  - Fixed in `5baae82`:
+    - W12 runs step 5 only once it equals the specified command (security review C11), uses its
+      own temporary home and the real environment minus `GIT_DIR`, `GIT_INDEX_FILE` and
+      `GIT_WORK_TREE`, and throws on a failed setup command (SMELL-03, SMELL-04, S-13);
+    - a check beyond W7: no `${{ }}` expression in the file (S-07);
+    - T52's title names W11, and it checks that `publish-npm.yml` holds one `if:` line and that
+      W11 starts from the upstream URL (STD-14, SMELL-01, S-09);
+    - the workflow's header says "approves it with 2FA", names `release.md` as T-0072's, and says
+      the OIDC token is the job's only credential (STD-08, STD-10, S-03);
+    - `upstream-only-jobs.test.ts`'s header names the stage job and cites W8 for "no env";
+      `toolchain-parity.test.ts` says `publish-npm.yml` is outside its set (STD-12, STD-15, S-08);
+    - the `exists` test is labelled a guard (SMELL-06).
+  - Fixed in this record: the counts (24 + 1 + 3; STD-04, S-11).
+  - Recorded, not changed:
+    - S-01, STD-13: the new `publish-npm.test.ts` holds W01–W08 and W12 instead of extending
+      `fork-template-parity.test.ts`. That test compares the deploy template with a frozen
+      fixture; W4 compares `publish-npm.yml` with `release.yml`, so it reuses the raw-text
+      approach in its own file. The Testing Decision's three named files still change where they
+      apply (`upstream-only-jobs.test.ts`, T52);
+    - S-04: comments outside the listing are not keys, so W8 is unaffected; they follow
+      `release.yml`'s convention and pass W7;
+    - S-10: the six-count goes beyond W09 and counts comments too, by design;
+    - STD-06: the Traditional Chinese tables follow T-0069's STD-03;
+    - STD-07, S-12: the test plan was listed to the user in the conversation of 2026-11-12, under
+      the authorisation covering T-0069 to T-0073;
+    - STD-05: the rebase onto `main` is recorded below with the new SHAs;
+    - SMELL-02, SMELL-05: shared workflow loaders and a constant of upstream-only paths are left
+      for a later cleanup; the counts are spec-mandated;
+    - S-05: npm 11.21.2 stands (`next-11` is npm's tag for its newest 11.x; `latest` is 12.x);
+    - S-06, STD-09, STD-11 were refuted.
+  - After the fixes, at `5baae82`: `pnpm vitest run tests/unit/workflows
+    tests/unit/scripts/fork-init.test.ts` → `Tests 1979 passed (1979)`.
+- 2026-11-12, stage 7 (workflow `wf_62398c34-002`, run on `c14c99a` alongside stage 6): report
+  `.proj.specs/0009-npm-trusted-publishing/review/security-T-0071.md`. 11 candidates, all judged
+  false positives; C11's test hardening is in `5baae82`. C1 (`origin/main` is an unqualified ref,
+  so a tag named `origin/main` would shadow it) and C7 (MN2 before any `v*` tag) go to the epic
+  close-out and to T-0072's `release.md`.
