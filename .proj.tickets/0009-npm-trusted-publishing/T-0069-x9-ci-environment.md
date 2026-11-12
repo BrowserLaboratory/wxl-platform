@@ -2,7 +2,7 @@
 id: T-0069
 title: X9 checks the CI environment
 epic: 0009-npm-trusted-publishing
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -156,3 +156,7 @@ Spec `.proj.specs/0009-npm-trusted-publishing/spec.en.md` revision 3 and `tracea
   24, Windows 24; each runs `pnpm --dir create-wxl test`) and Cloudflare Pages. The workflow tests
   of W01–W12 arrive with T-0071; here the CI runs this ticket's tests and the existing workflow
   tests. Stage 8 is complete: RP0 (a), (b) and (c) are recorded.
+- 2026-11-12, landed: PR #82 squash-merged into `main` as `08c2b14` by the user (14:44 UTC), after
+  CI passed 10 of 10 on both pushes (`a732c0d`, run `43237760085`; `ba830be`, checked with
+  `gh pr checks 82`). The squash message is GitHub's default list of the branch's commits, each
+  generated with `/tw-emoji-commit`. Status set to done.
