@@ -32,4 +32,8 @@ upgrade stops (UP-E12; CW-E07 when the version has no tag). Decided in T-0061's 
   and deleting it stops them with CW-E07, instead of silently changing that base; such a range names
   its base with `--from <commit>`.
 - The target is not bound to its tag: it comes from the npm package's source record, whose trust is
-  the package's (0005 B2).
+  the package's (0005 B2). Note (2026-11-12): since spec 0009, that trust is 0009's B1. CI stages
+  each version through trusted publishing from upstream's `v*` tag, and the upstream maintainer
+  approves it with 2FA after comparing it with the commit SHA they read before the tag was pushed
+  (0009's RP2, RP5). A `v<V>` that never became
+  installable on npm is still an upstream release here, since this decision goes by tag.

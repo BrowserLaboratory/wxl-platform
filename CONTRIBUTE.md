@@ -333,6 +333,10 @@ Prefix the issue title with `[Feature]` and describe:
 
 > This section is for repository maintainers only; contributors can skip it. It documents one-time GitHub configuration that lives outside the repo (server-side state) and that derived repositories must reproduce after `use-template`.
 
+### Releases and npm trusted publishing
+
+Upstream only; derived repositories skip this subsection. Releasing WXL and create-wxl, including the GitHub and npmjs.com settings only the upstream maintainer can make (the `v*` tag rulesets MN7, the `npm` environment MN2, the npm trusted publisher MN1 and refusing tokens MN3), is documented in [`docs/agents/release.md`](docs/agents/release.md); do MN7 and MN2 before any `v*` tag is pushed.
+
 ### Branch protection ruleset
 
 One ruleset guards `main`. Nothing in this repository verifies that it exists on your GitHub repository; it is server-side state that a maintainer creates by hand. Treat the commands below as the procedure, not as a record that it has been carried out.

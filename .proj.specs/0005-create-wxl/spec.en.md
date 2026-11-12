@@ -1,11 +1,11 @@
 # Spec 0005: create-wxl — `npm create wxl` makes a ready range
 
-Status: revision 2.3 (2026-11-10). Round 1 found four P0 findings with two root causes
+Status: revision 2.4 (2026-11-12). Round 1 found four P0 findings with two root causes
 (`review/round-1.md`); revision 2 applied its disposition (`review/disposition.md`, groups N1–N10) and
 the user's decisions D1–D2. Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met;
 revision 2.1 applies round 2's P1 groups Q1–Q6 (`review/disposition-2.md`) by decision D3, without
 another round. Revision 2.2 (2026-11-10, with `traceability.md` revision 2.2) widens entry rule 3 to git's
-NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21), without another round. Derived from `traceability.md`, which holds the fixed
+NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21), without another round. Revision 2.4 (2026-11-12, with `traceability.md` revision 2.4) records spec 0009 (npm trusted publishing, DS1): X9, B2 and the release steps this spec left to the user now point to 0009, and `traceability.md`'s package listing gains the manifest's `repository`, without another round. Derived from `traceability.md`, which holds the fixed
 lists this spec refers to (decisions in short, vocabulary, command grammar, language, step order,
 signals, error and warning codes, archive entry rules, pristine processing P1–P4, the `range.json`
 schema, the test-download override, setup questions S1–S6, git steps G0–G4, next steps N1–N8, the
@@ -79,7 +79,8 @@ following the system language; messages quoted from the fork-init engine stay in
   `prepack`, so `prepublishOnly` runs `prepareDist` then `checkPublish` (X1–X9): the version matches,
   the tag `v<V>` is `HEAD` and is pushed to upstream itself (annotated or not), the tree is clean,
   `yaml` matches, the release's own archive passes the entry rules and P1–P4, `dist/` and `LICENSE`
-  are the ones for `HEAD`, and the npm name is unpublished or the publisher maintains it. `prepack`
+  are the ones for `HEAD`, and (revision 2.4, spec 0009's X9) it runs in upstream's `publish-npm.yml`
+  for tag `v<V>`; before 2.4, X9 asked npm whether the publisher maintains the name. `prepack`
   also runs `prepareDist`, for `npm pack`. At run time CW-E13 refuses a package whose `dist/` is
   missing, from another version or with a changed engine.
 - **Download and extraction.** The archive is fetched from GitHub's codeload by full commit SHA, parsed
@@ -116,7 +117,7 @@ following the system language; messages quoted from the fork-init engine stay in
 | # | Boundary | Protects | Does not protect | Outside the model |
 |---|---|---|---|---|
 | B1 | GitHub archive → the teacher's disk | Content is chosen by full commit SHA and the archive's pax `comment` must equal it; the archive is parsed strictly and every entry validated before any write, so no entry can be a link or device, land outside the target, collide with another, or create a `.git` path; modes are normalised and owners not kept; a rejected archive leaves nothing behind | The bytes GitHub serves for that SHA are trusted as they are; no separate checksum; no size limit beyond the time limit | GitHub or the network path serving different content for a SHA (TLS is relied on) |
-| B2 | npm registry → the teacher's machine | The name is reserved by the maintainer before it is advertised (D4) and `checkPublish` refuses to publish under a name someone else maintains (X9); direct dependencies pinned; the shipped engine and source record equal the tagged, pushed platform commit (X1–X8); a package whose `dist/` does not match its version or engine refuses to run (CW-E13) | Transitive dependencies follow npm's ranges (no shrinkwrap); a maintainer who bypasses `prepublishOnly` can still publish a package, which CW-E13 then refuses only if its `dist/` mismatches | A compromised npm account or registry; the maintainer enables 2FA |
+| B2 | npm registry → the teacher's machine | The name is reserved by the maintainer before it is advertised (D4); since revision 2.4, publishing goes through spec 0009's B1 (CI stages through trusted publishing, the upstream maintainer approves with 2FA) and `checkPublish`'s X9 is 0009's guard against publishing from anywhere else, no longer a maintainer check; direct dependencies pinned; the shipped engine and source record equal the tagged, pushed platform commit (X1–X8); a package whose `dist/` does not match its version or engine refuses to run (CW-E13) | Transitive dependencies follow npm's ranges (no shrinkwrap); a maintainer who bypasses `prepublishOnly` can still publish a package, which CW-E13 then refuses only if its `dist/` mismatches | A compromised npm account or registry; the maintainer enables 2FA |
 | B3 | The teacher's answers → the range's source | Exactly 0004's B1: the answers reach the source only through `parseForkInitArgs` then `runForkInit` (chain-analysis N-5 does not arise) | As 0004 B1 | As 0004 B1 |
 | B4 | create-wxl → the teacher's file system | Writes only inside the target and the one temporary directory it created; refuses a target that exists and is not an empty directory (by `lstat`, so any symbolic link), and re-checks it before moving; removes only its own temporary directory, by path; on failure or signal before the range is in place, the target ends as it was | After step 10, an interrupted or failed run leaves a range whose setup is incomplete; CW-E12 and CW-W05 say what is left | Another process writing the target or the temporary directory concurrently |
 | B5 | Terminal output → the teacher's terminal | Values from outside (arguments, environment values, answers, paths, archive entry names, engine and git output) are printed as JSON string literals with C0, DEL and C1 escaped; commands for copying are POSIX-quoted, with `./` before a leading `-`, and are not printed at all when a value holds a control character | — | — |
@@ -192,17 +193,21 @@ following the system language; messages quoted from the fork-init engine stay in
 - The `.archive/` directory and other tracked paths not listed in U1: they stay in ranges as today.
 - Windows behaviour beyond the cross-OS unit tests (including retrying a rename that antivirus
   software briefly blocks); the printed commands are for a POSIX shell.
-- Requiring the release commit to be on upstream's `main`; refusing an empty target owned by another
-  user; `npm-shrinkwrap.json` for transitive dependencies.
+- Refusing an empty target owned by another user; `npm-shrinkwrap.json` for transitive dependencies.
+  Requiring the release commit to be on upstream's `main` was out of scope here; spec 0009 added
+  it as its publish workflow's ancestry step (0009's U7; revision 2.4).
 - Withdrawing a published version (`npm deprecate`) if upstream history is ever rewritten.
-- Publishing to npm, tagging and the GitHub release: user actions at release time, each asked first.
+- Publishing to npm, tagging and the GitHub release were user actions at release time, each asked
+  first. Since revision 2.4 they follow spec 0009's release procedure (`docs/agents/release.md`): the
+  user confirms the tag (0009's RP2), CI stages on npm, and the user approves with 2FA (0009's RP5).
 
 ## Further Notes
 
 - The `version` in a range's `package.json` is `0.1.0` from P3, and fork:init's first conversion sets
   the same value (0004 AC-A8), so the two agree.
-- `checkPublish` cannot run in CI because the tag does not exist until release; its checks are tested
-  on temporary repositories (0005-S2).
+- `checkPublish`'s checks are tested on temporary repositories (0005-S2). This spec said it could not
+  run in CI because the tag does not exist until release; since revision 2.4 it runs in CI on the
+  tag's push, in spec 0009's `publish-npm.yml` (0009's O5).
 - Q19's "only `tar`" became `tar` and `yaml` with the user's approval on 2026-10-16, when it turned
   out that the engine imports `yaml` (since T-0014) and therefore cannot run from an uninstalled range.
 - This spec supersedes 0004's Out of Scope numbering of later epics ("0006 setup record", "Until 0006
@@ -210,5 +215,6 @@ following the system language; messages quoted from the fork-init engine stay in
 - The terms "package source record" (`dist/source.json`) and "setup record" (`range.json`) share keys
   but not purpose; only the second is a glossary term.
 - Specs 0002 and 0003 remain the record of the earlier splits; this spec takes 0002's G7 and G12.
-- The user reserved the npm name with a placeholder `create-wxl@0.0.0` on 2026-10-16 (D4); X9 checks
-  that later releases are published by its maintainer.
+- The user reserved the npm name with a placeholder `create-wxl@0.0.0` on 2026-10-16 (D4). X9 checked
+  that later releases are published by its maintainer until revision 2.4; spec 0009's X9 replaces that
+  check (0009's D1).

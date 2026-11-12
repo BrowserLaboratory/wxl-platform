@@ -22,6 +22,14 @@ published; T52 covers that line through "the `env` of T71". It changes CI config
 stage 3 is not rerun for it. Self-check of the new surface: the added `env` condition changes no
 `if:` and shares no condition with AC-C3 or AC-G3.
 
+Note (2026-11-12, spec 0009's O1 and DS2, `.proj.specs/0009-npm-trusted-publishing/`): the rewrite
+list below gains a third kind of location, `create-wxl/package.json`'s `repository.url` line (0009's
+MR1). The guard exempts, in that one file, the single line whose trimmed text equals
+`"url": "<the root manifest's repository.url>",`. Rebrand's tree-wide swap rewrites it; default
+(A) mode never touches it, so a GitHub fork keeps the upstream URL there (0009's U9). T52 also
+covers `publish-npm.yml`'s upstream-only `if:` line (0009's W10). This note is not a new revision of
+this spec; spec 0009 owns the change.
+
 ## Seams (0003's approved seams; S1, S5, S6 and S7 changed with the user's approval, 2026-10-14)
 
 | Seam | Entry point | Observable output |
@@ -120,6 +128,8 @@ The upstream repository slug as a literal (compared case-insensitively) may appe
 
 - **Rewrite list** — the package manifest, inside A1's three URL fields only; `README.md` and
   `README.en.md`, inside A2 and A3 forms only; `CONTRIBUTE.md`, inside A4 and A5 forms only.
+  Since spec 0009 (0009's O1): also `create-wxl/package.json`'s single `repository.url` line, rewritten by
+  rebrand mode only (see the note above).
 - **Keep list** — `CHANGELOG.md`; the fork-init CLI file `scripts/fork-init.ts`, which this epic makes
   export the upstream repository slug as `UPSTREAM_SLUG` and which holds the whole engine, the four rebrand keys included;
   the fork-init test file; both trees' `wxl-fork-init/SKILL.md`; everything under `.proj.specs/` and

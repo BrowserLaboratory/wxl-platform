@@ -819,10 +819,13 @@ and neither exercises every npm/pnpm version combination a teacher might have in
 with a placeholder `create-wxl@0.0.0`, but the registry's own behaviour under real-world npm/pnpm
 versions is unverified until the user actually publishes and a teacher runs the command for real.
 
-**Evidence.** Verified by reading: `.proj.specs/0005-create-wxl/traceability.md:27` (decision D4)
-and `:350` (X9: `checkPublish` checks only the package name's maintainers, not that the registry
+**Evidence.** Verified by reading: `.proj.specs/0005-create-wxl/traceability.md`, decision D4
+and check X9 (X9: `checkPublish` checks only the package name's maintainers, not that the registry
 serves the tarball correctly to every client); the ticket's Notes record that publishing to npm is
-left to the user, outside this ticket's scope.
+left to the user, outside this ticket's scope. Note (2026-11-12): X9 changed in spec 0009 (its D1); it now checks
+that it runs in upstream's `publish-npm.yml` for the tagged version, not the package's maintainers.
+Publishing goes through CI staging and the user's approval (`docs/agents/release.md`); this
+question's own subject, the clients' resolution through the registry, is unchanged.
 
 **Blocks.** Any claim that `npm create wxl` or `pnpm range:upgrade` is known to work on a teacher's
 own machine before the user has published the package and tried it there.
@@ -1069,4 +1072,59 @@ covers matrix row U67: refused before any download when `range.json` is present,
 under `--from`, and when only `.git/info/exclude` ignores it; a tracked `range.json` proceeds. It
 passes in CI on macOS, Windows and Ubuntu (PR #78's run among them). The restore-order finding behind this question is recorded in
 spec 0006 B4 (D14, D23).
+
+---
+
+## OQ-027 — What does npm's Staged Packages tab show before approval?
+
+**Deferred on:** 2026-11-12
+**Status:** open
+
+**Reason.** Spec 0009's RP5 has the upstream maintainer compare a staged version with its
+`publish-npm.yml` run before approving it: repository, workflow, ref, commit and shasum. npm's
+documentation (read 2026-11-11; `.proj.research/2026-11-11-npm-trusted-publishing.md`) does not say
+which of these the package's Staged Packages tab, or `npm stage view <id>`, shows before approval.
+RP5 (c) therefore asks for at least one field compared, and lets the user decide when none can be.
+
+**Evidence.** Spec 0009 `traceability.md`, RP5 and DS3; spec 0009 Further Notes, "Not in npm's
+documentation, so not relied on". Verified: npm's documentation, read on 2026-11-11, does not say
+what the tab shows. Unknown until T-0073: the fields themselves. Since spec 0009's revision 3.1
+(D13), RP5 (b) compares the run's commit on GitHub, so the tab's fields no longer decide whether
+the commit was compared.
+
+**Blocks.** A fixed list of fields RP5 (c) must compare. Options: name the fields the tab shows;
+keep "at least one field"; or rely on `npm stage view <id>` alone.
+
+**Not blocked.** The first CI release (T-0073), which records whatever the tab shows.
+
+**Revisit when.** T-0073's RP5: fill in the fields the user saw, then decide whether RP5 names
+them.
+
+---
+
+## OQ-028 — Is the user's report of the npm and GitHub settings pages adequate stage 8 evidence?
+
+**Deferred on:** 2026-11-12
+**Status:** open
+
+**Reason.** Spec 0009's release ticket (T-0073) proves its stage 8 (AC-7) partly from pages only the
+upstream maintainer can open: the npm Staged Packages tab, the trusted publisher's settings, the
+package's publishing access, and GitHub's environment and tag ruleset pages. The agent's browser
+cannot sign in to the user's npm account, and a sign-in is the user's (spec 0009 O3 (c)). So the
+evidence for those items is the user's report, quoted in the ticket (S8-04), together with what the
+agent can read itself: the workflow runs, `npm view`, the provenance statement and a fresh
+`npm create wxl`.
+
+**Evidence.** Spec 0009 `traceability.md`, O3, S8-02, S8-04 and DS3. OQ-022 asks the same question
+about create-wxl's terminal runs; this one is about account settings.
+
+**Blocks.** Treating a release ticket's settings evidence as independently verified. Options: the
+user's quoted report (today); GitHub's API for the environment and the rulesets, which the agent's
+`gh` can read; screenshots the user attaches. Verified: the agent cannot sign in to the user's npm
+account (spec 0009 O3 (c)); inferred: GitHub's API covers MN2 and MN7 but not the npm pages.
+
+**Not blocked.** T-0073, whose AC-7 is defined on the user's report.
+
+**Revisit when.** A harness can read those settings without the user's credentials (for example
+GitHub's API for the environment and the ruleset), or after T-0073 shows what the report misses.
 
