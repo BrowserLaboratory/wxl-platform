@@ -11,17 +11,20 @@ blocked_by: [T-0069, T-0070, T-0071, T-0072]
 Spec 0009's U4 makes the first release through `publish-npm.yml` this epic's last ticket; its stage
 8 is AC-7, which runs after its own PR merges (O3, O4). The version is at least a patch over 3.1.0,
 since the epic changes code that ships in the package. The user's settings come first, in order:
-MN7, MN2, MN1 (within 2 days before the tag, with every publishing token revoked).
+MN7 and MN2 before any `v*` tag (D14), then MN1 within 2 days before the tag, with every publishing
+token revoked. `docs/agents/release.md` holds each step's exact values.
 
 ## Deliverable
 
 - RP1: versions and the CHANGELOG entry from `/tw-emoji-release-note` land on `main`.
-- RP2: after the user confirms the tag name and the merge SHA, one annotated tag `v<V>` is pushed
+- RP2: the user confirms the tag name and reads RP1's merge SHA themselves (D13); the agent checks
+  the SHA is on `main` and both manifests at it hold `<V>`, then pushes one annotated tag `v<V>`
   alone, never with `--tags`.
 - RP3: CI runs. RP4: the release notes are replaced with the CHANGELOG entry.
-- RP5: the user compares and approves.
+- RP5: the user checks (a)–(d), (b) including the run's commit against the SHA (D13), and approves.
 - RP6: the agent verifies the registry, the provenance statement and a fresh `npm create wxl`.
 - MN3: after approval, the user sets the package to disallow tokens.
+- F6, if it happens: the user moves `latest` back before deprecating (D12).
 - OQ-027 is filled with the fields the Staged Packages tab showed.
 - Status stays `review` after the PR merges until AC-7 holds (O4).
 
@@ -33,20 +36,8 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
 - [ ] AC reached: AC-7, met by the first `v<V>` that is approved and passes RP6; every earlier
   attempt recorded with its F-row.
 - [ ] The record quotes the user's reports for MN1 (six fields, single trusted publisher), the token
-  revocation, the collaborator list, MN2, MN7 and MN3, each equal to its expected value.
-
-## 給使用者（zh-TW）
-
-第一次透過 CI 發布 create-wxl，同時是本 epic 的第 8 階段（AC-7）。你要依序做這些事：
-
-1. 建立兩條 tag ruleset（MN7，D11）：一條限制建立、只有你能 bypass；一條禁止更新與刪除、不設 bypass。
-2. 設定 `npm` environment（MN2）。第 1、2 步都要在任何 `v*` tag 之前完成（D14）。
-3. 推 tag 前兩天內，建立 trusted publisher、撤銷舊 token，並確認 collaborator 只有你（MN1）。
-4. 確認 tag 名稱，並自己從已合併的 PR 頁讀出 merge SHA 告訴我（RP2，D13）。
-5. 確認 publish run 的 commit 等於那個 SHA，在 Staged Packages 比對後核准（RP5）。
-6. 最後設定拒絕 token（MN3）。
-
-我負責推單一 tag、替換 release notes、驗證 registry、provenance 與 `npm create wxl`。這張票在 PR 合併後仍維持 `review`，等 AC-7 成立才改成 `done`。
+  revocation, the collaborator list, MN2, MN7 (both rulesets) and MN3, each equal to its expected
+  value.
 
 ## Test plan
 
@@ -56,23 +47,35 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
 
 | Seam | Test intent | Scope | Acceptance criterion | Boundary conditions |
 |---|---|---|---|---|
-| 0005-S3（既有） | 兩份 manifest 的版號相同而且精確 | `upstream-config.test.mjs` 的 C45 | RP1 | 兩者都是 `3.1.1`。確認型：既有測試在版號改動後仍應全綠 |
-| 0005-S2（既有） | X2：create-wxl 的版號等於根 manifest | `publish.test.mjs` | RP1 | 同上，確認型 |
-| 0005-S2（既有） | CHANGELOG 仍有 `## [Unreleased]`（P1 的標記） | `publish.test.mjs` 的 X7 與 archive 規則 | RP1 | 新條目放在 `## [Unreleased]` 之下。確認型 |
+| 0005-S3（既有） | 兩份 manifest 的版號相同而且精確 | `upstream-config.test.mjs` 的「create-wxl/package.json is exactly the listing apart from the five placeholders」（C45） | RP1 | 測試檢查兩者相等且精確；值是不是 `3.1.1` 由閱讀 diff 確認。確認型 |
+| 0005-S2（既有） | 真實的兩份 manifest 通過 X1～X9 | `publish.test.mjs` 的「passes when X1-X9 all hold」（fixture 複製真實的 manifest 與 CHANGELOG） | RP1 | X2 的版號相等、X7 的 P1 標記（spec 0005 的 P1：靶場 CHANGELOG 只留 `## [Unreleased]` 的那一行）都在。新條目放在 `## [Unreleased]` 之下由閱讀 diff 確認。確認型 |
 | 0009-S4 | 第一次 CI 發布 | 真實的 tag、兩個 workflow run、Staged Packages、registry、`npm create wxl` | S8-01～S8-07 / AC-7 | 依 RP2～RP6；使用者回報的部分（MN7、MN2、MN1、MN3、RP5）逐字引用；每一次失敗的嘗試記錄它的 F 列 |
 
 ### 2026-11-13 — coverage report table
 
 | Seam | Tests | Measured coverage | Acceptance criterion | Uncovered, and why |
 |---|---|---|---|---|
-| 0005-S2、0005-S3（既有） | C45、X2、X7 與 archive 規則的既有測試 | not measured。重現：`pnpm --dir create-wxl test` | RP1 | — |
-| 0009-S4 | 沒有自動測試 | — | S8-01～S8-07 / AC-7 | 依 O3，第 8 階段在 PR 合併之後於真實的 GitHub Actions 與 npm 上進行，證據是 run 與 registry，以及使用者回報的設定頁（OQ-028） |
+| 0005-S2、0005-S3（既有） | C45 與「passes when X1-X9 all hold」 | not measured：create-wxl 沒有 coverage provider。重現：`pnpm --dir create-wxl test` | RP1 | 值 `3.1.1` 與條目的位置由閱讀 diff 確認，不是測試 |
+| 0009-S4 | 沒有自動測試 | — | S8-01～S8-07 / AC-7 | 依 O3，第 8 階段在 PR 合併之後於真實的 GitHub Actions 與 npm 上進行，證據是 run 與 registry，以及使用者回報的設定頁（OQ-028）。這一列在 AC-7 成立時補上實際的 run 與回報 |
+
+## 給使用者（zh-TW）
+
+第一次透過 CI 發布 create-wxl，同時是本 epic 的第 8 階段（AC-7）。每一步的確切設定值在 `docs/agents/release.md`；你要依序做這些事，並把括號裡的內容回報給我，我會逐字記進這張票：
+
+1. 建立兩條 `v*` tag ruleset（MN7，D11），兩條都設成 Active：一條限制建立、bypass 只有你；一條限制更新與刪除、不設任何 bypass。（回報：兩條 ruleset 的 target、規則、bypass 清單與 enforcement status）
+2. 建立 `npm` environment（MN2）：不設 reviewer，部署分支與 tag 只有一條規則，類型 tag、pattern `v*`。第 1、2 步都要在任何 `v*` tag 之前完成（D14）。（回報：reviewer 與那一條規則）
+3. 推 tag 前兩天內，在 npmjs.com 建立 trusted publisher（六個欄位，而且是唯一的一組），同一次撤銷所有能發布 create-wxl 的 token，並用 `npm access list collaborators create-wxl` 確認只有你（MN1）。（回報：六個欄位、trusted publisher 的數量、「沒有任何剩下的 token 能發布 create-wxl」、collaborator 的輸出）
+4. 確認 tag 名稱，並自己從這張票的 release PR 合併頁（或你自己的 `git log origin/main`）讀出 merge SHA 告訴我（RP2，D13）。
+5. 確認 `publish-npm.yml` run 頁面上的 commit 等於那個 SHA，在 Staged Packages 確認只有一筆 `<V>` 的 entry、比對欄位，`release.yml` 也成功之後，用 2FA 核准（RP5）。（回報：entry 數量、看到哪些欄位、每一欄是否相符）
+6. 最後設定「Require two-factor authentication and disallow tokens」（MN3）。（回報：選項文字）
+
+我負責推單一 tag、替換 release notes、驗證 registry、provenance 與 `npm create wxl`。這張票在 PR 合併後仍維持 `review`，等 AC-7 成立才改成 `done`。
 
 ## Comments
 - 2026-11-13, stage 5 (RP1), on a branch cut from T-0072's tip `10a7f46` while PR #88 ran its CI,
   to be rebased onto `main` once #88 lands:
-  - Version 3.1.1: spec 0009 asks for at least a patch, and the handoff of 2026-11-12 planned
-    3.1.1. The release-note skill maps a `feat` commit to a MINOR bump; here every change is
+  - Version 3.1.1: spec 0009 asks for at least a patch (`spec.en.md`, Further Notes, "The first CI
+    release's version"). The release-note skill maps a `feat` commit to a MINOR bump; here every change is
     release infrastructure (CI, the gate, the manifest's metadata, documents), and creating and
     upgrading a range behave as in 3.1.0, so a security-focused patch (🔒) fits. The user confirms
     the tag name at RP2.
@@ -83,3 +86,39 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
   - `pnpm --dir create-wxl test` → `Test Files 38 passed (38) / Tests 787 passed | 1 skipped
     (788)`.
   - `pnpm test --run` → `Test Files 137 passed (137) / Tests 4910 passed | 1 skipped (4911)`.
+- 2026-11-13, stages 6 and 7 (RP1 only), run together on `ced130a`:
+  - Stage 6 (workflow `wf_2b96e0a4-831`; local note
+    `.proj.research/2026-11-13-T-0073-stage6-review.md`): Standards 22 findings (0 high, 6 medium),
+    Spec 18 (0 high, 2 medium). STD-21's challenger failed and the finding is kept.
+  - Stage 7 (workflow `wf_20ae2897-2f0`): report
+    `.proj.specs/0009-npm-trusted-publishing/review/security-T-0073.md`. 9 candidates: C7
+    confirmed (low), the rest false positives.
+  - Fixed in the CHANGELOG entry: provenance said accurately, scoped to 3.1.1 on, with
+    `dist.attestations` as a presence check and the package page for its contents (STD-01, STD-02,
+    SPEC-07, C1, C2); 🔄 before 🔒, as the skill's format orders them (STD-04, SPEC-02); the
+    comparison procedure cites #88 (SPEC-04); "最晚會在 X9 停下" (SPEC-05, C4); claims scoped to
+    CI-published versions (SPEC-06, C3); "發布閘門" and no 維護者 (STD-13, STD-14, SPEC-08); the
+    `--rebrand <名稱>` form (STD-17); a Changed line saying ranges gain `publish-npm.yml` and
+    `release.md`, skipped outside upstream (STD-03, SPEC-09).
+  - Fixed in `release.md` and traceability (clarifications inside D11 and D13, no new D-number):
+    both MN7 rulesets "Active" (C7, confirmed); before tagging, the agent checks the SHA is on
+    `main` and both manifests at it hold `<V>` (C6).
+  - Fixed in this record: Context and Deliverable for revision 3.1 (SPEC-12); the zh-TW steps name
+    what to report and point to `release.md` (SPEC-13, SPEC-14, STD-19); the test plan rows name
+    the tests that run and what is read from the diff instead (STD-12, SPEC-15, STD-20); the
+    coverage reason (STD-11); the Test plan section placed before 給使用者 (STD-21); the version
+    rationale cites the spec, not the local handoff (STD-18).
+  - Decisions left to the user, asked in the conversation of 2026-11-13 together with MN7 and MN2,
+    before this PR merges: the version 3.1.1 against the skill's MINOR rule (STD-05, SPEC-01,
+    SPEC-10). The entry's date is set to the tag day when the PR is rebased and merged (STD-16,
+    SPEC-03).
+  - Commits the entry covers (STD-06, SPEC-11): `git log v3.1.0..origin/main --oneline` at
+    `42a0cba` lists #81 to #87; #88 is T-0072. Cited: #82 (X9), #84 (`repository`), #86 (the
+    workflow), #88 (the procedure, D11–D14, the documents). Left out: #81, #83, #85, #87, which are
+    ticket records only. Each cited PR's title was checked with `gh pr view <n> --json title`.
+  - RP0 for this ticket (STD-07): it changes `create-wxl/package.json`, so its terminal outputs and
+    CI are recorded before the PR merges, though O3 (b) makes AC-7 its stage 8.
+  - Recorded, not changed: STD-09 (Chinese tables, as T-0069); STD-22 (two manifests by design,
+    X2 and C45 hold them together); SPEC-18 (`review` while #88 was open: the branch was cut from
+    T-0072's tip, and the rebase follows #88's merge); STD-08 and SPEC-17: the test plan table is
+    listed to the user in the conversation of 2026-11-13.
