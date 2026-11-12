@@ -28,7 +28,7 @@ Spec 0009 revision 3.
 
 - [x] Rows M01, M02, M03.
 - [x] AC reached: AC-5 for M01–M03 (W11, the rest of AC-5, lands with T-0071).
-- [ ] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` in `create-wxl/` prints
+- [x] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` in `create-wxl/` prints
   MR1's object; `node scripts/check-publish.mjs` exits 1 with a named check; the PR's CI passes.
 
 ## Test plan
@@ -132,3 +132,10 @@ Spec 0009 revision 3.
   - (b) `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed:
     X3 (no local tag v<version> exists at HEAD)`, exit 1.
   - Afterwards `create-wxl/dist/` and `create-wxl/LICENSE` were removed.
+- 2026-11-12, rebased onto `main` `079818f` (after #83) for PR #84: `3775ca5` → `c55ca25`,
+  `9038eac` → `74042de`, `924c88c` → `388054b`; the stage 6 to 8 record is `c1e535f`. The trees
+  of the code commits are unchanged by the rebase (only T-0069's record, not touched here, moved).
+- 2026-11-12, stage 8, CI part (RP0 (c); surface: GitHub Actions on PR #84, push `c1e535f`, run
+  `43243352117`, checked with `gh pr checks 84`): 10 of 10 passed, including the four
+  `fork-init-cross-os` jobs (each runs `pnpm --dir create-wxl test` and the guard). The workflow
+  tests of W01–W12 arrive with T-0071. Stage 8 is complete: RP0 (a), (b) and (c) are recorded.
