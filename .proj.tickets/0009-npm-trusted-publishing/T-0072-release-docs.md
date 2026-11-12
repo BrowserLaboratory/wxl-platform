@@ -71,7 +71,8 @@ Spec 0009 revision 3.
     (T-0071's C7), and `npm publish <tarball>` bypasses the gate like `--ignore-scripts`
     (T-0069's SEC-02), under "What this procedure does not protect against".
   - DS1–DS3 (D02, judged at stage 6): 0005 revision 2.4 in its spec and traceability; 0004's
-    traceability note; both `wxl-fork-init` skills (`cmp` equal); both READMEs' fork section;
+    traceability note; both `wxl-fork-init` skills (`cmp .claude/skills/wxl-fork-init/SKILL.md
+    .agents/skills/wxl-fork-init/SKILL.md` → exit 0 at `44875a3`); both READMEs' fork section;
     ADR-0009; 0006's B2 in `spec.en.md` and `spec.zh-TW.md` (`synced_from_sha` updated to
     `git hash-object .proj.specs/0006-range-upgrade/spec.en.md`); OQ-021; GLOSSARY's 設定紀錄;
     OQ-027 and OQ-028 created.
@@ -83,3 +84,51 @@ Spec 0009 revision 3.
   - `pnpm --dir create-wxl test` → `Test Files 38 passed (38) / Tests 787 passed | 1 skipped
     (788)`; `pnpm vitest run tests/unit/site/glossary.test.ts` → `Tests 290 passed (290)`;
     `python3 scripts/verify-project.py` → `PASS`.
+- 2026-11-13, stages 6 and 7, run together on `5ce6e5a`:
+  - Stage 6 (workflow `wf_81641373-ffb`; local note
+    `.proj.research/2026-11-12-T-0072-stage6-review.md`): Standards 23 findings (0 high, 2
+    medium), Spec 20 (0 high, 3 medium). Refuted by `harness-challenger`: STD-10, SPEC-01,
+    SPEC-11, SPEC-13, SPEC-14.
+  - Stage 7 (workflow `wf_507b5b5d-9e0`): report
+    `.proj.specs/0009-npm-trusted-publishing/review/security-T-0072.md`. 20 candidates: SEC-03
+    and SEC-04 confirmed (low), SEC-02 uncertain (low), the rest false positives.
+  - New decisions, applied under the user's authorisation of 2026-11-12 ("新的 D 編號照你的建議
+    核准（仍要列給我看）") and listed to the user in the conversation of 2026-11-13, as spec 0009
+    revision 3.1 (`56d8e5d`, spec, zh-TW and traceability, self-checked):
+    - D11: MN7 is two rulesets: creations restricted with the upstream maintainer as the only
+      bypass actor, and updates and deletions restricted with no bypass actor (SEC-03);
+    - D12: F6 moves `latest` back with `npm dist-tag add` before deprecating (SEC-04);
+    - D13: the user reads RP2's SHA themselves, and RP5 (b) compares the run's commit with it on
+      GitHub, so the commit is always compared (SEC-01, SEC-02);
+    - D14: MN7 and MN2 come before any `v*` tag (T-0071's C7).
+  - Fixed in `075c3af`:
+    - `release.md` takes D11–D14, and its wording follows the findings: RP4's direction
+      (SPEC-04); "stage on npm" (STD-11); "the user" defined as the upstream maintainer (STD-12);
+      code spans on one line (STD-13, SPEC-18); RP0 as an addition to workflow.md's stage 8 and
+      its cleanup only after `prepare-dist.mjs` (SPEC-03, SPEC-10); provenance "should carry"
+      (SPEC-17, SEC-10); "a release ticket" (SPEC-19); the interactive-2FA bypass (SPEC-09,
+      SEC-08); F7's unknown for a rejected version (SEC-09); F1's re-run waits for the user's
+      check of the tab (SEC-13); `npm logout` after `npm stage view` (SEC-14); the collaborator
+      check in MN1 (SEC-07); RP2's precondition (SEC-11); what the agent never does (SEC-06);
+    - 0005's spec prefixes 0009's ids (U7, RP2, RP5, O5), and its status line says the listing is
+      in `traceability.md` (STD-01, STD-02, SPEC-07, STD-18); 0004's note prefixes O1 (STD-19);
+    - ADR-0009 says "the commit SHA they read before the tag was pushed" (STD-03, SPEC-05);
+    - CONTRIBUTE's subsection says it is upstream only (STD-04, SPEC-12, SEC-16);
+    - both READMEs' paragraph moved after the deploy table (STD-05);
+    - GLOSSARY's sentence drops "npm" (STD-15);
+    - OQ-021 cites ids, not lines (STD-16, SPEC-15); OQ-027 and OQ-028 list what is verified and
+      the options (STD-17);
+    - 0006's status line dates the B2 note, en and zh-TW, `synced_from_sha` updated (SPEC-20);
+      zh-TW's B2 uses 0009's phrase for staging (SPEC-16);
+    - the test reads each file once (STD-14).
+  - D02 judged by reading, with the stage 6 reviewers' place-by-place check: every DS place carries
+    its change. Two places do not name 0009, and both are recorded rather than changed:
+    GLOSSARY, whose test forbids digits in a definition (STD-09, SPEC-02); and the READMEs, which
+    are teacher-facing and for which DS2 (3) asks only for the U9 statement (SPEC-01, refuted).
+  - Recorded, not changed:
+    - STD-06, STD-20: Chinese tables and Chinese skill text, as before (T-0069's STD-03);
+    - STD-07: the test plan was listed to the user in the conversation of 2026-11-12;
+    - STD-21, STD-22 (and SEC-05): pointers from `workflow.md` and a hard rule for U8 are left to
+      the epic's retrospective, since they change shared process documents;
+    - STD-23: the A-mode kept line is stated in the places the spec names;
+    - SEC-12, SEC-20: for the close-out's chain analysis and retrospective.
