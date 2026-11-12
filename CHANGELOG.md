@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 🔒 [3.1.1] - 2026-11-13
+
+> create-wxl 改由 GitHub Actions 透過 npm trusted publishing 發布：不再需要存在電腦上的 npm token，每個版本都要經過上游比對、以 2FA 核准才能安裝，並附上可以查證來源的 provenance。建立與升級靶場的使用方式不變。
+
+### 🔒 安全性 (Security)
+
+- create-wxl 改由 `.github/workflows/publish-npm.yml` 發布：推送上游的 `v*` tag 後，CI 確認 commit 在 `main` 上、跑發布 gate，再透過 OIDC 把版本送進 npm 的 staged。版本要等上游比對 run 的 commit 與自己確認的 SHA，並以 2FA 核准後才能安裝；任何地方都不存 token。 ([#82]、[#84]、[#86])
+- 每個 create-wxl 版本都應帶有 provenance，寫明建置它的 repository、workflow、tag 與 commit；老師可以用 `npm view create-wxl@<版本> dist.attestations` 查證。 ([#86])
+
+### 🔄 變更 (Changed)
+
+- 發布 gate 的 X9 改為確認自己在上游的 `publish-npm.yml`、為這個版本的 tag 執行；從終端機執行 `npm publish` 會在 X9 停下並說明原因，不再詢問 npm 的維護者。 ([#82])
+- `create-wxl` 套件的 `package.json` 加上 `repository`，指向上游。在 GitHub fork 裡這一行會保留上游網址，只有 `pnpm fork:init --rebrand` 會改寫它；用 `npm create wxl` 建立的靶場不受影響。 ([#84]、[#88])
+
+[#82]: https://github.com/BrowserLaboratory/wxl-platform/pull/82
+[#84]: https://github.com/BrowserLaboratory/wxl-platform/pull/84
+[#86]: https://github.com/BrowserLaboratory/wxl-platform/pull/86
+[#88]: https://github.com/BrowserLaboratory/wxl-platform/pull/88
+
 ## ✨ [3.1.0] - 2026-11-11
 
 > 靶場可以升級了：在靶場裡執行 `pnpm range:upgrade`，就能用三方合併把上游的新版本帶進來，老師的修改會保留下來。另外，短連結改為帶語系代碼，題目清單也會列出每一道題目。
