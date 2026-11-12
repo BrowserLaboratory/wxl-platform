@@ -28,7 +28,7 @@ Spec 0009 revision 3.
 
 - [x] Rows D01, D02 (D02 judged at stage 6 by reading).
 - [x] AC reached: AC-6.
-- [ ] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` prints MR1's object;
+- [x] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` prints MR1's object;
   `node scripts/check-publish.mjs` exits 1 with a named check; the PR's CI passes.
 
 ## Test plan
@@ -144,3 +144,8 @@ Spec 0009 revision 3.
   (b) `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed: X3
   (no local tag v<version> exists at HEAD)`, exit 1. `create-wxl/dist/` and `create-wxl/LICENSE`
   were removed afterwards.
+- 2026-11-13, stage 8, CI part (RP0 (c); surface: GitHub Actions on PR #88, push `10a7f46`, run
+  `43256558448`, checked with `gh pr checks 88`): 10 of 10 passed, `prose-audit` included (it
+  covers the new `CONTRIBUTE.md` and README paragraphs and `AGENTS.md`'s line). The `test` job runs
+  `pnpm test --run` with the W01–W12 workflow tests; the `fork-init-cross-os` jobs run
+  `pnpm --dir create-wxl test` with this ticket's `release-docs.test.mjs`. Stage 8 is complete.
