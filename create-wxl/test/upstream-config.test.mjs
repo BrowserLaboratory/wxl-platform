@@ -1,5 +1,5 @@
 // "Upstream configuration" (traceability.md 0005-S3): U2 (the create-wxl package manifest,
-// `.gitignore`, lockfile), U3 (CI), U4-U10 (the documents). Deviation from the approved test plan
+// `.gitignore`, lockfile), U3 (CI), U4-U10 (the documents); spec 0009-S3's M01 and M03 (MR1, MR2). Deviation from the approved test plan
 // table (recorded in the ticket's "increment plan confirmed" comment): this file is `.mjs`, not
 // `.ts` -- vitest's `include` (`vitest.config.mjs:6`) only collects `test/**/*.test.mjs`.
 
@@ -31,14 +31,27 @@ function runGit(args, { cwd, env = process.env }) {
   })
 }
 
+/** `git` with a throwaway HOME and GIT_CONFIG_NOSYSTEM=1, so the real repository's own global git
+ * config, or a stray GIT_DIR/GIT_INDEX_FILE from an outer git hook, cannot change what it lists. */
+async function runGitIsolated(args) {
+  const isolatedHome = await mkdtemp(join(tmpdir(), 'create-wxl-upstream-config-git-home-'))
+  try {
+    const env = { HOME: isolatedHome, XDG_CONFIG_HOME: isolatedHome, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' }
+    return await runGit(args, { cwd: REPO_ROOT, env })
+  } finally {
+    await rm(isolatedHome, { recursive: true, force: true })
+  }
+}
+
 const EXACT_VERSION_RE = /^\d+\.\d+\.\d+$/
 
 describe('C45: manifest matches U2 listing', () => {
-  // Spec 0009 MR1/M01: `repository` right after `license`, its `url` the root manifest's (a fifth
-  // placeholder, O1).
+  // Spec 0009 MR1/M01: `repository` right after `license`, its `url` the root manifest's (MR1's
+  // fifth placeholder).
   it('create-wxl/package.json is exactly the listing apart from the five placeholders', async () => {
     const createWxlPkg = JSON.parse(await readFile(CREATE_WXL_PKG_PATH, 'utf8'))
     const rootPkg = JSON.parse(await readFile(ROOT_PKG_PATH, 'utf8'))
+    expect(typeof rootPkg.repository?.url).toBe('string')
 
     const expected = {
       name: 'create-wxl',
@@ -77,14 +90,22 @@ describe('0009 M01: the manifest writes repository one key per line', () => {
   it("holds MR1's five lines, verbatim and in a row, with the root manifest's url", async () => {
     const text = await readFile(CREATE_WXL_PKG_PATH, 'utf8')
     const rootPkg = JSON.parse(await readFile(ROOT_PKG_PATH, 'utf8'))
+    expect(typeof rootPkg.repository?.url).toBe('string')
     const block = [
       '  "repository": {',
       '    "type": "git",',
-      `    "url": "${rootPkg.repository.url}",`,
+      `    "url": ${JSON.stringify(rootPkg.repository.url)},`,
       '    "directory": "create-wxl"',
       '  },',
     ].join('\n')
     expect(text).toContain(`\n${block}\n`)
+  })
+
+  // MR1's self-check: the manifest's other one-line objects stay as they are.
+  it('keeps bin and engines on one line each', async () => {
+    const lines = (await readFile(CREATE_WXL_PKG_PATH, 'utf8')).split('\n')
+    expect(lines).toContain('  "bin": { "create-wxl": "bin/create-wxl.mjs" },')
+    expect(lines).toContain('  "engines": { "node": ">=22.6.0" },')
   })
 })
 
@@ -102,33 +123,22 @@ describe('C45: .gitignore lists four items, lockfile tracked', () => {
   // git config, or a stray GIT_DIR/GIT_INDEX_FILE from an outer git hook, cannot change the
   // tracked-file list this reads.
   it('create-wxl/pnpm-lock.yaml and create-wxl/.gitignore are tracked', async () => {
-    const isolatedHome = await mkdtemp(join(tmpdir(), 'create-wxl-upstream-config-git-home-'))
-    try {
-      const env = { HOME: isolatedHome, XDG_CONFIG_HOME: isolatedHome, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' }
-      const result = await runGit(['ls-files', 'create-wxl/pnpm-lock.yaml', 'create-wxl/.gitignore'], { cwd: REPO_ROOT, env })
-      expect(result.code).toBe(0)
-      const tracked = result.stdout.split('\n').filter((line) => line !== '')
-      expect(new Set(tracked)).toEqual(new Set(['create-wxl/pnpm-lock.yaml', 'create-wxl/.gitignore']))
-    } finally {
-      await rm(isolatedHome, { recursive: true, force: true })
-    }
+    const result = await runGitIsolated(['ls-files', 'create-wxl/pnpm-lock.yaml', 'create-wxl/.gitignore'])
+    expect(result.code).toBe(0)
+    const tracked = result.stdout.split('\n').filter((line) => line !== '')
+    expect(new Set(tracked)).toEqual(new Set(['create-wxl/pnpm-lock.yaml', 'create-wxl/.gitignore']))
   })
 })
 
-// Spec 0009 MR2/M03: npm's trusted publishing reads no token, and nothing may configure one.
+// Spec 0009 MR2/M03: no tracked .npmrc at any path. Compared per path component and ignoring
+// letter case, so a directory named .npmrc or a file named .NPMRC counts too.
 describe('0009 M03: no tracked .npmrc', () => {
-  it('git ls-files lists no path whose name is .npmrc', async () => {
-    const tmpHome = await mkdtemp(join(tmpdir(), 'create-wxl-m03-home-'))
-    try {
-      const env = { HOME: tmpHome, XDG_CONFIG_HOME: tmpHome, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' }
-      const result = await runGit(['ls-files', '-z'], { cwd: REPO_ROOT, env })
-      expect(result.code).toBe(0)
-      const paths = result.stdout.split('\0').filter((p) => p !== '')
-      expect(paths.length).toBeGreaterThan(0)
-      expect(paths.filter((p) => p.split('/').at(-1) === '.npmrc')).toEqual([])
-    } finally {
-      await rm(tmpHome, { recursive: true, force: true })
-    }
+  it('git ls-files lists no path with a component named .npmrc', async () => {
+    const result = await runGitIsolated(['ls-files', '-z'])
+    expect(result.code).toBe(0)
+    const paths = result.stdout.split('\0').filter((p) => p !== '')
+    expect(paths.length).toBeGreaterThan(0)
+    expect(paths.filter((p) => p.split('/').some((part) => part.toLowerCase() === '.npmrc'))).toEqual([])
   })
 })
 
