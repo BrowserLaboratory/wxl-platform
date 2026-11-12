@@ -4,9 +4,9 @@ import { resolve } from 'node:path'
 import { parse } from 'yaml'
 import { UPSTREAM_SLUG } from '../../../scripts/fork-init'
 
-// T71-T72/AC-C2/AC-C3: the release job and the new cross-OS job must run only in the upstream
-// repository, never in a fork (rebranded or not) — including after a `--rebrand` run, which cannot
-// reach these lines at all (they spell the slug through `format`, never importing UPSTREAM_SLUG,
+// T71-T72/AC-C2/AC-C3, and spec 0009 W2/W09: the release job, the new cross-OS job and
+// publish-npm.yml's stage job must run only in the upstream repository, never in a fork
+// (rebranded or not) — including after a `--rebrand` run, which cannot reach these lines at all (they spell the slug through `format`, never importing UPSTREAM_SLUG,
 // since a workflow YAML cannot import a TS module; traceability.md, "confinement"). The expected
 // value is built from the two halves of UPSTREAM_SLUG, not its full literal, so this file itself
 // never spells the slug.
@@ -16,7 +16,7 @@ import { UPSTREAM_SLUG } from '../../../scripts/fork-init'
 // workflow files — three `if:` lines (release.yml's `release` job, quality-gates.yml's new job,
 // publish-npm.yml's `stage` job, spec 0009 W2) and three `env:` lines (quality-gates.yml's `test`
 // job and new job, release.yml's `release` job) — listed here so a future rename of the slug has
-// every occurrence to check off against. publish-npm.yml's job sets no `env:` at all (W7, W8).
+// every occurrence to check off against. publish-npm.yml's job sets no `env:` at all (W8's closed key set).
 const [UPSTREAM_OWNER, UPSTREAM_NAME] = UPSTREAM_SLUG.split('/')
 const EXPECTED_IF = `github.repository == format('{0}/{1}', '${UPSTREAM_OWNER}', '${UPSTREAM_NAME}')`
 const EXPECTED_ENV = '${{ ' + EXPECTED_IF + ' }}'
@@ -68,7 +68,8 @@ describe('upstream-only jobs (T71)', () => {
     expect(loadRelease().jobs.release.env?.WXL_EXPECT_UPSTREAM).toBe(EXPECTED_ENV)
   })
 
-  // Spec 0009 W2/W09: the publish job runs only upstream, and sets no env.
+  // Spec 0009 W09: the publish job runs only upstream and sets no env; the count below goes beyond
+  // W09 and counts every spelling of the comparison, comments included.
   it("publish-npm.yml's stage job if: is exactly the format() comparison", () => {
     expect(loadPublishNpm().jobs.stage.if).toBe(EXPECTED_IF)
   })

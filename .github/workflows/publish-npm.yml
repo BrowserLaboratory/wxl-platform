@@ -3,7 +3,8 @@ name: Publish create-wxl
 # Spec 0009 D3, W1-W8: the only place that publishes create-wxl. On a pushed `v*` tag it checks the
 # tagged commit is on `main` (U7), runs the publish gate (D5), then stages the package on npm
 # through trusted publishing (OIDC): nothing is installable until the upstream maintainer approves
-# it on npmjs.com with 2FA (docs/agents/release.md). No secret, token or npm configuration is used.
+# it with 2FA (docs/agents/release.md, added by T-0072). The job's only credential is its OIDC
+# token: no stored secret, long-lived npm token or npm configuration override is used.
 # Pinned by tests/unit/workflows/publish-npm.test.ts.
 on:
   push:

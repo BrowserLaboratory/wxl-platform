@@ -50,6 +50,7 @@ function usesLine(raw: string, action: string): string | undefined {
 }
 
 describe('publish-npm.yml (spec 0009 W1-W8)', () => {
+  // A guard, not a W row: without the file every other test fails on ENOENT instead.
   it('exists', () => {
     expect(existsSync(PUBLISH_PATH)).toBe(true)
   })
@@ -130,6 +131,12 @@ describe('publish-npm.yml (spec 0009 W1-W8)', () => {
     expect(publish().raw).not.toContain(banned)
   })
 
+  // Beyond W7 (stage 6, T0071 S-07): no `${{ }}` expression anywhere, so no bracket or function
+  // form of secrets or vars (`secrets['X']`, `toJSON(secrets)`) can slip past the strings above.
+  it('W7+: the raw file holds no ${{ }} expression', () => {
+    expect(publish().raw).not.toContain('${{')
+  })
+
   it('W7: npm publish appears only inside npm stage publish, and no step has a cache key', () => {
     expect(publish().raw.replaceAll('npm stage publish', '')).not.toContain('npm publish')
     for (const step of steps()) {
@@ -155,20 +162,29 @@ describe('publish-npm.yml (spec 0009 W1-W8)', () => {
 // W12: the ancestry step, run exactly as the workflow spells it, in a temporary repository whose
 // `origin/main` is a remote-tracking ref (as `actions/checkout` with `fetch-depth: 0` leaves it).
 describe('publish-npm.yml ancestry step (spec 0009 W12)', () => {
+  const ANCESTRY = 'git merge-base --is-ancestor HEAD origin/main'
   let dir: string
+  let home: string
   const git = (...args: string[]) => {
+    // The real environment minus anything that could point git elsewhere, with a throwaway home.
+    const { GIT_DIR: _d, GIT_INDEX_FILE: _i, GIT_WORK_TREE: _w, ...rest } = process.env
     const r = spawnSync('git', args, {
       cwd: dir,
       encoding: 'utf8',
-      env: { HOME: dir, XDG_CONFIG_HOME: dir, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' },
+      env: { ...rest, HOME: home, XDG_CONFIG_HOME: home, GIT_CONFIG_NOSYSTEM: '1' },
     })
-    return { code: r.status, stdout: (r.stdout ?? '').trim() }
+    return { code: r.status, stdout: (r.stdout ?? '').trim(), stderr: r.stderr ?? '' }
+  }
+  const setup = (...args: string[]) => {
+    const r = git(...args)
+    if (r.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`)
+    return r.stdout
   }
   const commit = (name: string) => {
     writeFileSync(join(dir, name), name)
-    git('add', name)
-    git('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', name)
-    return git('rev-parse', 'HEAD').stdout
+    setup('add', name)
+    setup('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', name)
+    return setup('rev-parse', 'HEAD')
   }
   let onMainOld: string
   let onMainTip: string
@@ -176,22 +192,26 @@ describe('publish-npm.yml ancestry step (spec 0009 W12)', () => {
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'publish-npm-ancestry-'))
-    git('init', '-q', '-b', 'main')
+    home = mkdtempSync(join(tmpdir(), 'publish-npm-ancestry-home-'))
+    setup('init', '-q', '-b', 'main')
     onMainOld = commit('a')
     onMainTip = commit('b')
-    git('update-ref', 'refs/remotes/origin/main', onMainTip)
-    git('switch', '-q', '-c', 'topic')
+    setup('update-ref', 'refs/remotes/origin/main', onMainTip)
+    setup('switch', '-q', '-c', 'topic')
     offMain = commit('c')
   })
 
-  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  })
 
+  // The workflow's step 5 is executed only once it is known to be the specified command (W6), so
+  // an edited workflow never reaches git from this test.
   function runAncestryAt(commitSha: string) {
-    git('checkout', '-q', '--detach', commitSha)
-    const run = steps()[4].run!
-    const [cmd, ...args] = run.split(' ')
-    expect(cmd).toBe('git')
-    return git(...args).code
+    setup('checkout', '-q', '--detach', commitSha)
+    expect(steps()[4].run).toBe(ANCESTRY)
+    return git(...ANCESTRY.split(' ').slice(1)).code
   }
 
   it.each([

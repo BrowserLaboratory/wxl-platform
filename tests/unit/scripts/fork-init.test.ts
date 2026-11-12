@@ -4257,7 +4257,7 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
   // Spec 0009 W10/W11: publish-npm.yml's upstream-only if: line is left alone too (three such lines
   // in all), and create-wxl/package.json's repository.url, the one upstream line O1 lets that file
   // hold, follows the root manifest's to the fork (rebrand's tree-wide swap, U9).
-  it('--author x --rebrand acme --repo me/x leaves the upstream-only if:/env lines, the UPSTREAM_SLUG import and the engine file byte-identical', () => {
+  it('--author x --rebrand acme --repo me/x leaves the upstream-only if:/env lines, the UPSTREAM_SLUG import and the engine file byte-identical, and moves create-wxl\'s repository.url with the root manifest\'s', () => {
     const repoRoot = resolve(__dirname, '../../..')
     const releaseYmlBefore = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
     const qualityGatesYmlBefore = readFileSync(join(repoRoot, '.github/workflows/quality-gates.yml'), 'utf8')
@@ -4292,7 +4292,9 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     const expectUpstreamLinesBefore = [...releaseYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE), ...qualityGatesYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])
     const importBefore = guardTestBefore.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]
     expect(ifLinesBefore.length).toBe(3) // positive control: all three files actually hold the line
+    expect([...publishNpmYmlBefore.matchAll(IF_LINE_RE)]).toHaveLength(1) // ... publish-npm.yml's included
     const rootUrlBefore = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository.url
+    expect(rootUrlBefore).toContain(UPSTREAM_SLUG) // W11 starts from the upstream URL
     expect(JSON.parse(createWxlPkgBefore).repository.url).toBe(rootUrlBefore) // W11's starting point
     expect(expectUpstreamLinesBefore.length).toBe(3) // release.yml: release; quality-gates.yml: test and the cross-OS job
     expect(importBefore).toBeDefined()
