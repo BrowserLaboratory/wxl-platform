@@ -122,3 +122,13 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
     X2 and C45 hold them together); SPEC-18 (`review` while #88 was open: the branch was cut from
     T-0072's tip, and the rebase follows #88's merge); STD-08 and SPEC-17: the test plan table is
     listed to the user in the conversation of 2026-11-13.
+- 2026-11-13, rebased onto `main` `6374a14` (after #88) with `git rebase --onto origin/main
+  10a7f46`: `d0bd1e3` → `6553ae7`, `ced130a` → `21ba8e4`, `4df4e2c` → `035eca6`. At `035eca6`:
+  `pnpm test --run` → `Test Files 137 passed (137) / Tests 4910 passed | 1 skipped (4911)`;
+  `pnpm --dir create-wxl test` → `Tests 787 passed | 1 skipped (788)`.
+- 2026-11-13, RP0 terminal part (surface: a terminal on macOS darwin arm64, Node v24.13.0, git
+  2.54.0, at `035eca6`), after `pnpm --dir create-wxl install --frozen-lockfile`, in `create-wxl/`:
+  `npm pkg get repository version` → MR1's object and `"3.1.1"`;
+  `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed: X3 (no
+  local tag v<version> exists at HEAD)`, exit 1 (no tag exists yet, as RP2 requires).
+  `create-wxl/dist/` and `create-wxl/LICENSE` were removed afterwards.
