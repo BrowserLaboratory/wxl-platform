@@ -135,3 +135,4 @@ Environment pitfalls that cost time: [docs/agents/platform-notes.md](docs/agents
 - **[docs/agents/language.md](docs/agents/language.md)** — which documents are English, which are Traditional Chinese, and how the bilingual spec stays in sync.
 - **[docs/agents/domain.md](docs/agents/domain.md)** — how to consume `GLOSSARY.md` and ADRs while exploring.
 - **[docs/agents/platform-notes.md](docs/agents/platform-notes.md)** — the Browser panel's sandbox, test-runner quirks, local server cleanup.
+- **[docs/agents/release.md](docs/agents/release.md)** — upstream only: releasing WXL and create-wxl (the tag, CI staging on npm, the user's approval and settings, failures).
