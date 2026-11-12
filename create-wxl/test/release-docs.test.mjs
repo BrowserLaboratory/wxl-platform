@@ -11,7 +11,12 @@ import { join } from 'node:path'
 import { UPSTREAM_SLUG } from '../../scripts/fork-init.ts'
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url))
-const read = (relative) => readFile(join(REPO_ROOT, relative), 'utf8')
+const cache = new Map()
+/** Each file is read once and shared by every case below. */
+function read(relative) {
+  if (!cache.has(relative)) cache.set(relative, readFile(join(REPO_ROOT, relative), 'utf8'))
+  return cache.get(relative)
+}
 
 /** A line as R2's line checks see it: trimmed, then one leading `| ` or `- ` removed. */
 function normaliseLine(line) {
@@ -46,6 +51,7 @@ describe('docs/agents/release.md (0009 R2 line checks)', () => {
     expect(firstAfter).toContain('upstream only')
   })
 
+  // R2's wording lists " |" too; it is covered by "followed by a space" and kept to mirror R2.
   it.each(IDS)('has a line starting with %s followed by a space, ":" or " |"', async (id) => {
     const lines = (await read('docs/agents/release.md')).split('\n').map(normaliseLine)
     expect(lines.some((line) => line.startsWith(`${id} `) || line.startsWith(`${id}:`) || line.startsWith(`${id} |`))).toBe(true)

@@ -1,6 +1,6 @@
 # Spec 0006: range upgrade — take in a new upstream release
 
-Status: revision 3.4 (2026-11-10). Round 1 of adversarial review found no P0 (`review/round-1.md`);
+Status: revision 3.4 (2026-11-10). A note in B2 (2026-11-12) points to spec 0009, which changed how create-wxl is published; it is not a new revision. Round 1 of adversarial review found no P0 (`review/round-1.md`);
 revision 2 applied its disposition (`review/disposition.md`, groups U1–U9) and the user's decisions
 D1–D2, and by D1 round 2 was not run then. Revisions 2.1–2.5 (D7 to D10) came from T-0026 and T-0027.
 Revision 3 applies D11 to D17 from T-0061's stage 1 (the chain analysis's X1–X3 and spec gaps,

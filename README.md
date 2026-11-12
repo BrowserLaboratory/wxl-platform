@@ -227,14 +227,14 @@ pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare
 
 它會改寫 `package.json` 的身分欄位、把上游的 GitHub 網址換成你的、依 `--site-name` 設定網站標題與兩個首頁的靶場名稱、依 `--origin`（或由 `--host github-pages` 推導）設定靶場網址（複製出來的每一條連結都從它開始），並依下表決定要不要從 `scripts/templates/deploy.yml.template` 把 `.github/workflows/deploy.yml` 裝上——這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，安裝會成功；如果你已經放了自己的 workflow，腳本不會覆蓋，只會發出警告。
 
-`create-wxl/package.json` 的 `repository.url` 這一行不會被改寫，在 GitHub fork 裡會繼續指向上游：它是上游發布 create-wxl 時 npm 比對用的欄位，只有 rebrand 模式（`--rebrand`）會連同其他上游網址一起換掉。用 `npm create wxl` 建立的靶場沒有 `create-wxl/` 資料夾，不受影響。
-
 | 既有 `.github/workflows/deploy.yml` | `--host github-pages` | `--host cloudflare-pages` | 不帶 `--host` |
 |---|---|---|---|
 | 不存在 | 安裝目前範本，並提示補 tag 規則 | 不動 | 安裝目前範本，並提示補 tag 規則 |
 | 與目前範本相同 | 不動，不警告 | 刪除，並警告 | 不動，不警告 |
 | 與已知舊範本輸出相同 | 取代為目前範本，並警告它是舊版輸出 | 刪除，並警告 | 保持原樣，警告內容不同、需要手動合併 |
 | 其他（兩者皆非，可能是你自己客製的版本） | 能推導出 `SITE_BASE` 就保持並警告；不能就保持並警告改用 `--host github-pages` | 保持原樣，並警告 | 保持原樣，警告內容不同、需要手動合併 |
+
+`create-wxl/package.json` 的 `repository.url` 這一行不會被改寫，在 GitHub fork 裡會繼續指向上游：它是上游發布 create-wxl 時 npm 比對用的欄位，只有 rebrand 模式（`--rebrand`）會連同其他上游網址一起換掉。用 `npm create wxl` 建立的靶場沒有 `create-wxl/` 資料夾，不受影響。
 
 **`fork:init` 不保留任何狀態，每次執行都要帶齊參數**：它不會記得你上一次用了什麼設定，這一次沒帶的參數就當作「這次不改」，而不是「沿用上一次」——但有兩個例外，不管這次帶了什麼都照樣會動：(a) 不帶 `--host` 時，只要 `.github/workflows/deploy.yml` 還不存在就會裝回（見上表）；(b) `--host github-pages` 沒帶 `--origin` 時，靶場網址每次都會依 `--repo` 重新推導並覆寫，覆寫一個不是上游預設值的舊網址時會警告新舊網址。**Cloudflare Pages 靶場每次都要帶 `--host cloudflare-pages`**——如果某一次忘了帶、改用不帶 `--host` 的指令，**不帶 `--host` 執行會重新裝回 GitHub Pages workflow**，而這份 workflow 對一個 Cloudflare Pages 靶場毫無用處；自訂網域的 GitHub Pages 靶場同理每次都要帶 `--origin`，否則下一次沒帶 `--origin` 的 `--host github-pages` 執行會把靶場網址覆寫回推導值。rebrand 模式（`--rebrand`）不能和 `--host`／`--origin`／`--site-name` 一起用，部署設定要另外手動處理，細節見 `wxl-fork-init` skill。
 

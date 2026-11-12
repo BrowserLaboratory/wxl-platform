@@ -5,7 +5,7 @@ Status: revision 2.4 (2026-11-12). Round 1 found four P0 findings with two root 
 the user's decisions D1–D2. Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met;
 revision 2.1 applies round 2's P1 groups Q1–Q6 (`review/disposition-2.md`) by decision D3, without
 another round. Revision 2.2 (2026-11-10, with `traceability.md` revision 2.2) widens entry rule 3 to git's
-NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21), without another round. Revision 2.4 (2026-11-12, with `traceability.md` revision 2.4) records spec 0009 (npm trusted publishing, DS1): X9, B2, the manifest's `repository`, and the release steps this spec left to the user now point to 0009, without another round. Derived from `traceability.md`, which holds the fixed
+NTFS and HFS+ aliases of `.git` (epic 0006 revision 3, D13), without another round. Revision 2.3 (2026-11-10, with `traceability.md` revision 2.3) raises git's floor to 2.26 (epic 0006 revision 3.3, D21), without another round. Revision 2.4 (2026-11-12, with `traceability.md` revision 2.4) records spec 0009 (npm trusted publishing, DS1): X9, B2 and the release steps this spec left to the user now point to 0009, and `traceability.md`'s package listing gains the manifest's `repository`, without another round. Derived from `traceability.md`, which holds the fixed
 lists this spec refers to (decisions in short, vocabulary, command grammar, language, step order,
 signals, error and warning codes, archive entry rules, pristine processing P1–P4, the `range.json`
 schema, the test-download override, setup questions S1–S6, git steps G0–G4, next steps N1–N8, the
@@ -194,12 +194,12 @@ following the system language; messages quoted from the fork-init engine stay in
 - Windows behaviour beyond the cross-OS unit tests (including retrying a rename that antivirus
   software briefly blocks); the printed commands are for a POSIX shell.
 - Refusing an empty target owned by another user; `npm-shrinkwrap.json` for transitive dependencies.
-  Requiring the release commit to be on upstream's `main` was out of scope here; spec 0009 (U7) added
-  it as its publish workflow's ancestry step (revision 2.4).
+  Requiring the release commit to be on upstream's `main` was out of scope here; spec 0009 added
+  it as its publish workflow's ancestry step (0009's U7; revision 2.4).
 - Withdrawing a published version (`npm deprecate`) if upstream history is ever rewritten.
 - Publishing to npm, tagging and the GitHub release were user actions at release time, each asked
   first. Since revision 2.4 they follow spec 0009's release procedure (`docs/agents/release.md`): the
-  user confirms the tag (RP2), CI stages on npm, and the user approves with 2FA (RP5).
+  user confirms the tag (0009's RP2), CI stages on npm, and the user approves with 2FA (0009's RP5).
 
 ## Further Notes
 
@@ -207,7 +207,7 @@ following the system language; messages quoted from the fork-init engine stay in
   the same value (0004 AC-A8), so the two agree.
 - `checkPublish`'s checks are tested on temporary repositories (0005-S2). This spec said it could not
   run in CI because the tag does not exist until release; since revision 2.4 it runs in CI on the
-  tag's push, in spec 0009's `publish-npm.yml` (O5).
+  tag's push, in spec 0009's `publish-npm.yml` (0009's O5).
 - Q19's "only `tar`" became `tar` and `yaml` with the user's approval on 2026-10-16, when it turned
   out that the engine imports `yaml` (since T-0014) and therefore cannot run from an uninstalled range.
 - This spec supersedes 0004's Out of Scope numbering of later epics ("0006 setup record", "Until 0006

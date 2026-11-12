@@ -335,7 +335,7 @@ Prefix the issue title with `[Feature]` and describe:
 
 ### Releases and npm trusted publishing
 
-Releasing WXL and create-wxl, including the GitHub and npmjs.com settings only the upstream maintainer can make (the `v*` tag ruleset MN7, the `npm` environment MN2, the npm trusted publisher MN1 and refusing tokens MN3), is documented in [`docs/agents/release.md`](docs/agents/release.md); do MN7 and MN2 before any `v*` tag is pushed.
+Upstream only; derived repositories skip this subsection. Releasing WXL and create-wxl, including the GitHub and npmjs.com settings only the upstream maintainer can make (the `v*` tag rulesets MN7, the `npm` environment MN2, the npm trusted publisher MN1 and refusing tokens MN3), is documented in [`docs/agents/release.md`](docs/agents/release.md); do MN7 and MN2 before any `v*` tag is pushed.
 
 ### Branch protection ruleset
 

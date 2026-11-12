@@ -128,7 +128,7 @@ The upstream repository slug as a literal (compared case-insensitively) may appe
 
 - **Rewrite list** — the package manifest, inside A1's three URL fields only; `README.md` and
   `README.en.md`, inside A2 and A3 forms only; `CONTRIBUTE.md`, inside A4 and A5 forms only.
-  Since spec 0009 (O1): also `create-wxl/package.json`'s single `repository.url` line, rewritten by
+  Since spec 0009 (0009's O1): also `create-wxl/package.json`'s single `repository.url` line, rewritten by
   rebrand mode only (see the note above).
 - **Keep list** — `CHANGELOG.md`; the fork-init CLI file `scripts/fork-init.ts`, which this epic makes
   export the upstream repository slug as `UPSTREAM_SLUG` and which holds the whole engine, the four rebrand keys included;
