@@ -31,7 +31,7 @@ Spec `.proj.specs/0009-npm-trusted-publishing/spec.en.md` revision 3 and `tracea
 
 - [x] Rows K01–K13.
 - [x] ACs reached: AC-1, AC-2, AC-3.
-- [ ] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` output recorded (the
+- [x] Stage 8 (RP0, S8-08), before the PR merges: `npm pkg get repository` output recorded (the
   object arrives with T-0070; here it prints `{}`, recorded as such); `node scripts/check-publish.mjs`
   in `create-wxl/` exits 1 with `checkPublish failed: ` and a named check; the PR's CI passes.
 
@@ -150,3 +150,9 @@ Spec `.proj.specs/0009-npm-trusted-publishing/spec.en.md` revision 3 and `tracea
     `checkPublish failed: X3 (no local tag v<version> exists at HEAD)`, exit 1.
   - Afterwards `create-wxl/dist/` and `create-wxl/LICENSE` were removed; `git status` showed only
     this record.
+- 2026-11-12, stage 8, CI part (RP0 (c); surface: GitHub Actions on PR #82, push `a732c0d`, run
+  `43237760085`, checked with `gh pr checks 82`): 10 of 10 passed: `test`, `build`, `prose-audit`,
+  `site-smoke`, `challenge-verify`, the four `fork-init-cross-os` jobs (macOS 24, Ubuntu 22 and
+  24, Windows 24; each runs `pnpm --dir create-wxl test`) and Cloudflare Pages. The workflow tests
+  of W01–W12 arrive with T-0071; here the CI runs this ticket's tests and the existing workflow
+  tests. Stage 8 is complete: RP0 (a), (b) and (c) are recorded.
