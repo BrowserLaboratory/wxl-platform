@@ -74,6 +74,16 @@ export async function gitArchiveOf(fixture, { name, ref = 'HEAD' }) {
   })
 }
 
+/** Links `<dir>/create-wxl/node_modules` to the real one (a junction on Windows), so the generated
+ * engine resolves `yaml`; callers exclude it through `.git/info/exclude`. */
+async function linkNodeModules(dir) {
+  try {
+    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'), 'junction')
+  } catch {
+    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'))
+  }
+}
+
 /** Builds one fresh fixture repository, with one initial commit on `main`. */
 export async function makePublishFixture() {
   const dir = await makeTmpRoot('create-wxl-publish-')
@@ -102,11 +112,7 @@ export async function makePublishFixture() {
   await cp(join(REPO_ROOT, 'create-wxl/package.json'), join(dir, 'create-wxl/package.json'))
   await cp(join(REPO_ROOT, 'create-wxl/.gitignore'), join(dir, 'create-wxl/.gitignore'))
 
-  try {
-    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'), 'junction')
-  } catch {
-    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'))
-  }
+  await linkNodeModules(dir)
 
   await git(dir, env, ['init', '-q', '-b', 'main'])
   await writeFile(join(dir, '.git/info/exclude'), 'node_modules\n')
@@ -189,18 +195,25 @@ export async function buildRelease(fixture, { mutate, tag = 'lightweight', at = 
  */
 export async function cloneDetachedAtTag(fixture, tagName, { localTag = 'annotated' } = {}) {
   const dir = await makeTmpRoot('create-wxl-publish-clone-')
-  await git(dir, fixture.env, ['clone', '-q', fixture.dir, '.'])
-  if (localTag === 'lightweight') {
-    const commit = (await git(dir, fixture.env, ['rev-parse', `refs/tags/${tagName}^{commit}`])).trim()
-    await git(dir, fixture.env, ['tag', '-d', tagName])
-    await git(dir, fixture.env, ['tag', tagName, commit])
-  }
-  await git(dir, fixture.env, ['checkout', '-q', '--detach', `refs/tags/${tagName}`])
   try {
-    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'), 'junction')
-  } catch {
-    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'))
+    await git(dir, fixture.env, ['clone', '-q', fixture.dir, '.'])
+    if (localTag === 'lightweight') {
+      const commit = (await git(dir, fixture.env, ['rev-parse', `refs/tags/${tagName}^{commit}`])).trim()
+      await git(dir, fixture.env, ['tag', '-d', tagName])
+      await git(dir, fixture.env, ['tag', tagName, commit])
+    }
+    await git(dir, fixture.env, ['checkout', '-q', '--detach', `refs/tags/${tagName}`])
+    await linkNodeModules(dir)
+    await writeFile(join(dir, '.git/info/exclude'), 'node_modules\n')
+  } catch (err) {
+    await rm(dir, { recursive: true, force: true })
+    throw err
   }
-  await writeFile(join(dir, '.git/info/exclude'), 'node_modules\n')
   return { dir, env: fixture.env, createWxlDir: join(dir, 'create-wxl') }
+}
+
+/** Removes a clone made by `cloneDetachedAtTag` (it shares the fixture's `HOME`, removed with the
+ * fixture). */
+export async function cleanupClone(clone) {
+  await rm(clone.dir, { recursive: true, force: true })
 }

@@ -1,8 +1,8 @@
 // 0005-S2 ("Package and publishing", traceability.md): `prepareDist` builds the type-stripped
 // engine, the package source record and the `LICENSE` copy; `checkPublish` (X1-X9) refuses a
 // release that does not match upstream's pushed tag; its X9 is spec 0009's (K1-K4 against the
-// injected `env`). Deviation from the approved test plan table
-// (recorded in the ticket's "increment plan confirmed" comment): this file is `.mjs`, not `.ts` --
+// injected `env`). Deviation from T-0025's approved test plan table
+// (recorded in T-0025's "increment plan confirmed" comment): this file is `.mjs`, not `.ts` --
 // vitest's `include` (`vitest.config.mjs:6`) only collects `test/**/*.test.mjs`.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -22,6 +22,7 @@ import {
   gitArchiveOf,
   runFixtureGit,
   cloneDetachedAtTag,
+  cleanupClone,
 } from './helpers/publish-fixture.mjs'
 import { makePublishGitStub } from './helpers/publish-git-stub.mjs'
 import { buildArchiveRaw } from './helpers/archive.mjs'
@@ -773,7 +774,8 @@ describe('checkPublish', () => {
 
 // 0009-S1 (spec 0009 traceability.md "The new X9"): X9 holds when K1-K4 hold, read from the
 // injected `env`, and otherwise throws `['X9']` with message XM naming the first failing condition.
-// One fixture serves every row: X1-X8 hold throughout, so only `env` varies.
+// One fixture serves every row (approved test plan): X1-X8 hold throughout, so only `env` varies.
+// Rows therefore never mutate the fixture and never read `stub.calls`, which accumulates.
 describe('checkPublish X9 (0009 K1-K4)', () => {
   let fixture
   let release
@@ -922,6 +924,36 @@ describe('checkPublish X9 (0009 K1-K4)', () => {
     ).toBe(true)
   })
 
+  // K06, stage 6 (T0069-SPEC-14): `env` left out of the call altogether is missing too.
+  it('K1 fails with unset when the env property is omitted', { timeout: 30000 }, async () => {
+    const thrown = await checkPublish({
+      root: fixture.createWxlDir,
+      module: realModule,
+      runGit: stub.runGit,
+      archive: () => gitArchiveOf(fixture, { name }),
+    }).catch((err) => err)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(1, K1_CAUSE, 'unset'))
+  })
+
+  // Stage 6 (T0069-SPEC-05): a variable whose read throws has no string value, so it is unset, and
+  // X9 still throws its own PublishError rather than the getter's error.
+  it('K1 fails with unset when reading GITHUB_ACTIONS throws', { timeout: 30000 }, async () => {
+    const env = upstreamEnv(release)
+    Object.defineProperty(env, 'GITHUB_ACTIONS', {
+      enumerable: true,
+      get() {
+        throw new Error('hostile getter')
+      },
+    })
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(1, K1_CAUSE, 'unset'))
+  })
+
   // K07
   it('names only the first failing condition, in K1-K4 order', { timeout: 30000 }, async () => {
     const env = { ...upstreamEnv(release), GITHUB_ACTIONS: 'false', GITHUB_WORKFLOW_REF: 'elsewhere' }
@@ -1021,8 +1053,10 @@ describe('X9 default explanation (0009 K13)', () => {
 describe('publish wiring without npm (0009 K11)', () => {
   const read = (relative) => readFile(new URL(relative, import.meta.url), 'utf8')
 
+  // A whole code line, not a substring, so a comment or `env: process.envX` cannot satisfy it.
   it('check-publish.mjs passes env: process.env', async () => {
-    expect(await read('../scripts/check-publish.mjs')).toContain('env: process.env')
+    const lines = (await read('../scripts/check-publish.mjs')).split('\n').map((line) => line.trim())
+    expect(lines).toContain('env: process.env,')
   })
 
   it('publish-io.mjs exports exactly the four remaining functions', async () => {
@@ -1085,7 +1119,7 @@ describe('checkPublish on the CI checkout shape (0009 K12)', () => {
         }),
       ).resolves.toBeUndefined()
     } finally {
-      if (clone) await rm(clone.dir, { recursive: true, force: true })
+      if (clone) await cleanupClone(clone)
       await cleanupFixture(fixture)
     }
   })

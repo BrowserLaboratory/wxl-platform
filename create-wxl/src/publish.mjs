@@ -1,6 +1,7 @@
 // "Package and publishing" (traceability.md 0005-S2): `prepareDist` carries the type-stripped
 // engine, the package source record and `LICENSE` into `dist/`; `checkPublish` (X1-X9) refuses a
-// release that does not match upstream's pushed tag.
+// release that does not match upstream's pushed tag, and (X9, spec 0009) one that is not running in
+// upstream's publish workflow for that tag.
 
 import { rm, mkdir, readFile, writeFile, cp, mkdtemp } from 'node:fs/promises'
 import * as fsp from 'node:fs/promises'
@@ -33,9 +34,10 @@ function importFresh(path) {
   return import(/* @vite-ignore */ specifier)
 }
 
-/** One short, human-readable line per check id (traceability.md "Package and publishing"'s own
- * table), so a maintainer reading `prepare-dist.mjs`'s or `check-publish.mjs`'s failure output
- * does not have to go look the id up before knowing what failed. */
+/** One short, human-readable line per check id (0005 traceability.md "Package and publishing"'s
+ * own table; X9's from spec 0009 K13), so a maintainer reading `prepare-dist.mjs`'s or
+ * `check-publish.mjs`'s failure output does not have to go look the id up before knowing what
+ * failed. */
 export const CHECK_EXPLANATIONS = {
   D1: 'module.stripTypeScriptTypes is missing',
   X1: 'module.stripTypeScriptTypes is missing',
@@ -125,9 +127,10 @@ function resolvedLockfileVersion(lockfileDoc, depName) {
 }
 
 /**
- * `checkPublish` (run by `prepublishOnly`, right after its own `prepareDist`): X1-X9 in order
- * (traceability.md "Package and publishing"), each check throwing `PublishError` naming only its
- * own id on failure.
+ * `checkPublish` (run by `prepublishOnly` right after its own `prepareDist`, and by the publish
+ * workflow's gate step): X1-X8 in order (0005 traceability.md "Package and publishing"), then X9
+ * (spec 0009 "The new X9": K1-K4 read from `env`, which production passes as `process.env`), each
+ * check throwing `PublishError` naming only its own id on failure.
  */
 export async function checkPublish({ root, module, runGit, archive, env }) {
   if (typeof module?.stripTypeScriptTypes !== 'function') {
@@ -282,38 +285,52 @@ export async function checkPublish({ root, module, runGit, archive, env }) {
     throw new PublishError(['X8'])
   }
 
-  // X9 (0009's K1-K4): checked last, after X1-X8.
-  const seen = ownStrings(env)
+  // X9 (spec 0009 "The new X9"): K1-K4, checked in order against the injected `env`; the first
+  // that does not hold is the one named.
   const conditions = [
-    ['GITHUB_ACTIONS', (value) => value === 'true', 'GITHUB_ACTIONS is not "true"'],
-    ['GITHUB_REPOSITORY', (value) => value === engineModule.UPSTREAM_SLUG, 'GITHUB_REPOSITORY is not the upstream repository'],
-    [
-      'GITHUB_WORKFLOW_REF',
-      (value) => value === `${engineModule.UPSTREAM_SLUG}/.github/workflows/publish-npm.yml@refs/tags/v${v}`,
-      "GITHUB_WORKFLOW_REF is not this version's publish workflow",
-    ],
-    [
-      'ACTIONS_ID_TOKEN_REQUEST_URL',
-      (value) => value.trim() !== '',
-      'ACTIONS_ID_TOKEN_REQUEST_URL is not set (the job needs id-token: write)',
-    ],
+    { k: 'K1', variable: 'GITHUB_ACTIONS', holds: (value) => value === 'true', cause: 'GITHUB_ACTIONS is not "true"' },
+    {
+      k: 'K2',
+      variable: 'GITHUB_REPOSITORY',
+      holds: (value) => value === engineModule.UPSTREAM_SLUG,
+      cause: 'GITHUB_REPOSITORY is not the upstream repository',
+    },
+    {
+      k: 'K3',
+      variable: 'GITHUB_WORKFLOW_REF',
+      holds: (value) => value === `${engineModule.UPSTREAM_SLUG}/.github/workflows/publish-npm.yml@refs/tags/v${v}`,
+      cause: "GITHUB_WORKFLOW_REF is not this version's publish workflow",
+    },
+    {
+      k: 'K4',
+      variable: 'ACTIONS_ID_TOKEN_REQUEST_URL',
+      holds: (value) => value.trim() !== '',
+      cause: 'ACTIONS_ID_TOKEN_REQUEST_URL is not set (the job needs id-token: write)',
+    },
   ]
-  conditions.forEach(([variable, holds, cause], index) => {
-    const value = seen(variable)
+  for (const { k, variable, holds, cause } of conditions) {
+    const value = ownString(env, variable)
     if (value === undefined || !holds(value)) {
       const saw = value === undefined ? 'unset' : JSON.stringify(value)
       throw new PublishError(
         ['X9'],
-        `X9 (K${index + 1}: ${cause}; saw ${saw}). create-wxl is published only by the upstream repository's ` +
+        `X9 (${k}: ${cause}; saw ${saw}). create-wxl is published only by the upstream repository's ` +
           `publish-npm.yml workflow when tag v${v} is pushed, and is then approved on npmjs.com.`,
       )
     }
-  })
+  }
 }
 
-/** 0009's X9 reads only the injected `env`'s own string properties: a missing, non-object or array
- * `env` counts as empty, and an inherited or non-string value counts as unset. */
-function ownStrings(env) {
-  const usable = env !== null && typeof env === 'object' && !Array.isArray(env)
-  return (variable) => (usable && Object.hasOwn(env, variable) && typeof env[variable] === 'string' ? env[variable] : undefined)
+/** Spec 0009's X9 reads `env[variable]` only when it is an own string property: a missing,
+ * non-object or array `env` counts as empty, an inherited or non-string value as unset. The value
+ * is read once; a read that throws (a hostile getter or proxy) also counts as unset, so X9 still
+ * fails with its own `PublishError`. */
+function ownString(env, variable) {
+  try {
+    if (env === null || typeof env !== 'object' || Array.isArray(env) || !Object.hasOwn(env, variable)) return undefined
+    const value = env[variable]
+    return typeof value === 'string' ? value : undefined
+  } catch {
+    return undefined
+  }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Thin script `prepublishOnly` runs right after its own `prepare-dist.mjs` (traceability.md
-// "Package and publishing"), and `publish-npm.yml` runs the same pair as its gate step (spec 0009
-// W6): wires the real git, `git archive` (`src/publish-io.mjs`) and this process's environment
+// "Package and publishing"), and spec 0009's `publish-npm.yml` (W6, added by T-0071) runs the same
+// pair as its gate step: wires the real git, `git archive` (`src/publish-io.mjs`) and this process's environment
 // (X9, spec 0009 K1-K4) into `checkPublish`, run against the package root (this script's parent
 // directory). No logic of its own lives here (stage 6/7 fix assignment section C, S-33's "thin
 // script" framing).
