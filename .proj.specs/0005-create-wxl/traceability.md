@@ -21,6 +21,11 @@ gains those cases, row C71 is added, and the rule's text regains a backslash los
 Revision 2.3 (2026-11-10) applies decision D21 of epic 0006's revision 3.3 (T-0065): G0's floor is
 git 2.26, shared with the upgrade's step 3, and Ubuntu 20.04's git 2.25.1 is not supported; rows
 C36, G0 and CW-W01 and the G0 text change. Self-checked without another round.
+Revision 2.4 (2026-11-12) records spec 0009 (npm trusted publishing,
+`.proj.specs/0009-npm-trusted-publishing/`, DS1): X9 becomes 0009's K1–K4, read from an injected
+`env`; D4 is superseded; 0005-S2 takes `env`; C42, C43 and C45 follow; the package listing gains
+0009's MR1 `repository` (five placeholders); and the Seams note gains 0009's O1 exception. 0009's
+ids carry the prefix "0009's" here. Self-checked without another round.
 In an input cell, `\uXXXX` inside a code span stands for the single code point U+XXXX; any other `\`
 is a literal backslash, as in C18's `a\b`. The
 decisions this file relies on, in short (the full
@@ -34,7 +39,7 @@ record is the local research note `.proj.research/2026-10-16-w45-create-wxl-upgr
 | R8 | create-wxl carries the type-stripped engine of the same platform version |
 | R9 | The Charter is revised (U4) |
 | D3 | Round 2's P1 findings are fixed in revision 2.1 without another round |
-| D4 | The user reserves the npm name with a placeholder `create-wxl@0.0.0`; `checkPublish` checks the name's maintainers (X9) |
+| D4 | The user reserves the npm name with a placeholder `create-wxl@0.0.0`; `checkPublish` checks the name's maintainers (X9). **Superseded in revision 2.4 by 0009's D1:** X9 no longer asks npm; it checks that it runs in upstream's publish workflow for the tagged version |
 | D2 | ① rebrand mode leaves `range.json` untouched; ② a tree with `range.json` is not upstream; ③ create-wxl's tests live in `create-wxl/`; ④ `prepack` builds `dist/`, `prepublishOnly` only checks; ⑤ re-asking asks every question; ⑥ `npm create … -- --flags`; ⑮ the override prints a warning; ⑯ dead references in ranges are a known limit |
 
 ## Seams
@@ -42,7 +47,7 @@ record is the local research note `.proj.research/2026-10-16-w45-create-wxl-upgr
 | Seam | Entry point | Observable output |
 |---|---|---|
 | 0005-S1 | create-wxl's exported `run(argv, io, deps)`. `io`: `stdin`, `stdout`, `stderr` streams and `interactive` (boolean). `deps`: `env` (map), `cwd`, `nodeVersion`, `locale`, `packageVersion` (the package manifest's `version`), `source` (`{ repository, version, commit, engineSha256 }`), `engine` (`{ parseForkInitArgs, runForkInit, deriveGithubPagesOrigin, ForkInitArgError, UPSTREAM_SLUG }`), `fetchArchive(repository, ref, { signal })` resolving, once the whole body is read, to `{ status, body }` with `body` a `Uint8Array`, or rejecting on a network error or abort, `downloadTimeoutMs`, `runGit(args, { cwd, env })` resolving to `{ code, stdout, stderr }` or rejecting with `code: 'ENOENT'`, `fs` (the `node:fs/promises` functions it uses, replaceable one by one to inject a failure), `signals` (an event emitter on which `SIGINT`, `SIGTERM`, `SIGHUP` arrive), `checkpoint(name)` (called as `step-3` … `step-13` at the start of each step and as `question` before each question; a signal emitted from it belongs to that step's window). The `bin` passes the real values: `process` streams, `isTTY` of stdin and stdout, `process.env`, `process.cwd()`, `process.versions.node`, `Intl.DateTimeFormat().resolvedOptions().locale`, the manifest's `version`, `dist/source.json`, `dist/fork-init.mjs`, a `fetch`-based fetcher, 120000, a `child_process.spawn`-based runner, `node:fs/promises`, `process`, and a no-op | files under the test's temporary directory (content and mode); the resolved exit code; the text written to `stdout` and `stderr`; the calls each injected dependency received |
-| 0005-S2 | create-wxl's exported `prepareDist({ root, module })` and `checkPublish({ root, module, runGit, archive, npmView })`, called in a test on a temporary git repository holding copies of the files they read (both manifests, both `.gitignore` files, `LICENSE`, the engine, `pnpm-lock.yaml`, `CHANGELOG.md`, `.proj.specs/OPEN-QUESTIONS.md`), with lightweight and annotated tags, with `node_modules` linked to the repository's so that the generated engine resolves `yaml`; `module` is `node:module` or a stand-in without `stripTypeScriptTypes`; `archive` returns the archive of a commit as bytes (the real one runs `git archive --prefix=<name>-<commit>/`); `npmView` returns the registry's maintainers of `create-wxl` (the real one runs `npm view create-wxl maintainers --json`, empty on a 404); `runGit`'s `ls-remote` is stubbed | the returned or thrown result (check id); files in `dist/`; importing the generated engine and calling its `parseForkInitArgs` |
+| 0005-S2 | create-wxl's exported `prepareDist({ root, module })` and `checkPublish({ root, module, runGit, archive, env })` (revision 2.4, 0009's D2: `env` replaces `npmView`; `npmWhoami`, injected by T-0025's D12, was never listed here), called in a test on a temporary git repository holding copies of the files they read (both manifests, both `.gitignore` files, `LICENSE`, the engine, `pnpm-lock.yaml`, `CHANGELOG.md`, `.proj.specs/OPEN-QUESTIONS.md`), with lightweight and annotated tags, with `node_modules` linked to the repository's so that the generated engine resolves `yaml`; `module` is `node:module` or a stand-in without `stripTypeScriptTypes`; `archive` returns the archive of a commit as bytes (the real one runs `git archive --prefix=<name>-<commit>/`); `env` is any value (production passes `process.env`, read by X9 as 0009's K1–K4); `runGit`'s `ls-remote` is stubbed | the returned or thrown result (check id); files in `dist/`; importing the generated engine and calling its `parseForkInitArgs` |
 | 0005-S3 | tests in `create-wxl/test/` (which exist only upstream, so need no skip) reading the real tracked files: `.gitattributes`, both manifests, create-wxl's lockfile, `quality-gates.yml` (parsed with `yaml`), `AGENTS.md`, both READMEs, `.proj.specs/OPEN-QUESTIONS.md`, `GLOSSARY.md`, both `wxl-fork-init` skills; and `git archive HEAD` run through the entry rules; plus, in `tests/unit/scripts/upstream-guard.test.ts`, the upstream decision with its new `range.json` input | pass or fail; the archive's path list |
 | 0005-S4 | stage 8, local, on the HEAD of the epic's last ticket that changes create-wxl, pushed: in the package directory `pnpm install --frozen-lockfile` then `npm pack` (whose `prepack` builds `dist/`); in an empty temporary directory, the runs of "Stage 8 inputs" with `CREATE_WXL_COMMIT=<HEAD>`, interactive runs driven through a pseudo-terminal (`script -q /dev/null …` on macOS) with the listed input; in each resulting range the reads listed there; afterwards `dist/` and the `.tgz` are removed | exit codes, terminal text, the listed file contents and path lists |
 
@@ -55,6 +60,8 @@ Tests of S1–S3 live under `create-wxl/test/`, import the engine from the repos
 `scripts/fork-init.ts` (vitest strips types), and run with create-wxl's own vitest and lockfile; they
 never enter a range (U1). Like every tracked file outside the upstream guard's keep list, create-wxl's
 sources, tests and fixtures never spell the upstream repository slug; they import `UPSTREAM_SLUG`.
+The one exception (revision 2.4, 0009's O1 and O2) is `create-wxl/package.json`'s `repository.url`
+line (0009's MR1), which the upstream guard exempts by verbatim comparison.
 Tests that set a parent read-only or check modes skip on Windows and when running as root; git tests
 pass `deps.env` = `{ HOME, PATH, XDG_CONFIG_HOME }` pointing at temporary directories.
 
@@ -312,7 +319,8 @@ followed by its commands (quoted as under "Error and warning codes"):
 
 ### Package and publishing
 
-`create-wxl/package.json` (exact, apart from the four placeholders `<V>` and `<exact>`; an exact version
+`create-wxl/package.json` (exact, apart from the five placeholders `<V>`, `<exact>` and, since revision
+2.4, `<repository-url>`, the root manifest's `repository.url` (0009's MR1); an exact version
 is `^\d+\.\d+\.\d+$`, with no range operator):
 
 ```json
@@ -325,6 +333,11 @@ is `^\d+\.\d+\.\d+$`, with no range operator):
   "files": ["bin", "src", "dist", "LICENSE"],
   "engines": { "node": ">=22.6.0" },
   "license": "LicenseRef-LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "<repository-url>",
+    "directory": "create-wxl"
+  },
   "dependencies": { "tar": "<exact>", "yaml": "<exact>" },
   "devDependencies": { "vitest": "<exact>" },
   "scripts": {
@@ -361,7 +374,7 @@ before checking; `prepack` builds it again for `npm pack` and `npm publish` alik
 | X6 | `git ls-remote https://github.com/<UPSTREAM_SLUG>.git refs/tags/v<V> refs/tags/v<V>^{}` reports `HEAD`'s commit: the `^{}` line's when present (annotated tag), else the plain line's (the tag is pushed to upstream itself) |
 | X7 | `git archive --prefix=<name>-<HEAD>/ HEAD` passes the entry rules 1–5 (with rule 2's comment equal to `HEAD`) and P1–P4 |
 | X8 | `dist/source.json`'s `commit` equals `HEAD`, its `engineSha256` matches `dist/fork-init.mjs`, and the package's `LICENSE` equals the root's |
-| X9 | `npmView()` is empty (the name is unpublished) or lists the maintainer `npm whoami` reports |
+| X9 | Revision 2.4: 0009's K1–K4 hold for the injected `env` (it runs in upstream's `publish-npm.yml` for tag `v<V>`, with an OIDC token request URL); otherwise 0009's message XM names the first that does not. Before 2.4: `npmView()` is empty or lists the maintainer `npm whoami` reports |
 
 At run time, step 2's CW-E13 and the `bin` catch a package whose `dist/` is missing, from another
 version or with a changed engine, including one published with lifecycle scripts skipped.
@@ -452,10 +465,10 @@ input written to its stdin, one answer per line.
 | C39 | `--no-setup` | valid run, with and without `CREATE_WXL_COMMIT` | scope | P1–P4 applied; no engine call; no `runGit` call; exactly N1 and N8 printed (CW-W04 does not add N2) | AC-16 |
 | C40 | output | success, each host | next steps | the lines of "Next steps" for that case, ids in order | AC-17 |
 | C41 | language | `--lang zh-TW`; `LC_ALL=zh_TW.UTF-8`; `LANG=en_US`; none set with `locale` `zh-Hant-TW`; `LANG=C`; `--lang zh-TW` with an argument error under `LANG=en_US` | selection | zh-TW / zh-TW / en / zh-TW / en / CW-E02 in en; both message tables have the same ids and their texts differ outside commands, paths and codes | AC-18 |
-| C42 | publish | D1 and each of X1–X9 violated (X6 with lightweight and annotated tags; X7 with an archive holding a symbolic link) | gate | `prepareDist` throws D1 having removed `dist/`; `checkPublish` throws naming the check | AC-19 |
-| C43 | publish | all hold | prep | `dist/source.json` as specified; `dist/fork-init.mjs` imports and its `parseForkInitArgs` parses a valid argv; `LICENSE` copied; `checkPublish` passes | AC-19 |
+| C42 | publish | D1 and each of X1–X9 violated (X6 with lightweight and annotated tags; X7 with an archive holding a symbolic link; X9, since revision 2.4, with each of 0009's K1–K4 violated, its rows K02–K07) | gate | `prepareDist` throws D1 having removed `dist/`; `checkPublish` throws naming the check | AC-19 |
+| C43 | publish | all hold (since revision 2.4, with an `env` meeting 0009's K1–K4) | prep | `dist/source.json` as specified; `dist/fork-init.mjs` imports and its `parseForkInitArgs` parses a valid argv; `LICENSE` copied; `checkPublish` passes | AC-19 |
 | C44 | upstream | `.gitattributes`; `git archive HEAD` | U1, entry rules | `.gitattributes` exactly as U1; the archive passes entry rules 1–5; `git archive HEAD` lists the directory entry `.proj.specs/` and the file `.proj.specs/OPEN-QUESTIONS.md` and nothing else under `.proj.specs/`, nothing under `.proj.tickets/` or `create-wxl/`; no two archive paths equal after NFC and case folding | AC-20 |
-| C45 | upstream | create-wxl package | U2 | manifest equal to the listing apart from the four placeholders, each exact; `version` equals the root's; `.gitignore` and lockfile present | AC-20 |
+| C45 | upstream | create-wxl package | U2 | manifest equal to the listing apart from the five placeholders (revision 2.4; `create-wxl/test/upstream-config.test.mjs`'s title says five), each exact or, for `<repository-url>`, equal to the root manifest's; `version` equals the root's; `.gitignore` and lockfile present | AC-20 |
 | C46 | upstream | CI | U3 | the new step with exactly that `run`, after the existing step, which is unchanged; job `if:` unchanged | AC-20 |
 | C47 | upstream | Charter, READMEs, open questions, comments, glossary | U4–U10 | each listed string present (Charter compared with whitespace collapsed; `stay forkable` absent); the three words absent from the new README subsections | AC-21 |
 | C48 | range | stage 8 runs I and IV | upstream decision | run I's `pnpm test --run` passes; run IV's guard tests report skips | AC-20, AC-22 |

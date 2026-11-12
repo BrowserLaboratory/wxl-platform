@@ -227,6 +227,8 @@ pnpm fork:init --author "<你的名字>" --repo <owner>/<repo> --host cloudflare
 
 它會改寫 `package.json` 的身分欄位、把上游的 GitHub 網址換成你的、依 `--site-name` 設定網站標題與兩個首頁的靶場名稱、依 `--origin`（或由 `--host github-pages` 推導）設定靶場網址（複製出來的每一條連結都從它開始），並依下表決定要不要從 `scripts/templates/deploy.yml.template` 把 `.github/workflows/deploy.yml` 裝上——這個 repo 本身沒有 deploy workflow（它透過下一節的 Cloudflare Pages 發布），所以新 fork 在那個位置沒有檔案，安裝會成功；如果你已經放了自己的 workflow，腳本不會覆蓋，只會發出警告。
 
+`create-wxl/package.json` 的 `repository.url` 這一行不會被改寫，在 GitHub fork 裡會繼續指向上游：它是上游發布 create-wxl 時 npm 比對用的欄位，只有 rebrand 模式（`--rebrand`）會連同其他上游網址一起換掉。用 `npm create wxl` 建立的靶場沒有 `create-wxl/` 資料夾，不受影響。
+
 | 既有 `.github/workflows/deploy.yml` | `--host github-pages` | `--host cloudflare-pages` | 不帶 `--host` |
 |---|---|---|---|
 | 不存在 | 安裝目前範本，並提示補 tag 規則 | 不動 | 安裝目前範本，並提示補 tag 規則 |

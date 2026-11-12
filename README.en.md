@@ -236,6 +236,8 @@ pnpm fork:init --author "<Your Name>" --repo <owner>/<repo> --host cloudflare-pa
 
 It rewrites `package.json`'s identity fields, swaps the upstream GitHub URLs for yours, sets the site title and both home pages' range name from `--site-name`, sets the range address, the origin of every copied link, from `--origin` (or derives it under `--host github-pages`), and decides what happens to `.github/workflows/deploy.yml` from `scripts/templates/deploy.yml.template` per the table below. This repository no longer carries a deploy workflow of its own — it publishes through Cloudflare Pages, described in the next section — so a fresh fork has nothing at that path and the install goes through. If you have already customised your own workflow there, the script leaves it untouched and warns instead of overwriting it.
 
+The `repository.url` line of `create-wxl/package.json` is not rewritten, so in a GitHub fork it keeps pointing at upstream: it is the field npm compares when upstream publishes create-wxl, and only rebrand mode (`--rebrand`) replaces it, along with the other upstream URLs. A range made with `npm create wxl` has no `create-wxl/` folder and is not affected.
+
 | Existing `.github/workflows/deploy.yml` | `--host github-pages` | `--host cloudflare-pages` | without `--host` |
 |---|---|---|---|
 | absent | installs the current template, and prompts for the tag rule | left alone | installs the current template, and prompts for the tag rule |
