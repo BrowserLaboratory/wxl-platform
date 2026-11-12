@@ -34,7 +34,9 @@ function runGit(args, { cwd, env = process.env }) {
 const EXACT_VERSION_RE = /^\d+\.\d+\.\d+$/
 
 describe('C45: manifest matches U2 listing', () => {
-  it('create-wxl/package.json is exactly the listing apart from the four placeholders', async () => {
+  // Spec 0009 MR1/M01: `repository` right after `license`, its `url` the root manifest's (a fifth
+  // placeholder, O1).
+  it('create-wxl/package.json is exactly the listing apart from the five placeholders', async () => {
     const createWxlPkg = JSON.parse(await readFile(CREATE_WXL_PKG_PATH, 'utf8'))
     const rootPkg = JSON.parse(await readFile(ROOT_PKG_PATH, 'utf8'))
 
@@ -47,6 +49,7 @@ describe('C45: manifest matches U2 listing', () => {
       files: ['bin', 'src', 'dist', 'LICENSE'],
       engines: { node: '>=22.6.0' },
       license: 'LicenseRef-LICENSE',
+      repository: { type: 'git', url: rootPkg.repository.url, directory: 'create-wxl' },
       dependencies: { tar: createWxlPkg.dependencies?.tar, yaml: createWxlPkg.dependencies?.yaml },
       devDependencies: { vitest: createWxlPkg.devDependencies?.vitest },
       scripts: {
@@ -67,6 +70,21 @@ describe('C45: manifest matches U2 listing', () => {
     expect(createWxlPkg.dependencies.tar).toMatch(EXACT_VERSION_RE)
     expect(createWxlPkg.dependencies.yaml).toMatch(EXACT_VERSION_RE)
     expect(createWxlPkg.devDependencies.vitest).toMatch(EXACT_VERSION_RE)
+  })
+})
+
+describe('0009 M01: the manifest writes repository one key per line', () => {
+  it("holds MR1's five lines, verbatim and in a row, with the root manifest's url", async () => {
+    const text = await readFile(CREATE_WXL_PKG_PATH, 'utf8')
+    const rootPkg = JSON.parse(await readFile(ROOT_PKG_PATH, 'utf8'))
+    const block = [
+      '  "repository": {',
+      '    "type": "git",',
+      `    "url": "${rootPkg.repository.url}",`,
+      '    "directory": "create-wxl"',
+      '  },',
+    ].join('\n')
+    expect(text).toContain(`\n${block}\n`)
   })
 })
 
@@ -93,6 +111,23 @@ describe('C45: .gitignore lists four items, lockfile tracked', () => {
       expect(new Set(tracked)).toEqual(new Set(['create-wxl/pnpm-lock.yaml', 'create-wxl/.gitignore']))
     } finally {
       await rm(isolatedHome, { recursive: true, force: true })
+    }
+  })
+})
+
+// Spec 0009 MR2/M03: npm's trusted publishing reads no token, and nothing may configure one.
+describe('0009 M03: no tracked .npmrc', () => {
+  it('git ls-files lists no path whose name is .npmrc', async () => {
+    const tmpHome = await mkdtemp(join(tmpdir(), 'create-wxl-m03-home-'))
+    try {
+      const env = { HOME: tmpHome, XDG_CONFIG_HOME: tmpHome, PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1' }
+      const result = await runGit(['ls-files', '-z'], { cwd: REPO_ROOT, env })
+      expect(result.code).toBe(0)
+      const paths = result.stdout.split('\0').filter((p) => p !== '')
+      expect(paths.length).toBeGreaterThan(0)
+      expect(paths.filter((p) => p.split('/').at(-1) === '.npmrc')).toEqual([])
+    } finally {
+      await rm(tmpHome, { recursive: true, force: true })
     }
   })
 })

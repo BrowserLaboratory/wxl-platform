@@ -115,6 +115,31 @@ function anchoredRanges(path: string, content: string): Array<[number, number]> 
   return ranges
 }
 
+const CREATE_WXL_MANIFEST = 'create-wxl/package.json'
+
+/** Spec 0009 O1 (a): the one line `create-wxl/package.json` may hold the slug on is MR1's url line,
+ *  whose trimmed text equals `"url": "<the root manifest's repository.url>",` verbatim. Undefined
+ *  when the root manifest is missing, unparsable, or has no string `repository.url`: then nothing
+ *  is exempt. The file is compared line by line, not walked structurally (`manifestA1UrlLines`'s
+ *  one-key-per-line walk is not stretched to it). */
+function createWxlRepositoryUrlLine(rootManifest: string | undefined): string | undefined {
+  if (rootManifest === undefined) return undefined
+  try {
+    const url = JSON.parse(rootManifest)?.repository?.url
+    return typeof url === 'string' ? `"url": ${JSON.stringify(url)},` : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The single exempt line (O1 (a)): the first whose trimmed text equals `urlLine`; any later
+ *  identical line is reported like every other. */
+function createWxlManifestExemptLines(content: string, urlLine: string | undefined): Set<number> {
+  if (urlLine === undefined) return new Set<number>()
+  const index = content.split('\n').findIndex((line) => line.trim() === urlLine)
+  return new Set<number>(index === -1 ? [] : [index])
+}
+
 // Built once (not per file, not per line, and not rebuilt as `new RegExp(slugRe.source, ...)` on
 // every line as before): `matchAll` never mutates a regex's own `lastIndex` (it clones
 // internally), so this single global instance is safe to reuse across every `matchAll` call below.
@@ -122,17 +147,23 @@ const SLUG_MATCH_ALL_RE = new RegExp(escapeRe(UPSTREAM_SLUG), 'gi')
 
 /** Violations of the confinement rule (traceability.md, T61-T64): every case-insensitive
  *  occurrence of the upstream repository slug, in a tracked text file, that is neither in a
- *  keep-list file nor inside a rewrite-list file's own anchor form — one violation per occurrence,
+ *  keep-list file nor inside a rewrite-list file's own anchor form, nor on create-wxl/package.json's
+ *  one MR1 url line (spec 0009 O1 (a)) — one violation per occurrence,
  *  so two occurrences on the same line (or in the same file) are each reported (T-0011 ticket,
  *  approved test plan, T61 row: several occurrences in one file are each reported separately). */
 function guardViolations(files: Record<string, string>): Array<{ file: string; line: number }> {
   const out: Array<{ file: string; line: number }> = []
+  const createWxlUrlLine = createWxlRepositoryUrlLine(files['package.json'])
   for (const [path, content] of Object.entries(files)) {
     if (isKeepListed(path)) continue
     if (isBinary(content)) continue
     const isManifest = path === 'package.json'
     const ranges = isManifest ? [] : anchoredRanges(path, content)
-    const exemptLines = isManifest ? manifestA1UrlLines(content) : new Set<number>()
+    const exemptLines = isManifest
+      ? manifestA1UrlLines(content)
+      : path === CREATE_WXL_MANIFEST
+        ? createWxlManifestExemptLines(content, createWxlUrlLine)
+        : new Set<number>()
     const lines = content.split('\n')
     let offset = 0
     for (let i = 0; i < lines.length; i++) {
@@ -143,7 +174,7 @@ function guardViolations(files: Record<string, string>): Array<{ file: string; l
             out.push({ file: path, line: i + 1 })
           }
         }
-      } else {
+      } else if (!exemptLines.has(i)) {
         for (const m of line.matchAll(SLUG_MATCH_ALL_RE)) {
           const absStart = offset + m.index!
           const absEnd = absStart + m[0].length
@@ -357,6 +388,89 @@ describe('upstream guard — confinement', () => {
 
 // The decision itself lives in tests/__helpers__/upstreamDecision.ts, shared with the assertions
 // that hold only on upstream's own origin (spec 0007, S08).
+
+// Spec 0009 O1 (a)/M02: in create-wxl/package.json, the guard exempts only the single line whose
+// trimmed text equals `"url": "<the root manifest's repository.url>",` (MR1), compared verbatim.
+describe('upstream guard — create-wxl manifest repository line (0009 M02)', () => {
+  const ROOT_URL = `git+https://github.com/${UPSTREAM_SLUG}.git`
+  const rootManifest = (url: string | undefined) =>
+    JSON.stringify(url === undefined ? { name: 'wxl' } : { name: 'wxl', repository: { type: 'git', url } }, null, 2) + '\n'
+  const createWxlManifest = (urlLine: string, extra: string[] = []) =>
+    [
+      '{',
+      '  "name": "create-wxl",',
+      ...extra,
+      '  "repository": {',
+      '    "type": "git",',
+      urlLine,
+      '    "directory": "create-wxl"',
+      '  },',
+      '  "type": "module"',
+      '}',
+      '',
+    ].join('\n')
+
+  it("does not report the url line equal to the root manifest's", () => {
+    const files = {
+      'package.json': rootManifest(ROOT_URL),
+      'create-wxl/package.json': createWxlManifest(`    "url": "${ROOT_URL}",`),
+    }
+    expect(guardViolations(files).filter((v) => v.file === 'create-wxl/package.json')).toEqual([])
+  })
+
+  it.each([
+    ['bugs.url', `  "bugs": { "url": "https://github.com/${UPSTREAM_SLUG}/issues" },`],
+    ['homepage', `  "homepage": "https://github.com/${UPSTREAM_SLUG}#readme",`],
+    ['description', `  "description": "a fork of ${UPSTREAM_SLUG}",`],
+  ])('reports the slug in %s, on any other line of the file', (_label, line) => {
+    const files = {
+      'package.json': rootManifest(ROOT_URL),
+      'create-wxl/package.json': createWxlManifest(`    "url": "${ROOT_URL}",`, [line]),
+    }
+    expect(guardViolations(files).filter((v) => v.file === 'create-wxl/package.json')).toEqual([
+      { file: 'create-wxl/package.json', line: 3 },
+    ])
+  })
+
+  it.each([
+    ['a url whose value differs from the root manifest’s', `    "url": "git+https://github.com/${UPSTREAM_SLUG}/tree.git",`],
+    ['the same value without its trailing comma', `    "url": "${ROOT_URL}"`],
+  ])('reports %s', (_label, urlLine) => {
+    const files = {
+      'package.json': rootManifest(ROOT_URL),
+      'create-wxl/package.json': createWxlManifest(urlLine),
+    }
+    expect(guardViolations(files).filter((v) => v.file === 'create-wxl/package.json')).toEqual([
+      { file: 'create-wxl/package.json', line: 5 },
+    ])
+  })
+
+  it('exempts only the first such line: a second, identical line is reported', () => {
+    const files = {
+      'package.json': rootManifest(ROOT_URL),
+      'create-wxl/package.json': createWxlManifest(`    "url": "${ROOT_URL}",`, [`    "url": "${ROOT_URL}",`]),
+    }
+    expect(guardViolations(files).filter((v) => v.file === 'create-wxl/package.json')).toEqual([
+      { file: 'create-wxl/package.json', line: 6 },
+    ])
+  })
+
+  it('reports the same line in any other file', () => {
+    const files = {
+      'package.json': rootManifest(ROOT_URL),
+      'docs/x.json': createWxlManifest(`    "url": "${ROOT_URL}",`),
+    }
+    expect(guardViolations(files).filter((v) => v.file === 'docs/x.json')).toEqual([{ file: 'docs/x.json', line: 5 }])
+  })
+
+  it('exempts nothing when the root manifest has no repository', () => {
+    const files = {
+      'package.json': rootManifest(undefined),
+      'create-wxl/package.json': createWxlManifest(`    "url": "${ROOT_URL}",`),
+    }
+    expect(guardViolations(files)).toEqual([{ file: 'create-wxl/package.json', line: 5 }])
+  })
+})
 
 describe('upstream decision', () => {
   // T65/AC-G2: GITHUB_REPOSITORY set and non-empty decides alone.
