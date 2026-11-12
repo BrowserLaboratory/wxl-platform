@@ -4,24 +4,26 @@ import { resolve } from 'node:path'
 import { parse } from 'yaml'
 import { UPSTREAM_SLUG } from '../../../scripts/fork-init'
 
-// T71-T72/AC-C2/AC-C3: the release job and the new cross-OS job must run only in the upstream
-// repository, never in a fork (rebranded or not) — including after a `--rebrand` run, which cannot
-// reach these lines at all (they spell the slug through `format`, never importing UPSTREAM_SLUG,
+// T71-T72/AC-C2/AC-C3, and spec 0009 W2/W09: the release job, the new cross-OS job and
+// publish-npm.yml's stage job must run only in the upstream repository, never in a fork
+// (rebranded or not) — including after a `--rebrand` run, which cannot reach these lines at all (they spell the slug through `format`, never importing UPSTREAM_SLUG,
 // since a workflow YAML cannot import a TS module; traceability.md, "confinement"). The expected
 // value is built from the two halves of UPSTREAM_SLUG, not its full literal, so this file itself
 // never spells the slug.
 // The `test` job, the new job (fork-init-cross-os) and the `release` job all set
 // `WXL_EXPECT_UPSTREAM` to the same comparison (T71, revision 2.3).
-// `format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')` appears five times across the two
-// workflow files — two `if:` lines (release.yml's `release` job, quality-gates.yml's new job) and
-// three `env:` lines (quality-gates.yml's `test` job and new job, release.yml's `release` job) —
-// listed here so a future rename of the slug has every occurrence to check off against.
+// `format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')` appears six times across three
+// workflow files — three `if:` lines (release.yml's `release` job, quality-gates.yml's new job,
+// publish-npm.yml's `stage` job, spec 0009 W2) and three `env:` lines (quality-gates.yml's `test`
+// job and new job, release.yml's `release` job) — listed here so a future rename of the slug has
+// every occurrence to check off against. publish-npm.yml's job sets no `env:` at all (W8's closed key set).
 const [UPSTREAM_OWNER, UPSTREAM_NAME] = UPSTREAM_SLUG.split('/')
 const EXPECTED_IF = `github.repository == format('{0}/{1}', '${UPSTREAM_OWNER}', '${UPSTREAM_NAME}')`
 const EXPECTED_ENV = '${{ ' + EXPECTED_IF + ' }}'
 
 const RELEASE_PATH = resolve(__dirname, '../../../.github/workflows/release.yml')
 const QUALITY_GATES_PATH = resolve(__dirname, '../../../.github/workflows/quality-gates.yml')
+const PUBLISH_NPM_PATH = resolve(__dirname, '../../../.github/workflows/publish-npm.yml')
 const NEW_JOB_ID = 'fork-init-cross-os'
 
 interface Job {
@@ -40,6 +42,9 @@ function loadRelease(): Workflow {
 }
 function loadQualityGates(): Workflow {
   return parse(readFileSync(QUALITY_GATES_PATH, 'utf8')) as Workflow
+}
+function loadPublishNpm(): Workflow {
+  return parse(readFileSync(PUBLISH_NPM_PATH, 'utf8')) as Workflow
 }
 
 describe('upstream-only jobs (T71)', () => {
@@ -61,6 +66,23 @@ describe('upstream-only jobs (T71)', () => {
 
   it("release.yml's release job sets WXL_EXPECT_UPSTREAM to the same comparison", () => {
     expect(loadRelease().jobs.release.env?.WXL_EXPECT_UPSTREAM).toBe(EXPECTED_ENV)
+  })
+
+  // Spec 0009 W09: the publish job runs only upstream and sets no env; the count below goes beyond
+  // W09 and counts every spelling of the comparison, comments included.
+  it("publish-npm.yml's stage job if: is exactly the format() comparison", () => {
+    expect(loadPublishNpm().jobs.stage.if).toBe(EXPECTED_IF)
+  })
+
+  it("publish-npm.yml's stage job sets no env", () => {
+    expect(loadPublishNpm().jobs.stage.env).toBeUndefined()
+  })
+
+  it('the format() comparison appears six times across the three workflow files', () => {
+    const count = [RELEASE_PATH, QUALITY_GATES_PATH, PUBLISH_NPM_PATH]
+      .map((path) => readFileSync(path, 'utf8').split(`format('{0}/{1}', '${UPSTREAM_OWNER}', '${UPSTREAM_NAME}')`).length - 1)
+      .reduce((a, b) => a + b, 0)
+    expect(count).toBe(6)
   })
 })
 

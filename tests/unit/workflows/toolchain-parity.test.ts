@@ -10,6 +10,7 @@ import { parse } from 'yaml'
 // went unnoticed. The spec (ci-quality-gates, "Both jobs SHALL share an
 // identical setup step sequence") states the pins; this test enforces them.
 
+// publish-npm.yml (spec 0009) builds no challenge artifacts, so it is outside this set.
 // The set is quality-gates + release only. A GitHub Pages deploy workflow used
 // to be a third member; it was removed when the site moved to Cloudflare Pages
 // Git integration, which is configured in the Cloudflare dashboard rather than
