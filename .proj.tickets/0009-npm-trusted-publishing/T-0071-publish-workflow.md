@@ -154,3 +154,15 @@ Spec 0009 revision 3.
   false positives; C11's test hardening is in `5baae82`. C1 (`origin/main` is an unqualified ref,
   so a tag named `origin/main` would shadow it) and C7 (MN2 before any `v*` tag) go to the epic
   close-out and to T-0072's `release.md`.
+- 2026-11-12, rebased onto `main` `7474cca` (after #84 and #85) with `git rebase --onto origin/main
+  c1e535f`: `dac0b20` → `61f3408`, `c14c99a` → `b31d11f`, `5baae82` → `8c684b0`, and the stage 6–7
+  record → `101d324`. At `101d324`: `pnpm test --run` → `Test Files 137 passed (137) / Tests 4910
+  passed | 1 skipped (4911)`; `pnpm --dir create-wxl test` → `Tests 753 passed | 1 skipped (754)`.
+- 2026-11-12, stage 8, terminal part (RP0 (a), (b); surface: a terminal on macOS darwin arm64,
+  Node v24.13.0, git 2.54.0, at `101d324`), after `pnpm --dir create-wxl install
+  --frozen-lockfile`, in `create-wxl/`:
+  - (a) `npm pkg get repository` → MR1's object (`type` `git`, the root manifest's URL,
+    `directory` `create-wxl`), exit 0.
+  - (b) `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed:
+    X3 (no local tag v<version> exists at HEAD)`, exit 1.
+  - Afterwards `create-wxl/dist/` and `create-wxl/LICENSE` were removed. No `v*` tag was pushed.
