@@ -4254,15 +4254,23 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
   // under B mode's tree-wide swap. Real copies are added to the fixture ONLY in this test (per the
   // approved test plan), read from the actual repository so a future edit to any of them is
   // exercised here too.
+  // Spec 0009 W10/W11: publish-npm.yml's upstream-only if: line is left alone too (three such lines
+  // in all), and create-wxl/package.json's repository.url, the one upstream line O1 lets that file
+  // hold, follows the root manifest's to the fork (rebrand's tree-wide swap, U9).
   it('--author x --rebrand acme --repo me/x leaves the upstream-only if:/env lines, the UPSTREAM_SLUG import and the engine file byte-identical', () => {
     const repoRoot = resolve(__dirname, '../../..')
     const releaseYmlBefore = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
     const qualityGatesYmlBefore = readFileSync(join(repoRoot, '.github/workflows/quality-gates.yml'), 'utf8')
+    const publishNpmYmlBefore = readFileSync(join(repoRoot, '.github/workflows/publish-npm.yml'), 'utf8')
+    const createWxlPkgBefore = readFileSync(join(repoRoot, 'create-wxl/package.json'), 'utf8')
     const guardTestBefore = readFileSync(join(repoRoot, 'tests/unit/scripts/upstream-guard.test.ts'), 'utf8')
     const engineFileBefore = readFileSync(join(repoRoot, 'scripts/fork-init.ts'), 'utf8')
 
     writeFileSync(join(root, '.github/workflows/release.yml'), releaseYmlBefore)
     writeFileSync(join(root, '.github/workflows/quality-gates.yml'), qualityGatesYmlBefore)
+    writeFileSync(join(root, '.github/workflows/publish-npm.yml'), publishNpmYmlBefore)
+    mkdirSync(join(root, 'create-wxl'), { recursive: true })
+    writeFileSync(join(root, 'create-wxl/package.json'), createWxlPkgBefore)
     mkdirSync(join(root, 'tests/unit/scripts'), { recursive: true })
     writeFileSync(join(root, 'tests/unit/scripts/upstream-guard.test.ts'), guardTestBefore)
     // Overwrites writeFixture's own self-exclude stub with the real engine file, bytes and all.
@@ -4276,10 +4284,16 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     // etc.) is caught too, not only a change to the one line previously compared.
     const UPSTREAM_SLUG_IMPORT_RE = /import \{[^}]*\} from '[^']*\/scripts\/fork-init'/
 
-    const ifLinesBefore = [...releaseYmlBefore.matchAll(IF_LINE_RE), ...qualityGatesYmlBefore.matchAll(IF_LINE_RE)].map((m) => m[0])
+    const ifLinesBefore = [
+      ...releaseYmlBefore.matchAll(IF_LINE_RE),
+      ...qualityGatesYmlBefore.matchAll(IF_LINE_RE),
+      ...publishNpmYmlBefore.matchAll(IF_LINE_RE),
+    ].map((m) => m[0])
     const expectUpstreamLinesBefore = [...releaseYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE), ...qualityGatesYmlBefore.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])
     const importBefore = guardTestBefore.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]
-    expect(ifLinesBefore.length).toBe(2) // positive control: both files actually hold the line
+    expect(ifLinesBefore.length).toBe(3) // positive control: all three files actually hold the line
+    const rootUrlBefore = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository.url
+    expect(JSON.parse(createWxlPkgBefore).repository.url).toBe(rootUrlBefore) // W11's starting point
     expect(expectUpstreamLinesBefore.length).toBe(3) // release.yml: release; quality-gates.yml: test and the cross-OS job
     expect(importBefore).toBeDefined()
     // Positive control (traceability.md, T52): the SAME release.yml file holds a sensitive-key
@@ -4291,12 +4305,23 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
 
     const releaseYmlAfter = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8')
     const qualityGatesYmlAfter = readFileSync(join(root, '.github/workflows/quality-gates.yml'), 'utf8')
+    const publishNpmYmlAfter = readFileSync(join(root, '.github/workflows/publish-npm.yml'), 'utf8')
     const guardTestAfter = readFileSync(join(root, 'tests/unit/scripts/upstream-guard.test.ts'), 'utf8')
     const engineFileAfter = readFileSync(join(root, 'scripts/fork-init.ts'), 'utf8')
 
-    expect([...releaseYmlAfter.matchAll(IF_LINE_RE), ...qualityGatesYmlAfter.matchAll(IF_LINE_RE)].map((m) => m[0])).toEqual(
-      ifLinesBefore,
-    )
+    expect(
+      [
+        ...releaseYmlAfter.matchAll(IF_LINE_RE),
+        ...qualityGatesYmlAfter.matchAll(IF_LINE_RE),
+        ...publishNpmYmlAfter.matchAll(IF_LINE_RE),
+      ].map((m) => m[0]),
+    ).toEqual(ifLinesBefore)
+    // W11: create-wxl's repository.url equals the root manifest's after the rebrand, and is no
+    // longer upstream's.
+    const rootUrlAfter = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository.url
+    const createWxlUrlAfter = JSON.parse(readFileSync(join(root, 'create-wxl/package.json'), 'utf8')).repository.url
+    expect(rootUrlAfter).not.toBe(rootUrlBefore)
+    expect(createWxlUrlAfter).toBe(rootUrlAfter)
     expect([...releaseYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE), ...qualityGatesYmlAfter.matchAll(EXPECT_UPSTREAM_LINE_RE)].map((m) => m[0])).toEqual(expectUpstreamLinesBefore)
     expect(guardTestAfter.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]).toBe(importBefore)
     expect(engineFileAfter).toBe(engineFileBefore)

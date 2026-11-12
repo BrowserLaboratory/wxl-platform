@@ -1,0 +1,61 @@
+name: Publish create-wxl
+
+# Spec 0009 D3, W1-W8: the only place that publishes create-wxl. On a pushed `v*` tag it checks the
+# tagged commit is on `main` (U7), runs the publish gate (D5), then stages the package on npm
+# through trusted publishing (OIDC): nothing is installable until the upstream maintainer approves
+# it on npmjs.com with 2FA (docs/agents/release.md). No secret, token or npm configuration is used.
+# Pinned by tests/unit/workflows/publish-npm.test.ts.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    # Upstream-only, the same comparison as release.yml's release job (W2, B3). Spelled through
+    # format(), never UPSTREAM_SLUG, since a workflow YAML cannot import a TS module; pinned by
+    # tests/unit/workflows/upstream-only-jobs.test.ts.
+    if: github.repository == format('{0}/{1}', 'BrowserLaboratory', 'wxl-platform')
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout the tag with full history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install npm with stage publish
+        run: npm install --global npm@11.21.2
+
+      - name: Check the tagged commit is on main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+      - name: Install create-wxl runtime dependencies
+        run: pnpm --dir create-wxl install --frozen-lockfile --prod --ignore-scripts
+
+      - name: Run the publish gate
+        working-directory: create-wxl
+        run: node scripts/prepare-dist.mjs && node scripts/check-publish.mjs
+
+      - name: Stage create-wxl on npm
+        working-directory: create-wxl
+        run: npm stage publish

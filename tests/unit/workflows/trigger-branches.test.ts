@@ -58,8 +58,9 @@ describe('quality-gates trigger branches', () => {
   })
 
   it('does not trigger on tag pushes', () => {
-    // Tag-driven work belongs to release.yml. A `tags:` filter here would make
-    // every release pay for the PR-time gates a second time.
+    // Tag-driven work belongs to release.yml and publish-npm.yml (spec 0009). A
+    // `tags:` filter here would make every release pay for the PR-time gates a
+    // second time.
     expect(triggers().push?.tags).toBeUndefined()
   })
 
