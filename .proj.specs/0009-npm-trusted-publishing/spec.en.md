@@ -1,16 +1,19 @@
 # Spec 0009: npm trusted publishing — CI stages create-wxl on npm and the upstream maintainer approves it
 
-Status: revision 3 (2026-11-12). Two rounds of adversarial review have run:
+Status: revision 3.1 (2026-11-13). Two rounds of adversarial review have run:
 
 - Round 1 found one P0, resolved in revision 2.
 - Round 2 found no P0 (`review/round-2.md`), so the stage 3 gate is met.
 
 Revision 3 applies round 2's disposition (`review/disposition-2.md`) and the user's rulings U8–U10.
-Two rounds is the ceiling, so revision 3 is self-checked rather than reviewed again.
+Two rounds is the ceiling, so revision 3 is self-checked rather than reviewed again. Revision 3.1
+(2026-11-13) adds D11–D14 from the stage 7 reviews of T-0071 and T-0072, also self-checked: MN7 is
+two rulesets, F6 moves `latest` back first, the commit is always compared, and MN7 and MN2 come
+before any `v*` tag.
 
 Derived from `traceability.md`, which holds:
 
-- the decisions (Q1–Q4, U1–U10, D1–D10) and the overridden contracts O1–O5;
+- the decisions (Q1–Q4, U1–U10, D1–D14) and the overridden contracts O1–O5;
 - the seams 0009-S1 to S5 and the vocabulary;
 - the new X9 (K1–K4, message XM), the workflow (W1–W8) and the manifest rules MR1–MR2;
 - the release procedure (RP0–RP7), the user's steps (MN1–MN7) and the failure table (F1–F7);
@@ -48,7 +51,8 @@ anywhere else stops before reaching npm and says why.
 The npm and GitHub settings take over what the old login did:
 
 - npm accepts only that workflow, in an environment that deploys from `v*` tags.
-- A tag ruleset keeps those tags from moving.
+- Two tag rulesets keep those tags from moving or disappearing, the maintainer's own credentials
+  included.
 - Old tokens are revoked when the trusted publisher is set up.
 - The package refuses tokens once the first staged release is approved.
 
@@ -129,27 +133,30 @@ it.
     In CI: the workflow tests.
   - **The release change.** It lands with its CHANGELOG entry from the release-note skill, which only
     writes the entry.
-  - **The tag.** The user confirms the tag name and the merge commit's SHA. The agent checks the tag
-    is new, then pushes that single tag. It never uses `git push --tags`, overriding the user's general
+  - **The tag.** The user confirms the tag name and the merge commit's SHA, which they read
+    themselves rather than confirming a value the agent proposes (D13). The agent checks the tag is
+    new, then pushes that single tag. It never uses `git push --tags`, overriding the user's general
     rule in this repository, and it pushes one tag at a time.
   - **CI.** It makes the GitHub Release and stages on npm. The agent replaces the release notes with
     the CHANGELOG entry.
-  - **The user's check and approval.** Exactly one staged entry; both runs succeeded; every field npm
-    shows matches the run and the confirmed SHA, with at least one field compared or else the user
-    decides. Then the user approves.
+  - **The user's check and approval.** Exactly one staged entry; both runs succeeded, and the publish
+    run's commit equals the confirmed SHA (D13); every field npm shows matches the run and the
+    confirmed SHA, with at least one field compared or else the user decides. Then the user
+    approves.
   - **The agent's verification, with bounded retries.** The registry, the provenance statement's
     contents, and a fresh `npm create wxl`.
-  - **The user's one-time and per-release steps,** in order: a tag ruleset for `v*`; the `npm`
-    environment restricted to `v*` tags with no reviewer; the trusted publisher (its six fields, the
-    only one) no more than two days before the first tag, with every publishing token revoked in the
-    same sitting; after the first approval, require 2FA and disallow tokens; approve or reject each
+  - **The user's one-time and per-release steps,** in order: two tag rulesets for `v*`, one
+    restricting creations to the upstream maintainer and one forbidding updates and deletions with no
+    bypass (D11); the `npm` environment restricted to `v*` tags with no reviewer, both before any
+    `v*` tag (D14); the trusted publisher (its six fields, the only one) no more than two days before
+    the first tag, with every publishing token revoked in the same sitting; after the first approval, require 2FA and disallow tokens; approve or reject each
     release; delete the trusted publisher before a rename; recreate it, re-reporting its fields, if it
     expired.
   - **The failure table.** Re-run only when nothing was staged on npm and the cause is outside the
     commit; a cause in the commit is fixed by a new code ticket and ships as the next patch; a staged
     version failing the check is rejected; approval waits for `release.yml`; a version failing the
-    post-approval checks is deprecated and followed by the next patch; an approved or rejected tag is
-    never re-run.
+    post-approval checks first has `latest` moved back to the previous version, then is deprecated
+    and followed by the next patch (D12); an approved or rejected tag is never re-run.
   - Tags are never moved or deleted. A tag that never became installable on npm still counts as an
     upstream release for ADR-0009, and GLOSSARY says so.
 
@@ -248,7 +255,7 @@ it.
     and that each matched. `latest` is still the previous version. The fields go into OQ-027;
   - RP6 (a)–(c) hold;
   - the release ticket quotes the user's report of MN1's six fields, the single trusted publisher,
-    the token revocation, the collaborator list, MN2's rule, MN7's ruleset and MN3's option, each
+    the token revocation, the collaborator list, MN2's rule, MN7's two rulesets and MN3's option, each
     equal to its expected value. AC-7 is not met before every item is reported;
   - every earlier attempt is recorded with its F-row, and F3, F4 or F6, if they occur, are recorded
     as S8-06 and S8-07 say.

@@ -9,6 +9,10 @@ this file.
 - **Revision 3** (2026-11-12) applies `review/disposition-2.md` and rulings U8–U10. Two rounds is the
   ceiling, so revision 3 is self-checked rather than reviewed again, as 0005's revision 2.1 and
   0007's revision 3 were.
+- **Revision 3.1** (2026-11-13) adds D11–D14 from T-0071's and T-0072's stage 7
+  (`review/security-T-0071.md`, `review/security-T-0072.md`), under the user's authorisation of
+  2026-11-12 to apply new D-numbers as recommended and list them. It changes MN7, MN2's timing, RP2,
+  RP5 (b), F6 and S8-04, and is self-checked below.
 
 Release steps are RP, the user's steps MN, manifest rules MR and stage 8 rows S8. Wherever this
 epic's ids are written into spec 0005's files, they carry the prefix "0009's" (DS1).
@@ -58,6 +62,10 @@ Derived:
 | D8 | X9 and the main-ancestry step are guards against mistakes, not controls; both run from the tagged commit's own workflow. The controls are MN1, MN2, MN7, the comparison and approval in RP5, and MN3 (B1) |
 | D9 | The contracts in "Overridden contracts" (O1–O5) are overridden explicitly |
 | D10 | No `v*` tag is pushed from the moment the epic's first code ticket lands until the release ticket pushes the first one. A fix that F2 makes necessary is a new code ticket of this epic, landing before the release ticket tags again |
+| D11 | MN7 is two tag rulesets for `v*` (revision 3.1, T-0072's SEC-03). In a ruleset the bypass list covers every rule, so one ruleset that lets the upstream maintainer create tags would also let them, and anyone with their credentials, move or delete them. One ruleset restricts creations, with the upstream maintainer as its only bypass actor; the other restricts updates and deletions, with no bypass actor at all |
+| D12 | F6 first moves `latest` back to the previous version, then deprecates `<V>` (revision 3.1, T-0072's SEC-04): the user runs `npm dist-tag add create-wxl@<previous> latest` with 2FA, so teachers stop getting the failed version before the next patch exists |
+| D13 | The commit is always compared (revision 3.1, T-0072's SEC-01 and SEC-02). In RP2 the user reads RP1's squash-merge SHA themselves, on the merged pull request's page or from their own `git log origin/main`, rather than confirming a value the agent proposes. RP5 (b) also requires that the `publish-npm.yml` run's commit, shown on its GitHub Actions page, equals that SHA. GitHub always shows it, so approval never goes ahead without a commit comparison; RP5 (c)'s "the user decides" covers only the fields npm shows |
+| D14 | MN7 and MN2 come before any `v*` tag is pushed, not only before MN1 (revision 3.1, T-0071's C7): a workflow that names a missing environment makes GitHub create it without MN2's tag rule |
 
 ## Overridden contracts
 
@@ -204,10 +212,10 @@ separate words only in MN1, MN2 and MN7, where the user types them.
 |---|---|---|
 | RP0 | A code ticket's stage 8, before its PR merges. After `pnpm --dir create-wxl install --frozen-lockfile`, three outputs are recorded: (a) `npm pkg get repository` in `create-wxl/` prints MR1's object; (b) `node scripts/check-publish.mjs` in `create-wxl/` exits 1 with `checkPublish failed: ` and a named check; (c) the PR's CI run passes the tests of W01–W12 | agent |
 | RP1 | The release change lands on `main`: both versions, and the CHANGELOG entry generated with `/tw-emoji-release-note`. The skill only produces the entry; this step creates and pushes no tag | agent; user merges |
-| RP2 | The user confirms two things: the tag name `v<V>`, and RP1's squash-merge commit SHA. The agent then checks `git ls-remote --tags origin v<V>` prints nothing; if it prints anything, it stops and reports, and never force-pushes. It creates an annotated tag with message `WXL <V>` at that SHA and pushes it alone with `git push origin v<V>`, never `git push --tags` (U8). One tag at a time: the next waits until the previous tag's `publish-npm.yml` run has ended | agent, user confirms |
+| RP2 | The user confirms two things: the tag name `v<V>`, and RP1's squash-merge commit SHA, which the user reads themselves on the merged pull request's page or from their own `git log origin/main` (D13). Before the first tag, MN7, MN2 and MN1 have been reported in the release ticket, MN1 within its two days (D14). The agent then checks `git ls-remote --tags origin v<V>` prints nothing; if it prints anything, it stops and reports, and never force-pushes. It creates an annotated tag with message `WXL <V>` at that SHA and pushes it alone with `git push origin v<V>`, never `git push --tags` (U8). One tag at a time: the next waits until the previous tag's `publish-npm.yml` run has ended | agent, user confirms |
 | RP3 | `release.yml` makes the GitHub Release. `publish-npm.yml` runs the ancestry guard and the publish gate, then stages create-wxl `<V>` on npm | CI |
 | RP4 | The GitHub Release's notes are replaced with the CHANGELOG entry, titled `WXL <V>` (OQ-019 stays open) | agent |
-| RP5 | The user checks and approves with 2FA only if (a)–(d) hold and (c) compared at least one field. (a) The Staged Packages tab shows exactly one staged entry in all, and it is for `<V>`. Any other entry is rejected and recorded. (b) `publish-npm.yml`'s run for `v<V>` concluded success. (c) Each field the tab, or `npm stage view <id>` in the user's own signed-in terminal, shows matches the run: repository = the upstream repository, workflow = `publish-npm.yml`, ref = `refs/tags/v<V>`, commit = RP2's confirmed SHA, shasum = the one the user reads in the run's log. (d) `release.yml`'s run for `v<V>` concluded success. If no field can be compared, the user decides and the record says so. The fields seen go into OQ-027 | user |
+| RP5 | The user checks and approves with 2FA only if (a)–(d) hold and (c) compared at least one field. (a) The Staged Packages tab shows exactly one staged entry in all, and it is for `<V>`. Any other entry is rejected and recorded. (b) `publish-npm.yml`'s run for `v<V>` concluded success, and the commit its GitHub Actions page shows equals RP2's confirmed SHA (D13). (c) Each field the tab, or `npm stage view <id>` in the user's own signed-in terminal, shows matches the run: repository = the upstream repository, workflow = `publish-npm.yml`, ref = `refs/tags/v<V>`, commit = RP2's confirmed SHA, shasum = the one the user reads in the run's log. (d) `release.yml`'s run for `v<V>` concluded success. If no field can be compared, the user decides and the record says so. The fields seen go into OQ-027 | user |
 | RP6 | The agent verifies three things, retrying a failed read up to three times, five minutes apart. (a) `npm view create-wxl version` and `npm view create-wxl dist-tags.latest` print `<V>`. (b) `npm view create-wxl@<V> dist.attestations` is present, and the provenance statement at its URL names the upstream repository, `.github/workflows/publish-npm.yml`, `refs/tags/v<V>` and RP2's SHA. (c) `npm create --yes wxl@latest <folder> -- --no-setup` in an empty folder exits 0 and writes `range.json` with `<V>` and RP2's SHA | agent |
 | RP7 | Failures, re-runs and rejections follow F1–F7 | agent, user |
 
@@ -215,8 +223,8 @@ The user's steps outside the repository, in this order:
 
 | # | Step | When |
 |---|---|---|
-| MN7 | GitHub, Settings → Rules → Rulesets: a tag ruleset targeting `v*` that restricts creations to the upstream maintainer and restricts deletions and updates (U10) | Before the release ticket's tag |
-| MN2 | GitHub, Settings → Environments → `npm`: no required reviewer; deployment branches and tags: "Selected branches and tags" with exactly one rule, of type tag, pattern `v*` (U2) | Before MN1 |
+| MN7 | GitHub, Settings → Rules → Rulesets: two tag rulesets targeting `v*` (U10, D11). One restricts creations, with the upstream maintainer as its only bypass actor. The other restricts updates and deletions, with no bypass actor | Before any `v*` tag (D14) |
+| MN2 | GitHub, Settings → Environments → `npm`: no required reviewer; deployment branches and tags: "Selected branches and tags" with exactly one rule, of type tag, pattern `v*` (U2) | Before MN1, and before any `v*` tag (D14) |
 | MN1 | npmjs.com, create-wxl → Settings → Trusted publishing. Six fields: provider GitHub Actions; owner `BrowserLaboratory`; repository `wxl-platform`; workflow file `publish-npm.yml`; environment `npm`; allowed actions with stage on, direct publish off and dist-tag off. It must be the package's only trusted publisher. In the same sitting, revoke every token that can publish create-wxl (U6) | After MN2, within 2 days before the release ticket's tag |
 | MN3 | create-wxl → Settings → Publishing access: "Require two-factor authentication and disallow tokens" | After the first staged version is approved |
 | MN4 | Approve or reject each staged version (RP5) | Every release |
@@ -232,7 +240,7 @@ The user's steps outside the repository, in this order:
 | F3 | A staged version fails RP5 | The user rejects it; that tag is never re-run; the next patch follows. If the entry looks unauthorised, the GitHub Release for that tag is also deleted. The tag itself stays: MN7 forbids deleting it |
 | F4 | `release.yml` for `v<V>` failed, is still running or was cancelled while a version is staged | No approval until it succeeds. Re-run it when the cause is outside the repository (runner, network, a download); otherwise reject (F3) |
 | F5 | A run starts while another of the group runs | GitHub keeps one running and one pending run. A newer pending run replaces, and cancels, the older pending one. RP2's one-tag-at-a-time rule avoids this; if it happens, the cancelled run is F1 |
-| F6 | After approval, RP6 fails after its retries (no or wrong provenance, `npm create` failing, `latest` not `<V>`) | The user deprecates `<V>` with `npm deprecate create-wxl@<V> "<reason>"` (2FA), and the next patch follows |
+| F6 | After approval, RP6 fails after its retries (no or wrong provenance, `npm create` failing, `latest` not `<V>`) | The user moves `latest` back with `npm dist-tag add create-wxl@<previous> latest` (2FA, D12), then deprecates `<V>` with `npm deprecate create-wxl@<V> "<reason>"` (2FA), and the next patch follows |
 | F7 | A run is re-run for a tag whose version was already approved or rejected | Not allowed by RP7. If it happens, npm refuses a version already staged (409, seen at 3.1.0 in T-0067), and nothing changes |
 
 Staging alone may or may not count as npm's "first successful publish" for MN1's expiry. MN6 covers
@@ -295,10 +303,10 @@ anyone with admin rights on the repository or the npm account.
 | S8-01 | stage 8 | tag `v<V>` pushed after MN7, MN2, MN1 (RP2) | RP3 | `publish-npm.yml`'s run concludes success; its ancestry and gate steps conclude success; `npm stage publish` exits 0 | AC-7 |
 | S8-02 | stage 8 | the staged version | RP5 | the user reports one entry in all, for `<V>`; (b) and (d) succeeded; which fields were shown and that each matched; `npm view create-wxl dist-tags.latest` still prints the previous version; the fields seen are written into OQ-027 | AC-7 |
 | S8-03 | stage 8 | after approval | RP6 | RP6 (a)–(c) hold | AC-7 |
-| S8-04 | stage 8 | the settings | MN1–MN3, MN7 | the record in the release ticket quotes the user's report, and each quoted value equals the expected one. MN1's six fields as listed; the trusted publisher count, 1; the revocation: "no remaining token can publish create-wxl"; `npm access list collaborators create-wxl`, upstream maintainer only; MN2's rule; MN7's ruleset; MN3's option text verbatim. AC-7 is not met before every item is reported | AC-7 |
+| S8-04 | stage 8 | the settings | MN1–MN3, MN7 | the record in the release ticket quotes the user's report, and each quoted value equals the expected one. MN1's six fields as listed; the trusted publisher count, 1; the revocation: "no remaining token can publish create-wxl"; `npm access list collaborators create-wxl`, upstream maintainer only; MN2's rule; MN7's two rulesets (D11: creations restricted with the upstream maintainer as the only bypass actor; updates and deletions restricted with no bypass actor); MN3's option text verbatim. AC-7 is not met before every item is reported | AC-7 |
 | S8-05 | stage 8 | any earlier release attempt | D6 | each is recorded with its F-row; S8-01–S8-04 are met by the first `v<V>` that is approved and passes RP6 | AC-7 |
 | S8-06 | stage 8 | F3, if it occurs | F3 | the user reports the rejection and that the entry is gone; `latest` unchanged | AC-7 |
-| S8-07 | stage 8 | F4 or F6, if it occurs | F4, F6 | the record names the run and the action taken | AC-7 |
+| S8-07 | stage 8 | F4 or F6, if it occurs | F4, F6 | the record names the run and the action taken (for F6, the `latest` move first, D12) | AC-7 |
 | S8-08 | stage 8 | each code ticket | RP0 | RP0's three outputs recorded in the ticket before its PR merges | AC-8 |
 
 ## Self-check (revision 3)
@@ -338,3 +346,20 @@ it have an acceptance exit, does it conflict with an existing rule?
   - How long a staged version is kept.
   - Whether staging counts as the first publish (MN6).
   - Whether `npm whoami` answers in an OIDC job; nothing uses it.
+
+## Self-check (revision 3.1)
+
+- **D11 vs U10 and S8-04.** U10 asks for a ruleset that restricts creation and forbids deletion and
+  moving; two rulesets deliver exactly that, and the second's empty bypass list is what makes
+  "forbids" hold for the maintainer too. S8-04 now quotes both. Conflict check: F3 keeps an
+  unauthorised tag, which the second ruleset guarantees; nothing in the procedure moves or deletes a
+  tag.
+- **D12 vs MN1 and MN3.** The trusted publisher's dist-tag action stays off (MN1): the `latest` move
+  is the user's own, with interactive 2FA, which MN3 still allows. F6's exit is unchanged (S8-07
+  records the move). Unknown: how fast npm serves the moved tag; RP6's retries do not apply here.
+- **D13 vs RP5 (c).** (b) gains a comparison GitHub always offers, so the "user decides" case of
+  (c) no longer decides whether a commit was compared. B1's "the commit comparison … is what
+  catches this" now holds as written. Exit: S8-02 reports (b).
+- **D14 vs D10 and MN1's window.** No `v*` tag is pushed before the release ticket anyway (D10);
+  D14 fixes the order for every later release. MN1's two-day window still starts last.
+

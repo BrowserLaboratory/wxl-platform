@@ -1,22 +1,22 @@
 ---
 synced_from: spec.en.md
-synced_from_sha: 2b5f50efe9f77907c38784be031a1e7c63b3f13a
+synced_from_sha: 7b60bebb2fce0b554bcd08e9416ac8e7bbce334a
 ---
 
 # Spec 0009：npm trusted publishing——由 CI 把 create-wxl 送進 npm 的 staged，上游核准後才上架
 
-狀態：第 3 版（2026-11-12）。
+狀態：第 3.1 版（2026-11-13）。
 
 對抗式審查已跑兩輪：
 
 - 第 1 輪找到一個 P0，第 2 版已處理。
 - 第 2 輪沒有 P0（`review/round-2.md`），第 3 階段的閘門已達成。
 
-第 3 版套用第 2 輪的處置（`review/disposition-2.md`）與使用者的裁決 U8–U10。兩輪是上限，所以第 3 版只做自我檢查，不再送審。
+第 3 版套用第 2 輪的處置（`review/disposition-2.md`）與使用者的裁決 U8–U10。兩輪是上限，所以第 3 版只做自我檢查，不再送審。第 3.1 版（2026-11-13）加入 D11–D14，來自 T-0071 與 T-0072 第 7 階段的安全審查，同樣只做自我檢查：MN7 拆成兩條 ruleset、F6 先把 `latest` 移回前一版、commit 一律比對，以及 MN7 與 MN2 要在任何 `v*` tag 之前完成。
 
 本文由 `traceability.md` 推導，那份檔案收錄：
 
-- 決定（Q1–Q4、U1–U10、D1–D10）與被覆寫的契約 O1–O5；
+- 決定（Q1–Q4、U1–U10、D1–D14）與被覆寫的契約 O1–O5；
 - seam 0009-S1 到 S5 與名詞表；
 - 新的 X9（K1–K4，訊息 XM）、workflow（W1–W8）、manifest 規則 MR1–MR2；
 - 發布流程（RP0–RP7）、使用者步驟（MN1–MN7）與失敗表（F1–F7）；
@@ -44,7 +44,7 @@ synced_from_sha: 2b5f50efe9f77907c38784be031a1e7c63b3f13a
 原本靠登入把關的部分，改由 npm 與 GitHub 的設定接手：
 
 - npm 只接受那個 workflow，而且要在只允許 `v*` tag 部署的 environment 裡執行。
-- 一條 tag ruleset 讓這些 tag 不能被移動。
+- 兩條 tag ruleset 讓這些 tag 不能被移動或刪除，連上游自己的憑證也一樣。
 - 設定 trusted publisher 的同時撤銷舊 token。
 - 第一個 staged 版本核准之後，套件就拒絕任何 token。
 
@@ -93,13 +93,13 @@ synced_from_sha: 2b5f50efe9f77907c38784be031a1e7c63b3f13a
 - **把發布流程寫成文件（D7、U5、U8）**：新增 `docs/agents/release.md`，標明只適用於上游，並從 `AGENTS.md` 與 `CONTRIBUTE.md` 連過去。內容包括：
   - **每張 code ticket 的第 8 階段**：在終端機確認 manifest 的 repository，以及閘門會拒絕發布；在 CI 確認 workflow 的測試通過。
   - **發布變更**：合併時附上由 release-note skill 產生的 CHANGELOG 條目；這個 skill 只負責產生條目。
-  - **推 tag**：使用者確認 tag 名稱與 merge commit 的 SHA。agent 先確認這個 tag 還不存在，再只推這一個 tag。永遠不用 `git push --tags`（在這個 repo 裡優先於使用者的一般規則），而且一次只推一個 tag。
+  - **推 tag**：使用者確認 tag 名稱與 merge commit 的 SHA；SHA 由使用者自己讀出，不是確認 agent 提出的值（D13）。agent 先確認這個 tag 還不存在，再只推這一個 tag。永遠不用 `git push --tags`（在這個 repo 裡優先於使用者的一般規則），而且一次只推一個 tag。
   - **CI**：建立 GitHub Release 並送進 npm 的 staged；agent 把 release notes 換成 CHANGELOG 條目。
-  - **使用者的比對與核准**：只有一筆 staged entry；兩個 run 都成功；npm 顯示的每個欄位都和 run、和確認過的 SHA 相符，而且至少比對到一個欄位，否則由使用者自行決定。之後才核准。
+  - **使用者的比對與核准**：只有一筆 staged entry；兩個 run 都成功，而且 publish run 的 commit 等於確認過的 SHA（D13）；npm 顯示的每個欄位都和 run、和確認過的 SHA 相符，而且至少比對到一個欄位，否則由使用者自行決定。之後才核准。
   - **agent 的驗證（重試有上限）**：registry、provenance 聲明的內容，以及一次全新的 `npm create wxl`。
   - **使用者的一次性與每次發布的步驟**，依序是：
-    1. 建立 `v*` 的 tag ruleset。
-    2. 把 `npm` environment 限制成只允許 `v*` tag，不設 reviewer。
+    1. 建立兩條 `v*` 的 tag ruleset：一條限制建立，只有上游能 bypass；另一條禁止更新與刪除，不設任何 bypass（D11）。
+    2. 把 `npm` environment 限制成只允許 `v*` tag，不設 reviewer。第 1、2 步都要在任何 `v*` tag 之前完成（D14）。
     3. 在第一個 tag 前兩天內建立 trusted publisher（填六個欄位，而且必須是唯一的一組），同時撤銷所有能發布的 token。
     4. 第一次核准之後，設定要求 2FA 並拒絕 token。
     5. 每次發布時核准或退回。
@@ -110,7 +110,7 @@ synced_from_sha: 2b5f50efe9f77907c38784be031a1e7c63b3f13a
     - 原因在 commit 裡時，開一張新的 code ticket 修正，並以下一個 patch 發布。
     - 比對不過的 staged 版本要退回。
     - 核准要等 `release.yml` 成功。
-    - 核准後的檢查失敗時，先 deprecate 該版本，再發下一個 patch。
+    - 核准後的檢查失敗時，先把 `latest` 移回前一版，再 deprecate 該版本，然後發下一個 patch（D12）。
     - 已核准或已退回的 tag 永不重跑。
   - tag 永遠不移動、不刪除。沒有在 npm 上成為可安裝版本的 tag，對 ADR-0009 來說仍然算上游發布版，GLOSSARY 也會這樣寫。
 
@@ -188,7 +188,7 @@ synced_from_sha: 2b5f50efe9f77907c38784be031a1e7c63b3f13a
   - 它的 `publish-npm.yml` run、祖先檢查步驟與閘門步驟都以 success 結束，`npm stage publish` 以 0 結束。
   - 使用者回報：整體只有一筆 staged entry，而且是 `<V>`；兩個 run 都成功；頁面顯示了哪些欄位、每一個都相符。這時 `latest` 仍是前一版。看到的欄位寫進 OQ-027。
   - RP6 的 (a)–(c) 都成立。
-  - 發布 ticket 引述使用者回報的以下各項，每一項都等於預期值：MN1 的六個欄位、只有一組 trusted publisher、token 撤銷、collaborator 名單、MN2 的規則、MN7 的 ruleset、MN3 的選項。全部回報之前，AC-7 不算達成。
+  - 發布 ticket 引述使用者回報的以下各項，每一項都等於預期值：MN1 的六個欄位、只有一組 trusted publisher、token 撤銷、collaborator 名單、MN2 的規則、MN7 的兩條 ruleset、MN3 的選項。全部回報之前，AC-7 不算達成。
   - 先前的每一次嘗試，都依它對應的 F 列記錄；F3、F4、F6 若發生，依 S8-06、S8-07 記錄。
 
   （S8-01–S8-07）
