@@ -180,3 +180,27 @@ export async function buildRelease(fixture, { mutate, tag = 'lightweight', at = 
 
   return { head: await headOf(fixture, 'HEAD'), taggedCommit: head, version, tagName, tagObjectSha, upstreamSlug }
 }
+
+/**
+ * Spec 0009 K12's CI checkout shape: a full clone of `fixture` (so `origin/main` and the tags come
+ * along, as `actions/checkout` with `fetch-depth: 0` brings them), detached at `tagName`. With
+ * `localTag: 'lightweight'` the clone's own copy of the tag is replaced by a lightweight one at the
+ * same commit. `create-wxl/node_modules` is linked and excluded the way `makePublishFixture` does.
+ */
+export async function cloneDetachedAtTag(fixture, tagName, { localTag = 'annotated' } = {}) {
+  const dir = await makeTmpRoot('create-wxl-publish-clone-')
+  await git(dir, fixture.env, ['clone', '-q', fixture.dir, '.'])
+  if (localTag === 'lightweight') {
+    const commit = (await git(dir, fixture.env, ['rev-parse', `refs/tags/${tagName}^{commit}`])).trim()
+    await git(dir, fixture.env, ['tag', '-d', tagName])
+    await git(dir, fixture.env, ['tag', tagName, commit])
+  }
+  await git(dir, fixture.env, ['checkout', '-q', '--detach', `refs/tags/${tagName}`])
+  try {
+    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'), 'junction')
+  } catch {
+    await symlink(REAL_CREATE_WXL_NODE_MODULES, join(dir, 'create-wxl/node_modules'))
+  }
+  await writeFile(join(dir, '.git/info/exclude'), 'node_modules\n')
+  return { dir, env: fixture.env, createWxlDir: join(dir, 'create-wxl') }
+}

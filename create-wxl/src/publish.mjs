@@ -46,7 +46,7 @@ export const CHECK_EXPLANATIONS = {
   X6: "the pushed tag on GitHub does not resolve to HEAD",
   X7: "the release's git archive fails an entry rule or a pristine (P1-P4) rule",
   X8: 'dist/ or LICENSE does not match HEAD',
-  X9: 'the npm name is already maintained by someone else',
+  X9: 'not running in the upstream publish workflow for this version',
 }
 
 /** `checks` is always an array (even with one element, D1): every caller asserts
@@ -129,7 +129,7 @@ function resolvedLockfileVersion(lockfileDoc, depName) {
  * (traceability.md "Package and publishing"), each check throwing `PublishError` naming only its
  * own id on failure.
  */
-export async function checkPublish({ root, module, runGit, archive, npmView, npmWhoami }) {
+export async function checkPublish({ root, module, runGit, archive, env }) {
   if (typeof module?.stripTypeScriptTypes !== 'function') {
     throw new PublishError(['X1'])
   }
@@ -282,23 +282,38 @@ export async function checkPublish({ root, module, runGit, archive, npmView, npm
     throw new PublishError(['X8'])
   }
 
-  // X9: the npm name is either unpublished (empty maintainer list) or already maintained by the
-  // user about to publish (D12: compared by the part before ` <`, trimmed). `npmView`/`npmWhoami`
-  // failing, or a maintainer entry that is not a string, is also X9.
-  try {
-    const maintainers = await npmView()
-    if (maintainers.length > 0) {
-      const who = (await npmWhoami()).trim()
-      const names = maintainers.map((entry) => {
-        if (typeof entry !== 'string') throw new Error('maintainer entry is not a string')
-        return entry.split('<')[0].trim()
-      })
-      if (!names.includes(who)) {
-        throw new PublishError(['X9'])
-      }
+  // X9 (0009's K1-K4): checked last, after X1-X8.
+  const seen = ownStrings(env)
+  const conditions = [
+    ['GITHUB_ACTIONS', (value) => value === 'true', 'GITHUB_ACTIONS is not "true"'],
+    ['GITHUB_REPOSITORY', (value) => value === engineModule.UPSTREAM_SLUG, 'GITHUB_REPOSITORY is not the upstream repository'],
+    [
+      'GITHUB_WORKFLOW_REF',
+      (value) => value === `${engineModule.UPSTREAM_SLUG}/.github/workflows/publish-npm.yml@refs/tags/v${v}`,
+      "GITHUB_WORKFLOW_REF is not this version's publish workflow",
+    ],
+    [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      (value) => value.trim() !== '',
+      'ACTIONS_ID_TOKEN_REQUEST_URL is not set (the job needs id-token: write)',
+    ],
+  ]
+  conditions.forEach(([variable, holds, cause], index) => {
+    const value = seen(variable)
+    if (value === undefined || !holds(value)) {
+      const saw = value === undefined ? 'unset' : JSON.stringify(value)
+      throw new PublishError(
+        ['X9'],
+        `X9 (K${index + 1}: ${cause}; saw ${saw}). create-wxl is published only by the upstream repository's ` +
+          `publish-npm.yml workflow when tag v${v} is pushed, and is then approved on npmjs.com.`,
+      )
     }
-  } catch (err) {
-    if (err instanceof PublishError) throw err
-    throw new PublishError(['X9'])
-  }
+  })
+}
+
+/** 0009's X9 reads only the injected `env`'s own string properties: a missing, non-object or array
+ * `env` counts as empty, and an inherited or non-string value counts as unset. */
+function ownStrings(env) {
+  const usable = env !== null && typeof env === 'object' && !Array.isArray(env)
+  return (variable) => (usable && Object.hasOwn(env, variable) && typeof env[variable] === 'string' ? env[variable] : undefined)
 }

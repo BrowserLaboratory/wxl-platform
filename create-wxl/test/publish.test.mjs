@@ -1,10 +1,11 @@
 // 0005-S2 ("Package and publishing", traceability.md): `prepareDist` builds the type-stripped
 // engine, the package source record and the `LICENSE` copy; `checkPublish` (X1-X9) refuses a
-// release that does not match upstream's pushed tag. Deviation from the approved test plan table
+// release that does not match upstream's pushed tag; its X9 is spec 0009's (K1-K4 against the
+// injected `env`). Deviation from the approved test plan table
 // (recorded in the ticket's "increment plan confirmed" comment): this file is `.mjs`, not `.ts` --
 // vitest's `include` (`vitest.config.mjs:6`) only collects `test/**/*.test.mjs`.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFile, writeFile, mkdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,7 @@ import { spawn } from 'node:child_process'
 import * as realModule from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { parse as parseYaml } from 'yaml'
-import { prepareDist, checkPublish } from '../src/publish.mjs'
+import { prepareDist, checkPublish, CHECK_EXPLANATIONS, PublishError } from '../src/publish.mjs'
 import {
   makePublishFixture,
   cleanupFixture,
@@ -20,6 +21,7 @@ import {
   buildRelease,
   gitArchiveOf,
   runFixtureGit,
+  cloneDetachedAtTag,
 } from './helpers/publish-fixture.mjs'
 import { makePublishGitStub } from './helpers/publish-git-stub.mjs'
 import { buildArchiveRaw } from './helpers/archive.mjs'
@@ -162,6 +164,18 @@ describe('prepareDist', () => {
   })
 })
 
+/** An `env` in which 0009's K1-K4 all hold for `release` (traceability.md 0009 "The new X9"):
+ * upstream's `publish-npm.yml` running for tag `v<V>`. The slug comes from the engine through
+ * `buildRelease`, never spelled here (0005's Seams note). */
+function upstreamEnv(release) {
+  return {
+    GITHUB_ACTIONS: 'true',
+    GITHUB_REPOSITORY: release.upstreamSlug,
+    GITHUB_WORKFLOW_REF: `${release.upstreamSlug}/.github/workflows/publish-npm.yml@refs/tags/v${release.version}`,
+    ACTIONS_ID_TOKEN_REQUEST_URL: 'https://token.example.invalid/request',
+  }
+}
+
 describe('checkPublish', () => {
   it.each(['lightweight', 'annotated'])('passes when X1-X9 all hold (%s tag)', { timeout: 30000 }, async (tagKind) => {
     const fixture = await makePublishFixture()
@@ -176,21 +190,18 @@ describe('checkPublish', () => {
       stub.setLsRemote(lsRemoteLines.join('\n') + '\n')
       const name = release.upstreamSlug.split('/')[1]
 
-      for (const npmView of [async () => [], async () => ['Someone Else <someone@example.com>', 'Ada <ada@example.com>']]) {
-        await expect(
-          checkPublish({
-            root: fixture.createWxlDir,
-            module: realModule,
-            runGit: stub.runGit,
-            archive: () => gitArchiveOf(fixture, { name }),
-            npmView,
-            npmWhoami: async () => 'Ada',
-          }),
-          // S-29: `.resolves.toBeUndefined()` says directly what a successful `checkPublish`
-          // call does (resolves with nothing); `.resolves.not.toThrow()` reads as if it were
-          // asserting against a thrown value, not a resolved one.
-        ).resolves.toBeUndefined()
-      }
+      await expect(
+        checkPublish({
+          root: fixture.createWxlDir,
+          module: realModule,
+          runGit: stub.runGit,
+          archive: () => gitArchiveOf(fixture, { name }),
+          env: upstreamEnv(release),
+        }),
+        // S-29: `.resolves.toBeUndefined()` says directly what a successful `checkPublish`
+        // call does (resolves with nothing); `.resolves.not.toThrow()` reads as if it were
+        // asserting against a thrown value, not a resolved one.
+      ).resolves.toBeUndefined()
 
       const lsRemoteCall = stub.calls.find((call) => call.args[0] === 'ls-remote')
       expect(lsRemoteCall).toBeDefined()
@@ -221,8 +232,7 @@ describe('checkPublish', () => {
           archive: async () => {
             throw new Error('X1 fails before archive is ever read')
           },
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -264,8 +274,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -302,8 +311,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -350,8 +358,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -403,8 +410,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -446,8 +452,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -496,8 +501,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: async () => hostileRawArchive,
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -515,8 +519,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: async () => cleanRawArchive,
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         }),
       ).resolves.toBeUndefined()
     } finally {
@@ -544,8 +547,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -599,8 +601,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -608,35 +609,6 @@ describe('checkPublish', () => {
 
       expect(thrown).toBeDefined()
       expect(thrown.checks).toEqual(['X8'])
-    } finally {
-      await cleanupFixture(fixture)
-    }
-  })
-
-  it('fails naming X9 when the npm name is already maintained by someone else', { timeout: 30000 }, async () => {
-    const fixture = await makePublishFixture()
-    try {
-      const release = await buildRelease(fixture, { tag: 'lightweight' })
-      const name = release.upstreamSlug.split('/')[1]
-      const stub = makePublishGitStub(fixture.env)
-      stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
-
-      let thrown
-      try {
-        await checkPublish({
-          root: fixture.createWxlDir,
-          module: realModule,
-          runGit: stub.runGit,
-          archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => ['someone-else <someone@example.com>'],
-          npmWhoami: async () => 'Ada',
-        })
-      } catch (err) {
-        thrown = err
-      }
-
-      expect(thrown).toBeDefined()
-      expect(thrown.checks).toEqual(['X9'])
     } finally {
       await cleanupFixture(fixture)
     }
@@ -661,8 +633,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -692,8 +663,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -723,8 +693,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit: stub.runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -758,8 +727,7 @@ describe('checkPublish', () => {
           module: realModule,
           runGit,
           archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => [],
-          npmWhoami: async () => 'Ada',
+          env: upstreamEnv(release),
         })
       } catch (err) {
         thrown = err
@@ -767,70 +735,6 @@ describe('checkPublish', () => {
 
       expect(thrown).toBeDefined()
       expect(thrown.checks).toEqual(['X4'])
-    } finally {
-      await cleanupFixture(fixture)
-    }
-  })
-
-  it('fails naming X9 when npmWhoami itself fails', { timeout: 30000 }, async () => {
-    const fixture = await makePublishFixture()
-    try {
-      const release = await buildRelease(fixture, { tag: 'lightweight' })
-      const name = release.upstreamSlug.split('/')[1]
-      const stub = makePublishGitStub(fixture.env)
-      stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
-
-      let thrown
-      try {
-        await checkPublish({
-          root: fixture.createWxlDir,
-          module: realModule,
-          runGit: stub.runGit,
-          archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => ['someone-else <someone@example.com>'],
-          npmWhoami: async () => {
-            throw new Error('not logged in')
-          },
-        })
-      } catch (err) {
-        thrown = err
-      }
-
-      expect(thrown).toBeDefined()
-      expect(thrown.checks).toEqual(['X9'])
-    } finally {
-      await cleanupFixture(fixture)
-    }
-  })
-
-  // S-05/P-08/C-02: npmView failing for a reason OTHER than "unpublished" (a network error, a
-  // registry 5xx) must fail X9, not be silently treated as an empty maintainer list.
-  it('fails naming X9 when npmView itself fails (not E404)', { timeout: 30000 }, async () => {
-    const fixture = await makePublishFixture()
-    try {
-      const release = await buildRelease(fixture, { tag: 'lightweight' })
-      const name = release.upstreamSlug.split('/')[1]
-      const stub = makePublishGitStub(fixture.env)
-      stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
-
-      let thrown
-      try {
-        await checkPublish({
-          root: fixture.createWxlDir,
-          module: realModule,
-          runGit: stub.runGit,
-          archive: () => gitArchiveOf(fixture, { name }),
-          npmView: async () => {
-            throw new Error('npm view failed (not E404): network timeout')
-          },
-          npmWhoami: async () => 'Ada',
-        })
-      } catch (err) {
-        thrown = err
-      }
-
-      expect(thrown).toBeDefined()
-      expect(thrown.checks).toEqual(['X9'])
     } finally {
       await cleanupFixture(fixture)
     }
@@ -857,12 +761,331 @@ describe('checkPublish', () => {
         module: realModule,
         runGit: stub.runGit,
         archive,
-        npmView: async () => [],
-        npmWhoami: async () => 'Ada',
+        env: upstreamEnv(release),
       })
 
       expect(archiveCalls).toEqual([{ commit: release.head, name }])
     } finally {
+      await cleanupFixture(fixture)
+    }
+  })
+})
+
+// 0009-S1 (spec 0009 traceability.md "The new X9"): X9 holds when K1-K4 hold, read from the
+// injected `env`, and otherwise throws `['X9']` with message XM naming the first failing condition.
+// One fixture serves every row: X1-X8 hold throughout, so only `env` varies.
+describe('checkPublish X9 (0009 K1-K4)', () => {
+  let fixture
+  let release
+  let stub
+  let name
+
+  beforeAll(async () => {
+    fixture = await makePublishFixture()
+    release = await buildRelease(fixture, { tag: 'lightweight' })
+    name = release.upstreamSlug.split('/')[1]
+    stub = makePublishGitStub(fixture.env)
+    stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
+  }, 30000)
+
+  afterAll(async () => {
+    if (fixture) await cleanupFixture(fixture)
+  })
+
+  async function thrownFor(env) {
+    try {
+      await checkPublish({
+        root: fixture.createWxlDir,
+        module: realModule,
+        runGit: stub.runGit,
+        archive: () => gitArchiveOf(fixture, { name }),
+        env,
+      })
+    } catch (err) {
+      return err
+    }
+    return undefined
+  }
+
+  /** XM, transcribed from traceability.md ("The new X9") rather than built the way the code builds it. */
+  function xm(n, cause, saw) {
+    return (
+      `X9 (K${n}: ${cause}; saw ${saw}). create-wxl is published only by the upstream repository's ` +
+      `publish-npm.yml workflow when tag v${release.version} is pushed, and is then approved on npmjs.com.`
+    )
+  }
+
+  const K1_CAUSE = 'GITHUB_ACTIONS is not "true"'
+
+  // K02
+  it.each([
+    ['unset', undefined, 'unset'],
+    ['empty', '', '""'],
+    ['false', 'false', '"false"'],
+    ['upper case', 'TRUE', '"TRUE"'],
+    ['trailing space', 'true ', '"true "'],
+    ['the boolean true (not a string, so unset)', true, 'unset'],
+  ])('K1 fails: GITHUB_ACTIONS %s', { timeout: 30000 }, async (_label, value, saw) => {
+    const env = upstreamEnv(release)
+    if (value === undefined) delete env.GITHUB_ACTIONS
+    else env.GITHUB_ACTIONS = value
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(1, K1_CAUSE, saw))
+  })
+
+  const K2_CAUSE = 'GITHUB_REPOSITORY is not the upstream repository'
+
+  // K03: the slug variants are derived from the engine's own slug, never spelled here.
+  it.each([
+    ['unset', () => undefined, () => 'unset'],
+    ['empty', () => '', () => '""'],
+    ['another repository', () => 'someone/fork', () => '"someone/fork"'],
+    ['the slug in lower case (compared case-sensitively)', (slug) => slug.toLowerCase(), (slug) => `"${slug.toLowerCase()}"`],
+    ['a number (not a string, so unset)', () => 42, () => 'unset'],
+  ])('K2 fails: GITHUB_REPOSITORY %s', { timeout: 30000 }, async (_label, valueOf, sawOf) => {
+    const env = upstreamEnv(release)
+    const value = valueOf(release.upstreamSlug)
+    if (value === undefined) delete env.GITHUB_REPOSITORY
+    else env.GITHUB_REPOSITORY = value
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(2, K2_CAUSE, sawOf(release.upstreamSlug)))
+  })
+
+  const K3_CAUSE = "GITHUB_WORKFLOW_REF is not this version's publish workflow"
+
+  // K04
+  it.each([
+    ['unset', () => undefined],
+    ['empty', () => ''],
+    ['release.yml at the tag', (slug, v) => `${slug}/.github/workflows/release.yml@refs/tags/v${v}`],
+    ['publish-npm.yml on main', (slug) => `${slug}/.github/workflows/publish-npm.yml@refs/heads/main`],
+    ['publish-npm.yml at another version', (slug) => `${slug}/.github/workflows/publish-npm.yml@refs/tags/v0.0.1`],
+    ["another repository's publish-npm.yml", (_slug, v) => `someone/fork/.github/workflows/publish-npm.yml@refs/tags/v${v}`],
+    ['a boolean (not a string, so unset)', () => true],
+  ])('K3 fails: GITHUB_WORKFLOW_REF %s', { timeout: 30000 }, async (_label, valueOf) => {
+    const env = upstreamEnv(release)
+    const value = valueOf(release.upstreamSlug, release.version)
+    if (value === undefined) delete env.GITHUB_WORKFLOW_REF
+    else env.GITHUB_WORKFLOW_REF = value
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(3, K3_CAUSE, typeof value === 'string' ? `"${value}"` : 'unset'))
+  })
+
+  const K4_CAUSE = 'ACTIONS_ID_TOKEN_REQUEST_URL is not set (the job needs id-token: write)'
+
+  // K05
+  it.each([
+    ['unset', undefined, 'unset'],
+    ['empty', '', '""'],
+    ['only spaces', '  ', '"  "'],
+    ['only a newline (the message stays one line)', '\n', '"\\n"'],
+    ['a number (not a string, so unset)', 7, 'unset'],
+  ])('K4 fails: ACTIONS_ID_TOKEN_REQUEST_URL %s', { timeout: 30000 }, async (_label, value, saw) => {
+    const env = upstreamEnv(release)
+    if (value === undefined) delete env.ACTIONS_ID_TOKEN_REQUEST_URL
+    else env.ACTIONS_ID_TOKEN_REQUEST_URL = value
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(4, K4_CAUSE, saw))
+    expect(thrown.message).not.toContain('\n')
+  })
+
+  // K06: every unusable `env` reads as empty, so X9 names K1 with `unset`, and the message ends
+  // with the closing sentence, the version substituted.
+  it.each([
+    ['{}', () => ({})],
+    ['undefined', () => undefined],
+    ['null', () => null],
+    ['a string', () => 'GITHUB_ACTIONS=true'],
+    ['an array, even one carrying K1-K4 as own properties', (r) => Object.assign([], upstreamEnv(r))],
+    ['an object inheriting K1-K4 through its prototype', (r) => Object.create(upstreamEnv(r))],
+  ])('K1 fails with unset when env is %s', { timeout: 30000 }, async (_label, envOf) => {
+    const thrown = await thrownFor(envOf(release))
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(1, K1_CAUSE, 'unset'))
+    expect(
+      thrown.message.endsWith(
+        `create-wxl is published only by the upstream repository's publish-npm.yml workflow when tag v${release.version} is pushed, and is then approved on npmjs.com.`,
+      ),
+    ).toBe(true)
+  })
+
+  // K07
+  it('names only the first failing condition, in K1-K4 order', { timeout: 30000 }, async () => {
+    const env = { ...upstreamEnv(release), GITHUB_ACTIONS: 'false', GITHUB_WORKFLOW_REF: 'elsewhere' }
+
+    const thrown = await thrownFor(env)
+
+    expect(thrown?.checks).toEqual(['X9'])
+    expect(thrown.message).toBe(xm(1, K1_CAUSE, '"false"'))
+    expect(thrown.message).not.toContain(K3_CAUSE)
+  })
+
+  // K09: `checkPublish` no longer takes `npmView`/`npmWhoami`; passing them changes nothing.
+  it('ignores npmView and npmWhoami passed in addition', { timeout: 30000 }, async () => {
+    const called = []
+    await expect(
+      checkPublish({
+        root: fixture.createWxlDir,
+        module: realModule,
+        runGit: stub.runGit,
+        archive: () => gitArchiveOf(fixture, { name }),
+        env: upstreamEnv(release),
+        npmView: async () => {
+          called.push('npmView')
+          throw new Error('npmView must not be called')
+        },
+        npmWhoami: async () => {
+          called.push('npmWhoami')
+          throw new Error('npmWhoami must not be called')
+        },
+      }),
+    ).resolves.toBeUndefined()
+    expect(called).toEqual([])
+  })
+})
+
+// 0009-S1 K08: an X1-X8 violation is thrown before X9, even with every K1-K4 condition violated.
+describe('checkPublish X1-X8 before X9 (0009 K08)', () => {
+  it('throws X1, not X9, when stripTypeScriptTypes is missing and env is empty', { timeout: 30000 }, async () => {
+    const fixture = await makePublishFixture()
+    try {
+      const release = await buildRelease(fixture, { tag: 'lightweight' })
+      const name = release.upstreamSlug.split('/')[1]
+      const stub = makePublishGitStub(fixture.env)
+      stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
+
+      const thrown = await checkPublish({
+        root: fixture.createWxlDir,
+        module: {},
+        runGit: stub.runGit,
+        archive: () => gitArchiveOf(fixture, { name }),
+        env: {},
+      }).catch((err) => err)
+
+      expect(thrown?.checks).toEqual(['X1'])
+    } finally {
+      await cleanupFixture(fixture)
+    }
+  })
+
+  it('throws X8, not X9, when dist/source.json is tampered with and env is empty', { timeout: 30000 }, async () => {
+    const fixture = await makePublishFixture()
+    try {
+      const release = await buildRelease(fixture, { tag: 'lightweight' })
+      const name = release.upstreamSlug.split('/')[1]
+      const stub = makePublishGitStub(fixture.env)
+      stub.setLsRemote(`${release.head}\trefs/tags/${release.tagName}\n`)
+      const sourcePath = join(fixture.createWxlDir, 'dist/source.json')
+      const source = JSON.parse(await readFile(sourcePath, 'utf8'))
+      source.commit = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+      await writeFile(sourcePath, JSON.stringify(source, null, 2) + '\n')
+
+      const thrown = await checkPublish({
+        root: fixture.createWxlDir,
+        module: realModule,
+        runGit: stub.runGit,
+        archive: () => gitArchiveOf(fixture, { name }),
+        env: {},
+      }).catch((err) => err)
+
+      expect(thrown?.checks).toEqual(['X8'])
+    } finally {
+      await cleanupFixture(fixture)
+    }
+  })
+})
+
+// 0009-S1 K13: the default explanation, used only when a PublishError is built without a message.
+describe('X9 default explanation (0009 K13)', () => {
+  it('reads as the CI-environment check and builds the default message from it', () => {
+    expect(CHECK_EXPLANATIONS.X9).toBe('not running in the upstream publish workflow for this version')
+    expect(new PublishError(['X9']).message).toBe('X9 (not running in the upstream publish workflow for this version)')
+  })
+})
+
+// 0009-S1 K11 (static): the wiring passes `process.env`, and the npm helpers are gone with their
+// tests (spec 0009 D2).
+describe('publish wiring without npm (0009 K11)', () => {
+  const read = (relative) => readFile(new URL(relative, import.meta.url), 'utf8')
+
+  it('check-publish.mjs passes env: process.env', async () => {
+    expect(await read('../scripts/check-publish.mjs')).toContain('env: process.env')
+  })
+
+  it('publish-io.mjs exports exactly the four remaining functions', async () => {
+    const io = await import('../src/publish-io.mjs')
+    expect(Object.keys(io).sort()).toEqual(['createArchive', 'gitRevParseHead', 'spawnCapture', 'spawnCaptureBytes'])
+  })
+
+  it.each(['../src/publish.mjs', '../src/publish-io.mjs', '../scripts/check-publish.mjs'])(
+    '%s names no npm helper',
+    async (relative) => {
+      const text = await read(relative)
+      for (const banned of ['npmCommand', "'npm'", 'npm.cmd', 'npmView', 'npmWhoami']) {
+        expect(text, banned).not.toContain(banned)
+      }
+    },
+  )
+
+  it('publish-io.test.mjs names none of the removed exports', async () => {
+    const text = await read('./publish-io.test.mjs')
+    for (const removed of ['npmCommand', 'parseNpmViewMaintainers', 'createNpmView', 'createNpmWhoami']) {
+      expect(text, removed).not.toContain(removed)
+    }
+  })
+})
+
+// 0009-S1 K12: the publish workflow's checkout (`fetch-depth: 0`, detached at the pushed tag, with
+// `origin/main` present) keeps X3, X4, X6 and X7 holding, whether the local tag arrived annotated
+// or lightweight; GitHub's `ls-remote` reports the annotated tag either way.
+describe('checkPublish on the CI checkout shape (0009 K12)', () => {
+  it.each([
+    ['(a) the local tag annotated', 'annotated'],
+    ['(b) the local tag lightweight, ls-remote reporting it annotated', 'lightweight'],
+  ])('passes on a full clone detached at the tag: %s', { timeout: 60000 }, async (_label, localTag) => {
+    const fixture = await makePublishFixture()
+    let clone
+    try {
+      const release = await buildRelease(fixture, { tag: 'annotated' })
+      clone = await cloneDetachedAtTag(fixture, release.tagName, { localTag })
+
+      expect((await runFixtureGit(clone, ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main'])).code).toBe(0)
+      expect((await runFixtureGit(clone, ['symbolic-ref', '-q', 'HEAD'])).code).not.toBe(0)
+      expect((await runFixtureGit(clone, ['cat-file', '-t', `refs/tags/${release.tagName}`])).stdout.trim()).toBe(
+        localTag === 'annotated' ? 'tag' : 'commit',
+      )
+
+      await prepareDist({ root: clone.createWxlDir, module: realModule })
+      const stub = makePublishGitStub(clone.env)
+      stub.setLsRemote(
+        `${release.tagObjectSha}\trefs/tags/${release.tagName}\n${release.head}\trefs/tags/${release.tagName}^{}\n`,
+      )
+      const name = release.upstreamSlug.split('/')[1]
+
+      await expect(
+        checkPublish({
+          root: clone.createWxlDir,
+          module: realModule,
+          runGit: stub.runGit,
+          archive: () => gitArchiveOf(clone, { name }),
+          env: upstreamEnv(release),
+        }),
+      ).resolves.toBeUndefined()
+    } finally {
+      if (clone) await rm(clone.dir, { recursive: true, force: true })
       await cleanupFixture(fixture)
     }
   })
