@@ -1,6 +1,6 @@
 {
   "name": "create-wxl",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Create a Web eXploitation Laboratory range",
   "type": "module",
   "bin": { "create-wxl": "bin/create-wxl.mjs" },

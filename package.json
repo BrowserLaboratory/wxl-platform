@@ -1,6 +1,6 @@
 {
   "name": "wxl",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Web eXploitation Laboratory — Browser-based web exploitation challenge platform powered by WASM",
   "type": "module",
   "keywords": [],

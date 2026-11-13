@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 🔒 [3.1.1] - 2026-11-13
+
+> create-wxl 改由 GitHub Actions 透過 npm trusted publishing 發布：CI 不使用任何 token，CI 發布的版本要經過上游比對、以 2FA 核准才能安裝，並且從這一版起應帶有 provenance。建立與升級靶場的方式不變。
+
+### 🔄 變更 (Changed)
+
+- 發布閘門的 X9 改為確認自己在上游的 `publish-npm.yml`、為這個版本的 tag 執行，不再向 npm 查詢套件的 maintainer 名單與登入的帳號；從終端機執行 `npm publish` 最晚會在 X9 停下並說明原因。 ([#82])
+- `create-wxl` 套件的 `package.json` 加上 `repository`，指向上游。在 GitHub fork 裡這一行會保留上游網址，只有 rebrand 模式（`pnpm fork:init` 的 `--rebrand <名稱>`）會改寫它；用 `npm create wxl` 建立的靶場沒有這個套件資料夾，不受影響。 ([#84]、[#88])
+- 建立或升級到這一版的靶場會多出 `.github/workflows/publish-npm.yml` 與 `docs/agents/release.md`。這個 workflow 只在上游執行，在靶場與 fork 裡會被跳過，推 tag 不會發布任何東西；老師不需要做任何事。 ([#86]、[#88])
+
+### 🔒 安全性 (Security)
+
+- create-wxl 改由 `.github/workflows/publish-npm.yml` 發布：推送上游的 `v*` tag 後，CI 確認 commit 在 `main` 上、跑發布閘門，再透過 OIDC 把版本送進 npm 的 staged。 ([#82]、[#84]、[#86])
+- staged 的版本要等上游比對 run 的 commit 與自己讀出的 SHA，並以 2FA 核准後才能安裝；release tag 由兩條 ruleset 保護，不能移動或刪除。發布流程寫在 `docs/agents/release.md`。 ([#88])
+- 從 3.1.1 起，CI 發布的版本應帶有 provenance，寫明建置它的 repository、workflow、tag 與 commit。在 npmjs.com 的套件頁可以看到 provenance 的內容；`npm view create-wxl@<版本> dist.attestations` 只能確認有沒有 provenance。3.1.0 以前的版本沒有。 ([#86])
+
+[#82]: https://github.com/BrowserLaboratory/wxl-platform/pull/82
+[#84]: https://github.com/BrowserLaboratory/wxl-platform/pull/84
+[#86]: https://github.com/BrowserLaboratory/wxl-platform/pull/86
+[#88]: https://github.com/BrowserLaboratory/wxl-platform/pull/88
+
 ## ✨ [3.1.0] - 2026-11-11
 
 > 靶場可以升級了：在靶場裡執行 `pnpm range:upgrade`，就能用三方合併把上游的新版本帶進來，老師的修改會保留下來。另外，短連結改為帶語系代碼，題目清單也會列出每一道題目。

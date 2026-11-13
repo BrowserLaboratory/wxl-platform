@@ -57,7 +57,10 @@ RP2: The user confirms two things: the tag name `v<V>`, and RP1's squash-merge c
 reads that SHA themselves, on the merged pull request's page or from their own
 `git log origin/main`; they do not confirm a value the agent proposes (D13). Before the first tag,
 MN7, MN2 and MN1 have been reported in the release ticket, MN1 within its two days (D14). The agent
-then runs `git ls-remote --tags origin v<V>`; if it prints anything, the agent stops and reports and
+then checks that the SHA is on `main` (`git merge-base --is-ancestor <SHA> origin/main` after
+`git fetch origin`) and that both manifests at that SHA hold `<V>` (`git show <SHA>:package.json`
+and `git show <SHA>:create-wxl/package.json`); if either fails, it stops and reports. Next it runs
+`git ls-remote --tags origin v<V>`; if it prints anything, the agent stops and reports and
 never force-pushes. Otherwise it creates an annotated tag with the message `WXL <V>` at that SHA and
 pushes it alone with `git push origin v<V>`. In this repository the agent must never `git push --tags`,
 whatever a general rule says (U8). One tag at a time: the next tag waits until the previous tag's
@@ -115,7 +118,8 @@ In this order. Each is reported in the release ticket that first depends on it.
 MN7: On GitHub, Settings → Rules → Rulesets, in the repository `wxl-platform` of the organisation
 `BrowserLaboratory`, create two tag rulesets targeting `v*` (U10, D11). The first restricts
 creations, with the upstream maintainer as its only bypass actor. The second restricts updates and
-deletions, with no bypass actor at all. A ruleset's bypass list covers all of its rules, so a single
+deletions, with no bypass actor at all. Both have enforcement status "Active": a ruleset left in
+"Evaluate" or "Disabled" enforces nothing. A ruleset's bypass list covers all of its rules, so a single
 ruleset would let the maintainer, and anyone holding their credentials, move or delete a release
 tag.
 
