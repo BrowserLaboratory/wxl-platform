@@ -1100,6 +1100,11 @@ keep "at least one field"; or rely on `npm stage view <id>` alone.
 **Revisit when.** T-0073's RP5: fill in the fields the user saw, then decide whether RP5 names
 them.
 
+**2026-11-13, T-0073 (create-wxl 3.1.1).** The user approved the one staged entry, for 3.1.1, and
+reported that the tab's fields matched the run (「RP5 那邊都正確」), but did not list which fields
+the tab showed. The question stays open. **Revisit when** the next release's RP5: the user lists
+the fields the tab shows, and RP5 is then decided.
+
 ---
 
 ## OQ-028 — Is the user's report of the npm and GitHub settings pages adequate stage 8 evidence?
