@@ -132,3 +132,21 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
   `node scripts/prepare-dist.mjs && node scripts/check-publish.mjs` → `checkPublish failed: X3 (no
   local tag v<version> exists at HEAD)`, exit 1 (no tag exists yet, as RP2 requires).
   `create-wxl/dist/` and `create-wxl/LICENSE` were removed afterwards.
+- 2026-11-13, MN7 and MN2 (S8-04, D11, D14). The user's report, quoted: 「設好了，用 3.1.1」. Before
+  that, a read-only check had found neither: `gh api repos/<upstream>/rulesets` listed only
+  "Protect main" (branch), and `gh api repos/<upstream>/environments` returned `total_count` 0. The
+  repository's only admin, and the organisation's only member, is the upstream maintainer
+  (`gh api repos/<upstream>/collaborators`, `gh api orgs/<owner>/members`), so the bypass role
+  "Repository admin" is the upstream maintainer alone. Cross-checked afterwards with the same
+  read-only API (OQ-028's GitHub option):
+  - MN7, ruleset 27175520 "Release tags: creation": target `tag`, enforcement `active`, include
+    `refs/tags/v*`, rules `creation`, bypass actors `RepositoryRole` 5 (admin), mode `always`.
+    Equal to the expected value.
+  - MN7, ruleset 27175527 "Release tags: no update or deletion": target `tag`, enforcement
+    `active`, include `refs/tags/v*`, rules `update` and `deletion`, no bypass actor. Equal to the
+    expected value.
+  - MN2, environment `npm`: protection rules only `branch_policy` (no required reviewer, no wait
+    timer); `deployment_branch_policy` `{ protected_branches: false, custom_branch_policies: true }`;
+    deployment branch policies: one, `v*`, type `tag`. Equal to the expected value.
+  - The version: the user chose 3.1.1 (「用 3.1.1」), settling stage 6's STD-05 and SPEC-01.
+  - Still to come: MN1 (within two days before the tag), then RP2.
