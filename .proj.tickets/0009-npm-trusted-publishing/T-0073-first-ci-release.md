@@ -2,7 +2,7 @@
 id: T-0073
 title: First CI release of create-wxl
 epic: 0009-npm-trusted-publishing
-status: review
+status: done
 blocked_by: [T-0069, T-0070, T-0071, T-0072]
 ---
 
@@ -32,10 +32,10 @@ token revoked. `docs/agents/release.md` holds each step's exact values.
 
 Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and S8-04).
 
-- [ ] Rows S8-01–S8-07.
-- [ ] AC reached: AC-7, met by the first `v<V>` that is approved and passes RP6; every earlier
+- [x] Rows S8-01–S8-07.
+- [x] AC reached: AC-7, met by the first `v<V>` that is approved and passes RP6; every earlier
   attempt recorded with its F-row.
-- [ ] The record quotes the user's reports for MN1 (six fields, single trusted publisher), the token
+- [x] The record quotes the user's reports for MN1 (six fields, single trusted publisher), the token
   revocation, the collaborator list, MN2, MN7 (both rulesets) and MN3, each equal to its expected
   value.
 
@@ -164,3 +164,75 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
   - Not covered: the user did not paste `npm access list collaborators create-wxl` from a
     signed-in shell; the maintainer list above stands in for it. The tag must be pushed by
     2026-11-15, two days after this configuration.
+- 2026-11-13, RP1 landed: #90 squash-merged at 12:56:35Z, after all ten checks passed on `aa62a57`
+  (`gh pr checks 90`; merge state `CLEAN`), with `--match-head-commit aa62a57…`.
+- 2026-11-13, RP2 (D13, D14). The user read the SHA in their own terminal, `git fetch origin && git
+  log -1 --format='%H %s' origin/main` → `2d85c1c4372d95bbb5df5f60bf95b339d6876da2 🔧 chore: 準備
+  3.1.1 發布…（T-0073） (#90)`, and confirmed the tag name, quoted: 「確認，推 v3.1.1」. The agent's
+  checks before the tag: `git merge-base --is-ancestor 2d85c1c… origin/main` after `git fetch
+  origin` → yes; `git show 2d85c1c…:package.json` and `git show 2d85c1c…:create-wxl/package.json` →
+  `"version": "3.1.1"` in both; `git ls-remote --tags origin v3.1.1` → nothing. Then `git tag -a
+  v3.1.1 -m "WXL 3.1.1" 2d85c1c…` and `git push origin v3.1.1` alone. `git ls-remote --tags origin
+  'v3.1.1*'` → tag object `d613d515…`, peeled `2d85c1c…`.
+- 2026-11-13, RP3. `publish-npm.yml` run 43432514515 (head `2d85c1c…`) concluded success: the
+  ancestry check and the publish gate passed, and `npm stage publish` logged `shasum:
+  078e87e7e393dacb45d190ffd5b32ee511d54706`, `Signed provenance statement with source and build
+  information from GitHub Actions`, transparency log index 3854645734, and `create-wxl@3.1.1 (staged
+  with id e6c3231a-66f2-468b-9ff6-08326efd4235)`, `staged with tag latest`. Afterwards `npm view
+  create-wxl dist-tags` → `latest` `3.1.0`. `release.yml` run 43432514680 (head `2d85c1c…`)
+  concluded success and made the release `v3.1.1`.
+- 2026-11-13, RP4. The release's generated notes were replaced with the 3.1.1 entry read from
+  `CHANGELOG.md` at `2d85c1c…`, passed through the project `/tw-emoji-release-note` sanitize script
+  (no change), and the title set to `WXL 3.1.1` (`gh release edit v3.1.1 --title … --notes-file
+  …`).
+- 2026-11-13, RP5. The agent's checks before the user decided: (b) run 43432514515 success, commit
+  `2d85c1c…` on its GitHub Actions page; (d) run 43432514680 success. The user's report, quoted:
+  「已核准」. The report did not give the number of entries in the tab or the fields the tab showed,
+  so OQ-027 has no fields from this release yet.
+- 2026-11-13, RP6, first read at 13:34Z: `npm view create-wxl version` and `dist-tags.latest` →
+  `3.1.0`; `npm view create-wxl@3.1.1 dist.attestations` → E404; the registry's abbreviated
+  document fetched directly (no npm cache) → `latest` `3.1.0`, no 3.1.1, `modified`
+  2026-11-11T12:59:41Z; `GET /create-wxl/3.1.1` → 404. Asked about the tab, the user reported,
+  quoted: 「顯示已核准」. Retried as RP6 says, five minutes apart.
+- 2026-11-13, RP6, first retry at 13:39:24Z (surface: a terminal on macOS darwin arm64; npm
+  11.6.2). The registry's abbreviated document → `latest` `3.1.1`, versions include 3.1.1,
+  `modified` 2026-11-13T13:36:45Z; `GET /create-wxl/3.1.1` → 200. Then:
+  - (a) `npm view create-wxl version --prefer-online` → `3.1.1`; `npm view create-wxl
+    dist-tags.latest --prefer-online` → `3.1.1`.
+  - (b) `npm view create-wxl@3.1.1 dist.attestations` → present, `provenance.predicateType`
+    `https://slsa.dev/provenance/v1`; `dist.shasum` → `078e87e7…`, equal to the run's log. The
+    provenance statement at the attestations URL, decoded: subject `pkg:npm/create-wxl@3.1.1`;
+    workflow repository `https://github.com/BrowserLaboratory/wxl-platform`, path
+    `.github/workflows/publish-npm.yml`, ref `refs/tags/v3.1.1`; resolved dependency `gitCommit`
+    `2d85c1c4372d95bbb5df5f60bf95b339d6876da2`; builder `github-hosted`; invocation run
+    43432514515 attempt 1. All four named values equal the expected ones.
+  - (c) In an empty folder, `npm create --yes wxl@latest range-smoke -- --no-setup` → exit 0;
+    `range-smoke/range.json` → `upstream.version` `3.1.1`, `upstream.commit` `2d85c1c…`,
+    `upstream.repository` `BrowserLaboratory/wxl-platform`. The folder was removed afterwards.
+  - Still to come: MN3, by the user.
+- 2026-11-13, MN3. The user's report: a screenshot of create-wxl → Settings → Publishing access
+  with the option selected, read as 「Require two-factor authentication and disallow bypass 2fa
+  tokens (recommended)」 (the other option, 「Require two-factor authentication or a granular access
+  token with bypass 2fa enabled」, not selected). npm's label differs from the one in
+  `release.md`, traceability MN3 and R2's string 「Require two-factor authentication and disallow
+  tokens」; the effect described by both is the same: publishing needs 2FA, and no token that skips
+  2FA is accepted. The wording is left for the epic retrospective. The agent cannot read this
+  setting (it does not sign in to npm).
+- 2026-11-13, MN1's collaborator check, from the user's signed-in terminal, quoted:
+  `npm access list collaborators create-wxl` → `cxphoenix: read-write`. Only the upstream
+  maintainer: equal to the expected value. This replaces the stand-in recorded with MN1 above.
+- 2026-11-13, RP5's tab, asked afterwards for the number of entries and the fields shown, the
+  user reported, quoted: 「RP5 那邊都正確」. Read against the list the agent gave before approval
+  ((a) one entry in all, for 3.1.1; (c) repository, workflow, ref, commit, shasum), this says (a)
+  held and the fields shown matched. It does not name which fields the tab showed, so OQ-027
+  records that this release's report did not list them.
+- 2026-11-13, MN1's revocation, asked for the statement 「沒有任何剩下的 token 能發布 create-wxl」,
+  the user reported, quoted: 「第二項也確認了」.
+- 2026-11-13, closing. AC-7 is met by `v3.1.1`, the first tag: S8-01 (run 43432514515, its
+  ancestry, gate and stage steps success); S8-02 (one entry, (b) and (d) success, the fields
+  matched, `latest` `3.1.0` before approval; OQ-027 updated); S8-03 (RP6 (a)–(c)); S8-04 (MN7,
+  MN2, MN1 with its six fields, one trusted publisher, the revocation and the collaborator list,
+  MN3, each quoted above and equal to its expected value, MN3's label aside); S8-05 (no earlier
+  attempt); S8-06 and S8-07 (F3, F4 and F6 did not occur). Gaps kept as they are: the tab's field
+  names were not reported (OQ-027), and MN3's label differs from the documents (left for the epic
+  retrospective). Status `review` → `done`.
