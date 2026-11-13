@@ -150,3 +150,17 @@ Spec 0009 revision 3.1 (D11–D14 change MN7, MN2's timing, RP2, RP5 (b), F6 and
     deployment branch policies: one, `v*`, type `tag`. Equal to the expected value.
   - The version: the user chose 3.1.1 (「用 3.1.1」), settling stage 6's STD-05 and SPEC-01.
   - Still to come: MN1 (within two days before the tag), then RP2.
+- 2026-11-13, MN1 (S8-04, U6, D14). The user's reports, quoted: 「MN1 完成」, then, asked whether
+  the trusted publisher on npmjs.com matches the six fields below and is the only one: 「六欄都一致」.
+  The six fields: provider GitHub Actions; owner `BrowserLaboratory`; repository `wxl-platform`;
+  workflow file `publish-npm.yml`; environment `npm`; allowed actions stage on, direct publish
+  off, dist-tag off. The agent cannot read the configuration (it does not sign in to npm), so the
+  fields rest on the user's report. Read-only checks by the agent the same day:
+  - The token in the agent's `~/.npmrc` no longer authenticates: `npm whoami` →
+    `401 Unauthorized`; `npm access list collaborators create-wxl` → `E401`, so that command's
+    output could not be taken from the agent's shell.
+  - `npm view create-wxl maintainers` → one maintainer, `cxphoenix`.
+  - `npm view create-wxl dist-tags` → `latest` `3.1.0`.
+  - Not covered: the user did not paste `npm access list collaborators create-wxl` from a
+    signed-in shell; the maintainer list above stands in for it. The tag must be pushed by
+    2026-11-15, two days after this configuration.
