@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic 0009 收尾報告</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --text: #1d2330; --muted: #5b6475; --line: #d9dde5;
+  --accent: #1f5fbf; --accent-soft: #e6eefb; --ok: #2f7a4b; --warn: #a15c07; --risk: #a1321f;
+  --sans: -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171d; --surface: #1c2028; --text: #e4e7ee; --muted: #9aa3b5; --line: #2f3542;
+    --accent: #7fb0ff; --accent-soft: #1e2b44; --ok: #7fd39f; --warn: #f0b35c; --risk: #ff8f7a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 var(--sans); }
+main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 6px; }
+h2 { font-size: 1.2rem; margin: 40px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+h3 { font-size: 1.02rem; margin: 22px 0 6px; }
+p.meta { color: var(--muted); margin: 0 0 24px; font-size: .92rem; }
+.answer { background: var(--accent-soft); border-left: 4px solid var(--accent); padding: 16px 20px; border-radius: 4px; }
+.answer strong { color: var(--accent); }
+code { font-family: var(--mono); font-size: .88em; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { background: var(--bg); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+td.sev-m { color: var(--risk); font-weight: 600; white-space: nowrap; }
+td.sev-l { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier-v { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.tier-i { color: var(--warn); font-weight: 600; white-space: nowrap; }
+.tier-e { color: var(--muted); font-weight: 600; white-space: nowrap; }
+ol.chain li { margin-bottom: 6px; }
+.decision { border: 1px solid var(--accent); border-radius: 4px; padding: 14px 18px; background: var(--surface); }
+</style>
+</head>
+<body>
+<main>
+<h1>Epic 0009 收尾報告：npm trusted publishing</h1>
+<p class="meta">2026-11-14 · <code>main</code> = <code>df0e042</code> · 範圍：T-0069～T-0073，以及收尾的串連分析</p>
+
+<div class="answer">
+<p><strong>create-wxl 已經改由 CI 透過 npm trusted publishing 發布，第一個版本 3.1.1 經上游 2FA 核准後上架，帶有指回上游 tag 與 commit 的 provenance。</strong>spec 0009 的 AC-1～AC-8 都由對應的票達成，五張票都是 <code>done</code>。</p>
+<p>收尾的串連分析找到三條跨越信任邊界的串連（兩條 medium、一條 low～medium），3.1.1 本身沒有受影響。依 review.md，已開 T-0074、T-0075 兩張票（使用者選擇依根因拆開），使用者決定先結案、之後再排，兩張都設為 <code>pending</code>，在下一次發布之前重新檢視。另外，分析期間發現 agent 的 shell 讀得到使用者仍有效的 npm session；使用者登出後，agent 的 shell 執行 <code>npm whoami</code> 回 E401。</p>
+</div>
+
+<h2>這個 epic 交付了什麼</h2>
+<div class="scroll"><table>
+<tr><th>票</th><th>交付</th><th>AC</th><th>合併</th></tr>
+<tr><td>T-0069</td><td>發布閘門的 X9 改成檢查 CI 環境（K1–K4），不再向 npm 查詢 maintainer</td><td>AC-1、AC-2、AC-3、AC-8</td><td><code>08c2b14</code>（#82）</td></tr>
+<tr><td>T-0070</td><td><code>create-wxl/package.json</code> 寫明 <code>repository</code>（MR1），guard 與 fork 規則跟著調整</td><td>AC-5、AC-8</td><td><code>6417cfd</code>（#84）</td></tr>
+<tr><td>T-0071</td><td>新增 <code>publish-npm.yml</code>：推 <code>v*</code> tag 後確認 commit 在 <code>main</code> 上、跑閘門、以 OIDC 執行 <code>npm stage publish</code></td><td>AC-4、AC-8</td><td><code>78b9963</code>（#86）</td></tr>
+<tr><td>T-0072</td><td><code>docs/agents/release.md</code>：RP0–RP7、MN1–MN7、F1–F7；spec revision 3.1 新增 D11–D14</td><td>AC-6</td><td><code>6374a14</code>（#88）</td></tr>
+<tr><td>T-0073</td><td>第一次 CI 發布：3.1.1 staged、使用者核准、RP6 三項驗證</td><td>AC-7</td><td><code>2d85c1c</code>（#90）</td></tr>
+</table></div>
+
+<h3>第一次發布的經過</h3>
+<ol class="chain">
+<li>使用者完成 MN7（兩條 <code>v*</code> tag ruleset，都 active）、MN2（environment <code>npm</code>，只有一條 <code>v*</code> tag 規則）、MN1（trusted publisher 六欄、撤銷 token），agent 以唯讀 API 核對 MN7、MN2。</li>
+<li>#90 合併後，使用者自己讀出 40 碼 SHA 並確認 tag 名稱；agent 確認 SHA 在 <code>main</code> 上、兩份 manifest 都是 3.1.1、遠端沒有同名 tag，才建立 annotated tag 並單獨推送 <code>v3.1.1</code>。</li>
+<li><code>publish-npm.yml</code> 的祖先檢查與閘門通過，<code>npm stage publish</code> 成功並簽出 provenance；這時 npm 的 <code>latest</code> 仍是 3.1.0。</li>
+<li>使用者以 2FA 核准；agent 第一次讀取時 registry 還沒更新，依 RP6 五分鐘後重查已更新（registry 的 <code>modified</code> 是 13:36:45Z），RP6 的版本、provenance 內容與 <code>npm create wxl@latest</code> 三項都通過；使用者完成 MN3。</li>
+</ol>
+
+<h2>收尾的串連分析</h2>
+<p>三關、九位唯讀的子代理：兩位找候選、六位反駁、一位做完整性檢查；parent 另外實測了 git 與 GitHub 的關鍵行為。全文在 <code>review/chain-analysis.md</code>。</p>
+<div class="scroll"><table>
+<tr><th>#</th><th>串連</th><th>嚴重度</th><th>處置</th></tr>
+<tr><td>S-1</td><td>GitHub 頁面只顯示 7 碼，RP5 (c) 只要求比一欄，前綴相同的惡意 commit 能通過比對；在 terminal 讀 SHA 時，被入侵的 agent 能改共用 checkout 的 ref</td><td class="sev-m">medium</td><td>T-0074</td></tr>
+<tr><td>S-2</td><td><code>origin/main</code> 與 7 碼 SHA 能被同名 ref 遮蔽：一般的 <code>git fetch</code> 會抓到它，使用者、agent 與 CI 的祖先檢查都會指向非 <code>main</code> 的 commit</td><td class="sev-m">medium</td><td>T-0074</td></tr>
+<tr><td>S-3</td><td>agent 與使用者是同一個 macOS 帳號，沒有 agent 用不到的 shell；MN1 之後 agent 的 shell 讀得到有效的 npm session</td><td class="sev-l">low～medium</td><td>T-0075</td></tr>
+<tr><td>R-3</td><td>spec 把 agent 列為對手，又把 admin 排除在威脅模型外，但 agent 實際持有 admin</td><td class="sev-l">spec 矛盾</td><td>T-0075，待使用者裁決</td></tr>
+</table></div>
+<p>其餘候選（staged entry 未綁定 run、永久 tag 成為升級 base、job 內的程式改 bytes、fork 冒名）已被反駁，或只留下 hardening，列在回顧裡。</p>
+
+<h2>代價與保留</h2>
+<ul>
+<li><strong>AC-7 帶著兩個缺口結案。</strong>RP5 的分頁欄位使用者只回報「都正確」，沒有列出看到哪些欄位，所以 S8-02 要求的欄位清單與 OQ-027 都沒有答案；MN3 的實際選項文字與文件不同。兩者都寫進 T-0073，也讓 S-1 的風險在下一次發布前不會降低。</li>
+<li><strong>第一次發布時，RP5 (b) 的 run commit 比對是 agent 做的</strong>，使用者只回報核准結果。D13 要的獨立性這次沒有被用到。</li>
+<li><strong>這個 epic 的 control 都在 repository 之外</strong>（MN1–MN7、RP5）。它們的正確性靠使用者回報與唯讀核對，沒有測試會在設定被改掉時失敗。</li>
+<li><strong>T-0074、T-0075 需要 spec 0009 revision 3.2</strong>，代表要再走一次第 2～9 階段，而且下一次發布前做完才有意義。</li>
+</ul>
+
+<h2>證據表</h2>
+<div class="scroll"><table>
+<tr><th>主張</th><th>來源</th><th>層級</th></tr>
+<tr><td>T-0069～T-0073 都是 <code>done</code>，T-0074、T-0075 是 <code>pending</code>（下一次發布前重新檢視）</td><td>各票 frontmatter（<code>.proj.tickets/0009-npm-trusted-publishing/</code>）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>各票的合併 commit 如上表</td><td><code>gh pr view &lt;n&gt; --json mergeCommit</code>，#82–#91</td><td class="tier-v">已驗證</td></tr>
+<tr><td>AC 與票的對應</td><td><code>spec.en.md:211-264</code>；各票的 Acceptance criteria</td><td class="tier-v">已驗證</td></tr>
+<tr><td>MN7、MN2 的設定與預期相符</td><td><code>gh api repos/&lt;upstream&gt;/rulesets</code>、<code>environments/npm</code>；T-0073 Comments</td><td class="tier-v">已驗證</td></tr>
+<tr><td>MN1 六欄一致、只有一個 trusted publisher、token 已撤銷</td><td>使用者的回報（「六欄都一致」「第二項也確認了」），agent 無法讀取</td><td class="tier-e">外部</td></tr>
+<tr><td>collaborator 只有上游維護者</td><td>使用者貼上的 <code>npm access list collaborators create-wxl</code> → <code>cxphoenix: read-write</code></td><td class="tier-e">外部</td></tr>
+<tr><td><code>v3.1.1</code> 指向 <code>2d85c1c…</code>，等於 #90 的 merge commit</td><td><code>git ls-remote --tags origin</code>；<code>gh pr view 90 --json mergeCommit</code></td><td class="tier-v">已驗證</td></tr>
+<tr><td>publish run 成功，staged id <code>e6c3231a-…</code>，shasum <code>078e87e7…</code></td><td>run 43432514515 的 log</td><td class="tier-v">已驗證</td></tr>
+<tr><td>使用者以 2FA 核准，分頁顯示已核准</td><td>使用者的回報（「已核准」「顯示已核准」）</td><td class="tier-e">外部</td></tr>
+<tr><td>3.1.1 上架、<code>latest</code> 指向它、provenance 寫明上游 repository、workflow、<code>refs/tags/v3.1.1</code> 與 <code>2d85c1c…</code></td><td><code>npm view</code>；解開 attestations 的 provenance statement（RP6，13:39Z）</td><td class="tier-v">已驗證</td></tr>
+<tr><td><code>npm create --yes wxl@latest</code> 寫出的 <code>range.json</code> 是 3.1.1 與 <code>2d85c1c…</code></td><td>RP6 (c) 在空資料夾執行</td><td class="tier-v">已驗證</td></tr>
+<tr><td>GitHub run 頁與 PR 頁的可見文字只有 7 碼</td><td>內建瀏覽器，未登入；登入後未查</td><td class="tier-v">已驗證</td></tr>
+<tr><td>同名 tag 會被 <code>git fetch</code> 抓到並遮蔽 <code>origin/main</code> 與 7 碼 SHA</td><td>拋棄式 repo 實測（chain-analysis V-4、V-5）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>同樣的遮蔽會發生在 GitHub Actions 的 checkout（<code>fetch-depth: 0</code>）</td><td>由 V-4 與 actions/checkout 的 refspec 推得，沒有在 runner 實測</td><td class="tier-i">推論</td></tr>
+<tr><td>能寫非 <code>v*</code> ref 的有兩個 GitHub App</td><td><code>gh api orgs/&lt;owner&gt;/installations</code></td><td class="tier-v">已驗證</td></tr>
+<tr><td>agent 的 shell 讀得到使用者有效的 npm session</td><td><code>npm whoami</code> → <code>cxphoenix</code>（2026-11-13）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>那個 session 之後已失效</td><td><code>npm whoami</code> → <code>E401</code>（2026-11-14）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>7 碼前綴碰撞在一般電腦上數分鐘可完成</td><td>由 2^28 次 SHA-1 推得，沒有實測</td><td class="tier-i">推論</td></tr>
+<tr><td>3.1.1 沒有受到 S-1、S-2 影響</td><td>使用者讀的是 40 碼；遠端沒有遮蔽用的 ref（V-1、V-2）</td><td class="tier-i">推論</td></tr>
+<tr><td>測試：root 4910 通過、create-wxl 787 通過</td><td>T-0073 Comments，在 <code>035eca6</code> 執行</td><td class="tier-v">已驗證</td></tr>
+</table></div>
+
+<h3>這份報告不主張的事</h3>
+<ul>
+<li>不主張整個專案安全；串連分析只看本 epic 的發現與 spec 的信任邊界。</li>
+<li>不主張 npm 的未知行為（同版號重複 stage、Staged Packages 分頁顯示的欄位、各操作在 MN3 下是否要 OTP）已經確認。</li>
+<li>不決定 R-3 的處理方式，也不決定 T-0074、T-0075 的實作內容；那些在 spec 0009 revision 3.2 決定。</li>
+</ul>
+
+<h2>已做的決定與留下的決定</h2>
+<div class="decision">
+<p>使用者 2026-11-14 決定先讓 epic 0009 結案，T-0074、T-0075 之後再排（「先結案，之後再排」）。下一次發布之前要先做完它們；那時要先決定 R-3：agent 改用不含 admin 的認證、由使用者親自推 tag，還是保留 admin 並在 spec 寫明留下的缺口？</p>
+</div>
+</main>
+</body>
+</html>

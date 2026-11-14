@@ -35,6 +35,10 @@ always open the Browser panel.
   caller's `rm` of that directory then fails with `EBUSY` (PR #72's windows-latest run). `Promise.all`
   rejects at the first failure and leaves the rest running; `merge-plan.mjs`'s `settleAll` waits for
   every operation first.
+- For a mutation check, apply the substitution with Python, not `perl -pi -e`: perl interpolates
+  `@name` inside the pattern (a version such as `npm@11` loses `@11`), and under `-0` `^` matches only
+  the start of the file, so the mutation silently does not apply (T-0071, T-0072). Confirm the file
+  changed before reading the test result.
 
 ## Search and local servers
 
