@@ -46,7 +46,7 @@ ol.chain li { margin-bottom: 6px; }
 
 <div class="answer">
 <p><strong>create-wxl 已經改由 CI 透過 npm trusted publishing 發布，第一個版本 3.1.1 經上游 2FA 核准後上架，帶有指回上游 tag 與 commit 的 provenance。</strong>spec 0009 的 AC-1～AC-8 都由對應的票達成，五張票都是 <code>done</code>。</p>
-<p>收尾的串連分析找到三條跨越信任邊界的串連（兩條 medium、一條 low～medium），3.1.1 本身沒有受影響。依 review.md，已開 T-0074、T-0075 兩張票（使用者選擇依根因拆開），兩張都還沒排程。另外，分析期間發現 agent 的 shell 讀得到使用者仍有效的 npm session，已請使用者登出。</p>
+<p>收尾的串連分析找到三條跨越信任邊界的串連（兩條 medium、一條 low～medium），3.1.1 本身沒有受影響。依 review.md，已開 T-0074、T-0075 兩張票（使用者選擇依根因拆開），使用者決定先結案、之後再排，兩張都設為 <code>pending</code>，在下一次發布之前重新檢視。另外，分析期間發現 agent 的 shell 讀得到使用者仍有效的 npm session；使用者登出後，agent 的 shell 執行 <code>npm whoami</code> 回 E401。</p>
 </div>
 
 <h2>這個 epic 交付了什麼</h2>
@@ -89,7 +89,7 @@ ol.chain li { margin-bottom: 6px; }
 <h2>證據表</h2>
 <div class="scroll"><table>
 <tr><th>主張</th><th>來源</th><th>層級</th></tr>
-<tr><td>T-0069～T-0073 都是 <code>done</code>，T-0074、T-0075 是 <code>todo</code></td><td>各票 frontmatter（<code>.proj.tickets/0009-npm-trusted-publishing/</code>）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>T-0069～T-0073 都是 <code>done</code>，T-0074、T-0075 是 <code>pending</code>（下一次發布前重新檢視）</td><td>各票 frontmatter（<code>.proj.tickets/0009-npm-trusted-publishing/</code>）</td><td class="tier-v">已驗證</td></tr>
 <tr><td>各票的合併 commit 如上表</td><td><code>gh pr view &lt;n&gt; --json mergeCommit</code>，#82–#91</td><td class="tier-v">已驗證</td></tr>
 <tr><td>AC 與票的對應</td><td><code>spec.en.md:211-264</code>；各票的 Acceptance criteria</td><td class="tier-v">已驗證</td></tr>
 <tr><td>MN7、MN2 的設定與預期相符</td><td><code>gh api repos/&lt;upstream&gt;/rulesets</code>、<code>environments/npm</code>；T-0073 Comments</td><td class="tier-v">已驗證</td></tr>
@@ -105,6 +105,7 @@ ol.chain li { margin-bottom: 6px; }
 <tr><td>同樣的遮蔽會發生在 GitHub Actions 的 checkout（<code>fetch-depth: 0</code>）</td><td>由 V-4 與 actions/checkout 的 refspec 推得，沒有在 runner 實測</td><td class="tier-i">推論</td></tr>
 <tr><td>能寫非 <code>v*</code> ref 的有兩個 GitHub App</td><td><code>gh api orgs/&lt;owner&gt;/installations</code></td><td class="tier-v">已驗證</td></tr>
 <tr><td>agent 的 shell 讀得到使用者有效的 npm session</td><td><code>npm whoami</code> → <code>cxphoenix</code>（2026-11-13）</td><td class="tier-v">已驗證</td></tr>
+<tr><td>那個 session 之後已失效</td><td><code>npm whoami</code> → <code>E401</code>（2026-11-14）</td><td class="tier-v">已驗證</td></tr>
 <tr><td>7 碼前綴碰撞在一般電腦上數分鐘可完成</td><td>由 2^28 次 SHA-1 推得，沒有實測</td><td class="tier-i">推論</td></tr>
 <tr><td>3.1.1 沒有受到 S-1、S-2 影響</td><td>使用者讀的是 40 碼；遠端沒有遮蔽用的 ref（V-1、V-2）</td><td class="tier-i">推論</td></tr>
 <tr><td>測試：root 4910 通過、create-wxl 787 通過</td><td>T-0073 Comments，在 <code>035eca6</code> 執行</td><td class="tier-v">已驗證</td></tr>
@@ -114,12 +115,12 @@ ol.chain li { margin-bottom: 6px; }
 <ul>
 <li>不主張整個專案安全；串連分析只看本 epic 的發現與 spec 的信任邊界。</li>
 <li>不主張 npm 的未知行為（同版號重複 stage、Staged Packages 分頁顯示的欄位、各操作在 MN3 下是否要 OTP）已經確認。</li>
-<li>不決定 T-0074、T-0075 的排程與 R-3 的處理方式。</li>
+<li>不決定 R-3 的處理方式，也不決定 T-0074、T-0075 的實作內容；那些在 spec 0009 revision 3.2 決定。</li>
 </ul>
 
-<h2>要你決定的事</h2>
+<h2>已做的決定與留下的決定</h2>
 <div class="decision">
-<p>T-0074、T-0075 要現在排進下一輪（從 spec 0009 revision 3.2 開始），還是先讓 epic 0009 結案、等下一次發布前再做？</p>
+<p>使用者 2026-11-14 決定先讓 epic 0009 結案，T-0074、T-0075 之後再排（「先結案，之後再排」）。下一次發布之前要先做完它們；那時要先決定 R-3：agent 改用不含 admin 的認證、由使用者親自推 tag，還是保留 admin 並在 spec 寫明留下的缺口？</p>
 </div>
 </main>
 </body>

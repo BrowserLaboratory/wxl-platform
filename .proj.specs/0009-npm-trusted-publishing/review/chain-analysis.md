@@ -110,7 +110,7 @@ S-1、S-2、S-3 跨越信任邊界，依 review.md 要開票，epic 才能結案
 - **T-0074**（`.proj.tickets/0009-npm-trusted-publishing/T-0074-unambiguous-sha-sources.md`）：S-1、S-2，下列第 1～3 項。
 - **T-0075**（`.proj.tickets/0009-npm-trusted-publishing/T-0075-agent-user-isolation.md`）：S-3、R-3，下列第 4～7 項。
 
-兩張都是 `todo`，尚未排程。補救項目：
+使用者 2026-11-14 決定先結案、之後再排（「先結案，之後再排」），兩張都設為 `pending`，在下一次發布之前重新檢視。補救項目：
 
 1. **RP2**：使用者只用 server 端的 40 碼來源（PR 頁 commit 連結的完整值，或 `gh pr view <n> --json mergeCommit`）；agent 只接受 40 碼。
 2. **RP5**：(b) 由使用者本人執行，逐碼比對 40 碼；(c) 必須比對 ref 與 commit 兩欄，不接受「任一欄」。

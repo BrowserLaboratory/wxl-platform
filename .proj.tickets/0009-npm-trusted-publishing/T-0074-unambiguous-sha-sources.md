@@ -2,8 +2,12 @@
 id: T-0074
 title: Read and compare the release commit only by its full SHA and full ref names
 epic: 0009-npm-trusted-publishing
-status: todo
+status: pending
 blocked_by: []
+pending_reason: "Opened by epic 0009's close-out chain analysis (S-1, S-2). The user chose on 2026-11-14 to close the epic first and schedule this later, quoted: 「先結案，之後再排」."
+pending_evidence: "review/chain-analysis.md (S-1, S-2; V-1 and V-2 show 3.1.1 was not affected)."
+pending_on: 2026-11-14
+revisit_when: "Before the next create-wxl release (the next v* tag): the chain stays open until this lands, so RP2 must not start while this ticket is pending."
 ---
 
 ## Context
@@ -71,3 +75,4 @@ epic 0009 收尾的串連分析，找到兩條跨越 B1 的串連（S-1、S-2，
 ## Comments
 - 2026-11-14, opened from the chain analysis (S-1, S-2, V-3–V-6) at the user's choice to split by
   root cause. Not started.
+- 2026-11-14, set to `pending` at the user's choice to close the epic first (「先結案，之後再排」).

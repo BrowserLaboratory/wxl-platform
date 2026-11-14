@@ -2,8 +2,12 @@
 id: T-0075
 title: Keep npm sign-ins and the admin credential out of the agent's reach
 epic: 0009-npm-trusted-publishing
-status: todo
+status: pending
 blocked_by: []
+pending_reason: "Opened by epic 0009's close-out chain analysis (S-3, R-3). The user chose on 2026-11-14 to close the epic first and schedule this later, quoted: 「先結案，之後再排」."
+pending_evidence: "review/chain-analysis.md (S-3, R-3; V-1 and V-2 show 3.1.1 was not affected)."
+pending_on: 2026-11-14
+revisit_when: "Before the next create-wxl release (the next v* tag): the chain stays open until this lands, so RP2 must not start while this ticket is pending."
 ---
 
 ## Context
@@ -70,3 +74,4 @@ epic 0009 收尾的串連分析發現：agent 跟你用同一個 macOS 帳號，
 ## Comments
 - 2026-11-14, opened from the chain analysis (S-3, R-3, PC-4, V-6, V-8) at the user's choice to
   split by root cause. Not started. R-3 needs the user's decision before stage 2 of the revision.
+- 2026-11-14, set to `pending` at the user's choice to close the epic first (「先結案，之後再排」).
