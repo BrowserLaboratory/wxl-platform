@@ -7,7 +7,7 @@ blocked_by: []
 pending_reason: "Seen in passing in T-0057's stage 8; the placeholder part has been recorded in ChallengeList.vue's comment since 2026-10-10, before epic 0008, with no ticket. A learner on the default-language list sees English controls. Opened as pending under the user's standing instruction of 2026-11-06; on 2026-11-06 the user chose to take it into the next epic, the primary locale (ADR-0008), whose stage 1 brings it into scope."
 pending_evidence: "T-0057's stage 8 record, 'Seen in passing, outside this ticket' (zh-ui.cjs, headless Chromium; the same on https://wxl.browserlab.online and on stage8-t-0056). New observations, 2026-11-06: in the same run the dates read 2026年4月2日 while the placeholder and titles stay English; `curl -s https://wxl.browserlab.online/zh-TW/challenges | grep -o 'title=\"[^\"]*\"\\|placeholder=\"[^\"]*\"'` prints placeholder=\"Search challenges, descriptions, tags…\", title=\"Ascending\", title=\"Grid mode\". ChallengeList.vue:25-35 (git blame 2026-10-10) records the placeholder as measured on a real build."
 pending_on: 2026-11-06
-revisit_when: "Stage 1 of the primary-locale epic (ADR-0008): the toolbar's strings join that epic's scope, and this ticket is replaced by, or rewritten as, a ticket of its spec."
+revisit_when: "When T-0079 (epic 0010) lands on main: the agent then sets this ticket to done after the merge, keeps pending_reason, pending_evidence, pending_on and revisit_when as history, and adds a Comments entry naming T-0079 and the date (spec 0010 D134)."
 ---
 
 ## Context
@@ -44,3 +44,14 @@ after hydration, and the English list's in English, whatever the stored value.
 Asked why the close-out's three tickets are pending, the user chose to take this one into the next
 epic, the primary locale (ADR-0008); T-0058 and T-0059 stay pending. It stays `pending` until that
 epic's stage 1: it has no spec rows of its own, and `todo` is set by `/to-tickets` from a spec.
+
+### 2026-11-15 — replaced by T-0079
+
+Spec 0010 (primary-locale layout) widens this ticket's scope to every list and home string (D44–D47,
+rows L23–L33, L45, L46) and replaces it with **T-0079**, "Every Traditional Chinese list string is
+right in static HTML and after hydration" (`.proj.tickets/0010-primary-locale-layout/`), as D55 and
+D134 of `.proj.specs/0010-primary-locale-layout/traceability.md` state; approved with stage 4's
+breakdown under the user's standing authorization of 2026-11-15. `revisit_when` now names T-0079.
+This ticket stays `pending` (the user's decision of 2026-11-06) until T-0079 lands on `main`; then
+the agent sets it to `done` after the merge, keeps the `pending_*` fields and `revisit_when` as
+history, and adds a Comments entry naming T-0079 and the date.
