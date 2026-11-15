@@ -3415,3 +3415,20 @@ report's delta review (F1, F6, F7), approved under the user's standing authoriza
 O-1: the planner's mismatch comparison reads only the two declarations' own properties, so a
 `__proto__` key is compared like any other key and an inherited property such as `constructor` is
 never read as a value (`Mismatch`'s "absent = undefined"). U47 gains the two cases.
+
+## Revision 2.3 (2026-11-16, T-0077 stage 5)
+
+Settled while T-0077's test plan was assembled, approved under the user's standing authorization of
+2026-11-15 and listed to the user. No behaviour row changes.
+
+| Id | Decision |
+|---|---|
+| D148 | **B90 keeps the two pinned setup-record sentences.** `create-wxl/test/upstream-config.test.mjs` U10 pins 「建立靶場的指令與升級都會寫入它」 and 「開發模組照它套用設定是之後的事」. Both stay true after this epic, so the 設定紀錄 entry written by B90 keeps both strings verbatim, and U10 is not overridden. |
+| D149 | **Overridden contracts completed for T-0077.** Added, each changing only as its row states: `tests/unit/challenge/declaration.test.ts` "D145: a mapping key that is not a scalar throws" and "D147: the site parser resolves no YAML 1.1 tag" (they become `invalid-yaml` results under Y2–Y6); `tests/unit/challenge/plugin-obfuscation.test.ts` "detects all legacy fields when present", "returns empty array when no legacy fields present" and the "[RED] no sensitive data" case where it runs the brief validator (Y-O12); `tests/unit/scripts/create-challenge-run.test.ts` C05 (a flat `legacy.md` stops at PL-E08, D82); the fixture call shapes of `discoverChallenges` and `deriveSlugs`; `tests/unit/site/redirects.test.ts` "gives challenge 001, door-is-open, the four rules the spec writes out", made upstream-only through the D124 helper. Seam 0010-S25 also names `indexTrees` (S-§4.7). Row Y94 also covers `skills/wxl-create/reference/agent-tools.md` in both trees. Rows of 0007's and 0008's traceability that this spec overrides are overridden by reference; those files are not edited. |
+| D150 | **S51's refusal text.** `redirects:generate` (full and `--staged`) stops with one line per offending name, the name quoted by D140's function: `redirects: challenge slug <json> is outside ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` and `redirects: challenge slug <json> equals challenge <NNN>'s padded number`; the hook and CI print the same lines. |
+
+The other open items of T-0077's plan follow the planners' proposals: no seam gains a root
+argument (CLI rows run on temporary copies); S28's test materialises the index; S52's import check
+and D126's internal mode are stage 6 readings; `validateChallengeConfig` is removed; U130 pins
+`v3.1.1` as D108 says.
+
