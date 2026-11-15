@@ -36,7 +36,7 @@ import {
   sha256Hex,
   type DocAnchor,
 } from '../../../scripts/fork-init'
-import { isUpstreamDecision, realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+import { isUpstreamDecision, realUpstreamDecision, upstreamOnlySkipReason } from '../../__helpers__/upstreamDecision'
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 
@@ -611,6 +611,28 @@ describe('upstream decision', () => {
     ['no repository at all', {}],
   ])('is not upstream, in a work tree, with %s', (_label, manifest) => {
     expect(isUpstreamDecision(undefined, manifest, true, false)).toBe(false)
+  })
+})
+
+// B93/D124/U139: every D124 row declares itself through this one helper, which takes the
+// decision's own inputs and returns undefined on upstream or the skip reason otherwise.
+describe('D124 upstream-only skip reason (B93)', () => {
+  const upstreamManifest = { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }
+
+  it('is undefined on upstream', () => {
+    expect(upstreamOnlySkipReason(UPSTREAM_SLUG, upstreamManifest, true, false)).toBeUndefined()
+  })
+
+  it('is a skip reason for a range (a root range.json)', () => {
+    const reason = upstreamOnlySkipReason(undefined, upstreamManifest, true, true)
+    expect(typeof reason).toBe('string')
+    expect(reason).toBeTruthy()
+  })
+
+  it('is a skip reason for a fork (GITHUB_REPOSITORY set to another slug)', () => {
+    const reason = upstreamOnlySkipReason('someone/else', upstreamManifest, true, false)
+    expect(typeof reason).toBe('string')
+    expect(reason).toBeTruthy()
   })
 })
 
