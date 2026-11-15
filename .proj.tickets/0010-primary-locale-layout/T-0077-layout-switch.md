@@ -62,7 +62,9 @@ D15, D19, D27, D28 (with the self-check's fall-through, A39), D29, D30, D31, D32
 D42, D43, D53, D57, D58, D61, D62, D63, D64, D65, D67, D68, D69, D72 (T-0059 here), D76, D77, D82 (it
 runs the layout check), D83, D84, D85, D86, D108 (the test picks its compared tree and base tag),
 D113, D117, D118, D119, D121, D122, D123, D124, D126, D127, D128, D130, D132, D133, D135, D136, D137,
-D138, D141; and the interim plain-text mention in the notes page above.
+D138, D141; and the interim plain-text mention in the notes page above. Pin the root `yaml`
+dependency to exactly 2.9.0, the version create-wxl locks and the version D129, D145, D146 and D147
+were checked against (T-0076 final review F17).
 
 Spec: `spec.en.md` revision 2, every area's acceptance criteria except AC-22, AC-24, AC-26,
 AC-44–AC-50, AC-52, AC-54, AC-55, AC-57 and AC-60 (this ticket holds rows of AC-8, AC-10, AC-32,
@@ -193,3 +195,12 @@ user's approval first. Every challenge page is opened with its Browser panel ope
 第一步先只加 D31 的瀏覽器端模組並跑一次單元測試，把因它的 `zh-TW` 預設值而翻轉的既有測試先列出來；只為了明確指定主語系而改、斷言不變的測試不必另立一列。題目清單的介面字串與日期留給 T-0079，繁中參考頁與完整性測試留給 T-0080；疑難排解頁、`guide/index.md`、README 與 GLOSSARY 語系標記裡因切換而變假的段落在這張票改，清單標題那一列留給 T-0079。在 T-0080 之前，繁中 `notes.md` 指向匯出格式參考頁的連結暫時拿掉、只用文字寫出頁名：今天的寫法在主語系是繁中時是死連結，指向英文頁的跨資料夾寫法（`../../en/reference/…`）在主語系是英文時會被 PL-E11 擋下，沒有一種連結在兩種主語系下都能建置。這一點不是規格決策，要跟下列決策一起請你確認。第 8 階段在 `stage8/T-0077` 與 `stage8/T-0077-en` 的 Cloudflare 預覽、一個暫時的 GitHub Pages 靶場和一份暫存 clone 上跑；推分支、建立與刪除暫時靶場前都會先問你。實作前要確認的決策：D8、D9、D12、D13、D15、D19、D27、D28、D29、D30、D31、D32、D33、D38、D40、D41、D42、D43、D53、D57、D58、D61、D62、D63、D64、D65、D67、D68、D69、D72、D76、D77、D82、D83、D84、D85、D86、D108、D113、D117、D118、D119、D121、D122、D123、D124、D126、D127、D128、D130、D132、D133、D135、D136、D137、D138、D141。
 
 ## Comments
+
+- 2026-11-15 (from T-0076 stage 6): the epic's GLOSSARY edits (row B90 and LH3, stage 1's new entries
+  and the sentences this epic makes false, with N17's two corrections) landed too early in T-0076's
+  docs commit `a2ac5b6` and broke `create-wxl/test/upstream-config.test.mjs`, which pins the setup
+  record's current wording; T-0076 restored `main`'s `GLOSSARY.md`. This ticket applies them with
+  the switch: the full text is `git show a2ac5b6:GLOSSARY.md` (also saved, local only, as
+  `.proj.research/2026-11-15-epic0010-glossary-b90.md`), and the pinned sentence in
+  `upstream-config.test.mjs` goes into "Overridden contracts".
+

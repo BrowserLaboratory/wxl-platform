@@ -1,6 +1,11 @@
 # Spec 0010: Primary-locale layout — every locale in its own folder, the range chooses the root
 
-Status: revision 2 (2026-11-15). Revision 1, with the same day's self-check applied (traceability
+Status: revision 2.2 (2026-11-15). Revision 2.1 (traceability "Revision 2.1", T-0076 stage 5) adds
+D143 (`platform/challenge/index.md` is an ordinary page, not a single-file brief) and D144 (the
+upgrade's move never lets `yaml` write to the terminal; a warning fails the parse). Revision 2.2
+(traceability "Revision 2.2", T-0076 stage 7) adds D145 (a mapping key that is not a scalar fails
+the parse, in the move and in the declaration reader) and D146 (both parsers pass
+`resolveKnownTags: false`, so an explicit YAML 1.1 tag fails the parse), and extends rows U25 and U47. Revision 1, with the same day's self-check applied (traceability
 "Checks on revision 1"), was reviewed in stage 3 round 1 (`review/round-1-C.md`, `-V.md`, `-K.md`,
 `-R.md`). Revision 2 applies round 1's disposition (`review/disposition.md`): every P1 and P2 finding
 is fixed or declined with its reason; it adds decisions D122–D141, rows B93–B95, S76–S80, Y107–Y113,
@@ -11,8 +16,8 @@ and adds D142 and PAT6. Round 1 found no P0, so the stage 3 gate is met; by the
 self-checked instead (traceability "Checks on revision 2"). Derived from `traceability.md`, which
 holds:
 
-- the decisions D1–D142 (stage 1 decisions realised, and the new decisions of stage 2 and of
-  revision 2, each approved under the user's standing authorization of 2026-11-15; as
+- the decisions D1–D146 (stage 1 decisions realised, and the new decisions of stage 2 and of
+  revisions 2, 2.1 and 2.2, each approved under the user's standing authorization of 2026-11-15; as
   `docs/agents/workflow.md` requires, each new or changed D-number is still confirmed by the user
   from a short decision summary before it is implemented);
 - the seams 0010-S1 to 0010-S52 and the ticket constraints T1–T9;
@@ -322,10 +327,14 @@ from the index (D65–D67, D122, D126). One function gives a challenge
 page's path for the generator and the copy control (D68). Whether T-0058 and T-0059 are taken is
 stage 4's call; the spec recommends both (D72).
 
-**Tools on the declaration (D80–D90, D123, D129).** Every tool that reads `range.json` reads it
+**Tools on the declaration (D80–D90, D123, D129, D145, D146).** Every tool that reads `range.json` reads it
 first and stops on an unusable one with its PL line before touching any challenge (D123). A
-declaration with a duplicate key, an unresolved tag, too many aliases or an alias without its
-anchor is invalid YAML (D129).
+declaration with a duplicate key, an unresolved tag, too many aliases, an alias without its
+anchor or a mapping key that is not a scalar (a collection or an alias) is invalid YAML (D129,
+D145); so is an explicit YAML 1.1 tag such as `!!timestamp`, `!!binary`, `!!merge` or `!!set`,
+because the reader passes `resolveKnownTags: false` and such a tag is unresolved (D146). The
+declaration reader checks keys before converting, so `yaml` writes nothing to the terminal, and
+every value it returns is a string, number, boolean, null, sequence or mapping.
 keygen writes `wasmModule` into `challenge.yaml` only when
 its bytes change and tracks the declaration and `src/`, never a brief (D80). Flat single-file
 challenges are gone from every tool (D81). `create:challenge` runs the layout check first and
@@ -344,11 +353,15 @@ pristine range in its temporary directory; step 8 plans the teacher's move in me
 each old path and writes each new one, staging nothing; steps 1–8 still write nothing in the range
 (D93). The merge reads the base after its move and the teacher's file through the move plan; a merge
 write at a moved path wins over the move (D94). The transform changes paths and splits frontmatter
-only, line by line with original bytes and endings (D95). It stops before writing anything, with
+only, line by line with original bytes and endings (D95). It parses frontmatter with the declaration
+reader's rule: any `yaml` error or warning (an explicit YAML 1.1 tag among them, since both parsers
+pass `resolveKnownTags: false`), a mapping key that is not a scalar, or an exception while converting
+fails the parse (`frontmatter`), and `yaml` never writes to the terminal (D110, D144, D145, D146). It stops before writing anything, with
 UP-E14 and a token, for every case R14 lists and for an unsplittable brief, an orphan translation (no
 English brief and no declaration; a translation of an already declared challenge is left untouched),
-a single-file brief and a legacy target, printing every failure of the first side that fails
-(D96–D100). The disk walk skips exactly the excluded areas and the locale folder paths; for each English
+a single-file brief (`platform/challenge/<name>.md` with `<name>` other than `index`;
+`platform/challenge/index.md` moves as an ordinary page, D143) and a legacy target, printing every
+failure of the first side that fails (D96–D100). The disk walk skips exactly the excluded areas and the locale folder paths; for each English
 brief's slug the move also checks the translation brief paths, so one it cannot see (ignored, or
 under a symbolic link) stops the run, and it reads a page only after `lstat` reports a regular file
 (D116, D125, D139). Only pages move (D101); moved files keep their
@@ -374,7 +387,7 @@ the working tree until the first new-layout release is tagged, that tag afterwar
 | TB7 | Learner's acts → stored preference → routing (A TA2, 0008 B4) | Only listed codes are honoured, exactly; only a switcher choice and a cold load of a published translation page write | Any page can link to a `/<T>/` address and set `T`; on a Traditional-Chinese-primary range a link can now set English. Ranges under one GitHub Pages owner still share the preference (R8, OQ-018); `fork:init --rebrand` renames the `wxl-locale` key, so only ranges with the same key share it | — |
 | TB8 | Session gate → navigation (A TA4, ADR-0006) | Unchanged: redirects and their lines wait for the gate's decision; a switcher's line does not | As ADR-0006: the gate is a notice, not access control | — |
 | TB9 | Build environment → published pages (L) | `WXL_SMOKE_PAGES` publishes only two static pages with no script, link or data; CI's production build fails if they ship | Set to `1` in a production deploy, it publishes those two pages (integrity, not confidentiality) | — |
-| TB10 | GitHub archives → the range, during an upgrade (U 0006 B1) | The base and target pristine ranges hold only files and directories; frontmatter is parsed with `yaml`'s default limits; a hostile brief in a `--from <commit>` base stops the run | A `--from <commit>` base chosen so that its moved file equals the teacher's hides an upstream change there, as 0006 B1 states | — |
+| TB10 | GitHub archives → the range, during an upgrade (U 0006 B1) | The base and target pristine ranges hold only files and directories; frontmatter is parsed with `yaml`'s default limits, and `yaml` itself never writes to the terminal (D144, D145, D146); a hostile brief in a `--from <commit>` base stops the run | A `--from <commit>` base chosen so that its moved file equals the teacher's hides an upstream change there, as 0006 B1 states | — |
 | TB11 | The upgrade → the teacher's repository (U 0006 B4) | The move writes and deletes only tracked pages and new, non-ignored paths, never through a symbolic link, a submodule or a name alias; it reads a page only after `lstat` reports a regular file, and stops on a translation brief it cannot see (D125, D139); it stages nothing; the restore commands undo it; a stop writes nothing; outside values are escaped in the report | Relative links and asset imports from a moved page to a file that did not move, and links into old paths from other files, are not rewritten; a declaration value the teacher's range shares with its base's divergence is dropped without a report; on a case-insensitive file system a page spelled `Platform/…` is left to the build check | Another process changing the range during the run (0006) |
 
 No finding in this epic can be expected under ADR-0005: it touches no challenge's taught
@@ -620,7 +633,8 @@ judged at the seam its rows name; the rows hold the literal values.
 - **AC-35** `readChallengeDeclaration` reads each upstream file to the Y-§2.4 value, keeps dates as
   strings, accepts a leading document marker, and reports `absent`, `not-a-mapping`, `invalid-yaml`
   and `multi-document` for the listed inputs (`invalid-yaml` also for a duplicate key, an alias
-  expansion over the limit, an alias without its anchor and an unresolved tag; `<<` an ordinary key; `yes` a string, D129); `validateChallengeDeclaration` requires `backend` and
+  expansion over the limit, an alias without its anchor and an unresolved tag, an explicit YAML 1.1
+  tag included, D146; `<<` an ordinary key; `yes` a string, D129); `validateChallengeDeclaration` requires `backend` and
   `app` (a string), keeps today's messages for every other key, rejects brief keys with VM5 in file
   order, passes unknown keys through, retires the legacy fields with no `fs` warning, returns the
   stated defaults, and accepts `number` only as a safe integer ≥ 1. (Y1–Y21, Y104, Y112)
