@@ -204,6 +204,129 @@ user's approval first. Every challenge page is opened with its Browser panel ope
   `.proj.research/2026-11-15-epic0010-glossary-b90.md`), and the pinned sentence in
   `upstream-config.test.mjs` goes into "Overridden contracts".
 
+- 2026-11-16 (wave 0, the D31 first step alone, seam 0010-S12): done, in three cycles plus the
+  baseline run.
+  - Cycle 1 (new `tests/unit/i18n/primary-locale-client.test.ts`, case "is zh-TW"): red for the
+    expected reason — `npx vitest run tests/unit/i18n/primary-locale-client.test.ts` failed to
+    resolve the import `.vitepress/theme/i18n/primaryLocale` (the module did not exist yet).
+    Green after adding `.vitepress/theme/i18n/primaryLocale.ts` with `primaryLocale()` hard-coded
+    to return `'zh-TW'`.
+  - Cycle 2 (same file, new case "is en when the build constant is en",
+    `vi.stubGlobal('__WXL_PRIMARY_LOCALE__', 'en')`): red for the expected reason — assertion
+    failure, `expected 'zh-TW' to be 'en'` (the hard-coded cycle-1 body ignores the global).
+    Green after generalising `primaryLocale()` to
+    `typeof __WXL_PRIMARY_LOCALE__ !== 'undefined' ? __WXL_PRIMARY_LOCALE__ : 'zh-TW'` and adding
+    `declare const __WXL_PRIMARY_LOCALE__` to `env.d.ts`.
+    - While wiring `env.d.ts`, found that giving it a top-level `import type { Locale } from
+      './.vitepress/locales'` turns the file from an ambient global script into a module, which
+      silently un-globals the file's pre-existing `declare const __WXL_SHORT_LINKS__` and
+      `__WXL_PAGES__` (confirmed with `npx vue-tsc --noEmit -p tsconfig.json`: both go from
+      resolving to `error TS2304: Cannot find name`, and the two `declare module
+      'php-wasm/*.mjs'` ambient module declarations turn into module augmentations and fail with
+      `error TS2665`). Not in the test plan's named seams, so fixed in place rather than reported
+      as a separate finding: `__WXL_PRIMARY_LOCALE__` is declared with the literal union `'en' |
+      'zh-TW' | undefined` instead of an imported `Locale`, with no import added to `env.d.ts`.
+      This is the choice the plan's open item left to `/tdd`; the two were called equivalent in
+      the plan, and this run found the reason to prefer the literal union. Re-ran `vue-tsc` after
+      the fix: the diff against the pre-edit baseline is exactly the four `Cannot find name`
+      lines, the two `TS2665` lines and five unrelated `php-wasm/PhpNode.mjs` lines, all gone;
+      nothing new appears.
+  - Cycle 3 (same file, new case "is zh-TW when the build constant is zh-TW",
+    `vi.stubGlobal('__WXL_PRIMARY_LOCALE__', 'zh-TW')`): green on the first run, no implementation
+    change, as the plan named it (the cycle-2 generalisation already covers it).
+  - Baseline: `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true
+    pnpm test --run` → Test Files 142 passed (142), Tests 5054 passed (5054), exit 0. No test
+    flipped by the `zh-TW` fallback (cross-area note 1's expectation holds): no row added to
+    "Overridden contracts". An unrelated `ECONNREFUSED 127.0.0.1:3000` / `::1:3000` message prints
+    to stderr after the summary on both runs of this command in this environment, with exit code
+    0 and the same pass counts both times; not caused by this wave's files (neither touches a
+    port or a dev server) and not investigated further here.
+  - `pnpm --dir create-wxl test` not run: this wave touches neither `create-wxl/` nor fork:init.
+  - No row left undone.
+
+- 2026-11-16 (wave 1, sub-steps (a)–(c) only; (d)–(g) not reached in this run): the executor ran
+  the increment plan the parent confirmed, in order, through (c), then stopped before (d) because
+  the remaining sub-steps' scope (new modules `locales-config.ts`, `home-links.ts`,
+  `primary-folder-links.ts`, `layout-error.ts`, the `source-layout.ts`/`pageList.ts` rewrite, the
+  `config.mts`/`plugin.ts` wiring, and the real-tree move) is far larger than (a)–(c) and was not
+  reachable in the same run. Rows done, by sub-step:
+  - (a) done: `package.json` pins root `yaml` to exactly `2.9.0` (was `^2.8.2`); `pnpm install`
+    updated `pnpm-lock.yaml` (resolves to `2.9.0`, confirmed by reading
+    `node_modules/yaml/package.json`).
+  - (b) done (B93): new describe `D124 upstream-only skip reason (B93)` in
+    `tests/unit/scripts/upstream-guard.test.ts`, three cases (upstream → `undefined`; a range → a
+    skip reason; a fork → a skip reason); red for the expected reason
+    (`upstreamOnlySkipReason is not a function`), green after adding
+    `upstreamOnlySkipReason(githubRepository, manifest, isWorkTree, hasRangeJson)` to
+    `tests/__helpers__/upstreamDecision.ts` (returns `undefined` on `isUpstreamDecision(...)===true`,
+    else a reason string naming "a range" when `hasRangeJson`, else "a fork"). The exact reason
+    text is not spec-pinned (D124/B93 say only "the skip reason"); chosen at `/tdd`.
+  - (c) done, rows Y2–Y6, Y9, Y12, Y14, Y19, Y21, Y23 and Y112's **read half only**
+    (`declaration.test.ts`), each its own red→green cycle in `.vitepress/challenge/declaration.ts`
+    and `.vitepress/challenge/config.ts`:
+    - `readChallengeDeclaration` now returns `DeclarationResult` (`{ok:true,value}` or
+      `{ok:false,reason,path}`, reasons `'absent'|'not-a-mapping'|'invalid-yaml'|'multi-document'`)
+      instead of always `{ok:true,...}`/throwing: Y2 (ENOENT → `absent`), Y3 (empty/comments-only →
+      `not-a-mapping`), Y6 (sequence/string/number/null root → `not-a-mapping`, green on the first
+      run, no production change needed), Y5 (`parseAllDocuments` length > 1 → `multi-document`), Y4
+      (`doc.errors`/`doc.warnings` non-empty → `invalid-yaml`), Y112's read half (duplicate key via
+      `doc.errors`; alias within `maxAliasCount` resolved; alias over the limit and an unset-anchor
+      alias via a `try`/`catch` around `toJS` → `invalid-yaml`; `<<: *base` kept as an ordinary `<<`
+      key; `yes`/`on` stay strings; a custom tag `!foo bar` → `invalid-yaml` via `doc.warnings`).
+    - This flips the two existing cases the ticket's Comments (2026-11-15/T-0076) and
+      traceability.md D149 named in advance: `declaration.test.ts` "D145: a mapping key that is not
+      a scalar throws" (now asserts `{ok:false,reason:'invalid-yaml'}` instead of `.toThrow()`) and
+      "D147: the site parser resolves no YAML 1.1 tag" (all four cases now assert
+      `{ok:false,reason:'invalid-yaml'}` instead of `{ok:true,...}` plus the tag-instance checks,
+      which are dropped as moot); both blocks still assert no writer fires. D149 is the
+      Overridden-contracts row that allows this; no further row was added.
+    - `.vitepress/challenge/config.ts`: Y12 (`validateChallengeDeclaration` throws
+      `` `app must be a string, got ${typeof}` `` for non-string `app`, checked after the
+      required-field and `backend`-enum checks); Y14 (throws
+      `` `challenge.yaml carries brief key(s) ${keys}; title, description and layout belong in each
+      brief's frontmatter` `` listing present keys of the new `BRIEF_KEYS = ['title','description',
+      'layout']` constant in file order); Y23 (new `validateChallengeBrief(raw)`, minimal: returns
+      `{title,layout,description}` as given — the key/type checks VM6-VM9/VM14/VM15 are Y24-Y29's,
+      not implemented here); Y9, Y19, Y21 green on the first run with no production change (already
+      correct; test-only rows, as the plan predicted).
+  - Row **not done as planned, reported rather than guessed**: Y112's **validator half** named by
+    the Test plan table's own Scope column is `challenge-validate.test.ts` (brief half, VM6 naming
+    `<<`, VM15 for a duplicate `title`), not `config.test.ts`. The increment plan's wave-1(c)
+    sub-heading said "their read and validator halves" for all of Y2-6/Y9/Y12-14/Y19/Y21/Y23/Y112
+    together, which does not hold for Y112 specifically once checked against the Test plan table and
+    wave-1(c)'s own file list (`.vitepress/challenge/config.ts` and `declaration.ts` only —
+    `scripts/challenge-validate.ts` is wave 5's). A first attempt added a `config.test.ts` case
+    asserting `validateChallengeDeclaration({...,'<<':{x:1}}))['<<']` equals `{x:1}`; it failed
+    because the function's return value does not spread unknown keys (by design — Y19's own
+    acceptance criterion puts "assembled frontmatter carries each unchanged" in
+    `plugin.test.ts`, not in the validator's return shape). That test case was removed rather than
+    used to justify a production change outside the named seam. Y112's brief-side VM6/VM15 behaviour
+    is deferred to the wave that implements `scripts/challenge-validate.ts` (wave 5 in the
+    Implementation-waves list, though that wave's own text does not name Y112 explicitly either —
+    flagged for the parent to confirm which wave claims it).
+  - Sub-steps **not reached in this run** (not attempted, not "cannot be done" — simply not started):
+    (d) the pure build modules (B18, B19, B20–B36, B91, B39, B41, B42, B46, B56–B58, B62–B69, B92,
+    B94, B72, B73, B75, B95; new `locales-config.ts`, `home-links.ts`, `primary-folder-links.ts`;
+    rewritten `source-layout.ts`, `pageList.ts`, `theme/i18n/pages.ts`, `theme/i18n/arrival.ts`,
+    `theme/i18n/index.ts`, `layout-error.ts`); (e) the real-tree move and `PLATFORM_HOME_RELS`; (f)
+    the `config.mts`/`plugin.ts` wiring, the hero links, deleting `theme/Layout.vue`, the slug
+    helper and `ChallengeLayout.vue`; (g) the smoke rows that stay red until wave 3. Two decisions
+    the parent flagged before this run still stand, unresolved, and block (e)'s real-tree move:
+    (1) whether to run `planLayoutMove` on the upstream `platform/` tree now, irreversibly, without a
+    dry-run diff shown first, together with the `notes.md` interim edit; (2) none remaining for (c)
+    — Y-q6 is resolved by traceability.md revision 2.3's D149 (an Overridden-contracts row already
+    exists; no further user decision was needed to do (c)).
+  - Commands run, with exact counts:
+    - `npx vitest run tests/unit/scripts/upstream-guard.test.ts` → 118 passed, 1 skipped (119).
+    - `npx vitest run tests/unit/challenge/config.test.ts tests/unit/challenge/declaration.test.ts`
+      → 97 passed (97).
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run` → Test Files 142 passed (142), Tests 5089 passed (5089), exit 0 (up from wave 0's 5054
+      by exactly 35 new tests: 3 in (b), 17 in declaration.test.ts and 15 in config.test.ts for (c)).
+      The same unrelated `ECONNREFUSED 127.0.0.1:3000`/`::1:3000` stderr noise as wave 0 printed
+      again, same exit code, not investigated (unrelated to this wave's files).
+    - `pnpm --dir create-wxl test` not run: (a)–(c) touch neither `create-wxl/` nor fork:init.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
@@ -867,8 +990,8 @@ as T1 defines green.
 8. **Documents and GLOSSARY.**
    - First the GLOSSARY: B90 from `git show a2ac5b6:GLOSSARY.md` without U135's 設定紀錄 and 搬家
      sentences, with LH3 (語系標記), A37 (主語系) and S71 (短連結) checked on top of it.
-   - Then the U10 row in "Overridden contracts" and its change in `upstream-config.test.mjs`
-     (cross-area note 3).
+   - The 設定紀錄 entry keeps 「建立靶場的指令與升級都會寫入它」 and 「開發模組照它套用設定是之後的事」
+     verbatim (D148), so `upstream-config.test.mjs` U10 is unchanged (cross-area note 3 superseded).
    - Then: B84–B86 (`README.md`, `README.en.md`), B87 (ADR-0008), A34 and A35, S69 and S70, Y97–Y101,
      and LH1's difficulty-badge clause, LH2 and LH4.
    - Tests: `glossary.test.ts` and `sentence-map.test.ts` pass; both languages where a passage has two.

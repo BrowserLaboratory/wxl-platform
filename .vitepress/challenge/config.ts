@@ -3,6 +3,11 @@ export type BackendType = 'flask' | 'fastapi' | 'php'
 export const LEGACY_FIELDS = ['fs_key', 'fsKeyParts', 'encryptedFs', 'flag_verifier'] as const
 export const VALID_TOOLS = ['browser', 'network', 'repeater', 'code'] as const
 
+// D74: a brief's frontmatter keys are exactly this closed set; every other key belongs in
+// challenge.yaml instead (VM5, VM6).
+export const BRIEF_KEYS = ['title', 'description', 'layout'] as const
+const BRIEF_ONLY_KEYS = BRIEF_KEYS
+
 export interface ChallengeConfig {
   title: string
   backend: BackendType
@@ -131,6 +136,22 @@ export function validateChallengeConfig(raw: unknown): ChallengeConfig {
   }
 }
 
+// A brief's frontmatter (D74, VM6-VM15). Y23 alone: the full key/type checks (VM6-VM9, VM14, VM15)
+// are Y24-Y29's (wave 5, challenge-validate.ts), not implemented here yet.
+export interface ChallengeBrief {
+  title: string
+  layout: 'challenge'
+  description?: string
+}
+
+export function validateChallengeBrief(raw: Record<string, unknown>): ChallengeBrief {
+  return {
+    title: raw.title as string,
+    layout: raw.layout as 'challenge',
+    description: raw.description as string | undefined,
+  }
+}
+
 // The challenge declaration (seam 0010-S31; D73-D75). `title` is not required: it is the brief's
 // key (D75), not the declaration's.
 const DECLARATION_REQUIRED: string[] = ['backend', 'app']
@@ -149,6 +170,19 @@ export function validateChallengeDeclaration(raw: unknown): Omit<ChallengeConfig
 
   if (!VALID_BACKENDS.includes(obj.backend as BackendType)) {
     throw new Error(`backend must be one of ${VALID_BACKENDS.join(', ')}, got: ${obj.backend}`)
+  }
+
+  if (typeof obj.app !== 'string') {
+    throw new Error(`app must be a string, got ${typeof obj.app}`)
+  }
+
+  // Y14/VM5: title, description and layout are brief frontmatter keys (D74), not declaration
+  // keys. Listed in file order (the order Object.keys gives for string keys, D129).
+  const briefKeysPresent = Object.keys(obj).filter((key) => BRIEF_ONLY_KEYS.includes(key as typeof BRIEF_ONLY_KEYS[number]))
+  if (briefKeysPresent.length > 0) {
+    throw new Error(
+      `challenge.yaml carries brief key(s) ${briefKeysPresent.join(', ')}; title, description and layout belong in each brief's frontmatter`,
+    )
   }
 
   if (obj.flag !== undefined && typeof obj.flag !== 'string') {

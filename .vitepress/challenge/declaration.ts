@@ -6,16 +6,17 @@
 // `create-wxl/src/layout-move.mjs`), so an explicit YAML 1.1 tag (`!!timestamp`, `!!binary`,
 // `!!merge`, `!!set`) never resolves to a `Date`, `Buffer`, merge or `Set`/`Map` here either; it
 // resolves to the plain scalar/mapping the core schema would otherwise give it, and a `!!merge`
-// key is kept unmerged, same as `merge: false` already does for an untagged `<<` key. This alone
-// does not make the parse fail for these four shapes, because nothing here reads `doc.warnings`
-// yet: the `doc.errors`/`doc.warnings` check that D129 requires for an `invalid-yaml` result, the
-// `ok: false` shape and the `path` field are T-0077's (Y2-Y6, note 4); until then this function
-// assumes a well-formed declaration and throws on a read or parse failure instead of returning
-// `ok: false`.
+// key is kept unmerged, same as `merge: false` already does for an untagged `<<` key.
+// T-0077 (Y2-Y6, Y112): a read or parse failure returns `{ ok: false, reason, path }` instead of
+// throwing. `reason` is `'absent'` (ENOENT), `'multi-document'` (more than one YAML document),
+// `'not-a-mapping'` (an empty/comments-only file, or a root that is a sequence, scalar or `null`)
+// or `'invalid-yaml'` (any `doc.errors`/`doc.warnings` entry — a duplicate key, a syntax error, an
+// unresolved or YAML 1.1 tag, D129/D146 — a non-scalar mapping key (D145), or a `toJS` exception:
+// an alias expansion over `maxAliasCount` or an alias whose anchor is not set, D129).
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseDocument, visit, isScalar, type Pair } from 'yaml'
+import { parseDocument, parseAllDocuments, visit, isScalar, type Pair } from 'yaml'
 
 // D145: a mapping key that is not a scalar (a flow or block collection, or an alias) fails the
 // parse before `toJS` is called, because `toJS` would otherwise stringify it and have `yaml` write
@@ -33,13 +34,41 @@ function hasNonScalarKey(doc: ReturnType<typeof parseDocument>): boolean {
   return found
 }
 
-export function readChallengeDeclaration(root: string, slug: string): { ok: true; value: Record<string, unknown> } {
+export type DeclarationReason = 'absent' | 'not-a-mapping' | 'invalid-yaml' | 'multi-document'
+
+export type DeclarationResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; reason: DeclarationReason; path: string }
+
+export function readChallengeDeclaration(root: string, slug: string): DeclarationResult {
   const path = join(root, 'platform', 'challenge', slug, 'challenge.yaml')
-  const src = readFileSync(path, 'utf8')
-  const doc = parseDocument(src, { schema: 'core', merge: false, uniqueKeys: true, resolveKnownTags: false })
-  if (hasNonScalarKey(doc)) {
-    throw new Error(`challenge.yaml for ${slug} has a mapping key that is not a scalar (D145)`)
+  let src: string
+  try {
+    src = readFileSync(path, 'utf8')
+  } catch {
+    return { ok: false, reason: 'absent', path }
   }
-  const value = doc.toJS({ maxAliasCount: 100 }) as Record<string, unknown>
-  return { ok: true, value }
+  const docs = parseAllDocuments(src, { schema: 'core', merge: false, uniqueKeys: true, resolveKnownTags: false })
+  if (docs.length > 1) {
+    return { ok: false, reason: 'multi-document', path }
+  }
+  const doc = parseDocument(src, { schema: 'core', merge: false, uniqueKeys: true, resolveKnownTags: false })
+  if (doc.errors.length > 0 || doc.warnings.length > 0) {
+    return { ok: false, reason: 'invalid-yaml', path }
+  }
+  if (hasNonScalarKey(doc)) {
+    return { ok: false, reason: 'invalid-yaml', path }
+  }
+  let value: unknown
+  try {
+    value = doc.toJS({ maxAliasCount: 100 })
+  } catch {
+    // D129: an alias expansion over maxAliasCount, or an alias whose anchor is not set before it,
+    // is a `ReferenceError` from `toJS` itself, not a `doc.errors`/`doc.warnings` entry.
+    return { ok: false, reason: 'invalid-yaml', path }
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ok: false, reason: 'not-a-mapping', path }
+  }
+  return { ok: true, value: value as Record<string, unknown> }
 }

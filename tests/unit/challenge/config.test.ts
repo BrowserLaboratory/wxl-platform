@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   validateChallengeConfig,
   validateChallengeDeclaration,
+  validateChallengeBrief,
   LEGACY_FIELDS,
   VALID_TOOLS,
 } from '../../../.vitepress/challenge/config'
@@ -279,6 +280,104 @@ describe('VALID_TOOLS constant', () => {
     expect(VALID_TOOLS).not.toContain('terminal')
   })
 
+})
+
+describe('validateChallengeDeclaration (Y9): backend is required', () => {
+  it('throws when backend is absent', () => {
+    expect(() => validateChallengeDeclaration({ app: 'app.py' })).toThrow(
+      /^missing required field: backend$/,
+    )
+  })
+
+  it('throws when backend is null', () => {
+    expect(() => validateChallengeDeclaration({ backend: null, app: 'app.py' })).toThrow(
+      /^missing required field: backend$/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y12): app must be a string', () => {
+  it.each([
+    ['number', 3, 'number'],
+    ['boolean', true, 'boolean'],
+    ['object', [], 'object'],
+  ])('throws VM12 for app: %s', (_label, app, typeofLabel) => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app })).toThrow(
+      new RegExp(`^app must be a string, got ${typeofLabel}$`),
+    )
+  })
+
+  it('does not crash the backend check first', () => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app: 3 })).not.toThrow(
+      /backend must be one of/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y14): title, description and layout are brief keys', () => {
+  it('throws VM5 naming title alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', title: 'x' }),
+    ).toThrow(
+      /^challenge\.yaml carries brief key\(s\) title; title, description and layout belong in each brief's frontmatter$/,
+    )
+  })
+
+  it('throws VM5 naming description alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', description: 'x' }),
+    ).toThrow(/^challenge\.yaml carries brief key\(s\) description;/)
+  })
+
+  it('throws VM5 naming layout alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', layout: 'challenge' }),
+    ).toThrow(/^challenge\.yaml carries brief key\(s\) layout;/)
+  })
+
+  it('throws VM5 listing all three in file order', () => {
+    const obj: Record<string, unknown> = {}
+    obj.backend = 'flask'
+    obj.app = 'app.py'
+    obj.layout = 'challenge'
+    obj.title = 'x'
+    obj.description = 'y'
+    expect(() => validateChallengeDeclaration(obj)).toThrow(
+      /^challenge\.yaml carries brief key\(s\) layout, title, description;/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y19): unknown keys pass through', () => {
+  it.each([
+    ['id', 7],
+    ['commands', []],
+    ['author', 'x'],
+  ])('does not throw for an unknown key %s', (key, value) => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', [key]: value }),
+    ).not.toThrow()
+  })
+})
+
+describe('validateChallengeDeclaration (Y21): every optional key absent gives defaults', () => {
+  it('returns the documented defaults', () => {
+    const result = validateChallengeDeclaration({ backend: 'flask', app: 'app.py' })
+    expect(result.source_visible).toBe(false)
+    expect(result.source_files).toEqual([])
+    expect(result.packages).toEqual([])
+    expect(result.tools).toBeUndefined()
+    expect(result.flag).toBeUndefined()
+  })
+})
+
+describe('validateChallengeBrief (Y23): title and layout only', () => {
+  it('returns description: undefined', () => {
+    const result = validateChallengeBrief({ title: 'x', layout: 'challenge' })
+    expect(result.description).toBeUndefined()
+    expect(result.title).toBe('x')
+    expect(result.layout).toBe('challenge')
+  })
 })
 
 describe('validateChallengeDeclaration (Y10): app is required', () => {

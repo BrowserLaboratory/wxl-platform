@@ -63,3 +63,20 @@ export function hasRootRangeJson(root: string): boolean {
 export function realUpstreamDecision(root: string): boolean {
   return isUpstreamDecision(process.env.GITHUB_REPOSITORY, readManifest(root), isGitWorkTree(root), hasRootRangeJson(root))
 }
+
+/** D124/B93/U139. The one declaration point for every D124 row: takes the upstream decision's own
+ *  inputs and returns `undefined` on upstream, or the skip reason otherwise, for `it.skipIf` /
+ *  `describe.skipIf` (vitest) or `test.skip(condition, reason)` (Playwright). `hasRangeJson` names
+ *  the tree a range (0005-create-wxl's override of 0004 T66); anything else that is not upstream is
+ *  a fork. */
+export function upstreamOnlySkipReason(
+  githubRepository: string | undefined,
+  manifest: unknown,
+  isWorkTree: boolean,
+  hasRangeJson: boolean,
+): string | undefined {
+  if (isUpstreamDecision(githubRepository, manifest, isWorkTree, hasRangeJson)) return undefined
+  return hasRangeJson
+    ? 'not upstream: this tree has its own range.json (a range)'
+    : 'not upstream: this tree is not the upstream repository (a fork)'
+}
