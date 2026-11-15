@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref, reactive, h, defineComponent } from 'vue'
+import { existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 /**
  * The REAL theme entry, not a copy of its wiring.
@@ -528,5 +531,31 @@ describe('the real Layout: the deferred redirect does not outlive the layout', (
     gateDecision.value = 'kept'
     await new Promise(r => setTimeout(r, 0))
     expect(mockGo).not.toHaveBeenCalled()
+  })
+})
+
+describe('the real theme: Layout.vue is gone (B80)', () => {
+  it('the dead-code file does not exist, and nothing in code references it', () => {
+    const repoRoot = resolve(__dirname, '../../..')
+    expect(existsSync(resolve(repoRoot, '.vitepress/theme/Layout.vue'))).toBe(false)
+
+    // Built without the literal, so this line itself is not a hit.
+    const needle = 'theme/' + 'Layout'
+    let output = ''
+    try {
+      output = execFileSync(
+        'git',
+        [
+          'grep', '-n', needle, '--',
+          '.vitepress', 'tests', 'scripts', 'create-wxl', '.github',
+          ':!tests/unit/i18n/theme-locale-wiring.test.ts',
+        ],
+        { cwd: repoRoot, encoding: 'utf8' },
+      )
+    } catch (err: unknown) {
+      // `git grep` exits 1 when it finds nothing — the passing case.
+      if ((err as { status?: number }).status !== 1) throw err
+    }
+    expect(output.split('\n').filter(Boolean)).toEqual([])
   })
 })

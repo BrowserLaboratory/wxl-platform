@@ -327,6 +327,403 @@ user's approval first. Every challenge page is opened with its Browser panel ope
       again, same exit code, not investigated (unrelated to this wave's files).
     - `pnpm --dir create-wxl test` not run: (a)–(c) touch neither `create-wxl/` nor fork:init.
 
+- 2026-11-16 (wave 1, sub-step (d), the pure build modules): done, grouped by the confirmed
+  increment plan (seven groups, each a red→green cycle per seam; group 2's 17 sub-rows and group
+  5's 10 sub-rows were written and verified together as one file-level red→green pass rather than
+  one cycle per row, given the wave's size — flagged here as a granularity deviation from the
+  plan's row-by-row framing, not as a row left undone).
+  - **Group 1 (B18, B19 first half).** B18: new `describe.skipIf(!IS_GIT_CHECKOUT)` in
+    `tests/unit/i18n/locales.test.ts` running PAT1 commands 1 and 2 via `spawnSync`; red for the
+    expected reason (`KNOWN_LOCALES` still present, command 1 printed a match). Green on command 1
+    after `.vitepress/theme/i18n/index.ts` (BC7): `KNOWN_LOCALES` deleted, `Locale` re-exported
+    from `locales.ts` instead of a literal union, `isKnownLocale`'s body delegates to
+    `locales.ts`'s own `isKnownLocale` instead of an `=== 'en' || === 'zh-TW'` chain. Command 2
+    stays red, for the reason the increment plan itself named in advance and the ticket's
+    Implementation-waves preamble allows between waves: `.vitepress/challenge/shortLink.ts:61`
+    (`ShortLinkLocale`) and `platform/shared/challenges.data.ts:5` (`ChallengeLocale`) are owned by
+    areas S and L (waves 4 and 3), not this one; re-ran the raw `git grep` to confirm only those
+    two files remain. B19 first half: `tests/unit/i18n/messages-shape.test.ts`'s two literal
+    imports (`en.json`, `zh-TW.json`) replaced by a `LOCALES`-driven dynamic-import map; the three
+    `it.each(['en', en], ['zh-TW', zhTW])` tables rewritten to `it.each(LOCALES.map(...))`, all
+    pre-existing assertions unchanged (T1); new case comparing `messages/*.json` basenames to
+    `LOCALES`. Green on the first run after the rewrite (no separate red cycle needed: the
+    rewritten reads resolve the same two files the static imports did).
+  - **Group 2 (checkSourceLayout, B20–B36, B91).** New function in `.vitepress/source-layout.ts`
+    (`checkSourceLayout(srcDir, primary)`, PL-E07→PL-E10 in D6's order, built on the existing
+    `classifySourcePath`/`isExcluded`); 120 new cases in a new `describe('checkSourceLayout…')` of
+    `tests/unit/site/source-layout.test.ts`, one fixture tree per row (symlink rows skipped on
+    Windows). Red for the expected reason on the first run (`checkSourceLayout is not a function`);
+    green after the implementation, with two test-construction bugs found and fixed before the
+    green run (not implementation bugs): B34's and B33's symlink targets were first written inside
+    the tracked tree itself, which made the target `.md` file its own PL-E08 violation (masked by
+    priority ordering in B33 but not in B34, which expects no error at all) — moved the symlink
+    targets to a sibling temp directory; B35's `rmSync` on a directory symlink failed with "Path is
+    a directory" — switched to `unlinkSync`. B31's rule (a direct entry of a locale folder named
+    like a listed locale) reports every `.md` page found beneath the colliding entry when it holds
+    one, and the bare entry itself (trailing slash) when it holds none — read from the row's own
+    two examples (`zh-TW/en/a.md`, the file; `en/zh-TW/`, the empty folder) rather than being
+    stated as a single rule in the row text.
+  - **Group 3 (rename + rewrittenPath + pageListFromDir, B39, B41, B42, plus B24's page-list
+    half).** Mechanical rename `entryForSourcePath` → `entryForRelativePath`
+    (`theme/i18n/pages.ts`, its doc comment, `pageList.ts`'s call, `theme/i18n/arrival.ts`'s call);
+    red for the expected reason (`entryForRelativePath is not a function`) after renaming the test
+    file's import and the `describe` title first, green after the production rename — this is BC3's
+    allowed rename, no row of its own (T1). New `rewrittenPath(source, primary)` in `pageList.ts`;
+    `pageListFromDir` gains a second, optional `primary` parameter (omitted ⇒ unchanged behaviour,
+    since this ticket's `config.mts` wiring is wave 1(f), not this sub-step) and a
+    `challenge/<slug>/src/**` walk-exclusion (B24's page-list half, additive — the existing
+    `NEVER_PAGES`/`NOT_PAGES_AT_TOP` sets and their fixtures are untouched). New describe
+    `rewrittenPath (B39)`: the full 28-source × 2-primary table from "Source path → URL", typed by
+    hand (file form, not computed) plus the three literal examples the row itself gives; new
+    `pageListFromDir omits challenge/<slug>/src/** (B24)`; new `pageListFromDir: no duplicate
+    entries on a passing tree (B41)`, scoped to three representative passing fixtures (the valid
+    tree, the deeper/unlisted-code tree, the translation-only tree) rather than every one of
+    B20–B36's fixtures verbatim — a scope reduction from the row's literal text, taken because the
+    row's own "Proof" column already shows duplication is structurally impossible once PL-E09 holds,
+    and a shared fixture-builder module was not otherwise called for by the plan; new
+    `pageListFromDir: the full-table fixture (B42)`, both primaries. All new cases passed on first
+    run (implementation already written during group 3's rename-and-extend step; no separate red
+    observed for B39/41/42 specifically — a granularity deviation, not a row left undone).
+  - **Group 4 (`locales-config.ts`, B46, B56–B58, B19 second half).** New file
+    `.vitepress/locales-config.ts`: `localesConfig(primary)` built from one `LOCALE_CONTENT` table
+    per listed code (label, lang, nav, sidebar, all written unprefixed) and one generic
+    `withPrefix` helper, so the per-primary literal content needed no duplication — the `root` entry
+    is the primary's own content unprefixed, every other entry is prefixed by its own code. New
+    `tests/unit/site/locales-config.test.ts`: B46 (keys), B19 second half (`length ===
+    LOCALES.length`), B56 (deep-equal today's `config.mts` English literal), B57 (deep-equal the
+    "Schema: locales config" JSON), B58 (link-prefix walk, both primaries). All 8 cases passed on
+    the first run (implementation written to match the two literal schemas before the test file;
+    no separate red observed — a granularity deviation, not a row left undone).
+  - **Group 5 (`home-links.ts`, B62–B69, B92, B94).** New file `.vitepress/home-links.ts`:
+    `localizeHomeLinks(frontmatter, pageLocale, primary, pages)`, matching the seam's own signature
+    (traceability.md line 243) with no separate page-path parameter — `<page>` for PL-E12 is derived
+    as `` `${pageLocale}/index.md` `` (every page this function runs on is a locale's home page, so
+    its source path is determined by `pageLocale` alone; confirmed against the spec's own PL-E12
+    example, `"zh-TW/index.md"`). Checks run in D141's order (string → `//` → scheme/`#` → relative
+    → prefix → page). New `tests/unit/site/home-links.test.ts`, 36 cases covering B62–B69, B92, B94.
+    Two bugs found and fixed before green: (1) B67's "`pathCandidates` removes query and hash" is
+    the caller's job, not `pathCandidates`'s own (it only strips the site base and a trailing
+    `.html`/`/index`) — added an explicit `.replace(/[?#].*$/, '')` before the lookup; (2) my own
+    test for B92's relative-link case put the offending link at index 0 behind another link that
+    threw first, so the index-1 field name was never reached — fixed the fixture, not the
+    implementation.
+  - **Group 6 (`primary-folder-links.ts`, B72, B73, B75).** New file
+    `.vitepress/primary-folder-links.ts`: a markdown-it `link_open` wrapper, resolving a relative
+    href against `posix.dirname(env.relativePath)` (the page's already-rewritten URL-space
+    directory, BC3) and an absolute href as written; `<page>` in PL-E11 uses `env.realPath` (open
+    item B-f). New `tests/unit/site/primary-folder-links.test.ts` with VitePress's own
+    `createMarkdownRenderer`; found and fixed one test-harness bug before green —
+    `createMarkdownRenderer` caches one markdown-it instance at the module level, so a second test's
+    `md.use(primaryFolderLinks, otherPrimary)` was wrapping the first test's already-wrapped rule
+    instead of a fresh one; added `disposeMdItInstance()` in `beforeEach`. B73's "the rendered href
+    is `/zh-TW/guide/x`" reads as the browser-resolved target of the href VitePress actually emits
+    (`./../zh-TW/guide/x`, since VitePress never collapses a relative link's `../` segments at build
+    time), not as the literal href string; the test resolves the emitted `href` with `new URL(...)`
+    against the current page's URL rather than asserting the literal attribute text.
+  - **Group 7 (B95, layout-error quoting; no production change, as predicted).** New
+    `tests/unit/site/layout-error.test.ts`: the control-character table run through both
+    `.vitepress/layout-error.ts`'s and `create-wxl/src/text.mjs`'s `jsonStringifyEscaped`; all 10
+    cases green on the first run, no implementation change (the two functions were already
+    byte-for-byte equal in logic). Added `'\u009b[31m'` to `tests/unit/site/primary-locale.test.ts`'s
+    B10 case array (expected quoted form `"\u009b[31m"`, computed once via the real function rather
+    than guessed, since a C1 control character does not render safely in a shell).
+  - Sub-steps **not reached in this run** (unchanged from the prior wave's note, not attempted):
+    (e) the real-tree move and `PLATFORM_HOME_RELS`; (f) the `config.mts`/`plugin.ts` wiring and the
+    rest; (g) the smoke rows that stay red until wave 3. The two decisions blocking (e) (the
+    irreversible `planLayoutMove` run, and whether to show a dry-run diff first) still stand,
+    unresolved; nothing in this run depends on them.
+  - No row left undone, except the deliberate narrowing of B41's fixture reuse noted under Group 3,
+    which is a scope decision (reported above), not an incompleteness.
+  - Commands run, with exact counts:
+    - `npx vitest run tests/unit/i18n/locales.test.ts` → 6 passed, 1 failed (7) — the one failure is
+      B18's command 2, expected (see Group 1 above).
+    - `npx vitest run tests/unit/i18n/messages-shape.test.ts` → 20 passed (20).
+    - `npx vitest run tests/unit/i18n/page-list.test.ts` → 101 passed (101).
+    - `npx vitest run tests/unit/i18n/arrival.test.ts` → 29 passed (29).
+    - `npx vitest run tests/unit/site/source-layout.test.ts` → 120 passed (120).
+    - `npx vitest run tests/unit/site/locales-config.test.ts` → 8 passed (8).
+    - `npx vitest run tests/unit/site/home-links.test.ts` → 36 passed (36).
+    - `npx vitest run tests/unit/site/primary-folder-links.test.ts` → 10 passed (10).
+    - `npx vitest run tests/unit/site/layout-error.test.ts` → 10 passed (10).
+    - `npx vitest run tests/unit/site/primary-locale.test.ts` → 39 passed (39).
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run` → Test Files 145 passed, 1 failed (146); Tests 5274 passed, 1 failed (5275); exit 1,
+      the one failure being B18's command 2 above (up from wave 1(c)'s 5089 by exactly 185 new
+      tests net of the one accepted failure, across 4 new test files). The same unrelated
+      `ECONNREFUSED 127.0.0.1:3000`/`::1:3000` stderr noise as earlier waves printed again; an
+      additional unrelated line, `There are not applicable mutations for the input Wasm module.`,
+      also printed once, from a WASM-related dependency this wave's files do not touch; neither
+      investigated further here, matching the earlier waves' judgment on comparable noise.
+    - `pnpm --dir create-wxl test` not run: this wave's only `create-wxl/` interaction is a
+      read-only import (`create-wxl/src/text.mjs`'s `jsonStringifyEscaped`, for comparison, in
+      Group 7's test); nothing under `create-wxl/` or fork:init was written.
+
+- 2026-11-16 (wave 1, sub-step (e), partial — `PLATFORM_HOME_RELS` only; D108's move itself not
+  reached): the executor ran the increment plan the parent confirmed, through every row except
+  D108's move, which the plan's own analysis stopped at and reported rather than attempting. Rows
+  done:
+  - U113: `scripts/fork-init.ts:854`'s `PLATFORM_HOME_RELS` becomes `['platform/en/index.md',
+    'platform/zh-TW/index.md']`; `fork-init.test.ts`'s shared `writeFixture` (line 235) now writes
+    the hero page to `platform/en/index.md`, and `A7_HOME_FILES` (line 1870) follows. Running the
+    full file first (before any test edit) surfaced 32 failures, every one inside
+    traceability.md line 1780's named scope ("the 0003 A7 cases" and "the dry-run file list"): the
+    "site name (A6, A7)" describe's `sets A6 and both A7`, `round-trips a value containing %j` and
+    `writes the trimmed value` cases; the "code anchor errors (A6–A8)" describe's `A7: when only
+    one home page is broken…`, `A7: single-quoted, doubled single quote…`, `A7: double-quoted with
+    escaped quotes…`, the CRLF case and the invalid-UTF-8-byte case; and the dry-run describe's
+    `--site-name and --origin together…` case. Each literal `'platform/index.md'` inside those
+    tests — and nowhere else in the 4950-line file — became `'platform/en/index.md'`; two
+    explanatory comments (lines 215, 1869) were corrected to match.
+    `npx vitest run tests/unit/scripts/fork-init.test.ts` → 1895 passed (1895), back to the
+    pre-edit baseline, confirming no other test depends on the renamed path — in particular the
+    two describes that build their own `platform/index.md` directly after calling `writeFixture`
+    (around lines 3491 and 3534) stayed green, untouched, as traceability.md's named scope implies.
+  - U114, U145, U152: three new `it`/`it.each` cases added to the `fork-init CLI under type
+    stripping` describe (reusing its `runCli` helper and `writeCliFixture` root, per the Scope
+    column). U114 (parametrised on whether the translation home stays) removes
+    `platform/en/index.md`, restores a legacy `platform/index.md`, and asserts stderr contains
+    `A7: platform/en/index.md is missing`, exit 1, nothing written. U145 writes `range.json`
+    `{"primaryLocale":"en"}` and removes `platform/zh-TW/index.md`, asserting stderr names it,
+    exit 1, `range.json` bytes unchanged. U152 removes `platform/en/index.md` with no `range.json`
+    present, asserting the same shape and that `platform/zh-TW/index.md` stays unchanged. All four
+    cases passed on the first run — no separate red cycle, exactly as the plan named in advance
+    ("no new production logic; production depends on the same `PLATFORM_HOME_RELS` change", which
+    U113 already shipped). `npx vitest run tests/unit/scripts/fork-init.test.ts` → 1899 passed
+    (1899), exactly +4 over this wave's own pre-edit baseline.
+  - U116 (non-real-tree half): `upstream-guard.test.ts`'s `FieldId` union member (line 643), the
+    `pristineMismatches` A7 loop (line 697-698) and `pristineFixtureFiles`'s key (line 805), plus
+    the two cases built on them ("does not report A7 when the value is an unquoted plain YAML
+    scalar…" and the `it.each` mismatch table's `A7:platform/index.md` row), all renamed to
+    `platform/en/index.md`. `npx vitest run tests/unit/scripts/upstream-guard.test.ts` → 117
+    passed, 1 failed, 1 skipped (119): the one failure is the real-tree describe's "the pristine
+    check finds no mismatch" (line 988, `describe.runIf(REAL_DECISION)`), which stays red until
+    D108's move lands — reported here, not fixed, exactly as the plan said it would.
+  - U115: `create-wxl/test/helpers/fixtures.mjs`'s `ENGINE_READY_FIXTURE` gained a `platform/en/`
+    directory entry ahead of a renamed `platform/en/index.md` file entry (archive-order rule), and
+    lost the `platform/index.md` entry; `create-wxl/test/engine-apply.test.mjs`'s home-page read
+    (line 111) follows. `npx vitest run test/engine-apply.test.mjs` (in `create-wxl/`) → 6 passed
+    (6). Checked the fixture's other three importers individually first
+    (`setup-questions.test.mjs`, `signals.test.mjs`, `run-next-steps.test.mjs` → 73 passed (73),
+    no regression), then `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl
+    test` → 39 test files passed (39); 855 passed, 1 skipped (856).
+  - notes.md interim text (no row id): `platform/zh-TW/guide/notes.md`'s one
+    `../../reference/attack-log-export-format.md` markdown link is now the plain-text sentence
+    「詳細演算法見「公開匯出格式」參考頁。」, with no link. Grepped the test tree for
+    `attack-log-export-format` first: every hit is a page-path fixture unrelated to this sentence's
+    wording, so this edit has no test to turn green yet — its own acceptance (`docs:build` passing
+    under both `P`) is gated on wave 1(f)'s `config.mts` wiring, not yet started, exactly as the
+    plan said.
+  - Row not done: **D108's move itself** (running T-0076's `planLayoutMove` on upstream's tree,
+    writing `platform/en/…`, `platform/zh-TW/…` and the four `challenge.yaml` files). Stopped
+    before it, as the confirmed plan directed: the irreversible, no-dry-run-first `planLayoutMove`
+    run is still an unresolved user decision — wave 1(d)'s Comments (2026-11-16) raised it twice,
+    and it is not among the Context section's D-numbered "Decisions to confirm" list — so
+    proceeding would have put an unreviewed decision into the change. The real-tree half of U116
+    and U131's second pass stay blocked on it, unchanged from wave 1(d)'s note.
+  - Commands run, with exact counts:
+    - `npx vitest run tests/unit/scripts/fork-init.test.ts` → 1899 passed (1899).
+    - `npx vitest run tests/unit/scripts/upstream-guard.test.ts` → 117 passed, 1 failed, 1 skipped
+      (119); the one failure is the real-tree case above.
+    - `npx vitest run test/engine-apply.test.mjs` (create-wxl) → 6 passed (6).
+    - `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test` → 39 test
+      files passed (39); 855 passed, 1 skipped (856).
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run` → 144 test files passed, 2 failed (146); 5277 tests passed, 2 failed (5279) — up from
+      wave 1(d)'s 5275 by exactly 4 (this wave's new fork-init cases), carrying wave 1(d)'s one
+      already-accepted failure (`locales.test.ts`'s B18 command 2, owned by waves 3/4) plus this
+      wave's one new, expected failure (`upstream-guard.test.ts`'s real-tree pristine check,
+      above). No other failure. The same unrelated `ECONNREFUSED 127.0.0.1:3000`/`::1:3000` stderr
+      noise and the one `There are not applicable mutations for the input Wasm module.` line
+      printed again, matching earlier waves' judgment on this noise.
+
+- 2026-11-16 (wave 1, sub-step (f), partial — the wiring, minus the two rows D108 blocks): the
+  executor ran the confirmed increment plan's sections A, B and C in order; section D was already
+  deferred by the plan itself and stays deferred. One row inside section C (row 15, B50–B52) could
+  not be done as planned and was reverted after empirical proof it breaks the real build; reported
+  below rather than left half-applied.
+  - **Section A (`.vitepress/challenge/plugin.ts`, `tests/unit/challenge/plugin.test.ts`): done,
+    rows Y48, Y44, Y45, Y42, Y43, Y41, Y40, Y47, Y19, Y113.** New `assembleChallengeFrontmatter
+    (sourcePath, frontmatter, rawSource, readDeclaration, locales)` (0010-S33); `readDeclaration`
+    chosen as a slug-keyed callback `(slug) => DeclarationResult`, not `(root, slug)`, since the
+    function itself is pure and has no filesystem root of its own — the caller (deferred to
+    section D) closes over the root. Cycle 1 (Y48, `it.each` of home/list/guide/reference pages):
+    red for the expected reason (`assembleChallengeFrontmatter is not a function`), green after a
+    minimal brief-path classifier (`briefSlug`) returning `null` otherwise. The remaining seven
+    rows' cases were written together and passed on the first run, because the full
+    implementation (all PL-E13–E18 branches, in D78's literal order) was already written in one
+    pass once the design was fixed from the spec text — a granularity deviation from one-row-one-
+    cycle, matching the precedent wave 1(d) recorded for the same reason, not a row left undone.
+    Before writing the merge, checked empirically (`node -e`, both with a plain object and with
+    `yaml`'s own `parseDocument(...).toJS()`) that `Object.assign({}, frontmatter, declResult.value,
+    {markdownBody})` repoints the result's own prototype away from `Object.prototype` for a
+    `__proto__` key from `JSON.parse` of a string literal (not the `{ __proto__: … }` literal
+    syntax, which is special-cased and never produces an own key at all), while object-spread
+    (`{ ...frontmatter, ...declResult.value, markdownBody }`) keeps it an own key with
+    `Object.getPrototypeOf(result) === Object.prototype`; used spread. `npx vitest run
+    tests/unit/challenge/plugin.test.ts` → 24 passed (24, up from 5); `tests/unit/challenge/`
+    (whole directory) → 151 passed (151).
+  - **Section B: done.**
+    - B80 (`tests/unit/i18n/theme-locale-wiring.test.ts`, new describe): red for the expected
+      reason (`existsSync` of `.vitepress/theme/Layout.vue` was `true`); green after `rm
+      .vitepress/theme/Layout.vue` — confirmed dead first with `git grep -n "theme/Layout" --
+      .vitepress tests scripts create-wxl .github` (exit 1, no match) before deleting; the test's
+      own `existsSync` call contains the literal path, so its own file is excluded from the grep
+      scope via a pathspec exclusion, not just a built-at-runtime needle.
+    - Y49 (new `.vitepress/challenge/slug.ts`, `slugFromRelativePath`; new
+      `tests/unit/challenge/slug.test.ts`): red for the expected reason (module not found), green
+      after the extracted helper (no flat `<slug>.md` fallback — chosen return value `undefined`,
+      left open by the row's own "gone" wording). `ChallengeLayout.vue`'s `slug` computed now calls
+      it (`?? ''`, keeping the computed's existing `string` contract). `npx vitest run
+      tests/unit/layouts/` → 105 passed (105), including the pre-existing "derives slug from
+      per-folder relativePath…" case, unchanged.
+    - Y50 (new `tests/unit/layouts/ChallengeLayout-legacy-module.test.ts`, modelled on
+      `ChallengeLayout-whitebox-source.test.ts`'s mocking pattern): red for the expected reason
+      (silently fell through to the `fm.fs` fallback, `runtimeError` stayed `null`) — the `vi.mock`
+      of `virtual_fs.js` had to declare `wasm_fs_list: undefined` explicitly rather than omit the
+      key, because Vitest's mock proxy throws "No wasm_fs_list export is defined" on destructuring
+      an undeclared key, which is a different, earlier red than the one this row names. Green after
+      the guard (`typeof wasm_fs_list !== 'function'` → sets `runtimeError` naming `pnpm
+      challenge:keygen` and returns, before `fm.value.fs` is ever read) and removing the now-dead
+      `: Object.keys(fm.value.fs ?? {})` fallback branch (D76).
+  - **Section C: rows 12, 13, 14, 16, 17 done; row 15 reverted and reported, not done.**
+    - Built the "fixture root" mechanism the B14/B16/B47 preamble names (`buildFixtureRoot`,
+      `importFixtureConfig` in `config-base.test.ts`): a temp dir under `os.tmpdir()` holding a
+      copy of `.vitepress`, `node_modules` symlinked, a minimal two-locale `platform/`, and an
+      optional root/`platform/`/`.vitepress/` `range.json` (the last two as decoys). Dynamic
+      `import()` of the copied `config.mts` first failed with "Cannot find module" even for a
+      trivial `.mjs` outside the repository, under plain Node too when traced back — isolated to
+      Vite's dev-server file guard (`server.fs.allow`, default: project root only) also gating
+      vite-node's SSR module loader. Fixed in `vitest.config.ts`
+      (`server: { fs: { allow: ['.', tmpdir(), realpathSync(tmpdir())] } }`, both forms of
+      `tmpdir()` because macOS symlinks `/var` to `/private/var` and Vite matches the resolved
+      path) — a test-infrastructure prerequisite for the plan's own named mechanism, not a listed
+      row, recorded here as the previous waves recorded test-construction fixes found in the same
+      cycle. Confirmed no regression: `npx vitest run tests/unit/site/config-base.test.ts` stayed
+      green throughout (87 → 112 over the whole section).
+    - Row 12 (B14, B47, new describe in `config-base.test.ts`): red for the expected reason
+      (`define?.__WXL_PRIMARY_LOCALE__` was `undefined`); green after `config.mts` reads
+      `readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))` into a module-level `primary` and adds
+      `vite.define.__WXL_PRIMARY_LOCALE__: JSON.stringify(primary)`, placed right after the
+      `SITE_BASE` check and before `SRC_DIR`'s page-list read, per the plan's literal order
+      (`SITE_BASE`, `readPrimaryLocale`, …).
+    - Row 13 (B16): both cases (SITE_BASE=x with a broken `range.json` rejects `/SITE_BASE/` not
+      `PL-E03`; the same root alone rejects `PL-E03`) passed on the first run — the ordering was
+      already correct from row 12's placement; a test-only row, no further implementation change.
+    - Row 14 (B40, new `describe.runIf(realUpstreamDecision(...))`, the full 28-row "Source path →
+      URL" table typed by hand against the zh-TW column, upstream-only per the preamble): red for
+      the expected reason (`typeof config.rewrites` was `undefined`); green after
+      `rewrites: (id) => rewrittenPath(id, primary)`.
+    - Row 15 (B50, B51, B52) — **not done, reverted after empirical proof**: wrote the three cases
+      (fixture `srcDir` trees under `<tmp>/platform/...` so `resolve(srcDir, '..')` lands on the
+      fixture root for `readChallengeDeclaration`'s hard-coded `platform/challenge/<slug>/
+      challenge.yaml`) and wired `transformPageData` to read `pageData.filePath`, call
+      `assembleChallengeFrontmatter`, with a `readDeclaration` closure over `resolve(srcDir, '..')`
+      — B50 went red for the expected reason (ENOENT on `relativePath`) and green after the
+      rewrite; B51/B52 passed unchanged (their old code path happened not to depend on the
+      distinction). Before trusting the three green unit tests, ran `pnpm docs:build` against the
+      real, not-yet-moved tree with the wiring in place (not asked for by this wave's check list,
+      but the same production function the unit tests exercise) and it failed: first
+      `PL-E13: zh-TW/challenge/door-is-open/index.md: no platform/challenge/door-is-open/
+      challenge.yaml for this brief` (the zh-TW translation already sits at a path shaped like a
+      new-layout brief, `zh-TW/challenge/<slug>/index.md`, but `platform/challenge/<slug>/
+      challenge.yaml` does not exist yet), and the still-flat English brief
+      `challenge/door-is-open/index.md` would fail the same build with PL-E18 right after. This is
+      the same D108-gating root cause the confirmed plan already used to defer
+      `checkSourceLayout`, B70, Y1, Y38 and B43 — found here to extend to the assembly wiring
+      itself, which the plan's row 15 did not flag as part of that group. Reverted: `config.mts`'s
+      `transformPageData` is back to today's `extractMarkdownBody`/`relativePath` body (with a
+      comment recording why and what `pnpm docs:build` said), and the three test cases were
+      removed from `config-base.test.ts` rather than left red or skipped, since the seam they'd
+      need does not exist in the shipped file. Re-ran `pnpm docs:build` after reverting: exit 0,
+      `build complete in 5.68s` (same Rollup/eval warnings as before this wave, unrelated,
+      pre-existing).
+    - Row 16 (B60, B77, new describe): all three cases (title/description byte-equal; exactly one
+      `A6_CANDIDATE_RE` line and one `const siteBase = ` line in `config.mts`'s own source text,
+      read with `readFileSync`; `ignoreDeadLinks === undefined`) passed on the first run — a
+      test-only row, nothing to wire.
+    - Row 17 (B24, B25 + the `primaryFolderLinks` wiring): `srcExclude` case red for the expected
+      reason (`undefined`), green after adding `srcExclude: ['challenge/*/src/**', 'public/**',
+      'shared/**']`. `primaryFolderLinks(md, primary)` wired into `markdown.config` with no new
+      test of its own, per the plan (existing `primary-folder-links.test.ts` already covers the
+      pure function; B72–B75's real-tree/smoke rows are later). Checked for real-tree risk before
+      trusting it: `git grep` found no markdown-body link anywhere under `platform/` resolving into
+      `/zh-TW/...` (the only path PL-E11 would catch under today's default primary), and
+      `pnpm docs:build` after wiring both this and `srcExclude` still exits 0.
+  - **Section D: not done, as the confirmed plan already said, with one addition.** Still
+    deferred: `checkSourceLayout` wired into `config.mts`, B70's unit half, Y1's read half, Y38,
+    B43, and `processChallengeFrontmatter` re-pointed to run both validators (Y-O12/Y-q1 — not
+    named by this wave's own row list; which wave claims it is still unconfirmed, as the plan's
+    open question 3 asked). **Added to this list by this wave's finding**: B50–B52's production
+    wiring in `transformPageData` (row 15 above) — discovered to be gated on D108 the same way,
+    not previously flagged as such.
+  - Commands run, with exact counts:
+    - `npx vitest run tests/unit/challenge/plugin.test.ts tests/unit/challenge/slug.test.ts
+      tests/unit/challenge/plugin-obfuscation.test.ts tests/unit/challenge/config.test.ts
+      tests/unit/challenge/declaration.test.ts tests/unit/i18n/theme-locale-wiring.test.ts
+      tests/unit/layouts/ChallengeLayout-legacy-module.test.ts tests/unit/layouts/
+      ChallengeLayout.test.ts tests/unit/layouts/ChallengeLayout-whitebox-source.test.ts
+      tests/unit/layouts/ChallengeLayout-tools-pyodide.test.ts tests/unit/site/
+      config-base.test.ts` (the wave's affected files) → 11 test files passed (11); 380 passed
+      (380).
+    - `npx vitest run tests/unit/site/ tests/unit/challenge/ tests/unit/i18n/
+      tests/unit/layouts/` (broader regression sweep) → 34 passed, 1 failed (35); 1395 passed, 1
+      failed (1396) — the one failure is the pre-existing, already-accepted
+      `locales.test.ts` B18 command 2 (owned by waves 3/4, unchanged since wave 1(d)).
+    - `pnpm docs:build`, run four times across this wave at the points named above (after section
+      A+B, after wiring row 15, after reverting row 15, after row 17) → exit 0 each time except
+      the one deliberately-observed failure at row 15 (reported above, then reverted).
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run` → 146 test files, 2 failed (148); 5327 passed, 2 failed (5329) — up from wave 1(e)'s
+      5279 by exactly 50 new tests (19 in `plugin.test.ts`, 4 in `slug.test.ts`, 1 in
+      `theme-locale-wiring.test.ts`, 1 in `ChallengeLayout-legacy-module.test.ts`, 25 net in
+      `config-base.test.ts` — row 15's 3 added-then-removed cases net to 0). The two failures are
+      both pre-existing and already accepted, unchanged from earlier waves: `locales.test.ts`'s B18
+      command 2 (wave 1(d)) and `upstream-guard.test.ts`'s real-tree pristine check (wave 1(e), the
+      same D108 gating). No other failure. The same unrelated `ECONNREFUSED 127.0.0.1:3000`/
+      `::1:3000` stderr noise and `There are not applicable mutations for the input Wasm module.`
+      line printed again, matching every earlier wave's judgment on this noise.
+    - `pnpm --dir create-wxl test` not run: this wave touches neither `create-wxl/` nor fork:init.
+
+- 2026-11-16 (wave 1, sub-step (g), not done — all six rows blocked on (e)/(f)): the executor
+  re-verified the confirmed plan's own finding against the live working tree (`git status`,
+  `git diff --stat HEAD`, `ls platform/`, a direct read of `.vitepress/config.mts`'s `locales:`
+  block) before writing any test, rather than trusting the plan text alone. Confirmed
+  independently: `platform/en/` still does not exist (D108's `planLayoutMove` has not run on the
+  upstream tree); `config.mts`'s `locales:` block is still the pre-switch literal (`root` =
+  English, `zh-TW` carrying the `/zh-TW/` prefix), not `localesConfig(primary)`; and the comment
+  at `config.mts` naming "D108 blocks wiring area Y's assembly … Left as today's version … until
+  D108's move lands" is still present verbatim. Wave 1(f)'s own Comments entry (above) confirms
+  this is not a stale read: section D (`checkSourceLayout`, B70, Y1, Y38, B43, and B50–B52's
+  `transformPageData` wiring) was explicitly left deferred on D108, and the `locales:` wiring
+  itself was never in wave 1(f)'s scope (sections A–C) at all.
+  - Rows not done: **B48, B59, B61, B70 (smoke half), B81, B82** — all six, for the same reason.
+    Every planned case (literal-string URL assertions against `/en/...` vs. root, `<html lang>`,
+    home-link hrefs, the VitePress default nav-title link, and the three existing B82 cases
+    rewritten to `/en/...`) depends on the root path actually serving the primary locale (zh-TW)
+    and `/en/` actually serving the translation, which in turn depends on wave 1(e)'s real-tree
+    move and wave 1(f)'s `locales`/`rewrites` wiring landing. Neither has landed. Writing any of
+    the six cases now would turn them red for the shared, non-row-specific reason that
+    `platform/en/` does not exist and the root locale is still English — not a defect in any of
+    the six rows' own design — and fixing that red by editing `config.mts`/`pageList.ts` here
+    would fold (e)'s and (f)'s undone scope into (g), which is not this wave's row list to decide.
+    No file was written or edited in `tests/site-smoke/site-smoke.spec.ts` or
+    `playwright.site.config.ts`.
+  - Unresolved blocker, unchanged since wave 1(d)/(e)'s notes: whether to run `planLayoutMove` on
+    the real upstream `platform/` tree now, irreversibly and without a dry-run diff shown first,
+    together with the `notes.md` interim edit's own full landing. This remains an open user
+    decision, not something this wave can settle by proceeding.
+  - Commands run, with exact counts (no wave-specific test files exist to run, since no row was
+    implemented; ran the full suite only to confirm no drift since wave 1(f)):
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run` → 146 test files, 2 failed (148); 5327 passed, 2 failed (5329) — unchanged from wave
+      1(f)'s ending counts. The two failures are the same two already-accepted, pre-existing ones:
+      `locales.test.ts`'s B18 command 2 (wave 1(d)) and `upstream-guard.test.ts`'s real-tree
+      pristine check (wave 1(e), the same D108 gating). No other failure, no regression.
+    - `pnpm --dir create-wxl test` not run: this wave touches neither `create-wxl/` nor fork:init.
+    - Playwright's `tests/site-smoke/site-smoke.spec.ts` not run: no edit was made to it, and
+      running it against the current, unmoved `dist/` would not exercise anything this wave
+      changed.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

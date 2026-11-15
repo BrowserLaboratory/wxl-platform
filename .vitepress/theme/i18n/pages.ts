@@ -10,8 +10,9 @@
  * No imports: the site configuration loads this module in Node to build the list.
  */
 
-/** The page-list entry of a source file, given its path relative to the site's source directory. */
-export function entryForSourcePath(source: string): string {
+/** The page-list entry of a source file, given its rewritten path (the primary locale's prefix
+ *  already stripped, `rewrittenPath`), relative to the site's source directory. */
+export function entryForRelativePath(source: string): string {
   const path = source.replace(/\.md$/, '')
   if (path === 'index') return '/'
   if (path.endsWith('/index')) return `/${path.slice(0, -'index'.length)}`
@@ -50,7 +51,7 @@ export function targetUrl(entry: string, base: string, location: { search?: stri
  *   5. a candidate matches when it equals a list entry exactly (case-sensitive) — see
  *      `firstListedEntry`.
  *
- * A page the router DID render is identified by its source file instead (`entryForSourcePath`).
+ * A page the router DID render is identified by its source file instead (`entryForRelativePath`).
  */
 export function pathCandidates(pathname: string, base: string): string[] {
   const local = withoutBase(pathname, base)

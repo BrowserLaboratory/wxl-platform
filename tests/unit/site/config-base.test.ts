@@ -1,4 +1,58 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+
+// ─── The "fixture root" mechanism (B14, B16, B47 preamble) ─────────────────────────────────────
+// A temporary repository root, holding a minimal new-layout `platform/` tree, an optional
+// `range.json`, and a copy of `.vitepress` with `node_modules` symlinked to the repository's.
+// Importing the copy after `vi.resetModules()` observes the real configuration module without a
+// spy. `server.fs.allow` in `vitest.config.ts` is what lets vite-node load a module from here.
+
+const REPO_ROOT = resolve(__dirname, '../../..')
+const fixtureRoots: string[] = []
+afterEach(() => {
+  for (const dir of fixtureRoots.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
+
+interface FixtureRootOptions {
+  /** Written at the fixture root itself — the one `range.json` that should ever be read. */
+  rangeJson?: string
+  /** A decoy, to prove the build does not read `range.json` from inside `platform/`. */
+  platformRangeJson?: string
+  /** A decoy, to prove the build does not read `range.json` from inside `.vitepress/`. */
+  vitepressRangeJson?: string
+}
+
+function buildFixtureRoot(opts: FixtureRootOptions = {}): string {
+  const root = mkdtempSync(join(tmpdir(), 'wxl-config-fixture-'))
+  fixtureRoots.push(root)
+  cpSync(resolve(REPO_ROOT, '.vitepress'), join(root, '.vitepress'), { recursive: true })
+  symlinkSync(resolve(REPO_ROOT, 'node_modules'), join(root, 'node_modules'), 'dir')
+  mkdirSync(join(root, 'platform', 'en'), { recursive: true })
+  mkdirSync(join(root, 'platform', 'zh-TW'), { recursive: true })
+  writeFileSync(join(root, 'platform', 'en', 'index.md'), '---\nlayout: home\n---\n# en\n')
+  writeFileSync(join(root, 'platform', 'zh-TW', 'index.md'), '---\nlayout: home\n---\n# zh-TW\n')
+  if (opts.rangeJson !== undefined) writeFileSync(join(root, 'range.json'), opts.rangeJson)
+  if (opts.platformRangeJson !== undefined) {
+    writeFileSync(join(root, 'platform', 'range.json'), opts.platformRangeJson)
+  }
+  if (opts.vitepressRangeJson !== undefined) {
+    writeFileSync(join(root, '.vitepress', 'range.json'), opts.vitepressRangeJson)
+  }
+  return root
+}
+
+async function importFixtureConfig(root: string) {
+  vi.resetModules()
+  const url = pathToFileURL(join(root, '.vitepress', 'config.mts')).href
+  const mod = (await import(/* @vite-ignore */ url)) as {
+    default: { vite?: { define?: Record<string, unknown> }; base?: string }
+  }
+  return mod.default
+}
 
 // The site's base path is decided once, from SITE_BASE, and the three head
 // hrefs follow it: VitePress prefixes `base` onto its own assets but not onto
@@ -108,4 +162,189 @@ describe.each([undefined, '1', '', '0', 'true', ' 1', '1 '])('site base with CF_
       await expect(loadConfig(siteBase, cfPages)).rejects.toThrow(/SITE_BASE/)
     },
   )
+})
+
+// The shipped primary locale (D31, D21): comes only from the root range.json, never from an
+// environment variable, so it survives whichever other env combination a build runs with.
+describe('the shipped primary locale (B14, B47)', () => {
+  const ENV_VARS = ['SITE_BASE', 'CF_PAGES', 'WXL_SMOKE_PAGES', 'WXL_PRIMARY_LOCALE'] as const
+  const originals = Object.fromEntries(ENV_VARS.map((name) => [name, process.env[name]]))
+  afterEach(() => {
+    for (const name of ENV_VARS) {
+      if (originals[name] === undefined) delete process.env[name]
+      else process.env[name] = originals[name]
+    }
+  })
+
+  async function loadRealDefine() {
+    vi.resetModules()
+    const mod = (await import('../../../.vitepress/config.mts')) as {
+      default: { vite?: { define?: Record<string, unknown> } }
+    }
+    return mod.default.vite?.define
+  }
+
+  const COMBOS: Array<[string | undefined, string | undefined, string | undefined, string | undefined]> = []
+  for (const siteBase of [undefined, '/repo/']) {
+    for (const cfPages of [undefined, '1']) {
+      for (const smoke of [undefined, '1']) {
+        for (const primaryEnv of [undefined, 'en']) {
+          COMBOS.push([siteBase, cfPages, smoke, primaryEnv])
+        }
+      }
+    }
+  }
+
+  it.each(COMBOS)(
+    'B14: real tree gives "zh-TW" regardless of env (SITE_BASE=%j CF_PAGES=%j WXL_SMOKE_PAGES=%j WXL_PRIMARY_LOCALE=%j)',
+    async (siteBase, cfPages, smoke, primaryEnv) => {
+      for (const [name, value] of [
+        ['SITE_BASE', siteBase],
+        ['CF_PAGES', cfPages],
+        ['WXL_SMOKE_PAGES', smoke],
+        ['WXL_PRIMARY_LOCALE', primaryEnv],
+      ] as const) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+      const define = await loadRealDefine()
+      expect(define?.__WXL_PRIMARY_LOCALE__).toBe('"zh-TW"')
+    },
+  )
+
+  it('B14, B47: a fixture root with {"primaryLocale":"en"} gives the JSON string "en"', async () => {
+    const root = buildFixtureRoot({
+      rangeJson: '{"primaryLocale":"en"}',
+      platformRangeJson: '{"primaryLocale":"zh-TW"}',
+      vitepressRangeJson: '{"primaryLocale":"zh-TW"}',
+    })
+    const config = await importFixtureConfig(root)
+    expect(config.vite?.define?.__WXL_PRIMARY_LOCALE__).toBe('"en"')
+  })
+
+  it('B47: the real tree\'s value is a JSON string, not a bare identifier', async () => {
+    const define = await loadRealDefine()
+    expect(define?.__WXL_PRIMARY_LOCALE__).toBe(JSON.stringify('zh-TW'))
+  })
+})
+
+// The SITE_BASE check runs before range.json is even read (D123): a broken range.json must not
+// mask a broken SITE_BASE, or vice versa.
+describe('SITE_BASE is checked before range.json (B16)', () => {
+  it('rejects with /SITE_BASE/, not PL-E03, when both are broken', async () => {
+    const root = buildFixtureRoot({ rangeJson: '{' })
+    process.env.SITE_BASE = 'x'
+    try {
+      vi.resetModules()
+      const url = pathToFileURL(join(root, '.vitepress', 'config.mts')).href
+      await expect(import(/* @vite-ignore */ url)).rejects.toThrow(/SITE_BASE/)
+    } finally {
+      delete process.env.SITE_BASE
+    }
+  })
+
+  it('control: the same broken range.json alone rejects with PL-E03', async () => {
+    const root = buildFixtureRoot({ rangeJson: '{' })
+    delete process.env.SITE_BASE
+    await expect(importFixtureConfig(root)).rejects.toThrow(/PL-E03/)
+  })
+})
+
+// "Source path → URL" (traceability.md, upstream-only through the D124 helper: the table names
+// upstream's own 28 pages).
+const SOURCE_PATH_TO_URL: Array<[string, string]> = [
+  ['en/index.md', '/en/'],
+  ['en/challenges.md', '/en/challenges'],
+  ['en/guide/index.md', '/en/guide/'],
+  ['en/guide/python.md', '/en/guide/python'],
+  ['en/guide/network.md', '/en/guide/network'],
+  ['en/guide/browser.md', '/en/guide/browser'],
+  ['en/guide/notes.md', '/en/guide/notes'],
+  ['en/guide/troubleshooting.md', '/en/guide/troubleshooting'],
+  ['en/guide/workshop.md', '/en/guide/workshop'],
+  ['en/reference/attack-log-export-format.md', '/en/reference/attack-log-export-format'],
+  ['en/challenge/door-is-open/index.md', '/en/challenge/door-is-open/'],
+  ['en/challenge/just-a-preview/index.md', '/en/challenge/just-a-preview/'],
+  ['en/challenge/selected-excerpts/index.md', '/en/challenge/selected-excerpts/'],
+  ['en/challenge/staff-only/index.md', '/en/challenge/staff-only/'],
+  ['zh-TW/index.md', '/'],
+  ['zh-TW/challenges.md', '/challenges'],
+  ['zh-TW/guide/index.md', '/guide/'],
+  ['zh-TW/guide/python.md', '/guide/python'],
+  ['zh-TW/guide/network.md', '/guide/network'],
+  ['zh-TW/guide/browser.md', '/guide/browser'],
+  ['zh-TW/guide/notes.md', '/guide/notes'],
+  ['zh-TW/guide/troubleshooting.md', '/guide/troubleshooting'],
+  ['zh-TW/guide/workshop.md', '/guide/workshop'],
+  ['zh-TW/reference/attack-log-export-format.md', '/reference/attack-log-export-format'],
+  ['zh-TW/challenge/door-is-open/index.md', '/challenge/door-is-open/'],
+  ['zh-TW/challenge/just-a-preview/index.md', '/challenge/just-a-preview/'],
+  ['zh-TW/challenge/selected-excerpts/index.md', '/challenge/selected-excerpts/'],
+  ['zh-TW/challenge/staff-only/index.md', '/challenge/staff-only/'],
+]
+
+/** The URL entry's file form (`/` → `index.md`, `/guide/` → `guide/index.md`, `/x` → `x.md`). */
+function fileForm(entry: string): string {
+  return (entry.endsWith('/') ? `${entry}index` : entry).slice(1) + '.md'
+}
+
+describe.runIf(realUpstreamDecision(REPO_ROOT))('rewrites is the function rewrittenPath(·, primary) (B40)', () => {
+  it('on the real tree, config.rewrites is a function returning the zh-TW column\'s file form', async () => {
+    delete process.env.SITE_BASE
+    vi.resetModules()
+    const mod = (await import('../../../.vitepress/config.mts')) as {
+      default: { rewrites?: (id: string) => string }
+    }
+    expect(typeof mod.default.rewrites).toBe('function')
+    for (const [source, zhTwEntry] of SOURCE_PATH_TO_URL) {
+      expect(mod.default.rewrites!(source)).toBe(fileForm(zhTwEntry))
+    }
+  })
+})
+
+// B50–B52 (transformPageData reading a challenge page's body through filePath, with area Y's
+// assembly wired in) are NOT done this wave: wiring `assembleChallengeFrontmatter` into the real
+// `transformPageData` breaks `pnpm docs:build` on the current, not-yet-moved tree (confirmed by
+// actually running it — see `config.mts`'s `transformPageData` comment). Reported, not attempted
+// as a test here, to avoid leaving the real build broken.
+
+// Title and description stay site-level; fork:init's own anchors stay single (B60, B77).
+describe('title, description, ignoreDeadLinks and the fork:init anchors (B60, B77)', () => {
+  it('B60: title and description are today\'s strings', async () => {
+    vi.resetModules()
+    delete process.env.SITE_BASE
+    const mod = (await import('../../../.vitepress/config.mts')) as {
+      default: { title?: string; description?: string }
+    }
+    expect(mod.default.title).toBe('Web eXploitation Laboratory')
+    expect(mod.default.description).toBe('Browser-based web exploitation challenge platform powered by WASM')
+  })
+
+  it('B60: exactly one A6 candidate line and one siteBase declaration', async () => {
+    const { A6_CANDIDATE_RE } = await import('../../../scripts/fork-init')
+    const source = readFileSync(resolve(REPO_ROOT, '.vitepress/config.mts'), 'utf8')
+    const lines = source.split(/\r?\n/)
+    expect(lines.filter((line) => A6_CANDIDATE_RE.test(line))).toHaveLength(1)
+    expect(lines.filter((line) => line.includes('const siteBase = '))).toHaveLength(1)
+  })
+
+  it('B77: ignoreDeadLinks is unset', async () => {
+    vi.resetModules()
+    delete process.env.SITE_BASE
+    const mod = (await import('../../../.vitepress/config.mts')) as { default: { ignoreDeadLinks?: unknown } }
+    expect(mod.default.ignoreDeadLinks).toBeUndefined()
+  })
+})
+
+// `challenge/<slug>/src/**`, `public/**` and `shared/**` are not pages (B24, B25). D49 adds smoke-
+// fixture entries in a production build, so this is an `arrayContaining`, not an exact match.
+describe('srcExclude (B24, B25)', () => {
+  it('contains challenge/*/src/**, public/** and shared/**', async () => {
+    vi.resetModules()
+    delete process.env.SITE_BASE
+    const mod = (await import('../../../.vitepress/config.mts')) as { default: { srcExclude?: string[] } }
+    expect(mod.default.srcExclude).toEqual(
+      expect.arrayContaining(['challenge/*/src/**', 'public/**', 'shared/**']),
+    )
+  })
 })
