@@ -2,7 +2,7 @@
 id: T-0076
 title: Pure modules and the layout-move planner
 epic: 0010-primary-locale-layout
-status: review
+status: done
 blocked_by: []
 ---
 
@@ -782,4 +782,11 @@ the local runs above skipped it. B2 needs any upstream-only object, so its fixtu
 `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test --run`
 → 141 files, 5051 passed (the upstream-only case included). Lesson for the next tickets: run the root
 suite with that environment before pushing.
+
+## Landing (stage 9)
+
+Landed on `main` as `040a5ec` (squash of PR #93) on 2026-11-16. PR #93's first push (`226f34f`)
+failed `fork-init-cross-os` on macOS and Ubuntu (the upstream guard's real-tree case, recorded in
+the stage 8 record); the second push (`9da6aff`) passed all 10 checks (`gh pr checks 93`). Status set
+to `done`.
 
