@@ -35,7 +35,7 @@ describe('B2: an object without an own primaryLocale gives zh-TW', () => {
   it('returns zh-TW for an upstream-only object', () => {
     const text = JSON.stringify({
       upstream: {
-        repository: 'BrowserLaboratory/wxl-platform',
+        repository: 'example-org/example-range',
         version: '3.2.0',
         commit: '0123456789abcdef0123456789abcdef01234567',
       },

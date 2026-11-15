@@ -760,3 +760,26 @@ declaring green.
 
 Touched only `.vitepress/challenge/declaration.ts` and `tests/unit/challenge/declaration.test.ts`
 this pass. No `git commit`/`stash`/`checkout`/`switch`/`reset`/`restore` was run during this pass.
+
+## Stage 8 record (2026-11-15)
+
+Surface: the macOS terminal, on the ticket branch at `226f34f` (PR #93). No browser surface: this
+ticket has no V row and claims no browser behaviour (T3, T8).
+
+| Check | Command | Result |
+|---|---|---|
+| Root suite | `pnpm test --run` | 141 files, 5050 passed, 1 skipped |
+| create-wxl suite | `pnpm --dir create-wxl test` | 39 files, 855 passed, 1 skipped |
+| Nothing reads the new modules | `git grep -n -E "primary-locale\|source-layout\|layout-error\|challenge/declaration\|layout-move" -- ':!*.md' ':!tests/' ':!create-wxl/test/'` | only the modules themselves and one comment line in `.vitepress/theme/i18n/index.ts` |
+| Files the build, the hook or the upgrade read | `git diff --name-only 65de8c0 226f34f -- . ':!.proj.specs' ':!.proj.tickets' ':!tests' ':!create-wxl/test'` | six new modules nothing imports, and `.vitepress/challenge/config.ts`, which the build imports: its diff only adds `validateChallengeDeclaration` (`git diff 65de8c0 226f34f -- .vitepress/challenge/config.ts` removes no line), so `validateChallengeConfig` and its callers are unchanged |
+
+CI on PR #93's first push (`226f34f`) failed in `fork-init-cross-os` on macOS and Ubuntu: the upstream
+guard's real-tree case (`tests/unit/scripts/upstream-guard.test.ts`, "the guard finds no violation
+among the tracked files") found upstream's repository slug written literally in B2's fixture
+(`tests/unit/site/primary-locale.test.ts`). That case runs only when the upstream decision holds, so
+the local runs above skipped it. B2 needs any upstream-only object, so its fixture now names
+`example-org/example-range`. Reproduced and rechecked with the CI environment:
+`GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test --run`
+→ 141 files, 5051 passed (the upstream-only case included). Lesson for the next tickets: run the root
+suite with that environment before pushing.
+
