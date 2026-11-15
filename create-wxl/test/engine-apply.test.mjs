@@ -108,7 +108,7 @@ describe('step 11: apply', () => {
       const siteName = argv[argv.indexOf('--site-name') + 1]
       expect(extractA6Value(config)).toBe(siteName)
 
-      const home = await readFile(join(target, 'platform/index.md'), 'utf8')
+      const home = await readFile(join(target, 'platform/en/index.md'), 'utf8')
       const homeZh = await readFile(join(target, 'platform/zh-TW/index.md'), 'utf8')
       expect(extractA7Value(home)).toBe(siteName)
       expect(extractA7Value(homeZh)).toBe(siteName)

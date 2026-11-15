@@ -851,7 +851,7 @@ function sensitiveRenames(lower: string, upper: string): ReadonlyArray<{ key: st
 // ─── A6-A8 (site name, range address): anchor mode only — never reached in rebrand mode,
 // since --rebrand rejects --host/--origin/--site-name (T50) ───────────────────────────────────
 
-const PLATFORM_HOME_RELS = ['platform/index.md', 'platform/zh-TW/index.md'] as const
+const PLATFORM_HOME_RELS = ['platform/en/index.md', 'platform/zh-TW/index.md'] as const
 const SHORT_LINK_REL = '.vitepress/challenge/shortLink.ts'
 /** The upstream range address, SITE_ORIGIN (traceability.md, T81): replacing a value that is not this one
  *  warns; a run that starts from this one never does. */

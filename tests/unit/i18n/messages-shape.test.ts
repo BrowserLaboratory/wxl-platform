@@ -1,9 +1,22 @@
 import { describe, it, expect } from 'vitest'
 import { createI18n } from 'vue-i18n'
-import en from '../../../.vitepress/theme/i18n/messages/en.json'
-import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { LOCALES, type Locale } from '../../../.vitepress/locales'
 
 type MessageNode = string | { [k: string]: MessageNode }
+
+const MESSAGES_DIR = resolve(__dirname, '../../../.vitepress/theme/i18n/messages')
+
+// B19 (BC7): no literal pair of imports — every listed code's own message table is read through
+// LOCALES, so a code added to the locale list is read here without editing this file.
+const MESSAGES = Object.fromEntries(
+  await Promise.all(
+    LOCALES.map(async (code) => [code, (await import(`../../../.vitepress/theme/i18n/messages/${code}.json`)).default]),
+  ),
+) as Record<Locale, MessageNode>
+const en = MESSAGES.en
+const zhTW = MESSAGES['zh-TW']
 
 function flatten(obj: MessageNode, prefix = ''): Record<string, string> {
   if (typeof obj === 'string') return { [prefix]: obj }
@@ -85,10 +98,7 @@ describe('every message compiles', () => {
   // on every single render. Nothing throws, so `t()` returning the right string proves
   // nothing. Measured in a real browser: "Message compilation error: Unterminated
   // closing brace", 37 occurrences on one page, and no test anywhere went red.
-  it.each([
-    ['en', en],
-    ['zh-TW', zhTW],
-  ])('%s: no leaf makes the message compiler complain', (locale, messages) => {
+  it.each(LOCALES.map((code) => [code, MESSAGES[code]]))('%s: no leaf makes the message compiler complain', (locale, messages) => {
     const logged: string[] = []
     const original = console.error
     console.error = (...args: unknown[]) => { logged.push(String(args[0])) }
@@ -110,10 +120,7 @@ describe('every message compiles', () => {
     expect(logged.filter(m => m.includes('Message compilation error'))).toEqual([])
   })
 
-  it.each([
-    ['en', en],
-    ['zh-TW', zhTW],
-  ])('%s: the bracket hint still renders the three characters it names', (locale, messages) => {
+  it.each(LOCALES.map((code) => [code, MESSAGES[code]]))('%s: the bracket hint still renders the three characters it names', (locale, messages) => {
     // Escaping the brace must not turn the escape syntax into the visible text — the
     // learner has to see `( [ {`, which is the whole point of that sentence.
     const i18n = createI18n({
@@ -129,5 +136,15 @@ describe('every message compiles', () => {
     expect(rendered).toContain('[')
     expect(rendered).toContain('{')
     expect(rendered).not.toContain("'{'")
+  })
+})
+
+describe('message files on disk (B19)', () => {
+  it('has exactly one messages/<code>.json per listed locale, and nothing else', () => {
+    const basenames = readdirSync(MESSAGES_DIR)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .sort()
+    expect(basenames).toEqual([...LOCALES].sort())
   })
 })

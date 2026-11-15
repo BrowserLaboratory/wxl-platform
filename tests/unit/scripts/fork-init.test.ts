@@ -212,7 +212,7 @@ function writeFixture(root: string) {
 
   // T-0015/T60: the shared fixture gains both home pages (A7) — shaped like the real files: ONE
   // frontmatter block (`hero:` and `features:` both column-0 keys INSIDE it, matching
-  // platform/index.md), `hero:` holding a double-quoted `  name: "WXL"`, and `features:` holding a
+  // platform/en/index.md), `hero:` holding a double-quoted `  name: "WXL"`, and `features:` holding a
   // deeper-indented `title:` that must never be mistaken for an A7 candidate — and the short-link
   // module (A8), at its upstream value.
   const heroPage = (tagline: string) =>
@@ -232,7 +232,7 @@ function writeFixture(root: string) {
       '---',
       '',
     ].join('\n')
-  w('platform/index.md', heroPage('Browser-based web exploitation challenge platform'))
+  w('platform/en/index.md', heroPage('Browser-based web exploitation challenge platform'))
   w('platform/zh-TW/index.md', heroPage('完全基於前端 WASM 的 Web 資安挑戰平台'))
   w('.vitepress/challenge/shortLink.ts', "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\n")
 }
@@ -1466,7 +1466,7 @@ describe('runForkInit — anchor mode: site name (A6, A7)', () => {
   ])('sets A6 and both A7 (%s), changedFiles lists exactly these three files', (_label, cfgBody, a7Value) => {
     if (cfgBody) writeFileSync(join(root, '.vitepress/config.mts'), cfgBody)
     if (a7Value !== undefined) {
-      for (const file of ['platform/index.md', 'platform/zh-TW/index.md']) {
+      for (const file of ['platform/en/index.md', 'platform/zh-TW/index.md']) {
         const before = readFileSync(join(root, file), 'utf8')
         writeFileSync(join(root, file), before.replace('  name: "WXL"', `  name: ${a7Value}`))
       }
@@ -1479,12 +1479,12 @@ describe('runForkInit — anchor mode: site name (A6, A7)', () => {
     expect(res.exitCode).toBe(0)
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
     expect(cfg).toContain('  title: "New Name",')
-    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const home = readFileSync(join(root, 'platform/en/index.md'), 'utf8')
     const homeZh = readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')
     expect(home).toContain('  name: "New Name"')
     expect(homeZh).toContain('  name: "New Name"')
     expect(res.changedFiles.sort()).toEqual(
-      ['.vitepress/config.mts', 'platform/index.md', 'platform/zh-TW/index.md'].sort(),
+      ['.vitepress/config.mts', 'platform/en/index.md', 'platform/zh-TW/index.md'].sort(),
     )
     // frontmatter's other lines and config's deeper-indented feature title are unchanged
     expect(home).toContain('layout: home')
@@ -1536,7 +1536,7 @@ describe('runForkInit — anchor mode: site name (A6, A7)', () => {
     const literal = titleLine.slice('  title: '.length, -1) // strip the trailing comma
     expect(runInNewContext(literal)).toBe(value)
 
-    for (const file of ['platform/index.md', 'platform/zh-TW/index.md']) {
+    for (const file of ['platform/en/index.md', 'platform/zh-TW/index.md']) {
       const raw = readFileSync(join(root, file), 'utf8')
       const frontmatter = raw.slice(raw.indexOf('\n') + 1, raw.indexOf('\n---', 1))
       const doc = parseYaml(frontmatter)
@@ -1556,7 +1556,7 @@ describe('runForkInit — anchor mode: site name (A6, A7)', () => {
     expect(res.exitCode).toBe(0)
     const cfg = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
     expect(cfg).toContain(`  title: ${JSON.stringify(expected)},`)
-    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const home = readFileSync(join(root, 'platform/en/index.md'), 'utf8')
     expect(home).toContain(`  name: ${JSON.stringify(expected)}`)
   })
 })
@@ -1866,8 +1866,8 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
     ],
   ]
   // T9 (A7 part)/item 9: every A7_CASES entry is run against BOTH home pages, not only
-  // platform/index.md, so platform/zh-TW/index.md's own candidate-search path is exercised too.
-  const A7_HOME_FILES = ['platform/index.md', 'platform/zh-TW/index.md'] as const
+  // platform/en/index.md, so platform/zh-TW/index.md's own candidate-search path is exercised too.
+  const A7_HOME_FILES = ['platform/en/index.md', 'platform/zh-TW/index.md'] as const
   for (const homeFile of A7_HOME_FILES) {
     for (const [label, body] of A7_CASES) {
       it(`A7: ${label} (${homeFile}) -> exitCode 1 naming A7 and the path, nothing written`, () => {
@@ -1885,7 +1885,7 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
   }
 
   it('A7: when only one home page is broken, the other (valid) one is not written either', () => {
-    rmSync(join(root, 'platform/index.md'))
+    rmSync(join(root, 'platform/en/index.md'))
     pinMtimes(root)
     const zhBefore = readFileSync(join(root, 'platform/zh-TW/index.md'))
     const before = snapshotTree(root)
@@ -1951,10 +1951,10 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
     ['double-quoted with escaped quotes', '"a \\"b\\""'],
   ])('A7: %s -> fully replaced, parses with yaml to the new value', (_label, oldLiteral) => {
     const body = ['---', 'hero:', `  name: ${oldLiteral}`, '---', ''].join('\n')
-    writeFileSync(join(root, 'platform/index.md'), body)
+    writeFileSync(join(root, 'platform/en/index.md'), body)
     const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
     expect(res.exitCode).toBe(0)
-    const raw = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const raw = readFileSync(join(root, 'platform/en/index.md'), 'utf8')
     const frontmatter = raw.slice(raw.indexOf('\n') + 1, raw.indexOf('\n---', 1))
     const doc = parseYaml(frontmatter) as { hero: { name: string } }
     expect(doc.hero.name).toBe('New Name')
@@ -1986,7 +1986,7 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
     ].join('\r\n')
     writeFileSync(join(root, '.vitepress/config.mts'), crlfCfg)
     const crlfHome = ['---', 'hero:', '  name: "WXL"', '---', ''].join('\r\n')
-    writeFileSync(join(root, 'platform/index.md'), crlfHome)
+    writeFileSync(join(root, 'platform/en/index.md'), crlfHome)
     writeFileSync(join(root, 'platform/zh-TW/index.md'), crlfHome)
     const crlfShortLink = "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\r\n"
     writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), crlfShortLink)
@@ -2005,7 +2005,7 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
     expect(cfg).toBe(expectedCfg)
 
     const expectedHome = crlfHome.replace('  name: "WXL"', '  name: "New Name"')
-    const home = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const home = readFileSync(join(root, 'platform/en/index.md'), 'utf8')
     expect(home).toBe(expectedHome)
     const homeZh = readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')
     expect(homeZh).toBe(expectedHome)
@@ -2036,12 +2036,12 @@ describe('runForkInit — anchor mode: code anchor errors (A6–A8)', () => {
   })
 
   it('A7: an invalid-UTF-8 byte outside the name: line is preserved, only that line changes', () => {
-    const before = readFileSync(join(root, 'platform/index.md'))
+    const before = readFileSync(join(root, 'platform/en/index.md'))
     const marked = Buffer.concat([before, Buffer.from([0xff]), Buffer.from('\n<!-- invalid byte above -->\n')])
-    writeFileSync(join(root, 'platform/index.md'), marked)
+    writeFileSync(join(root, 'platform/en/index.md'), marked)
     const res = runForkInit(parseForkInitArgs(SITE_NAME_ARGS), { projectRoot: root })
     expect(res.exitCode).toBe(0)
-    const after = readFileSync(join(root, 'platform/index.md'))
+    const after = readFileSync(join(root, 'platform/en/index.md'))
     const beforeLines = marked.toString('latin1').split('\n')
     const nameIdx = beforeLines.findIndex((l) => /^ {2}name: .+\r?$/.test(l))
     expect(nameIdx).toBeGreaterThanOrEqual(0)
@@ -4441,7 +4441,7 @@ describe('runForkInit — anchor mode: dry-run (T56)', () => {
       (r) => writeFileSync(join(r, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://custom.example'\n"),
     )
     assertDryMatchesReal(real, dry, before, after)
-    for (const f of ['.vitepress/config.mts', 'platform/index.md', 'platform/zh-TW/index.md', '.vitepress/challenge/shortLink.ts']) {
+    for (const f of ['.vitepress/config.mts', 'platform/en/index.md', 'platform/zh-TW/index.md', '.vitepress/challenge/shortLink.ts']) {
       expect(dry.changedFiles).toContain(f)
     }
     expect(dry.warnings.some((w) => w.includes('A8'))).toBe(true)
@@ -4945,6 +4945,54 @@ describe(
         }
       },
     )
+
+    // 0010-S48 (U114): a legacy tree (only platform/index.md, no platform/en/index.md) is
+    // refused with 0003 A7's tree error, naming the new path — checked first (D107's order),
+    // whether or not the translation home is also present.
+    it.each([true, false] as const)(
+      'A7 (U114): a legacy tree (platform/index.md, no platform/en/index.md) is refused naming platform/en/index.md, zh-TW home present: %s',
+      (keepZhHome) => {
+        rmSync(join(root, 'platform/en/index.md'))
+        writeFileSync(join(root, 'platform/index.md'), ['---', 'hero:', '  name: "WXL"', '---', ''].join('\n'))
+        if (!keepZhHome) rmSync(join(root, 'platform/zh-TW/index.md'))
+        pinMtimes(root)
+        const before = snapshotTree(root)
+        const res = runCli(root, [...ANCHOR_ARGV, '--site-name', 'New Name'])
+        expect(res.status).toBe(1)
+        expect(filterExperimentalWarnings(res.stderr)).toContain('A7: platform/en/index.md is missing')
+        expect(snapshotTree(root)).toEqual(before)
+      },
+    )
+
+    // 0010-S48 (U145): a new-layout tree with range.json {"primaryLocale":"en"} but without
+    // platform/zh-TW/index.md (the translation home deleted, the known U-O8 conflict) is refused
+    // naming the translation home — range.json bytes unchanged.
+    it('A7 (U145): P = en, missing platform/zh-TW/index.md is refused naming it; range.json unchanged', () => {
+      const rangeJsonBody = JSON.stringify({ primaryLocale: 'en' }, null, 2) + '\n'
+      writeFileSync(join(root, 'range.json'), rangeJsonBody)
+      rmSync(join(root, 'platform/zh-TW/index.md'))
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runCli(root, [...ANCHOR_ARGV, '--site-name', 'New Name'])
+      expect(res.status).toBe(1)
+      expect(filterExperimentalWarnings(res.stderr)).toContain('A7: platform/zh-TW/index.md is missing')
+      expect(snapshotTree(root)).toEqual(before)
+      expect(readFileSync(join(root, 'range.json'), 'utf8')).toBe(rangeJsonBody)
+    })
+
+    // 0010-S48 (U152): a new-layout tree, P = zh-TW (no range.json), without platform/en/index.md
+    // is refused the same way, naming it; platform/zh-TW/index.md stays present and unchanged.
+    it('A7 (U152): P = zh-TW (no range.json), missing platform/en/index.md is refused naming it', () => {
+      const zhHomeBefore = readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')
+      rmSync(join(root, 'platform/en/index.md'))
+      pinMtimes(root)
+      const before = snapshotTree(root)
+      const res = runCli(root, [...ANCHOR_ARGV, '--site-name', 'New Name'])
+      expect(res.status).toBe(1)
+      expect(filterExperimentalWarnings(res.stderr)).toContain('A7: platform/en/index.md is missing')
+      expect(snapshotTree(root)).toEqual(before)
+      expect(readFileSync(join(root, 'platform/zh-TW/index.md'), 'utf8')).toBe(zhHomeBefore)
+    })
   },
   60_000,
 )

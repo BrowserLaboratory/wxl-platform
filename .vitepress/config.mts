@@ -5,7 +5,9 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { extractMarkdownBody } from './challenge/plugin'
-import { pageListFromDir } from './pageList'
+import { pageListFromDir, rewrittenPath } from './pageList'
+import { readPrimaryLocale } from './primary-locale'
+import { primaryFolderLinks } from './primary-folder-links'
 
 // A site served from a sub-path needs a matching base or every asset/JS/WASM
 // URL 404s. The base is read once, here, from SITE_BASE: the GitHub Pages deploy
@@ -24,12 +26,28 @@ if (!/^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/.test(siteBase)) {
 
 // The source directory, relative to the repository root. The page list below reads it too.
 const SRC_DIR = 'platform'
+// `.vitepress` sits one level under the repository root (D5, D123): read before any challenge
+// and before the layout check (not yet wired here — wave 1(f) leaves `checkSourceLayout` for
+// after D108's move lands, so the real tree does not fail every tool in the meantime).
+const REPO_ROOT = resolve(__dirname, '..')
+const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   srcDir: SRC_DIR,
   // See siteBase above.
   base: siteBase,
+  // A challenge's own application code, the copied-verbatim public assets and the data
+  // loaders are not pages (B24, B25); `pageListFromDir` applies the same exclusions.
+  srcExclude: ['challenge/*/src/**', 'public/**', 'shared/**'],
+  // The primary locale's own folder serves without its prefix (D8, D9, BC3); every other
+  // locale keeps its folder as a URL segment.
+  rewrites: (id) => rewrittenPath(id, primary),
+  // A markdown link whose resolved URL names the primary locale's folder is an error: that
+  // folder's pages are served without the prefix (D12, PL-E11).
+  markdown: {
+    config: (md) => primaryFolderLinks(md, primary),
+  },
   // Cloudflare Pages serves this site's pages without the extension:
   // `/zh-TW/challenges` answers 200, while `/zh-TW/challenges.html` and
   // `/zh-TW/challenges/` both 308 to it. Left at VitePress's default (false),
@@ -82,6 +100,9 @@ export default defineConfig({
       // from the source tree when this configuration is evaluated. The locale decisions
       // consult it to ask whether a translation exists, instead of asking the network.
       __WXL_PAGES__: JSON.stringify(pageListFromDir(resolve(__dirname, '..', SRC_DIR))),
+      // The primary locale (D31, D21): comes only from the root range.json, never from an
+      // environment variable, so it reaches the client bundle as a fixed, build-time string.
+      __WXL_PRIMARY_LOCALE__: JSON.stringify(primary),
     },
   },
 
@@ -143,6 +164,14 @@ export default defineConfig({
     },
   },
 
+  // D108 blocks wiring area Y's assembly (`assembleChallengeFrontmatter`) in here: every
+  // upstream challenge page on the real, not-yet-moved tree is still either a flat
+  // `challenge/<slug>/index.md` with its whole frontmatter inline (not a brief path under the
+  // new rule, so a real `layout: challenge` page throws PL-E18) or, under `platform/zh-TW/`,
+  // happens to match the new brief-path shape but has no `platform/challenge/<slug>/
+  // challenge.yaml` yet (PL-E13) — confirmed by actually running `pnpm docs:build` with the
+  // wiring in place. Left as today's version (D78's assembly stays unwired here) until D108's
+  // move lands; the function itself is built and tested (0010-S33, `plugin.test.ts`).
   transformPageData(pageData, ctx) {
     if (pageData.frontmatter.layout !== 'challenge') return
     const filePath = resolve(ctx.siteConfig.srcDir, pageData.relativePath)

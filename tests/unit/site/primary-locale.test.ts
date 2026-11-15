@@ -251,6 +251,7 @@ describe('B10: a string off the list is PL-E06, JSON-quoted (D140)', () => {
     [' en', '" en"'],
     ['en\n', '"en\\n"'],
     ['\u001b[31m', '"\\u001b[31m"'],
+    ['\u009b[31m', '"\\u009b[31m"'],
   ]
 
   it.each(cases)('throws the exact first line for %j', (value, quoted) => {

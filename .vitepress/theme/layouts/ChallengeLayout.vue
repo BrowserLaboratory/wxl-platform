@@ -34,6 +34,7 @@ import type { CodeHistoryEntry } from '../composables/codeHistoryLabel'
 import { usePentestNotes } from '../composables/usePentestNotes'
 import { extractCustomSection } from '../composables/useWasmLoader'
 import { APP_KEY, SOURCE_DISPLAY_KEY, RESERVED_FS_KEYS } from '../../challenge/reserved-keys'
+import { slugFromRelativePath } from '../../challenge/slug'
 
 // The missing-translation line (spec 0008, L3), decided by the theme's Layout. Absent when the
 // layout is mounted on its own, as in its tests.
@@ -45,12 +46,8 @@ let currentExecutionId: string | null = null
 const { frontmatter, page } = useData()
 
 // Derive slug from per-folder relativePath: "challenge/door-is-open/index.md" → "door-is-open"
-const slug = computed(() => {
-  const rel: string = page.value.relativePath ?? ''
-  const parts = rel.replace(/\.md$/, '').split('/')
-  // Per-folder: take parent dir name; flat fallback: take filename
-  return parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1]
-})
+// (0010-S42, Y49): the helper no longer has a flat `<slug>.md` fallback.
+const slug = computed(() => slugFromRelativePath(page.value.relativePath ?? '') ?? '')
 
 const fm = computed(() => frontmatter.value)
 
@@ -476,6 +473,16 @@ async function initRuntime(): Promise<void> {
   const { default: initWasm, wasm_fs_init, wasm_fs_read, wasm_fs_list, wasm_verify_flag } = await import(
     '../../wasm/virtual-fs/virtual_fs.js'
   )
+
+  // D76, Y50: every current `runtime.wasm` is rebuilt by keygen from the `virtual-fs`
+  // template, which always exports `wasm_fs_list`. A module without it is stale — the
+  // frontmatter `fs` fallback this once had is retired with the flat layout, so the page
+  // shows its runtime-error state instead of silently reading it.
+  if (typeof wasm_fs_list !== 'function') {
+    runtimeError.value = 'This challenge’s WASM module predates wasm_fs_list — re-run pnpm challenge:keygen for it.'
+    return
+  }
+
   await initWasm()
 
   // 3. Initialize FS from the custom section payload (key derivation happens inside WASM)
@@ -502,11 +509,9 @@ async function initRuntime(): Promise<void> {
     displaySourceLoading.value = false
   }
 
-  // Read other FS entries: use wasm_fs_list() to auto-discover all encrypted paths,
-  // falling back to frontmatter fs field for legacy WASM binaries without wasm_fs_list.
-  const fsPaths: string[] = typeof wasm_fs_list === 'function'
-    ? (JSON.parse(wasm_fs_list()) as string[]).filter((p: string) => !RESERVED_FS_KEYS.has(p))
-    : Object.keys(fm.value.fs ?? {})
+  // Read other FS entries: use wasm_fs_list() to auto-discover all encrypted paths (D76:
+  // the module without it already returned above, so this never falls back to fm.fs).
+  const fsPaths: string[] = (JSON.parse(wasm_fs_list()) as string[]).filter((p: string) => !RESERVED_FS_KEYS.has(p))
   for (const path of fsPaths) {
     fsEntries[path] = wasm_fs_read(path)
   }

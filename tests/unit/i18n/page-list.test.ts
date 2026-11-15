@@ -2,9 +2,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { entryForSourcePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
+import { entryForRelativePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
 import { lookupNotFound } from '../../../.vitepress/theme/i18n/lookup'
-import { pageListFromDir } from '../../../.vitepress/pageList'
+import { pageListFromDir, rewrittenPath } from '../../../.vitepress/pageList'
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -27,7 +27,7 @@ function fixtureTree(files: string[]): string {
 // keeps its trailing slash, any other page file has none. The expectations below are
 // written out by hand, never derived by calling the code under test.
 
-describe('entryForSourcePath', () => {
+describe('entryForRelativePath', () => {
   it.each([
     ['index.md', '/'],
     ['guide/index.md', '/guide/'],
@@ -39,7 +39,7 @@ describe('entryForSourcePath', () => {
     ['zh-TW/challenges.md', '/zh-TW/challenges'],
     ['zh-TW/challenge/door-is-open/index.md', '/zh-TW/challenge/door-is-open/'],
   ])('maps %s to %s', (source, entry) => {
-    expect(entryForSourcePath(source)).toBe(entry)
+    expect(entryForRelativePath(source)).toBe(entry)
   })
 })
 
@@ -174,5 +174,154 @@ describe('the not-found lookup: a doubled prefix', () => {
   it('a path whose "counterpart" is still in its own locale has none', () => {
     const pages = ['/zh-TW/notice', '/notice']
     expect(lookupNotFound('/zh-TW/zh-TW/notice', '/', pages)).toBeNull()
+  })
+})
+
+// B39 (traceability.md "Source path → URL", revision 2.3): every source upstream holds after the
+// switch, and the file form `rewrittenPath` gives it under each primary. Typed from the table,
+// not computed: the `en` column strips exactly `en/`, the `zh-TW` column strips exactly `zh-TW/`.
+const SOURCE_TO_FILE_FORM: [string, string, string][] = [
+  ['en/index.md', 'index.md', 'en/index.md'],
+  ['en/challenges.md', 'challenges.md', 'en/challenges.md'],
+  ['en/guide/index.md', 'guide/index.md', 'en/guide/index.md'],
+  ['en/guide/python.md', 'guide/python.md', 'en/guide/python.md'],
+  ['en/guide/network.md', 'guide/network.md', 'en/guide/network.md'],
+  ['en/guide/browser.md', 'guide/browser.md', 'en/guide/browser.md'],
+  ['en/guide/notes.md', 'guide/notes.md', 'en/guide/notes.md'],
+  ['en/guide/troubleshooting.md', 'guide/troubleshooting.md', 'en/guide/troubleshooting.md'],
+  ['en/guide/workshop.md', 'guide/workshop.md', 'en/guide/workshop.md'],
+  [
+    'en/reference/attack-log-export-format.md',
+    'reference/attack-log-export-format.md',
+    'en/reference/attack-log-export-format.md',
+  ],
+  ['en/challenge/door-is-open/index.md', 'challenge/door-is-open/index.md', 'en/challenge/door-is-open/index.md'],
+  ['en/challenge/just-a-preview/index.md', 'challenge/just-a-preview/index.md', 'en/challenge/just-a-preview/index.md'],
+  [
+    'en/challenge/selected-excerpts/index.md',
+    'challenge/selected-excerpts/index.md',
+    'en/challenge/selected-excerpts/index.md',
+  ],
+  ['en/challenge/staff-only/index.md', 'challenge/staff-only/index.md', 'en/challenge/staff-only/index.md'],
+  ['zh-TW/index.md', 'zh-TW/index.md', 'index.md'],
+  ['zh-TW/challenges.md', 'zh-TW/challenges.md', 'challenges.md'],
+  ['zh-TW/guide/index.md', 'zh-TW/guide/index.md', 'guide/index.md'],
+  ['zh-TW/guide/python.md', 'zh-TW/guide/python.md', 'guide/python.md'],
+  ['zh-TW/guide/network.md', 'zh-TW/guide/network.md', 'guide/network.md'],
+  ['zh-TW/guide/browser.md', 'zh-TW/guide/browser.md', 'guide/browser.md'],
+  ['zh-TW/guide/notes.md', 'zh-TW/guide/notes.md', 'guide/notes.md'],
+  ['zh-TW/guide/troubleshooting.md', 'zh-TW/guide/troubleshooting.md', 'guide/troubleshooting.md'],
+  ['zh-TW/guide/workshop.md', 'zh-TW/guide/workshop.md', 'guide/workshop.md'],
+  [
+    'zh-TW/reference/attack-log-export-format.md',
+    'zh-TW/reference/attack-log-export-format.md',
+    'reference/attack-log-export-format.md',
+  ],
+  ['zh-TW/challenge/door-is-open/index.md', 'zh-TW/challenge/door-is-open/index.md', 'challenge/door-is-open/index.md'],
+  [
+    'zh-TW/challenge/just-a-preview/index.md',
+    'zh-TW/challenge/just-a-preview/index.md',
+    'challenge/just-a-preview/index.md',
+  ],
+  [
+    'zh-TW/challenge/selected-excerpts/index.md',
+    'zh-TW/challenge/selected-excerpts/index.md',
+    'challenge/selected-excerpts/index.md',
+  ],
+  ['zh-TW/challenge/staff-only/index.md', 'zh-TW/challenge/staff-only/index.md', 'challenge/staff-only/index.md'],
+]
+
+describe('rewrittenPath (B39): strips exactly the primary segment', () => {
+  it.each(SOURCE_TO_FILE_FORM)('%s, primary en -> %s', (source, enForm) => {
+    expect(rewrittenPath(source, 'en')).toBe(enForm)
+  })
+
+  it.each(SOURCE_TO_FILE_FORM)('%s, primary zh-TW -> %s', (source, _enForm, zhForm) => {
+    expect(rewrittenPath(source, 'zh-TW')).toBe(zhForm)
+  })
+
+  it('strips a whole segment only: english/x.md is unchanged under primary en', () => {
+    expect(rewrittenPath('english/x.md', 'en')).toBe('english/x.md')
+  })
+
+  it('leaves a non-primary-folder source unchanged', () => {
+    expect(rewrittenPath('zh-TW/x.md', 'en')).toBe('zh-TW/x.md')
+  })
+
+  it('strips the primary folder of a primary-folder source', () => {
+    expect(rewrittenPath('en/x.md', 'en')).toBe('x.md')
+  })
+})
+
+// B24 (page-list half): a `.md` under `challenge/<slug>/src/**` is not a page.
+describe('pageListFromDir omits challenge/<slug>/src/** (B24)', () => {
+  it('omits src/README.md and src/a/b/c.md', () => {
+    const root = fixtureTree([
+      'index.md',
+      'challenge/door-is-open/index.md',
+      'challenge/door-is-open/src/README.md',
+      'challenge/door-is-open/src/a/b/c.md',
+    ])
+    expect(pageListFromDir(root)).toEqual(['/', '/challenge/door-is-open/'])
+  })
+})
+
+// B41 (proof: traceability.md revision 2.3, "only primary-folder sources are rewritten"): no
+// fixture tree that passes 0010-S2 (checkSourceLayout) produces a duplicate page-list entry.
+describe('pageListFromDir: no duplicate entries on a passing tree (B41)', () => {
+  const VALID_FILES = ['en/index.md', 'zh-TW/index.md', 'challenge/x/challenge.yaml', 'challenge/x/src/app.py']
+
+  it.each(['en', 'zh-TW'] as const)('the valid tree has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree(VALID_FILES)
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+
+  it.each(['en', 'zh-TW'] as const)('a tree with deeper/unlisted-code entries has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree([...VALID_FILES, 'zh-TW/ja/a.md', 'en/guide/zh-TW/a.md'])
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+
+  it.each(['en', 'zh-TW'] as const)('a tree with a translation-only page has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree([...VALID_FILES, 'zh-TW/guide/only.md'])
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+})
+
+// B42: the page list of a fixture tree holding every source of the "Source path → URL" table.
+describe('pageListFromDir: the full-table fixture (B42)', () => {
+  const ALL_SOURCES = SOURCE_TO_FILE_FORM.map(([source]) => source)
+
+  it('pageListFromDir(root, "en") equals the en column, sorted', () => {
+    const root = fixtureTree(ALL_SOURCES)
+    const expected = [
+      '/', '/challenges', '/guide/', '/guide/python', '/guide/network', '/guide/browser', '/guide/notes',
+      '/guide/troubleshooting', '/guide/workshop', '/reference/attack-log-export-format',
+      '/challenge/door-is-open/', '/challenge/just-a-preview/', '/challenge/selected-excerpts/',
+      '/challenge/staff-only/',
+      '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/', '/zh-TW/guide/python', '/zh-TW/guide/network',
+      '/zh-TW/guide/browser', '/zh-TW/guide/notes', '/zh-TW/guide/troubleshooting', '/zh-TW/guide/workshop',
+      '/zh-TW/reference/attack-log-export-format',
+      '/zh-TW/challenge/door-is-open/', '/zh-TW/challenge/just-a-preview/', '/zh-TW/challenge/selected-excerpts/',
+      '/zh-TW/challenge/staff-only/',
+    ].sort()
+    expect(pageListFromDir(root, 'en')).toEqual(expected)
+  })
+
+  it('pageListFromDir(root, "zh-TW") equals the zh-TW column, sorted', () => {
+    const root = fixtureTree(ALL_SOURCES)
+    const expected = [
+      '/en/', '/en/challenges', '/en/guide/', '/en/guide/python', '/en/guide/network', '/en/guide/browser',
+      '/en/guide/notes', '/en/guide/troubleshooting', '/en/guide/workshop', '/en/reference/attack-log-export-format',
+      '/en/challenge/door-is-open/', '/en/challenge/just-a-preview/', '/en/challenge/selected-excerpts/',
+      '/en/challenge/staff-only/',
+      '/', '/challenges', '/guide/', '/guide/python', '/guide/network', '/guide/browser', '/guide/notes',
+      '/guide/troubleshooting', '/guide/workshop', '/reference/attack-log-export-format',
+      '/challenge/door-is-open/', '/challenge/just-a-preview/', '/challenge/selected-excerpts/',
+      '/challenge/staff-only/',
+    ].sort()
+    expect(pageListFromDir(root, 'zh-TW')).toEqual(expected)
   })
 })

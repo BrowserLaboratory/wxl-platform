@@ -3,8 +3,9 @@ import en from './messages/en.json'
 import zhTW from './messages/zh-TW.json'
 import type { Arrival } from './arrival'
 import { targetUrl } from './pages'
+import { isKnownLocale as isKnownLocaleOnList, type Locale } from '../../locales.ts'
 
-export type Locale = 'en' | 'zh-TW'
+export type { Locale }
 
 export const LOCALE_STORAGE_KEY = 'wxl-locale'
 
@@ -25,10 +26,9 @@ export const LOCALE_STORAGE_KEY = 'wxl-locale'
  * preference — so a reader who wants English has an exit and needs it only once.
  */
 export const DEFAULT_VISITING_LOCALE: Locale = 'zh-TW'
-export const KNOWN_LOCALES: readonly Locale[] = ['en', 'zh-TW'] as const
 
 export function isKnownLocale(value: unknown): value is Locale {
-  return value === 'en' || value === 'zh-TW'
+  return isKnownLocaleOnList(value)
 }
 
 /** The other of the two locales. The primary-locale epic replaces this with a locale list. */

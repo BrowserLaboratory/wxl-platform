@@ -1,4 +1,4 @@
-import { entryForSourcePath, isPublishedPath, targetUrl, withoutBase } from './pages'
+import { entryForRelativePath, isPublishedPath, targetUrl, withoutBase } from './pages'
 import { lookupNotFound } from './lookup'
 import { detectLocaleFromPath, localizePath, otherLocale, type Locale } from './index'
 
@@ -36,7 +36,7 @@ export type Arrival =
  * translation, and nothing is done about it.
  */
 export function classifyArrival(result: RouterResult, pages: readonly string[]): Arrival {
-  if (!result.isNotFound) return { kind: 'page', entry: entryForSourcePath(result.relativePath) }
+  if (!result.isNotFound) return { kind: 'page', entry: entryForRelativePath(result.relativePath) }
   return isPublishedPath(result.pathname, result.base, pages) ? { kind: 'failed-load' } : { kind: 'not-found' }
 }
 
