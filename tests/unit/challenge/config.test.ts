@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { validateChallengeConfig, LEGACY_FIELDS, VALID_TOOLS } from '../../../.vitepress/challenge/config'
+import {
+  validateChallengeConfig,
+  validateChallengeDeclaration,
+  LEGACY_FIELDS,
+  VALID_TOOLS,
+} from '../../../.vitepress/challenge/config'
 
 describe('ChallengeConfig validation', () => {
   const minimal = {
@@ -274,6 +279,134 @@ describe('VALID_TOOLS constant', () => {
     expect(VALID_TOOLS).not.toContain('terminal')
   })
 
+})
+
+describe('validateChallengeDeclaration (Y10): app is required', () => {
+  it('throws when app is absent', () => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask' })).toThrow(
+      /^missing required field: app$/,
+    )
+  })
+
+  it('throws when app is null', () => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app: null })).toThrow(
+      /^missing required field: app$/,
+    )
+  })
+
+  it('passes with no title', () => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app: 'app.py' })).not.toThrow()
+  })
+})
+
+describe('validateChallengeDeclaration (Y11): backend outside the enum', () => {
+  it('throws for django', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'django', app: 'app.py' }),
+    ).toThrow(/^backend must be one of flask, fastapi, php, got: django$/)
+  })
+})
+
+describe('validateChallengeDeclaration (Y15): non-boolean source_visible keeps today\'s three messages', () => {
+  it('throws the quoting hint for a quoted "true"', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_visible: 'true' }),
+    ).toThrow(
+      /^source_visible must be a boolean, got string: "true" \(a quoted YAML value is a string\)$/,
+    )
+  })
+
+  it('throws the null hint for null', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_visible: null }),
+    ).toThrow(
+      /^source_visible must be a boolean, got null: null \(a bare `source_visible:` line with no value parses as null\)$/,
+    )
+  })
+
+  it('throws with no hint for a number', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_visible: 1 }),
+    ).toThrow(/^source_visible must be a boolean, got number: 1$/)
+  })
+})
+
+describe('validateChallengeDeclaration (Y16): source_files keeps today\'s rules', () => {
+  it('throws for a string instead of an array', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_files: '/a' }),
+    ).toThrow(/^source_files must be an array of virtual paths$/)
+  })
+
+  it('throws for a non-string entry', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_files: ['/a', 1] }),
+    ).toThrow(/^source_files entries must be strings, got: number$/)
+  })
+
+  it('throws when source_visible is false', () => {
+    expect(() =>
+      validateChallengeDeclaration({
+        backend: 'flask',
+        app: 'app.py',
+        source_files: ['/a'],
+        source_visible: false,
+      }),
+    ).toThrow(
+      /^source_files lists paths to display but source_visible is not true; set source_visible: true or remove source_files$/,
+    )
+  })
+
+  it('throws when source_visible is absent', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', source_files: ['/a'] }),
+    ).toThrow(
+      /^source_files lists paths to display but source_visible is not true; set source_visible: true or remove source_files$/,
+    )
+  })
+
+  it('passes an empty array alongside a false source_visible', () => {
+    expect(() =>
+      validateChallengeDeclaration({
+        backend: 'flask',
+        app: 'app.py',
+        source_files: [],
+        source_visible: false,
+      }),
+    ).not.toThrow()
+  })
+})
+
+describe('validateChallengeDeclaration (Y17): tools keeps today\'s rules', () => {
+  it('throws for a string instead of an array', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', tools: 'browser' }),
+    ).toThrow(/^tools must be an array of valid tab IDs$/)
+  })
+
+  it('throws for an invalid entry', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', tools: ['terminal'] }),
+    ).toThrow(/^invalid tools entry: terminal\. Must be one of browser, network, repeater, code$/)
+  })
+
+  it('preserves an empty array, not defaulted', () => {
+    const result = validateChallengeDeclaration({ backend: 'flask', app: 'app.py', tools: [] })
+    expect(result.tools).toEqual([])
+  })
+
+  it('leaves tools undefined when absent', () => {
+    const result = validateChallengeDeclaration({ backend: 'flask', app: 'app.py' })
+    expect(result.tools).toBeUndefined()
+  })
+})
+
+describe('validateChallengeDeclaration (Y18): non-string flag', () => {
+  it('throws for a number', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', flag: 5 }),
+    ).toThrow(/^flag must be a string, got: number$/)
+  })
 })
 
 describe('Legacy field detection', () => {

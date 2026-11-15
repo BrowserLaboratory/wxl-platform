@@ -130,3 +130,84 @@ export function validateChallengeConfig(raw: unknown): ChallengeConfig {
     tags: (Array.isArray(obj.tags) ? obj.tags : undefined) as string[] | undefined,
   }
 }
+
+// The challenge declaration (seam 0010-S31; D73-D75). `title` is not required: it is the brief's
+// key (D75), not the declaration's.
+const DECLARATION_REQUIRED: string[] = ['backend', 'app']
+
+export function validateChallengeDeclaration(raw: unknown): Omit<ChallengeConfig, 'title'> {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new Error('challenge config must be an object')
+  }
+  const obj = raw as Record<string, unknown>
+
+  for (const field of DECLARATION_REQUIRED) {
+    if (obj[field] === undefined || obj[field] === null) {
+      throw new Error(`missing required field: ${field}`)
+    }
+  }
+
+  if (!VALID_BACKENDS.includes(obj.backend as BackendType)) {
+    throw new Error(`backend must be one of ${VALID_BACKENDS.join(', ')}, got: ${obj.backend}`)
+  }
+
+  if (obj.flag !== undefined && typeof obj.flag !== 'string') {
+    throw new Error(`flag must be a string, got: ${typeof obj.flag}`)
+  }
+
+  if (obj.source_visible !== undefined && typeof obj.source_visible !== 'boolean') {
+    const value = obj.source_visible
+    const hint = typeof value === 'string'
+      ? ' (a quoted YAML value is a string)'
+      : value === null
+        ? ' (a bare `source_visible:` line with no value parses as null)'
+        : ''
+    throw new Error(
+      `source_visible must be a boolean, got ${value === null ? 'null' : typeof value}: ${JSON.stringify(value)}${hint}`,
+    )
+  }
+
+  if (obj.source_files !== undefined) {
+    if (!Array.isArray(obj.source_files)) {
+      throw new Error('source_files must be an array of virtual paths')
+    }
+    for (const entry of obj.source_files as unknown[]) {
+      if (typeof entry !== 'string') {
+        throw new Error(`source_files entries must be strings, got: ${typeof entry}`)
+      }
+    }
+    if ((obj.source_files as unknown[]).length > 0 && obj.source_visible !== true) {
+      throw new Error(
+        'source_files lists paths to display but source_visible is not true; set source_visible: true or remove source_files',
+      )
+    }
+  }
+
+  if (obj.tools !== undefined) {
+    if (!Array.isArray(obj.tools)) {
+      throw new Error('tools must be an array of valid tab IDs')
+    }
+    for (const tool of obj.tools as string[]) {
+      if (!(VALID_TOOLS as readonly string[]).includes(tool)) {
+        throw new Error(`invalid tools entry: ${tool}. Must be one of ${VALID_TOOLS.join(', ')}`)
+      }
+    }
+  }
+
+  return {
+    backend: obj.backend as BackendType,
+    app: obj.app as string,
+    fs: obj.fs as Record<string, string> | undefined,
+    source_visible: obj.source_visible === true,
+    source_files: (Array.isArray(obj.source_files) ? obj.source_files : []) as string[],
+    packages: (Array.isArray(obj.packages) ? obj.packages : []) as string[],
+    wasmModule: obj.wasmModule as string | undefined,
+    flag: (obj.flag as string) ?? undefined,
+    tools: obj.tools as (typeof VALID_TOOLS)[number][] | undefined,
+    difficulty: obj.difficulty as string | undefined,
+    category: obj.category as string | undefined,
+    description: obj.description as string | undefined,
+    date: obj.date as string | undefined,
+    tags: (Array.isArray(obj.tags) ? obj.tags : undefined) as string[] | undefined,
+  }
+}

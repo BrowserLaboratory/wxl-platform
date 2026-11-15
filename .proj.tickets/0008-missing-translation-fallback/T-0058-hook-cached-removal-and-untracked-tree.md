@@ -7,7 +7,7 @@ blocked_by: []
 pending_reason: "The first two found while testing T-0056 (stage 5), the third read from the code in its stage 7 security review (S-5); recorded for the user as predating that ticket and raised again as N-4 by 0008's chain analysis. Opened as pending under the user's standing instruction of 2026-11-06; the user confirmed on 2026-11-06 that it stays pending until they schedule it."
 pending_evidence: "T-0056's coverage report, 'Found while testing, outside this ticket', with reproductions; review/security-T-0056.md S-5 and S-6 (= stage 6 Spec F8); review/chain-analysis.md N-4 and C-10. The stash code is not in T-0056's diff; the untracked-directory listing predates it (T-0056 coverage report); W4's echo was reworded in T-0056's stage 6 and printed the directory name as it is before that too (S-5)."
 pending_on: 2026-11-06
-revisit_when: "The next change to scripts/pre-commit.sh, or a teacher reports the O5 stash message after removing a challenge from the index."
+revisit_when: "When T-0078 lands."
 ---
 
 ## Context
@@ -45,3 +45,12 @@ untracked; W4 shows a directory name with control characters escaped.
 pre-commit hook 有三個 T-0056 之前就存在的問題：只用 `git rm -r --cached` 把題目目錄移出 index 時，stash 會中斷並結束在 O5；整棵語系樹都沒有被追蹤時，W4 什麼都不列；W4 會把目錄名稱裡的控制字元原樣印到老師的終端機。這張票把三個問題修掉並補測試。
 
 ## Comments
+
+### 2026-11-15 — taken by epic 0010
+
+Spec 0010 (primary-locale layout) takes this ticket whole as its own ticket after the hook ticket
+(`.proj.specs/0010-primary-locale-layout/traceability.md` decision D72, row S50, constraint T7): the
+layout switch (T-0077) changes `scripts/pre-commit.sh`, which meets the old `revisit_when`, and makes
+item 2 the common case. Its scope is now **T-0078** (`.proj.tickets/0010-primary-locale-layout/`),
+approved with stage 4's breakdown under the user's standing authorization of 2026-11-15.
+`revisit_when` is rewritten to "When T-0078 lands"; the ticket stays `pending` until then.
