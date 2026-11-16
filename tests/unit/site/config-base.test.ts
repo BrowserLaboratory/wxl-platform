@@ -302,11 +302,72 @@ describe.runIf(realUpstreamDecision(REPO_ROOT))('rewrites is the function rewrit
   })
 })
 
-// B50–B52 (transformPageData reading a challenge page's body through filePath, with area Y's
-// assembly wired in) are NOT done this wave: wiring `assembleChallengeFrontmatter` into the real
-// `transformPageData` breaks `pnpm docs:build` on the current, not-yet-moved tree (confirmed by
-// actually running it — see `config.mts`'s `transformPageData` comment). Reported, not attempted
-// as a test here, to avoid leaving the real build broken.
+// transformPageData reads a challenge page's body through filePath (never relativePath, D78),
+// with area Y's assembly wired in (B50–B52). D108's move has landed, so the fixture below needs
+// only its own `challenge.yaml`, per the B50 boundary note.
+describe('transformPageData (B50–B52)', () => {
+  function buildTransformFixtureSrcDir(): string {
+    const root = mkdtempSync(join(tmpdir(), 'wxl-transform-fixture-'))
+    fixtureRoots.push(root)
+    mkdirSync(join(root, 'platform', 'zh-TW', 'challenge', 'x'), { recursive: true })
+    mkdirSync(join(root, 'platform', 'en', 'challenge', 'x'), { recursive: true })
+    mkdirSync(join(root, 'platform', 'challenge', 'x'), { recursive: true })
+    writeFileSync(join(root, 'platform', 'zh-TW', 'challenge', 'x', 'index.md'), '---\nlayout: challenge\n---\n# zh body\n')
+    writeFileSync(join(root, 'platform', 'en', 'challenge', 'x', 'index.md'), '---\nlayout: challenge\n---\n# en body\n')
+    writeFileSync(join(root, 'platform', 'challenge', 'x', 'challenge.yaml'), 'number: 1\n')
+    return join(root, 'platform')
+  }
+
+  async function loadRealConfig() {
+    vi.resetModules()
+    delete process.env.SITE_BASE
+    const mod = (await import('../../../.vitepress/config.mts')) as {
+      default: { transformPageData?: (pageData: Record<string, unknown>, ctx: unknown) => void }
+    }
+    return mod.default
+  }
+
+  it('B50: a primary-folder challenge page is read through filePath, not relativePath', async () => {
+    const srcDir = buildTransformFixtureSrcDir()
+    const config = await loadRealConfig()
+    const pageData: Record<string, unknown> = {
+      relativePath: 'challenge/x/index.md',
+      filePath: 'zh-TW/challenge/x/index.md',
+      frontmatter: { layout: 'challenge' },
+    }
+    config.transformPageData!(pageData, { siteConfig: { srcDir } })
+    expect((pageData.frontmatter as Record<string, unknown>).markdownBody).toBe('# zh body\n')
+  })
+
+  it('B51: a non-primary challenge page (relativePath === filePath)', async () => {
+    const srcDir = buildTransformFixtureSrcDir()
+    const config = await loadRealConfig()
+    const pageData: Record<string, unknown> = {
+      relativePath: 'en/challenge/x/index.md',
+      filePath: 'en/challenge/x/index.md',
+      frontmatter: { layout: 'challenge' },
+    }
+    config.transformPageData!(pageData, { siteConfig: { srcDir } })
+    expect((pageData.frontmatter as Record<string, unknown>).markdownBody).toBe('# en body\n')
+  })
+
+  it.each([
+    ['doc', { layout: 'doc' }],
+    ['no layout at all', {}],
+  ])('B52: %s gets no body', async (_label, frontmatter) => {
+    const srcDir = buildTransformFixtureSrcDir()
+    mkdirSync(join(srcDir, 'zh-TW', 'guide'), { recursive: true })
+    writeFileSync(join(srcDir, 'zh-TW', 'guide', 'a.md'), '---\n---\n# a\n')
+    const config = await loadRealConfig()
+    const pageData: Record<string, unknown> = {
+      relativePath: 'guide/a.md',
+      filePath: 'zh-TW/guide/a.md',
+      frontmatter,
+    }
+    config.transformPageData!(pageData, { siteConfig: { srcDir } })
+    expect((pageData.frontmatter as Record<string, unknown>).markdownBody).toBeUndefined()
+  })
+})
 
 // Title and description stay site-level; fork:init's own anchors stay single (B60, B77).
 describe('title, description, ignoreDeadLinks and the fork:init anchors (B60, B77)', () => {

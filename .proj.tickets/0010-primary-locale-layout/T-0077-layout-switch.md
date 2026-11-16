@@ -724,6 +724,254 @@ user's approval first. Every challenge page is opened with its Browser panel ope
       running it against the current, unmoved `dist/` would not exercise anything this wave
       changed.
 
+- 2026-11-16 (parent, wave 1(e) authorization and dry-run). The move D108 produces is authorized by
+  the user in chat on 2026-11-15, quoted: 「所有建議我都同意，權限都授權到兩個 epic 完成，範圍照 handoff
+  的「已核准的決定與授權」」. The handoff's approved scope includes every ticket's implementation, and
+  T-0077's approved test plan says wave 1(e) runs T-0076's `planLayoutMove` on upstream's tree. The
+  earlier entries above that call this "an open user decision" are superseded by this entry. The
+  move is a file change on this ticket branch, reversible through git (base commit `8ddc422`). The
+  parent ran the dry-run read-only (a scratchpad script feeding `git ls-files -z -- platform` with
+  each file's bytes and mode to `planLayoutMove`); its output:
+
+```
+result keys: legacy,ops,mismatches
+legacy: true op counts: {"move":14,"declare":4,"strip":4}
+move platform/challenge/door-is-open/index.md -> platform/en/challenge/door-is-open/index.md
+declare platform/challenge/door-is-open/index.md -> platform/challenge/door-is-open/challenge.yaml
+move platform/challenge/just-a-preview/index.md -> platform/en/challenge/just-a-preview/index.md
+declare platform/challenge/just-a-preview/index.md -> platform/challenge/just-a-preview/challenge.yaml
+move platform/challenge/selected-excerpts/index.md -> platform/en/challenge/selected-excerpts/index.md
+declare platform/challenge/selected-excerpts/index.md -> platform/challenge/selected-excerpts/challenge.yaml
+move platform/challenge/staff-only/index.md -> platform/en/challenge/staff-only/index.md
+declare platform/challenge/staff-only/index.md -> platform/challenge/staff-only/challenge.yaml
+move platform/challenges.md -> platform/en/challenges.md
+move platform/guide/browser.md -> platform/en/guide/browser.md
+move platform/guide/index.md -> platform/en/guide/index.md
+move platform/guide/network.md -> platform/en/guide/network.md
+move platform/guide/notes.md -> platform/en/guide/notes.md
+move platform/guide/python.md -> platform/en/guide/python.md
+move platform/guide/troubleshooting.md -> platform/en/guide/troubleshooting.md
+move platform/guide/workshop.md -> platform/en/guide/workshop.md
+move platform/index.md -> platform/en/index.md
+move platform/reference/attack-log-export-format.md -> platform/en/reference/attack-log-export-format.md
+strip platform/zh-TW/challenge/door-is-open/index.md -> platform/zh-TW/challenge/door-is-open/index.md
+strip platform/zh-TW/challenge/just-a-preview/index.md -> platform/zh-TW/challenge/just-a-preview/index.md
+strip platform/zh-TW/challenge/selected-excerpts/index.md -> platform/zh-TW/challenge/selected-excerpts/index.md
+strip platform/zh-TW/challenge/staff-only/index.md -> platform/zh-TW/challenge/staff-only/index.md
+mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key":"source_files","enValue":["/workspace.py","/revisions.py","/course_pack.py","/templates/base.html","/templates/workbench.html","/templates/article.html","/templates/preview.html","/templates/course-pack.html","/templates/missing.html","/static/app.css"],"value":["/templates/base.html","/templates/workbench.html","/templates/article.html","/templates/preview.html","/templates/course-pack.html","/templates/missing.html","/static/app.css"]}]
+```
+
+  Expected per U130–U134 and U147: 14 `move`, 4 `declare`, 4 `strip`, no failure, one mismatch
+  (selected-excerpts `source_files`, kept English, R16/U147). The executor applies exactly these ops
+  with the planner's bytes.
+
+- 2026-11-16 (wave 1, sub-step (e), the move itself, D108): done — the one row wave 1(e)'s Comments
+  (above) left undone. Applied on the authorization and dry-run the parent recorded: re-ran
+  `planLayoutMove` on `git ls-files -s -- platform` (bytes via `fs.readFileSync`, mode from the index)
+  in a scratchpad script before touching anything; its output matched the recorded dry-run byte for
+  byte (`legacy:true`, `{"move":14,"declare":4,"strip":4}`, the same 18 paths in the same order, the
+  same one mismatch, `failures:null`) — no drift since the authorization entry. Applied exactly those
+  18 ops with the planner's own bytes: each `move` wrote `to` (creating parent directories, `chmod`
+  to the source's own mode) then deleted `from`; each `declare` wrote `to`
+  (`platform/challenge/<slug>/challenge.yaml`, mode `644`, the op carries no mode field of its own);
+  each `strip` overwrote its `path` in place. `git add -A -- platform` staged all 22 resulting paths
+  (14 renames — 4 of which also split off a new `challenge.yaml` — plus 4 new `challenge.yaml` adds
+  plus 4 in-place modifies); `git ls-files -s -- platform` shows every path still `100644`, no mode
+  changed. Verification: re-ran the same planner script against the new tree — `{legacy:false,
+  op counts:{"move":0,"declare":0,"strip":0}, mismatches:[], failures:null}`, exactly as required.
+  - `npx vitest run tests/unit/scripts/upstream-guard.test.ts -t "real tree"` → 4 passed, 115 skipped
+    (119) — the real-tree pristine check (previously the one red case) is green.
+  - `npx vitest run tests/unit/scripts/upstream-guard.test.ts` (full file) → 119 passed (119), up from
+    117 passed/1 failed/1 skipped; the one prior failure (the real-tree pristine check) is gone, no
+    new failure.
+  - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+    --run` → 4 test files failed, 144 passed (148); 6 tests failed, 5323 passed (5329). The real-tree
+    pristine check that was wave 1(e)'s one carried failure is gone (net one fewer failure than wave
+    1(f)/1(g)'s ending count of 2, plus five new failures this move itself causes by removing
+    `platform/challenge/<slug>/index.md` as a legacy path — all five are reported below, each
+    attributed to a specific later wave, not fixed here, per this wave's own row list):
+    - `tests/unit/i18n/locales.test.ts` › B18 command 2 — pre-existing since wave 1(d)/1(f)/1(g),
+      unrelated to this wave, owned by waves 3/4.
+    - `tests/unit/site/redirects-generated.test.ts` › "the committed _redirects › is byte-identical to
+      what the challenge tree generates" — this file is RG, named by wave 4's row S28 ("committed
+      `_redirects` byte-identical to generation … on upstream the S-§4.1 file"); `_redirects`
+      regeneration against the new layout is wave 4's row, not this one's.
+    - `tests/unit/site/redirects.test.ts` › three cases ("gives every challenge in git's index its
+      four rules…", "resolves every parameterised target prefix to a directory of challenges…",
+      "resolves every literal target to a page") — this file is RT, named by wave 4's rows S28/S34;
+      same reason as above.
+    - `tests/unit/scripts/challenge-keygen.test.ts` › "keygen aborts, names the slug, and leaves
+      frontmatter and the published module alone when the built module fails the payload check ›
+      exits non-zero with [slug] and \"payload integrity\", leaving index.md and runtime.wasm
+      untouched" (counted twice in the run, once per vitest retry attempt, one failed test) — this is
+      traceability.md's row Y59 verbatim: "today's test, re-pointed from `index.md`" to
+      `challenge.yaml`; the re-pointing is wave 5's ("keygen: … Y52–Y61 …"), not done here.
+    No other failure; no regression outside these five, each independently traced to a named later
+    wave.
+  - `pnpm --dir create-wxl test` not run: this wave's only change is to `platform/`; grepped
+    `create-wxl/test/*.mjs` for a dependency on the real tree first — the one hit,
+    `layout-move.test.mjs`, reads only its own `create-wxl/test/fixtures/layout-move/door-is-open/`
+    fixtures, never the repository's `platform/`, so create-wxl's suite is unaffected.
+  - No row left undone for this sub-step; wave 1(e) is now complete.
+
+- 2026-11-16 (wave 1(f), section D — the parent's go-ahead): the executor ran the confirmed
+  increment plan's 8 rows in order, on top of the landed D108 move (wave 1(e)). All 8 rows done;
+  no row left undone.
+  - Row 1 (B70 unit half): added `describe.runIf(realUpstreamDecision(REPO_ROOT))('B70: upstream\'s
+    home pages', …)` to `tests/unit/site/home-links.test.ts`, reading the real
+    `platform/en/index.md` and `platform/zh-TW/index.md` frontmatter and calling
+    `localizeHomeLinks` with `pageListFromDir(SRC_DIR, primary)`, both `P`, against the "Home-page
+    links" table. Red for the expected reason on the first run — confirmed by temporarily
+    reverting the companion content edit below and re-running: `PL-E12: "zh-TW/index.md" has
+    hero.actions[0].link "/zh-TW/challenges/", which already carries a locale prefix…` — because
+    `platform/zh-TW/index.md`'s hero links were still written in the pre-switch, self-prefixed form.
+    Green after editing `platform/zh-TW/index.md`'s two hero `link` values from `/zh-TW/challenges/`
+    and `/zh-TW/guide/` to `/challenges/` and `/guide/` (the content edit Implementation waves
+    1(f) itself lists as "the hero links in `platform/{en,zh-TW}/index.md` (B70's unit half)";
+    `platform/en/index.md` already matched the table's "Written" column and needed no edit).
+    Checked no other test pinned the old content first (`grep -rn` for the written literals and
+    for `zh-TW/index.md`/`en/index.md` across `tests/`): none did. `npx vitest run
+    tests/unit/site/home-links.test.ts` → 38 passed (up from 36).
+  - Row 2 (`checkSourceLayout` wired into `config.mts`, D6/D19 order): added the import and one
+    call, `checkSourceLayout(resolve(REPO_ROOT, SRC_DIR), primary)`, immediately after `primary` is
+    read and before the page list / `defineConfig` call; rewrote the now-stale "not yet wired here"
+    comment. As the plan itself said, no row-specific red test exists at this layer; verified by
+    regression (below) and by `pnpm docs:build` reaching Rollup bundling (past every `defineConfig`
+    evaluation step, including this call) with no `PL-E0x` thrown.
+  - Row 3 (`locales: localesConfig(primary)`): replaced the 44-line literal `locales` object with
+    one call to the already-tested `localesConfig` (import added). Verified the same way as row 2:
+    `locales-config.test.ts`'s B56/B57 already deep-equal this literal against both schemas, so this
+    is "replace with an already-verified equivalent", not a new seam.
+  - Row 4 (defines; B43): `tests/unit/i18n/page-list.test.ts`'s existing describe "the page list the
+    site configuration ships" rewritten: its oracle now reads the real `range.json` through
+    `readPrimaryLocale` and strips `<P>/` itself, instead of comparing against an unstripped walk.
+    Red for the expected reason on the first run: `config.mts` still called
+    `pageListFromDir(resolve(__dirname,'..',SRC_DIR))` with one argument, so the shipped list carried
+    `/zh-TW/...` and `/en/...` segments the P-aware oracle had already stripped from the primary
+    side — a large array diff, oracle vs. shipped. Green after hoisting
+    `const pages = pageListFromDir(resolve(REPO_ROOT, SRC_DIR), primary)` to module scope (so the
+    `transformPageData` row below can reuse the exact same list) and pointing `__WXL_PAGES__` at it.
+    `npx vitest run tests/unit/i18n/page-list.test.ts` → 101 passed.
+  - Row 5 (`transformPageData` by `filePath`, B50–B52): added three cases to a new describe in
+    `tests/unit/site/config-base.test.ts`, reusing the already-built fixture-root mechanism's
+    sibling idea (a throwaway `srcDir` under `os.tmpdir()`, not the repository root, so no real-tree
+    mutation). Red for the expected reason on the first run (B50 only — B51/B52 passed unchanged,
+    exactly as the previously-reverted attempt's note predicted): `ENOENT` on `relativePath`, because
+    today's `transformPageData` still read `pageData.relativePath`, not `pageData.filePath`. Green
+    after rewriting `transformPageData` to read `filePath`, call
+    `assembleChallengeFrontmatter(sourcePath, pageData.frontmatter, raw, readDeclaration, LOCALES)`
+    (`readDeclaration` a closure over `resolve(ctx.siteConfig.srcDir, '..')`), replace
+    `pageData.frontmatter` when assembly returns non-null, then unconditionally run the result
+    through `localizeHomeLinks(pageData.frontmatter, pageLocale, primary, pages)` when
+    `pageLocale = sourcePath.split('/')[0]` is a known locale. Unlike the attempt wave 1(f)'s earlier
+    Comments entry reverted, this one holds on the real tree, because D108's move (wave 1(e)) has
+    since landed: re-ran `pnpm docs:build` after wiring — it now gets past every brief/declaration
+    page (no `PL-E13`/`PL-E17`/`PL-E18`), confirming the wiring itself is correct (see the separate,
+    unrelated finding below for why the build still does not reach exit 0). `npx vitest run
+    tests/unit/site/config-base.test.ts` → 116 passed (up from 112).
+  - Row 6 (Y1 read half): added `describe.runIf(realUpstreamDecision(REPO_ROOT))` to
+    `tests/unit/challenge/declaration.test.ts`, reading the four real `challenge.yaml` files and
+    deep-equalling Y-§2.4's literal (typed in the test). Green on the first run, no production
+    change, as the plan predicted (`readChallengeDeclaration` was already correct; only the real
+    files were previously missing). `npx vitest run tests/unit/challenge/declaration.test.ts` → 31
+    passed (up from 27).
+  - Row 7 (Y38): added a plain (not upstream-only, per AC-61) describe to
+    `tests/unit/challenge/plugin.test.ts` enumerating every real `platform/challenge/<slug>/` that
+    carries a `challenge.yaml`, and for every listed locale with a brief, asserting the assembled
+    keys equal brief ∪ `challenge.yaml` keys ∪ `markdownBody`, and that the declaration projection
+    (the assembled result minus the brief's own keys and `markdownBody`) is identical across
+    locales. Green on the first run, no production change. While running the full suite afterwards
+    (see below), found that enumerating slugs by directory alone (not filtering on `challenge.yaml`
+    existing) occasionally picked up `challenge-keygen.test.ts`'s transient real-tree test fixture
+    `platform/challenge/keygen-source-files-probe/` (that test writes directly into the live
+    repository tree, pre-dating this ticket, and removes it in `afterEach`) when the two test files
+    happened to run concurrently — the probe directory has no `challenge.yaml`, so the new test's own
+    `expect(declResult.ok).toBe(true)` failed for it. Fixed by filtering the slug enumeration to
+    directories that actually hold a `challenge.yaml` (the correct definition of "declared slug"
+    under D78 regardless of the race; a legacy flat-brief fixture is not one). `npx vitest run
+    tests/unit/challenge/plugin.test.ts` → 29 passed (up from 24), stable across 5 repeated runs
+    after the fix.
+  - Row 8 (confirmation):
+    - `pnpm docs:build` on the real, moved tree: **does not exit 0**, for a reason entirely outside
+      this wave's row list. First error: `Could not resolve "./shared/challenges.data.ts" from
+      "platform/en/challenges.md"` — `platform/en/index.md` and `platform/en/challenges.md` still
+      import the loader with the pre-move relative path (`./shared/…`), which needs `../shared/…`
+      one level deeper after D108's move. Confirmed this is not caused by rows 1–7: D95 says the
+      transform deliberately leaves "relative links, `./shared/` imports and every other difference
+      … to the three-way merge", and D14/D40/B79/B84 step 4 assign exactly this fix — rewriting the
+      loader imports (and, per D40, consolidating `challenges.data.ts`/`challenges.zh-TW.data.ts`
+      into one loader) — to wave 3 ("Lists and smoke fixtures": B79, `platform/shared/
+      mergeChallenges.ts` and `challenges.data.ts`, "the four list and home pages"), not to section
+      D. Not fixed here: editing the loader/list pages is wave 3's named scope, and the Implementation
+      waves preamble allows the branch to stay red between waves. Reported rather than guessed.
+    - `npx vitest run tests/unit/site/config-base.test.ts tests/unit/i18n/page-list.test.ts
+      tests/unit/challenge/declaration.test.ts tests/unit/challenge/plugin.test.ts
+      tests/unit/site/home-links.test.ts` (the wave's affected files) → 5 test files passed; 315
+      passed.
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run`, with `--no-file-parallelism` (deterministic; see the race finding below) → 144 test
+      files passed, 4 failed (148); 5338 tests passed, 6 failed (5344) — up from wave 1(e)'s 5323
+      passed/5329 total by exactly 15 net new tests (2 B70, 4 B50–B52, 4 Y1, 5 Y38; B43's row is a
+      same-size rewrite). The 4 failed files/6 failed tests are exactly wave 1(e)'s already-accepted,
+      unchanged carry-overs (owned by waves 3/4/5, each named in that wave's own Comments entry):
+      `locales.test.ts` B18 command 2; `redirects-generated.test.ts`'s byte-identical case;
+      `redirects.test.ts`'s three cases; `challenge-keygen.test.ts`'s Y59 case (counted twice by
+      vitest's own retry). No new failure, no regression.
+    - **Finding, reported rather than fixed: `pnpm test --run` in its default (parallel) mode is
+      intermittently flaky after this wave's `checkSourceLayout`/`pageListFromDir` wiring**, because
+      `challenge-keygen.test.ts`'s "challenge-keygen CLI rejects an unusable source_files entry"
+      describe writes `platform/challenge/keygen-source-files-probe/index.md` directly into the
+      live repository tree (not a copy) for the duration of its own `it`s, removing it in
+      `afterEach`. Any test that dynamically imports the real `config.mts` during that window now
+      also runs `checkSourceLayout` over the whole real tree (rows 2 and 4 of this wave), which
+      correctly reports `PL-E08` for that transient file — a page outside the locale folders. Ran
+      the exact required command four times: twice it matched the clean, deterministic count above
+      exactly; twice it additionally and non-reproducibly failed one or more of `B14`/`B40`/`B50–52`
+      (config-base.test.ts) or the B43 oracle (`page-list.test.ts`), whichever test happened to
+      import `config.mts` while the probe directory existed. This is not a defect in rows 1–7 (the
+      race-free `--no-file-parallelism` run above is clean) and not something this wave's row list
+      can fix: the correct fix is `challenge-keygen.test.ts` running that describe's CLI against a
+      temporary copy of the repository rather than the live tree — the same approach Y55's own row
+      text already prescribes for a different keygen case — which is wave 5's scope
+      (Y52–Y61), not section D's. Flagged here for the parent rather than silently patched.
+    - `pnpm --dir create-wxl test` not run: this wave's files are all under `.vitepress/`, `tests/`
+      and one content file (`platform/zh-TW/index.md`); none touch `create-wxl/` or fork:init.
+  - Still deferred, unchanged: `processChallengeFrontmatter` re-pointed to run both validators
+    (Y-O12/Y-q1) — its owning wave is still unconfirmed (open question 3), and was explicitly out of
+    this go-ahead's named scope (`checkSourceLayout`, `transformPageData`, `locales`, the defines).
+
+- 2026-11-16 (parent, new session; standing authorization renewed). The user, in chat on 2026-11-16,
+  quoted: 「授權：所有建議我都同意，權限都授權到兩個 epic 完成，範圍照上一份 handoff
+  （.proj.handoffs/2026-11-15-0034-primary-locale-epics.md）的「已核准的決定與授權」。每一項核准仍要列給我看。
+  executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」 Scope: every remaining wave of this
+  ticket's approved test plan (1(f) remainder, 1(g), 2–9), stages 6–9, and the decisions an executor
+  would otherwise refer to the user inside those waves, provided the decision follows the approved
+  test plan, the spec revision 2.3 and the agent's recommendation, and is listed to the user. Not in
+  scope, and still stopped for the user in person: creating or deleting a GitHub repository (including
+  stage 8's F-3 temporary range), pushing or deleting the stage 8 fixture branches (`stage8/T-0077`,
+  `stage8/T-0077-en`), any release (`v*` tag), RP2, RP5, and any step that needs the user's npm login.
+  The parent also confirmed the untracked `platform/challenge/keygen-source-files-probe/` came from
+  `tests/unit/scripts/challenge-keygen.test.ts` (its "CLI rejects an unusable source_files entry"
+  describe writes into the live tree and removes it only in `afterEach`), and removed it.
+
+- 2026-11-16 (parent, verification of 1(f) section D, and why D108's move is not committed yet). Re-ran
+  `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test --run
+  --no-file-parallelism` on the working tree (move + section D): 144 files passed, 4 failed (148); 5338
+  passed, 6 failed (5344) — identical to the section D entry above, the same six carried failures.
+  Committing the staged move then failed in the pre-commit hook, which changed nothing:
+  `challenge-lint-staged` reported `incomplete challenge (missing index.md)` for all four slugs, and the
+  orphan-brief check (`scripts/pre-commit.sh` 485–509) would follow, because both still read
+  `platform/challenge/<slug>/index.md`. Those are rows of waves 5 (Y88, Y89), 6 (S36–S49) and 4 (the
+  generator the hook calls). Decision, under the standing authorization above, without `--no-verify` or
+  `SKIP_SIMPLE_GIT_HOOKS`: everything under `platform/` (the move, and section D's hero-link edit to
+  `platform/zh-TW/index.md`) stays in the working tree, uncommitted, until the hook accepts the new
+  layout; changes outside `platform/` are committed as checkpoints wave by wave. The move is reproducible
+  from `planLayoutMove` (the entry above records its output), and the parent kept a binary patch of it.
+  Next in wave 1(f): section E — Y-O12 (`processChallengeFrontmatter` re-pointed to run both validators,
+  Y-q5: `validateChallengeBrief` gets the `BRIEF_KEYS` projection, `validateChallengeDeclaration` the
+  rest) and removing `validateChallengeConfig` (Y-q1, settled by traceability revision 2.3's closing
+  paragraph); owner wave 1(f), because the function lives in `.vitepress/challenge/plugin.ts`.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
