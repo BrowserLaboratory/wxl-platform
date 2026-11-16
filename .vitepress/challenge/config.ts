@@ -1,6 +1,6 @@
 export type BackendType = 'flask' | 'fastapi' | 'php'
 
-export const LEGACY_FIELDS = ['fs_key', 'fsKeyParts', 'encryptedFs', 'flag_verifier'] as const
+export const LEGACY_FIELDS = ['fs', 'fs_key', 'fsKeyParts', 'encryptedFs', 'flag_verifier'] as const
 export const VALID_TOOLS = ['browser', 'network', 'repeater', 'code'] as const
 
 // D74: a brief's frontmatter keys are exactly this closed set; every other key belongs in

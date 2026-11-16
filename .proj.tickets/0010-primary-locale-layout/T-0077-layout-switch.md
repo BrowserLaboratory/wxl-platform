@@ -972,6 +972,191 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
   rest) and removing `validateChallengeConfig` (Y-q1, settled by traceability revision 2.3's closing
   paragraph); owner wave 1(f), because the function lives in `.vitepress/challenge/plugin.ts`.
 
+- 2026-11-16 (wave 1(f) section E + 1(g), the executor ran the confirmed increment plan's two parts
+  in order). PART 1 (section E) done in full, PART 2 (1(g)) written in full but every row stays red
+  for the shared, non-row-specific reason wave 1(g) already carries (wave 3's `./shared/
+  challenges.data.ts` import path, B79): no row's own design is at fault.
+  - **Y-O12 cycle 1** (`processChallengeFrontmatter` re-pointed): new case in `plugin.test.ts`,
+    describe "processChallengeFrontmatter - validators", `throws when app is not a string
+    (validateChallengeDeclaration now checked)`. Red for the expected reason: `expected [Function]
+    to throw an error` (`validateChallengeConfig` never checked `app`'s type). Green after rewiring
+    `plugin.ts`: `processChallengeFrontmatter` now splits its input into a `BRIEF_KEYS` projection
+    and the rest, calls `validateChallengeBrief`/`validateChallengeDeclaration` on each (Y-q5), and
+    builds `ProcessedChallenge` from `brief.title`/`brief.description` plus the declaration's other
+    fields; the `validateChallengeConfig` import is gone from this file. `npx vitest run
+    tests/unit/challenge/plugin.test.ts` → 30 passed (up from 29).
+  - **Y-O12 cycle 2** (D149's "[RED] no sensitive data" case, re-confirmed): `plugin-obfuscation.test.ts`
+    › "output does not contain fs_key, fsKeyParts, encryptedFs, or flagVerifier" — green on the first
+    rerun after cycle 1, no implementation change, as the plan predicted (`ProcessedChallenge`'s shape
+    is unchanged by the rewiring).
+  - **D76/`detectLegacyFields` re-wiring cycle 1**: `plugin-obfuscation.test.ts` › "detects all legacy
+    fields when present", assertion changed `toHaveLength(4)` → `toHaveLength(5)`. Red for the
+    expected reason: `expected [ …(4) ] to have a length of 5 but got 4` (`LEGACY_FIELDS` still had 4
+    keys). Green after adding `'fs'` to the front of `LEGACY_FIELDS` in `config.ts` (D76).
+  - **D76 cycle 2** (the predicted knock-on): adding `'fs'` flipped `plugin-obfuscation.test.ts` ›
+    "returns empty array when no legacy fields present" red, as the plan named in advance (`BASE`
+    itself carries `fs`): `expected [ Array(1) ] to have a length of +0 but got 1`. Green after
+    changing that one case's input to a `{ fs, ...withoutFs } = BASE` projection, assertion unchanged
+    (`toHaveLength(0)`); `BASE` itself is untouched (the other two cases in the file still need it to
+    carry `fs`). `npx vitest run tests/unit/challenge/plugin-obfuscation.test.ts` → 3 passed.
+  - **Y-q1** (remove `validateChallengeConfig`): not removed, per the plan's own `cannot_do_alone`
+    row. `git grep -n "validateChallengeConfig" -- .vitepress scripts tests create-wxl` confirms the
+    only caller left after cycle 1 outside `config.ts`/`config.test.ts` is `plugin.ts`'s own import,
+    now gone; `scripts/challenge-analyze.ts:17,142`, `scripts/challenge-validate.ts:18,101` and
+    `tests/unit/scripts/create-challenge.test.ts:3,156` (plus `tests/challenge-analyze.test.ts` and
+    `tests/challenge-validate.test.ts`'s many existing cases) still call it directly — all wave 5
+    ("Tools and skills"). `.vitepress/challenge/config.ts`'s `validateChallengeConfig` and
+    `tests/unit/challenge/config.test.ts` stay exactly as they are; the function is removed, and the
+    traceability.md row 1733 "Overridden contracts" line rewritten, only at wave 5. No file edited for
+    this row.
+  - `npx vitest run tests/unit/challenge/` (the wave's full affected directory) → 7 files, 165 passed.
+  - **PART 2, wave 1(g)'s six built-site rows**: `tests/site-smoke/site-smoke.spec.ts` gained six new
+    tests (B48, B59, B61, B70 smoke half, two for B81) and `playwright.site.config.ts`'s pinned-locale
+    comment was rewritten to the post-switch reason; the three existing B82 cases had their `goto`
+    paths (and the final asserted pathname) changed from unprefixed to `/en/...`, with no other
+    change. Re-verified the shared blocker directly before writing anything (not trusted from the
+    handoff text alone): `pnpm docs:build` on the real tree still fails at the same place wave 1(f)'s
+    Comments recorded — `Could not resolve "./shared/challenges.data.ts" from
+    "platform/en/index.md"` — so `.vitepress/dist` is still the pre-move build (dated 05:44, no
+    `dist/en/`). Ran `pnpm test:smoke -g` filtered to the nine affected tests
+    (`playwright test --config playwright.site.config.ts`): all nine failed, every one tracing to that
+    one shared cause, not to any row's own design:
+    - B48, B59, B70 (smoke half): `ENOENT` reading `.vitepress/dist/en/...` (no `en/` in the stale
+      dist) or, for B59's primary-locale half, a mismatched `lang` value (the stale dist's root is
+      still English).
+    - B61: `ENOENT` reading `.vitepress/dist/en/guide/notes.html`.
+    - B81 (both cases): `getByRole('link', {name: …}).toBeVisible()` times out — the stale dist's `/`
+      is English and it has no `/en/` tree at all.
+    - B82's three rewritten cases: `goto('/en/...')` resolves against the stale dist's English root,
+      so the English content the assertions expect is not where the rewritten path now points (no
+      `/en/` route exists yet); the two unrewritten passing cases from before this edit are unaffected.
+    None of the nine failures is a defect in this wave's test code; all are the same wave-3 blocker
+    the plan named in advance. No production file was edited to make any of the nine pass (the
+    handoff forbids touching the loader this wave), per the plan's own `cannot_do_alone` entry for
+    this part.
+  - **Full-suite command** (as named), run twice to get one clean, complete report (the first run's
+    stdout/stderr interleaving hid the final summary behind an unrelated crash dump — see the finding
+    below): `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm
+    test --run --no-file-parallelism` → **Test Files 5 failed | 143 passed (148); Tests 7 failed |
+    5338 passed (5345)**. Six of the seven are the carried, already-accepted failures named in the
+    handoff, unchanged: `locales.test.ts` B18 command 2 (waves 3/4); `redirects-generated.test.ts`'s
+    byte-identical case (wave 4); `redirects.test.ts`'s three cases (wave 4); `challenge-keygen.test.ts`'s
+    Y59 payload-integrity case (wave 5, printed twice across vitest's own retry, one failing test).
+  - **New finding, not caused by this wave, reported rather than guessed around**: a seventh failing
+    test appeared that the handoff's "six tests currently failing" list does not name —
+    `tests/unit/scripts/upstream-guard.test.ts` › "real tree (upstream only)" › "the pristine check
+    finds no mismatch", `expected [ 'A7:platform/en/index.md' ] to deeply equal []`. Traced before
+    reporting: `pristineMismatches` reads its files through `realTreeFiles()`, which only includes
+    `trackedFiles()` (git-index entries); `git ls-files platform/en/index.md` returns nothing while
+    `git ls-files platform/zh-TW/index.md` does, confirming `platform/en/` is currently untracked, not
+    merely uncommitted — consistent with `git status --porcelain` showing `?? platform/en/` rather
+    than a staged add. `pristineMismatches`'s A7 check then reads `get('platform/en/index.md')` as
+    `undefined` and reports the mismatch on that ground alone, independent of the file's actual
+    content (confirmed separately: calling `findA7Candidates`/`parseA7ScalarValue` directly against
+    the real file's bytes returns `"WXL"`, the correct value). This file is untouched by both parts of
+    this wave (`plugin.ts`, `config.ts`, `plugin.test.ts`, `plugin-obfuscation.test.ts`,
+    `site-smoke.spec.ts`, `playwright.site.config.ts` — none reads or writes git state or
+    `platform/en/index.md`), so the failure is not this wave's regression; it is a consequence of
+    `platform/` being unstaged, which an earlier wave's parent entry (above, "verification of 1(f)
+    section D") already decided and recorded, apparently without noticing this test depends on the
+    index rather than the work tree. Not fixed here: fixing it would mean `git add -- platform/en`,
+    which both the handoff and the hard git-index rule for this run forbid. Flagged for the parent:
+    either accept this as a seventh carried failure until `platform/` is staged again, or re-check
+    whether `realTreeFiles()`/`trackedFiles()` should read the work tree directly for this one row.
+  - `pnpm --dir create-wxl test` not run: this wave's files are all under `.vitepress/`, `tests/` and
+    `playwright.site.config.ts`; none touch `create-wxl/` or fork:init.
+  - No row left undone within this wave's own scope (Y-O12 section E, Y-q1's audit, and the six
+    1(g) rows' test code); the six 1(g) rows' own transition to green waits on wave 3, as the plan
+    said it would.
+
+- 2026-11-16 (wave 1(g) and 1(f) E, review fixes): two independent reviewers agreed on a shared set
+  of findings against the previous entry's work; the executor applied the parent's fully specified
+  fix list under the user's standing authorization of 2026-11-15, item by item.
+  1. **B48** (`site-smoke.spec.ts`): the whole-document `distFile(...).toContain('Code 面板'/'Code
+     Panel')` check could never fail, because `__VP_SITE_DATA__`'s inlined sidebar repeats both
+     strings as static per-locale nav text on every built page regardless of which page's body
+     built the file. Added a `mainContent(html)` helper (`<main>…</main>` only, the inlined script
+     sits outside it) and scoped both assertions to it. Confirmed against the real (stale) dist that
+     the whole document contains `'Code Panel'` while the `<main>` region of the Chinese page does
+     not, so the extraction changes which strings are visible to the assertion.
+  2. **B70 smoke half**: the href assertions (`toContain('href="/challenges/"')`, etc.) were also
+     satisfied by the nav bar's own links to the same URLs. Added `heroActionsHtml`/`heroActionHrefs`
+     helpers that isolate VitePress's `.VPHero`/`.actions` block (`VPHero.vue`'s rendering, confirmed
+     by reading the installed `vitepress` package's component source) with a brace-balanced scan, not
+     a non-greedy regex, because the block nests one `<div class="action">` per hero action. Verified
+     in a scratch script (not by editing content) that a hand-written HTML string whose nav links to
+     `/challenges/` but whose hero action links to `/zh-TW/challenges/` now fails the assertion, where
+     the old whole-document check would have passed.
+  3. **B81**: case 1 (stored `zh-TW`, `goto('/')`) now also waits for hydration and asserts
+     `new URL(page.url()).pathname === '/'` (D24: a cold load only redirects when the stored value is
+     the *translation* locale; a stored value already matching the primary locale, as here, never
+     redirects), so the row fails on the pre-switch layout, where `/` served English and a
+     `zh-TW`-stored visitor would have been redirected away from `/`. Case 2 (stored `en`,
+     `goto('/en/')`) now sets the stored value itself with `addInitScript`, as the test plan's
+     boundary condition for B81 says, instead of relying on `playwright.site.config.ts`'s global pin.
+  4. **Skip reason, all five rows (B48, B59, B70 smoke half, both B81 cases)**: replaced each
+     hand-written `test.skip(!realUpstreamDecision(process.cwd()), '…')` with a direct call to
+     `upstreamOnlySkipReason` (D124/B93) against one module-level `UPSTREAM_DECISION_INPUTS`, so
+     B93's stage-6 grep finds each by name. B61 and the pre-existing, out-of-scope S08 row are
+     untouched (B61 per item 5 below; S08 was not added by this wave).
+  5. **B61 and B82**: confirmed they are not upstream-only and do hard-code `P = zh-TW` paths, and
+     left them exactly as written — D54's `localePath` helper is wave 3's (cross-area note 7), so no
+     helper is invented here. Recorded instead, as decision (c) below.
+  6. Removed the time-bound sentence in `site-smoke.spec.ts`'s wave-1(g) banner comment ("as of this
+     wave … until wave 3 lands"); the ticket's Comments carry that status, not the source comment.
+     Rewrote `playwright.site.config.ts`'s pinned-locale comment: its old claim that pinning the
+     stored preference "does not change which tree an unprefixed path serves … it only decides what
+     the switcher and any client-side redirect do" was not true under D24 — a cold load of a primary
+     page with the translation locale stored (`en`, pinned here) does redirect client-side to the
+     `/en/` counterpart. The comment now says so, and the closing sentence's obsolete "rather than
+     left to the default" wording (the removed `DEFAULT_VISITING_LOCALE`/D25 concept) is dropped.
+  7. **D76**: `config.test.ts`'s "exports LEGACY_FIELDS constant" now also asserts
+     `toContain('fs')` (traceability.md's Area Y "Overridden contracts" row, "fs ∈ LEGACY_FIELDS
+     (D76)"). `plugin-obfuscation.test.ts`'s "detects all legacy fields when present" now also
+     asserts the `'fs'` warning by its own text, not only `toHaveLength(5)`. Its sibling case's
+     `const { fs, ...withoutFs } = BASE` (an unused `fs` binding) is replaced by a small `omit(obj,
+     key)` helper, used as `detectLegacyFields(omit(BASE, 'fs'))`.
+  8. Commands run: `npx vitest run tests/unit/challenge/config.test.ts
+     tests/unit/challenge/plugin-obfuscation.test.ts` → 2 files, 73 passed. No root lint script exists
+     for tests (`package.json` has no `lint`/`typecheck` entry), so neither `tsc` nor `eslint` was run
+     under that clause. `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true
+     CI=true pnpm test --run --no-file-parallelism` → Test Files 4 failed | 144 passed (148); Tests 6
+     failed | 5339 passed (5345), exit 1. The six failures are exactly the six carried failures this
+     ticket's Comments already named (`locales.test.ts` B18 command 2 (waves 3/4);
+     `redirects-generated.test.ts`'s byte-identical case (wave 4); `redirects.test.ts`'s three cases
+     (wave 4); `challenge-keygen.test.ts`'s Y59 payload-integrity case (wave 5, printed twice)); the
+     previous entry's seventh, `upstream-guard.test.ts`'s pristine-check finding against
+     `platform/en/index.md`, does not reproduce here — consistent with decision (d) below, `platform/`
+     being staged again. `npx playwright test -c playwright.site.config.ts --list` lists all six new
+     rows at their new line numbers among 92 tests in 5 files, confirming the spec still compiles; per
+     the handoff, `docs:build` was not rerun and the loader was not touched, so the site-smoke rows
+     themselves stay red until wave 3 lands, as the plan said they would.
+  - Parent decisions recorded under the standing authorization of 2026-11-15:
+    (a) Y-q1's removal of `validateChallengeConfig` is assigned to wave 5, together with
+    `challenge:validate`/`challenge:analyze`/`create:challenge`, its last callers.
+    (b) Y-O12's brief half becomes observable only once wave 5 gives `validateChallengeBrief` its
+    checks (Y24–Y29); wave 5 adds the test that a brief fault reaches `processChallengeFrontmatter`,
+    and the missing-title behaviour is pinned then.
+    (c) B61 and B82 are re-derived from `P` through `localePath` in wave 3 (item 5 above).
+    (d) D108's move is staged in the index (not committed) so index-reading tests see the new layout;
+    checkpoint commits use `git commit -- <paths>` so the pre-commit hook does not see the move until
+    waves 4–6 land.
+  - No row left undone within this entry's own scope (items 1–8 above).
+
+- 2026-11-16 (parent, after the independent check of the review fixes). The checker found one P0 in the
+  fix itself: `heroActionsHtml` searched only inside `<main>`, but a `layout: home` page renders no
+  `<main>` (only VitePress's `VPDoc.vue` does), so B70's smoke half could never pass. The entry above
+  is inaccurate on that point. The parent fixed it (the hero block is now searched in the whole
+  document; the inlined `__VP_SITE_DATA__` is JSON and holds no such tag) and confirmed against the
+  stale `dist/index.html` that the helper now returns the hero's two hrefs only. Also fixed by the
+  parent: B70 (unit half), B40 and Y1 now skip through `describe.skipIf(upstreamOnlySkipReason(…))`,
+  the single D124 helper, instead of `describe.runIf(realUpstreamDecision(…))`; B81 case 1 samples the
+  pathname after `networkidle`, not right after hydration; B81 case 2's title carries "upstream-only";
+  `playwright.site.config.ts`'s comment no longer claims every English `goto` is `/en/`-prefixed (only
+  B82's three; the rest move in wave 3). Recorded open item for stage 6: traceability's B61 text says
+  "Upstream build:" while D124's list omits B61 — wave 3 derives B61 from P (decision (c)), which holds
+  under either reading.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

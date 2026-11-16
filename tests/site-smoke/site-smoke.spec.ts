@@ -1,7 +1,58 @@
 import { test, expect, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { SITE_ORIGIN } from '../../.vitepress/challenge/shortLink'
-import { realUpstreamDecision } from '../__helpers__/upstreamDecision'
+import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, upstreamOnlySkipReason } from '../__helpers__/upstreamDecision'
+
+/** `.vitepress/dist/<relPath>`, read as text. Used by the output-layout rows (B48, B59, B61, B70
+ *  smoke half) that name a built file path directly rather than a rendered page. */
+const distFile = (relPath: string) => readFileSync(join(process.cwd(), '.vitepress/dist', relPath), 'utf8')
+
+/** The one set of raw inputs `upstreamOnlySkipReason` (D124/B93) takes, read once per process.
+ *  Every row this wave adds (B48, B59, B70 smoke half, both B81 cases) calls the helper directly
+ *  with these, rather than writing its own `test.skip` reason, so B93's stage-6 grep finds each. */
+const UPSTREAM_DECISION_INPUTS = {
+  githubRepository: process.env.GITHUB_REPOSITORY,
+  manifest: readManifest(process.cwd()),
+  isWorkTree: isGitWorkTree(process.cwd()),
+  hasRangeJson: hasRootRangeJson(process.cwd()),
+}
+
+/** The page's own document region, `<main>…</main>`, excluding the inlined `__VP_SITE_DATA__`
+ *  script: that script repeats every page's static nav/sidebar label text (including strings
+ *  such as "Code 面板"/"Code Panel") regardless of which page's body built the file, so asserting
+ *  against the whole document would pass even if the two language bodies were swapped (B48). */
+const mainContent = (html: string) => html.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] ?? ''
+
+/** The HTML of `<div class="actions">…</div>`, VitePress's hero-actions block (`VPHero.vue`),
+ *  searched in the whole document: a `layout: home` page renders no `<main>` (only `VPDoc.vue`
+ *  does), and the inlined `__VP_SITE_DATA__` is JSON, which holds no such tag. Returns '' when no
+ *  such block exists. Brace-balanced (not a non-greedy regex) because the block nests further
+ *  `<div>`s (one `<div class="action">` per hero action). */
+function heroActionsHtml(html: string): string {
+  const main = html
+  const start = main.indexOf('<div class="actions"')
+  if (start === -1) return ''
+  let depth = 1 // the "actions" div's own, still-open, tag
+  let i = main.indexOf('>', start) + 1
+  while (depth > 0) {
+    const nextOpen = main.indexOf('<div', i)
+    const nextClose = main.indexOf('</div>', i)
+    if (nextClose === -1) return main.slice(start)
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++
+      i = nextOpen + '<div'.length
+    } else {
+      depth--
+      i = nextClose + '</div>'.length
+    }
+  }
+  return main.slice(start, i)
+}
+
+/** The hrefs of a home page's hero actions only (B70 smoke half): isolating the `.VPHero`/
+ *  `.actions` block first means a nav-bar link to the same URL cannot satisfy this assertion. */
+const heroActionHrefs = (html: string) => Array.from(heroActionsHtml(html).matchAll(/href="([^"]+)"/g)).map((m) => m[1])
 
 // Site-smoke runs against the built site served by `vitepress preview` (4173,
 // configured in playwright.site.config.ts). It asserts the production bundle
@@ -14,7 +65,7 @@ test('homepage renders', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
 
-  await page.goto('/')
+  await page.goto('/en/')
 
   // Hero action + a feature card prove the home layout and HomeContent mounted.
   await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
@@ -24,7 +75,7 @@ test('homepage renders', async ({ page }) => {
 })
 
 test('reference challenge page mounts', async ({ page }) => {
-  await page.goto('/challenge/door-is-open/')
+  await page.goto('/en/challenge/door-is-open/')
 
   // The ChallengeLayout shell renders the description panel and markdown body
   // immediately, independent of the WASM runtime boot (which is out of scope
@@ -51,7 +102,7 @@ test('reference challenge page mounts', async ({ page }) => {
 // the host serves the extensionless form is the host's behaviour, verified by
 // request against production, not by this file.
 test('client-side navigation leaves an extensionless URL in the address bar', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/en/')
 
   // Wait for hydration before clicking. The URL correction lives in the client
   // router's `loadPage`, so it only runs when the click is intercepted as an SPA
@@ -83,10 +134,103 @@ test('client-side navigation leaves an extensionless URL in the address bar', as
     .poll(() => new URL(page.url()).pathname, {
       message: 'the client router never corrected the address bar',
     })
-    .toBe('/challenges')
+    .toBe('/en/challenges')
 
   const pathname = new URL(page.url()).pathname
   expect(pathname, `address bar kept an .html form: ${pathname}`).not.toMatch(/\.html$/)
+})
+
+// ─── D108's layout switch: the built-site rows that need no smoke fixture (wave 1(g)) ──────────
+//
+// B48, B59 and B70's smoke half read dist/ directly (as B44 does in missing-translation.spec.ts)
+// because their own acceptance criteria name file paths under dist/, not rendered page state; B61
+// names neither technique in traceability.md, so the dist-file form is kept for consistency with
+// its neighbours. All depend on `pnpm docs:build` succeeding on the real, moved tree (wave 3's
+// `./shared/challenges.data.ts` import path, B79) — recorded in the ticket's Comments, not fixed
+// here, per this wave's own row list.
+
+test('output: primary pages at the output root, others under /en/ (B48, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Scoped to <main>, not the whole document: the inlined __VP_SITE_DATA__ sidebar carries both
+  // 'Code 面板' and 'Code Panel' as static per-locale nav text on every page, so a whole-document
+  // match would pass even if the two bodies below were swapped.
+  const primary = mainContent(distFile('guide/python.html'))
+  expect(primary).toContain('Code 面板')
+  const translation = mainContent(distFile('en/guide/python.html'))
+  expect(translation).toContain('Code Panel')
+  expect(existsSync(join(process.cwd(), '.vitepress/dist/zh-TW'))).toBe(false)
+})
+
+test('<html lang> follows the page locale (B59, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  expect(distFile('index.html')).toMatch(/<html[^>]*\slang="zh-TW"/)
+  expect(distFile('guide/notes.html')).toMatch(/<html[^>]*\slang="zh-TW"/)
+  expect(distFile('en/index.html')).toMatch(/<html[^>]*\slang="en-US"/)
+  expect(distFile('en/guide/notes.html')).toMatch(/<html[^>]*\slang="en-US"/)
+})
+
+test('the nav title links to the page locale\'s home (B61)', () => {
+  const navTitleHref = (html: string) => html.match(/<a class="title" href="([^"]*)"/)?.[1]
+  expect(navTitleHref(distFile('en/guide/notes.html'))).toBe('/en/')
+  expect(navTitleHref(distFile('guide/notes.html'))).toBe('/')
+})
+
+test('upstream\'s home pages, smoke half (B70, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Isolated to the hero's own .VPHero/.actions block (heroActionHrefs), not the whole document:
+  // the nav bar links to the same /challenges/ and /guide/ URLs, so a whole-document `toContain`
+  // would pass even if the hero's own href were wrong (for example '/zh-TW/challenges/').
+  const zhHrefs = heroActionHrefs(distFile('index.html'))
+  expect(zhHrefs).toEqual(['/challenges/', '/guide/'])
+  const enHrefs = heroActionHrefs(distFile('en/index.html'))
+  expect(enHrefs).toEqual(['/en/challenges/', '/en/guide/'])
+})
+
+test('upstream\'s root language shows 開始挑戰 with zh-TW stored (B81, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Overrides playwright.site.config.ts's global pinned `en`, which every other spec in this file
+  // relies on (B82's comment explains why that pin is `en`).
+  await page.addInitScript(() => window.localStorage.setItem('wxl-locale', 'zh-TW'))
+  await page.goto('/')
+  await expect(page.getByRole('link', { name: '開始挑戰' })).toBeVisible()
+  // D24: a cold load of a primary-locale page redirects client-side only when the stored value is
+  // the *translation* locale; a stored value that already matches the primary locale (zh-TW here)
+  // never does. Asserting the pathname proves this fails on the pre-switch layout, where '/' served
+  // English and a zh-TW-stored visitor would have been redirected away from '/'.
+  // The redirect, when it wrongly runs, runs after mount behind an async gate evaluation, so wait
+  // for the page to settle before sampling the URL rather than reading it right after hydration.
+  await page.waitForFunction(() => '__vue_app__' in (document.getElementById('app') ?? {}))
+  await page.waitForLoadState('networkidle')
+  expect(new URL(page.url()).pathname).toBe('/')
+})
+
+test('upstream\'s /en/ shows Start Challenge with en stored (B81, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Set per test rather than relying on playwright.site.config.ts's global pin, as the test plan's
+  // boundary condition for B81 says ("stored value set per test with addInitScript").
+  await page.addInitScript(() => window.localStorage.setItem('wxl-locale', 'en'))
+  await page.goto('/en/')
+  await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
 })
 
 // ─── The copy control in page mode (spec 0007, seam 0007-S3) ──────────────────────────────────

@@ -1,4 +1,4 @@
-import { validateChallengeConfig, LEGACY_FIELDS, BRIEF_KEYS, type ChallengeConfig } from './config'
+import { validateChallengeBrief, validateChallengeDeclaration, LEGACY_FIELDS, BRIEF_KEYS } from './config'
 import type { DeclarationResult } from './declaration'
 import { SiteLayoutError } from '../layout-error'
 
@@ -36,18 +36,34 @@ export interface ProcessedChallenge {
  * the next person to open this file.
  */
 export function processChallengeFrontmatter(raw: unknown): ProcessedChallenge {
-  const config = validateChallengeConfig(raw)
+  if (typeof raw !== 'object' || raw === null) {
+    throw new Error('challenge config must be an object')
+  }
+  const obj = raw as Record<string, unknown>
+
+  const briefProjection: Record<string, unknown> = {}
+  const declarationProjection: Record<string, unknown> = {}
+  for (const key of Object.keys(obj)) {
+    if ((BRIEF_KEYS as readonly string[]).includes(key)) {
+      briefProjection[key] = obj[key]
+    } else {
+      declarationProjection[key] = obj[key]
+    }
+  }
+
+  const brief = validateChallengeBrief(briefProjection)
+  const declaration = validateChallengeDeclaration(declarationProjection)
 
   const result: ProcessedChallenge = {
-    title: config.title,
-    backend: config.backend,
-    packages: config.packages,
-    sourceVisible: config.source_visible,
-    wasmModule: config.wasmModule,
-    difficulty: config.difficulty,
-    category: config.category,
-    description: config.description,
-    tools: config.tools,
+    title: brief.title,
+    backend: declaration.backend,
+    packages: declaration.packages,
+    sourceVisible: declaration.source_visible,
+    wasmModule: declaration.wasmModule,
+    difficulty: declaration.difficulty,
+    category: declaration.category,
+    description: brief.description,
+    tools: declaration.tools,
   }
 
   return result

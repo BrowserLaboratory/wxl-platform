@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { readChallengeDeclaration } from '../../../.vitepress/challenge/declaration'
-import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../../__helpers__/upstreamDecision'
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 
@@ -334,7 +334,9 @@ describe('D147: the site parser resolves no YAML 1.1 tag (working test, claims n
 // Y1 (read half, 0010-S32): upstream's four declarations, read on the real tree, deep-equal to
 // Y-§2.4's literal (typed here, not re-read from disk). Upstream-only (D124): a range or a fork
 // may have edited these files.
-describe.runIf(realUpstreamDecision(REPO_ROOT))('Y1: upstream\'s four declarations read to Y-§2.4', () => {
+describe.skipIf(
+  upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+)('Y1: upstream\'s four declarations read to Y-§2.4', () => {
   const Y_2_4: Record<string, Record<string, unknown>> = {
     'door-is-open': {
       number: 1,
