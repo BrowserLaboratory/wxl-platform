@@ -510,6 +510,7 @@ describe('validateChallengeDeclaration (Y18): non-string flag', () => {
 
 describe('Legacy field detection', () => {
   it('exports LEGACY_FIELDS constant', () => {
+    expect(LEGACY_FIELDS).toContain('fs')
     expect(LEGACY_FIELDS).toContain('fs_key')
     expect(LEGACY_FIELDS).toContain('fsKeyParts')
     expect(LEGACY_FIELDS).toContain('encryptedFs')

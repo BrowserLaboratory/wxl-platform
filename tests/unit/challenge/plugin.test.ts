@@ -36,6 +36,12 @@ describe('processChallengeFrontmatter - simplified (no encryption)', () => {
   })
 })
 
+describe('processChallengeFrontmatter - validators', () => {
+  it('throws when app is not a string (validateChallengeDeclaration now checked)', () => {
+    expect(() => processChallengeFrontmatter({ ...BASE_FRONTMATTER, app: 3 })).toThrow(/app must be a string/)
+  })
+})
+
 describe('processChallengeFrontmatter - packages', () => {
   it('packages is passed through', () => {
     const result = processChallengeFrontmatter({ ...BASE_FRONTMATTER, packages: ['requests', 'pyjwt'] })

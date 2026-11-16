@@ -5,7 +5,7 @@ import { parse as parseYaml } from 'yaml'
 import { localizeHomeLinks } from '../../../.vitepress/home-links'
 import { SiteLayoutError } from '../../../.vitepress/layout-error'
 import { pageListFromDir } from '../../../.vitepress/pageList'
-import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../../__helpers__/upstreamDecision'
 
 const PAGES = ['/', '/challenges/', '/guide/', '/en/', '/en/challenges/', '/en/guide/', '/zh-TW/', '/zh-TW/challenges/', '/zh-TW/guide/']
 
@@ -140,7 +140,9 @@ describe('localizeHomeLinks', () => {
 
   // B70: upstream's home pages, both primaries, against the "Home-page links" table
   // (traceability.md). Upstream-only (D124): a range or a fork may have edited these two files.
-  describe.runIf(realUpstreamDecision(REPO_ROOT))('B70: upstream\'s home pages', () => {
+  describe.skipIf(
+  upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+)('B70: upstream\'s home pages', () => {
     it.each(['en', 'zh-TW'] as const)('primary %s matches the "Home-page links" table', (primary) => {
       const pages = pageListFromDir(SRC_DIR, primary)
       const enFm = extractFrontmatter(resolve(SRC_DIR, 'en', 'index.md'))

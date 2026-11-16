@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync, rea
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../../__helpers__/upstreamDecision'
 
 // ─── The "fixture root" mechanism (B14, B16, B47 preamble) ─────────────────────────────────────
 // A temporary repository root, holding a minimal new-layout `platform/` tree, an optional
@@ -288,7 +288,9 @@ function fileForm(entry: string): string {
   return (entry.endsWith('/') ? `${entry}index` : entry).slice(1) + '.md'
 }
 
-describe.runIf(realUpstreamDecision(REPO_ROOT))('rewrites is the function rewrittenPath(·, primary) (B40)', () => {
+describe.skipIf(
+  upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+)('rewrites is the function rewrittenPath(·, primary) (B40)', () => {
   it('on the real tree, config.rewrites is a function returning the zh-TW column\'s file form', async () => {
     delete process.env.SITE_BASE
     vi.resetModules()
