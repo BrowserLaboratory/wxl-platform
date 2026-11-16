@@ -1,8 +1,24 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import { localizeHomeLinks } from '../../../.vitepress/home-links'
 import { SiteLayoutError } from '../../../.vitepress/layout-error'
+import { pageListFromDir } from '../../../.vitepress/pageList'
+import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
 
 const PAGES = ['/', '/challenges/', '/guide/', '/en/', '/en/challenges/', '/en/guide/', '/zh-TW/', '/zh-TW/challenges/', '/zh-TW/guide/']
+
+const REPO_ROOT = resolve(__dirname, '../../..')
+const SRC_DIR = resolve(REPO_ROOT, 'platform')
+
+/** `path`'s own YAML frontmatter, parsed. Mirrors `create-challenge.test.ts`'s own helper. */
+function extractFrontmatter(path: string): Record<string, unknown> {
+  const raw = readFileSync(path, 'utf8')
+  const m = raw.match(/^---\n([\s\S]*?)\n---/)
+  if (!m) throw new Error(`no frontmatter found in ${path}`)
+  return parseYaml(m[1]) as Record<string, unknown>
+}
 
 function errorOf(fn: () => void): SiteLayoutError {
   try {
@@ -120,6 +136,25 @@ describe('localizeHomeLinks', () => {
   it('B69: no layout key at all is returned unchanged', () => {
     const fm = { hero: { actions: [{ link: 'bad' }] } }
     expect(localizeHomeLinks(fm, 'en', 'en', PAGES)).toEqual(fm)
+  })
+
+  // B70: upstream's home pages, both primaries, against the "Home-page links" table
+  // (traceability.md). Upstream-only (D124): a range or a fork may have edited these two files.
+  describe.runIf(realUpstreamDecision(REPO_ROOT))('B70: upstream\'s home pages', () => {
+    it.each(['en', 'zh-TW'] as const)('primary %s matches the "Home-page links" table', (primary) => {
+      const pages = pageListFromDir(SRC_DIR, primary)
+      const enFm = extractFrontmatter(resolve(SRC_DIR, 'en', 'index.md'))
+      const zhFm = extractFrontmatter(resolve(SRC_DIR, 'zh-TW', 'index.md'))
+      const enLinks = ((localizeHomeLinks(enFm, 'en', primary, pages).hero as { actions: { link: string }[] }).actions).map((a) => a.link)
+      const zhLinks = ((localizeHomeLinks(zhFm, 'zh-TW', primary, pages).hero as { actions: { link: string }[] }).actions).map((a) => a.link)
+      if (primary === 'en') {
+        expect(enLinks).toEqual(['/challenges/', '/guide/'])
+        expect(zhLinks).toEqual(['/zh-TW/challenges/', '/zh-TW/guide/'])
+      } else {
+        expect(enLinks).toEqual(['/en/challenges/', '/en/guide/'])
+        expect(zhLinks).toEqual(['/challenges/', '/guide/'])
+      }
+    })
   })
 
   // B92: features[*].link follows the same rule as hero; an entry without link is untouched; two

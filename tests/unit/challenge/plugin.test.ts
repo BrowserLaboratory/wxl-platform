@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import { processChallengeFrontmatter, assembleChallengeFrontmatter } from '../../../.vitepress/challenge/plugin'
+import { readChallengeDeclaration } from '../../../.vitepress/challenge/declaration'
+import { LOCALES as REAL_LOCALES } from '../../../.vitepress/locales'
 
 const BASE_FRONTMATTER = {
   title: 'Test Challenge',
@@ -184,5 +189,57 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
     expect(Object.hasOwn(result, 'constructor')).toBe(true)
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype)
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+  })
+})
+
+// Y38 (0010-S33): every slug × every listed locale's brief on the real tree. Not upstream-only
+// (AC-61): slugs and the expectation are both derived from the tree, so this holds in a range too.
+describe('Y38: every slug × every listed locale\'s brief on the real tree', () => {
+  const REPO_ROOT = resolve(__dirname, '../../..')
+  const CHALLENGE_ROOT = resolve(REPO_ROOT, 'platform', 'challenge')
+
+  function extractFrontmatter(raw: string): Record<string, unknown> {
+    const m = raw.match(/^---\n([\s\S]*?)\n---/)
+    return m ? (parseYaml(m[1]) as Record<string, unknown>) : {}
+  }
+
+  // Only a directory that actually carries a challenge.yaml is a declared slug (D78); a legacy
+  // test fixture elsewhere under platform/challenge/ (old-layout index.md, no challenge.yaml,
+  // such as challenge-keygen.test.ts's transient real-tree probes) is not one, by this same
+  // definition — independent of whichever test happens to be running concurrently.
+  const slugs = readdirSync(CHALLENGE_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(resolve(CHALLENGE_ROOT, entry.name, 'challenge.yaml')))
+    .map((entry) => entry.name)
+
+  it('finds at least one challenge declaration on the tree', () => {
+    expect(slugs.length).toBeGreaterThan(0)
+  })
+
+  it.each(slugs)('%s: assembled keys equal brief ∪ challenge.yaml ∪ markdownBody, same declaration projection across locales', (slug) => {
+    const readDeclaration = (s: string) => readChallengeDeclaration(REPO_ROOT, s)
+    const declResult = readDeclaration(slug)
+    expect(declResult.ok).toBe(true)
+    if (!declResult.ok) return
+    const declKeys = Object.keys(declResult.value)
+    const projections: Record<string, unknown>[] = []
+
+    for (const locale of REAL_LOCALES) {
+      const briefPath = resolve(REPO_ROOT, 'platform', locale, 'challenge', slug, 'index.md')
+      expect(existsSync(briefPath)).toBe(true)
+      const raw = readFileSync(briefPath, 'utf8')
+      const frontmatter = extractFrontmatter(raw)
+      const sourcePath = `${locale}/challenge/${slug}/index.md`
+      const result = assembleChallengeFrontmatter(sourcePath, frontmatter, raw, readDeclaration, REAL_LOCALES) as Record<string, unknown>
+      expect(new Set(Object.keys(result))).toEqual(new Set([...Object.keys(frontmatter), ...declKeys, 'markdownBody']))
+
+      const projection: Record<string, unknown> = { ...result }
+      for (const key of Object.keys(frontmatter)) delete projection[key]
+      delete projection.markdownBody
+      projections.push(projection)
+    }
+
+    for (let i = 1; i < projections.length; i++) {
+      expect(projections[i]).toEqual(projections[0])
+    }
   })
 })

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { entryForRelativePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
 import { lookupNotFound } from '../../../.vitepress/theme/i18n/lookup'
 import { pageListFromDir, rewrittenPath } from '../../../.vitepress/pageList'
+import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -81,37 +82,45 @@ describe('pageListFromDir', () => {
 })
 
 describe('the page list the site configuration ships', () => {
-  // The oracle is built here, by its own walk and its own rule, independent of both the
-  // code under test and VitePress's page list.
-  function oracle(): string[] {
+  const REPO_ROOT = resolve(__dirname, '../../..')
+
+  // The oracle is built here, by its own walk, its own read of range.json and its own
+  // stripping/spelling rule (B43) — independent of both the code under test and VitePress's
+  // page list. `challenge/<slug>/src/**`, `public/**` and `shared/**` are excluded the same
+  // way `pageListFromDir` excludes them (B24, B25), which is not this row's own subject.
+  function oracle(primary: string): string[] {
     const srcDir = join(__dirname, '../../../platform')
     const found: string[] = []
-    const walk = (dir: string, rel: string) => {
+    const walk = (dir: string, top: boolean, rel: string) => {
       for (const item of readdirSync(dir, { withFileTypes: true })) {
         const childRel = rel ? `${rel}/${item.name}` : item.name
         if (item.name.startsWith('.')) continue
         if (item.isDirectory()) {
-          if (rel === '' && (item.name === 'public' || item.name === 'shared')) continue
-          walk(join(dir, item.name), childRel)
+          if (top && (item.name === 'public' || item.name === 'shared')) continue
+          if (/^challenge\/[^/]+\/src$/.test(childRel)) continue
+          walk(join(dir, item.name), false, childRel)
         } else if (item.name.endsWith('.md')) {
-          if (childRel === 'index.md') found.push('/')
-          else if (childRel.endsWith('/index.md')) found.push(`/${childRel.slice(0, -'index.md'.length)}`)
-          else found.push(`/${childRel.slice(0, -'.md'.length)}`)
+          const prefix = `${primary}/`
+          const stripped = childRel.startsWith(prefix) ? childRel.slice(prefix.length) : childRel
+          if (stripped === 'index.md') found.push('/')
+          else if (stripped.endsWith('/index.md')) found.push(`/${stripped.slice(0, -'index.md'.length)}`)
+          else found.push(`/${stripped.slice(0, -'.md'.length)}`)
         }
       }
     }
-    walk(srcDir, '')
+    walk(srcDir, true, '')
     return found
   }
 
-  it('equals every page of the real source tree, each once', async () => {
+  it('equals every page of the real source tree, each once, under the real range.json primary', async () => {
+    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
     vi.resetModules()
     const config = (await import('../../../.vitepress/config.mts')).default as {
       vite?: { define?: Record<string, string> }
     }
     const shipped = JSON.parse(config.vite!.define!.__WXL_PAGES__) as string[]
     expect(new Set(shipped).size).toBe(shipped.length)
-    expect(new Set(shipped)).toEqual(new Set(oracle()))
+    expect(new Set(shipped)).toEqual(new Set(oracle(primary)))
     expect(shipped).not.toContain('/404')
   })
 })

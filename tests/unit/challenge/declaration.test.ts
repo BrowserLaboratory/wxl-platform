@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { readChallengeDeclaration } from '../../../.vitepress/challenge/declaration'
+import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+
+const REPO_ROOT = resolve(__dirname, '../../..')
 
 function writeDeclaration(root: string, slug: string, text: string) {
   const dir = join(root, 'platform', 'challenge', slug)
@@ -325,5 +328,92 @@ describe('D147: the site parser resolves no YAML 1.1 tag (working test, claims n
     )
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe('invalid-yaml')
+  })
+})
+
+// Y1 (read half, 0010-S32): upstream's four declarations, read on the real tree, deep-equal to
+// Y-§2.4's literal (typed here, not re-read from disk). Upstream-only (D124): a range or a fork
+// may have edited these files.
+describe.runIf(realUpstreamDecision(REPO_ROOT))('Y1: upstream\'s four declarations read to Y-§2.4', () => {
+  const Y_2_4: Record<string, Record<string, unknown>> = {
+    'door-is-open': {
+      number: 1,
+      difficulty: 'easy',
+      category: 'web',
+      backend: 'fastapi',
+      app: 'app.py',
+      packages: [],
+      tools: ['browser', 'network', 'repeater', 'code'],
+      source_visible: false,
+      date: '2026-04-02T08:54:17.674Z',
+      tags: ['idor', 'access-control', 'fastapi', 'sqlite'],
+      wasmModule: '/challenge/door-is-open/runtime.wasm',
+    },
+    'staff-only': {
+      number: 2,
+      difficulty: 'easy',
+      category: 'web',
+      backend: 'flask',
+      app: 'app.py',
+      packages: ['flask'],
+      tools: ['browser', 'network', 'repeater', 'code'],
+      source_visible: false,
+      date: '2026-08-17T16:21:14.557Z',
+      tags: ['sql', 'injection', 'flask', 'sqlite'],
+      wasmModule: '/challenge/staff-only/runtime.wasm',
+    },
+    'just-a-preview': {
+      number: 8,
+      difficulty: 'easy',
+      category: 'web',
+      backend: 'fastapi',
+      app: 'app.py',
+      packages: [],
+      tools: ['browser', 'network', 'repeater', 'code'],
+      source_visible: true,
+      source_files: [
+        '/templates/layout.html',
+        '/templates/index.html',
+        '/templates/detail.html',
+        '/templates/preview.html',
+        '/templates/_editor.html',
+        '/templates/missing.html',
+        '/static/app.css',
+      ],
+      date: '2026-09-06T09:23:32.337Z',
+      tags: ['ssti', 'template-injection', 'jinja2', 'fastapi'],
+      wasmModule: '/challenge/just-a-preview/runtime.wasm',
+    },
+    'selected-excerpts': {
+      number: 10,
+      difficulty: 'medium',
+      category: 'web',
+      backend: 'flask',
+      app: 'app.py',
+      packages: ['flask'],
+      tools: ['browser', 'network', 'repeater', 'code'],
+      source_visible: true,
+      source_files: [
+        '/workspace.py',
+        '/revisions.py',
+        '/course_pack.py',
+        '/templates/base.html',
+        '/templates/workbench.html',
+        '/templates/article.html',
+        '/templates/preview.html',
+        '/templates/course-pack.html',
+        '/templates/missing.html',
+        '/static/app.css',
+      ],
+      date: '2026-09-13T13:28:46.765Z',
+      tags: ['idor', 'access-control', 'ssti', 'template-injection', 'jinja2', 'flask'],
+      wasmModule: '/challenge/selected-excerpts/runtime.wasm',
+    },
+  }
+
+  it.each(Object.keys(Y_2_4))('%s parses to Y-§2.4\'s literal', (slug) => {
+    const result = readChallengeDeclaration(REPO_ROOT, slug)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value).toEqual(Y_2_4[slug])
   })
 })
