@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  DEFAULT_VISITING_LOCALE,
   LOCALE_STORAGE_KEY,
   readStoredLocale,
   rememberChoice,
   _resetRememberedChoiceForTests,
   redirectTargetForStoredLocale,
   shouldPersistOnColdLoad,
+  localizePath,
 } from '../../../.vitepress/theme/i18n'
+import { DT_PAGE, X_INSTANCES, BASES } from '../../__helpers__/localeTables'
 
 /**
  * The stored locale preference is expressed as a NAVIGATION, not as an override
@@ -39,43 +40,45 @@ const rendered = (entry: string) => ({ kind: 'page' as const, entry })
 describe('redirectTargetForStoredLocale', () => {
   it('sends an unprefixed cold load to the stored locale', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).toBe('/zh-TW/challenges')
+    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).toBe('/zh-TW/challenges')
   })
 
   it('sends the site root to the stored locale root', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc('/'), '/', LIST, rendered('/'))).toBe('/zh-TW/')
+    expect(redirectTargetForStoredLocale(loc('/'), '/', LIST, rendered('/'), 'en')).toBe('/zh-TW/')
   })
 
   // A prefixed URL is an explicit request. Redirecting away from it would make
   // every shared link unreliable for anyone holding a different preference.
   it('never redirects away from a pathname that already carries a prefix', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
-    expect(redirectTargetForStoredLocale(loc('/zh-TW/guide/'), '/', LIST, rendered('/zh-TW/guide/'))).toBeNull()
+    expect(redirectTargetForStoredLocale(loc('/zh-TW/guide/'), '/', LIST, rendered('/zh-TW/guide/'), 'en')).toBeNull()
   })
 
-  // A visitor who has expressed no preference is the reader this site is built for,
-  // and before the default existed they had to work the switcher once per machine.
-  it('sends a visitor with no stored preference to the default visiting locale', () => {
-    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).toBe('/zh-TW/challenges')
-    expect(DEFAULT_VISITING_LOCALE).toBe('zh-TW')
+  // Flipped by D31/wave 2 (ticket Comments, cross-area note 1; DT01/02/07/08): the separate
+  // `DEFAULT_VISITING_LOCALE` constant this test named is gone, and "no preference" now falls
+  // back to `P` itself (A1) — which a primary-locale page already is, so there is nothing left
+  // to redirect to. Was: 'sends a visitor with no stored preference to the default visiting locale'.
+  it('no longer redirects a visitor with no stored preference on a primary-locale page (A1, DT01)', () => {
+    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).toBeNull()
   })
 
   // The default must not reach a pathname that already states its locale. A prefixed
   // path is an explicit request, and it outranks both the preference and the default.
   it('leaves a prefixed path alone even with no stored preference', () => {
-    expect(redirectTargetForStoredLocale(loc('/zh-TW/challenges/'), '/', LIST, rendered('/zh-TW/challenges'))).toBeNull()
+    expect(redirectTargetForStoredLocale(loc('/zh-TW/challenges/'), '/', LIST, rendered('/zh-TW/challenges'), 'en')).toBeNull()
   })
 
   it('does not redirect when the stored preference already matches the path', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
-    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).toBeNull()
+    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).toBeNull()
   })
 
-  // Not a preference the system can honour, so it is not a preference: the default applies.
-  it('treats a stored value naming no known locale as no preference', () => {
+  // Not a preference the system can honour, so it is not a preference: `P` applies, and (as
+  // above, A1/DT07/DT08) a primary-locale page under `P` has nothing to redirect to.
+  it('treats a stored value naming no known locale as no preference (A1, DT07)', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'klingon')
-    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).toBe('/zh-TW/challenges')
+    expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).toBeNull()
   })
 
   // Same lesson as the switcher's own base bug: the locale segment belongs
@@ -87,17 +90,18 @@ describe('redirectTargetForStoredLocale', () => {
     ['/', '/challenges/', '/challenges', '/zh-TW/challenges'],
   ] as const)('under base %s, %s (rendered as %s) -> %s', (base, path, entry, expected) => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc(path), base, LIST, rendered(entry))).toBe(expected)
+    expect(redirectTargetForStoredLocale(loc(path), base, LIST, rendered(entry), 'en')).toBe(expected)
   })
 
   it('preserves the query string and the hash', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc('/challenges/', '?tab=network', '#flag'), '/', LIST, rendered('/challenges')))
+    expect(redirectTargetForStoredLocale(loc('/challenges/', '?tab=network', '#flag'), '/', LIST, rendered('/challenges'), 'en'))
       .toBe('/zh-TW/challenges?tab=network#flag')
   })
 
-  // A browser that refuses to answer has expressed no preference. Still must not throw.
-  it('treats an unreachable localStorage as no preference', () => {
+  // A browser that refuses to answer has expressed no preference. Still must not throw. Flipped
+  // (A1, DT08): no preference on a primary-locale page no longer redirects.
+  it('treats an unreachable localStorage as no preference (A1, DT08)', () => {
     // Restored by its own handle. Nothing in this file or the vitest configuration restores
     // mocks, and `vi.restoreAllMocks()` in an `afterEach` did not restore a spy on happy-dom's
     // storage object when tried (T-0054's record); a leaked spy makes every later case read no
@@ -106,22 +110,28 @@ describe('redirectTargetForStoredLocale', () => {
       throw new DOMException('blocked', 'SecurityError')
     })
     try {
-      expect(() => redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).not.toThrow()
-      expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'))).toBe('/zh-TW/challenges')
+      expect(() => redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).not.toThrow()
+      expect(redirectTargetForStoredLocale(loc('/challenges/'), '/', LIST, rendered('/challenges'), 'en')).toBeNull()
     } finally {
       spy.mockRestore()
     }
   })
 
-  // 1.3: the default path has to carry the same query, hash and base handling as the
-  // stored-preference path — it is the same computation, not a second one.
-  it('preserves the query string and the hash with no stored preference', () => {
-    expect(redirectTargetForStoredLocale(loc('/challenges/', '?tab=network', '#flag'), '/', LIST, rendered('/challenges')))
+  // 1.3: the query and hash handling is the same computation whether or not the preference is
+  // explicit; exercised here with an explicit stored preference, since "no preference" no longer
+  // redirects (A1) and so has nothing left to preserve a query and a hash across. Was: 'preserves
+  // the query string and the hash with no stored preference'.
+  it('preserves the query string and the hash with an explicit stored preference', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    expect(redirectTargetForStoredLocale(loc('/challenges/', '?tab=network', '#flag'), '/', LIST, rendered('/challenges'), 'en'))
       .toBe('/zh-TW/challenges?tab=network#flag')
   })
 
-  it('keeps the locale segment inside the base with no stored preference', () => {
-    expect(redirectTargetForStoredLocale(loc('/wxl/challenges/'), '/wxl/', LIST, rendered('/challenges'))).toBe('/wxl/zh-TW/challenges')
+  // Was: 'keeps the locale segment inside the base with no stored preference' — same reasoning
+  // as the row above (A1).
+  it('keeps the locale segment inside the base with an explicit stored preference', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    expect(redirectTargetForStoredLocale(loc('/wxl/challenges/'), '/wxl/', LIST, rendered('/challenges'), 'en')).toBe('/wxl/zh-TW/challenges')
   })
 })
 
@@ -142,7 +152,7 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
 
   it('stays on an English-only challenge whose Traditional Chinese version does not exist (A2)', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc('/challenge/english-only/'), '/', PAGES, rendered('/challenge/english-only/')))
+    expect(redirectTargetForStoredLocale(loc('/challenge/english-only/'), '/', PAGES, rendered('/challenge/english-only/'), 'en'))
       .toBeNull()
   })
 
@@ -150,13 +160,17 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
   // the URL's path is not read, so whatever URL text rendered the page — an alias such as
   // `.html`, `/index.html` or a trailing slash, or any other — the target is the counterpart's
   // entry. Which URLs render which page is `classifyArrival`'s (tests/unit/i18n/arrival.test.ts).
+  // A8/wave 2: "no preference" no longer redirects a primary-locale page (A1, DT01/02/07/08), so
+  // this exercises the alias-resolution property under an explicit stored preference instead
+  // (the property under test — resolve by entry, not by URL text — does not depend on which).
   it.each([
     ['/challenges.html', '/challenges', '/zh-TW/challenges'],
     ['/challenges/', '/challenges', '/zh-TW/challenges'],
     ['/guide/index.html', '/guide/', '/zh-TW/guide/'],
     ['/no/relation/to/the/page', '/challenge/door-is-open/', '/zh-TW/challenge/door-is-open/'],
-  ] as const)('with the URL path %s, builds the target from the entry %s: %s (A1)', (pathname, entry, expected) => {
-    expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES, rendered(entry))).toBe(expected)
+  ] as const)('with the URL path %s, builds the target from the entry %s: %s (A8)', (pathname, entry, expected) => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES, rendered(entry), 'en')).toBe(expected)
   })
 
   // The whole decision table: every stored value it names × challenge and article × base `/`
@@ -170,8 +184,11 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
     }),
     en: () => window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en'),
   }
-  // Each row's expected target under base `/` and under `/repo/`, for every stored value but
-  // `en`; with `en` stored nothing redirects (A4).
+  // Each row's expected target under base `/` and under `/repo/`, only when `zh-TW` is stored
+  // explicitly (A3): with `en` stored nothing redirects (A4, own locale), and — flipped by
+  // D31/wave 2, A1/DT01/02/07/08 — with `none`/`unknown`/`unreadable` stored nothing redirects
+  // either, since "no preference" now falls back to `P` ('en' in this fixture) and a
+  // primary-locale page is already there.
   const ROWS = [
     ['A1 challenge', '/challenge/door-is-open/', '/zh-TW/challenge/door-is-open/?q=1#h', '/repo/zh-TW/challenge/door-is-open/?q=1#h'],
     ['A1 article', '/guide/python', '/zh-TW/guide/python?q=1#h', '/repo/zh-TW/guide/python?q=1#h'],
@@ -189,8 +206,8 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
   it.each(CASES)('%s, stored %s, base %s', (_row, stored, base, prefix, entry, target) => {
     const spy = STORED[stored as keyof typeof STORED]()
     try {
-      expect(redirectTargetForStoredLocale(loc(prefix + entry, '?q=1', '#h'), base, PAGES, rendered(entry)))
-        .toBe(stored === 'en' ? null : target)
+      expect(redirectTargetForStoredLocale(loc(prefix + entry, '?q=1', '#h'), base, PAGES, rendered(entry), 'en'))
+        .toBe(stored === 'zh-TW' ? target : null)
     } finally {
       spy?.mockRestore()
     }
@@ -203,9 +220,49 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
     ['a not-found arrival, even one whose path has a prefixed twin in the list', '/guide/python/extra', { kind: 'not-found' as const }],
   ])('does not redirect %s', (_label, pathname, arrival) => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(redirectTargetForStoredLocale(loc(pathname), '/', [...PAGES, '/zh-TW/guide/python/extra'], arrival))
+    expect(redirectTargetForStoredLocale(loc(pathname), '/', [...PAGES, '/zh-TW/guide/python/extra'], arrival, 'en'))
       .toBeNull()
   })
+})
+
+/**
+ * The cold-load decision table (A-§4.1, DT01–DT16, DT41–DT56), both primaries: the PP and TP
+ * rows of `tests/__helpers__/localeTables.ts`, run under both bases and both `X` instances
+ * (challenge and article). `redirectTargetForStoredLocale`'s target and `shouldPersistOnColdLoad`'s
+ * write, per row (wave 2's "DT01-16/41-56 pure" row).
+ */
+describe('the cold-load decision table (DT01–16, DT41–56): page arrivals', () => {
+  for (const row of DT_PAGE) {
+    for (const x of X_INSTANCES) {
+      for (const b of BASES) {
+        it(`${row.id} (${x.label}, base ${b.label}): ${row.arrival} stored ${row.stored}, counterpart ${row.counterpart}`, () => {
+          const T = row.T
+          const entry = row.arrival === 'PP' ? x.entry : localizePath(x.entry, T, row.P)
+          if (row.stored === 'invalid') {
+            window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
+          } else if (row.stored !== 'none') {
+            window.localStorage.setItem(LOCALE_STORAGE_KEY, row.stored)
+          }
+          const counterpartEntry = row.arrival === 'PP' ? localizePath(x.entry, T, row.P) : x.entry
+          const pages = row.counterpart === 'exists' ? [entry, counterpartEntry] : [entry]
+          const target = redirectTargetForStoredLocale(
+            loc(b.prefix + entry, '?q=1', '#h'),
+            b.base,
+            pages,
+            rendered(entry),
+            row.P,
+          )
+          if (row.redirect === 'none') {
+            expect(target).toBeNull()
+          } else {
+            const wantEntry = row.redirect === 'to-T' ? localizePath(entry, T, row.P) : entry
+            expect(target).toBe(b.prefix + wantEntry + '?q=1#h')
+          }
+          expect(shouldPersistOnColdLoad(rendered(entry), row.P)).toBe(row.written !== null)
+        })
+      }
+    }
+  }
 })
 
 /**
@@ -233,7 +290,7 @@ describe('shouldPersistOnColdLoad', () => {
     // that did not arrive — is not a request either, though its URL names a published page.
     ['a failed load of a Traditional Chinese page (W3)', false, { kind: 'failed-load' }],
   ] as const)('%s: written %s', (_label, expected, arrival) => {
-    expect(shouldPersistOnColdLoad(arrival)).toBe(expected)
+    expect(shouldPersistOnColdLoad(arrival, 'en')).toBe(expected)
   })
 })
 

@@ -41,6 +41,12 @@ vi.mock('vitepress', () => ({
 const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
 vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
 
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which sets
+// `mockLocaleIndex` directly to 'root'/'zh-TW' assuming 'root' means English) keeps its meaning
+// unchanged (T1). Cases that gain `P = zh-TW` expectations set this explicitly (A28, BC14).
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 import MergedNav from '../../../.vitepress/theme/components/MergedNav.vue'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from '../../../.vitepress/theme/i18n/missingTranslation'
 import ShortLinkShare from '../../../.vitepress/theme/components/ShortLinkShare.vue'
@@ -108,6 +114,7 @@ beforeEach(() => {
   mockLocaleIndex.value = 'root'
   mockBase.value = ''
   mockMode.value = 'short'
+  mockPrimaryLocale.value = 'en'
 })
 
 const defaultProps = {

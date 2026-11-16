@@ -2,7 +2,8 @@
 import { ref, computed, inject, onMounted, onUnmounted, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useData } from 'vitepress'
-import { rememberChoice, otherLocale, type Locale } from '../i18n'
+import { rememberChoice, otherLocale, pageLocaleOf, type Locale } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE, type ChoiceOutcome } from '../i18n/missingTranslation'
 
 const { t, locale } = useI18n()
@@ -27,7 +28,7 @@ const lineLocale = inject(MISSING_TRANSLATION_LOCALE, computed(() => null))
 // The runtime locale is ASSIGNED here only when a choice navigates (spec 0008, B2): the
 // interface follows the URL, and a choice that stays keeps both the URL and the interface in
 // the page's locale. Read from the page, write to the runtime.
-const pageLocale = computed<Locale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<Locale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 
 // Unique per mount: the heading's id is referenced by the listbox's
 // aria-labelledby, and a hard-coded id would collide the moment two switchers

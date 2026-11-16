@@ -8,12 +8,18 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 // The component now DISPLAYS from the page-resolved locale and only WRITES to
 // the vue-i18n runtime locale, so tests must be able to set the two apart —
 // that divergence is exactly the SSR condition the fix addresses.
-const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
+const mockLocaleIndex = { value: 'root' as 'root' | 'en' | 'zh-TW' }
 // The switcher reads only the page's locale from VitePress (spec 0008): where a choice goes, the
 // site base and the location are the Layout's, through the provided choice.
 vi.mock('vitepress', () => ({
   useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
+
+// `P` (D31, A22): defaults to 'en', today's build, so `mountAt`'s existing mapping of a page
+// locale to `mockLocaleIndex` ('root' for English) keeps every existing case's meaning unchanged
+// (T1). The new P = zh-TW cases set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 import LocaleSwitcher from '../../../.vitepress/theme/components/LocaleSwitcher.vue'
 import {
@@ -34,10 +40,14 @@ const choose = vi.fn((_locale: 'en' | 'zh-TW') => chooseResult.value)
 
 /**
  * Mounts with the page locale and the runtime locale set independently, under the Layout's
- * provider. Pass the i18n instance to read the runtime locale afterwards.
+ * provider. Pass the i18n instance to read the runtime locale afterwards. `P` defaults to
+ * `mockPrimaryLocale`'s current value (today's build, 'en', unless a case sets it to 'zh-TW');
+ * `mockLocaleIndex` is derived from the page locale relative to it: `'root'` when the page is
+ * the primary locale, otherwise the non-primary locale's own code (A22, cross-area note 7/8).
  */
-function mountAt(pageLocale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW' | ReturnType<typeof makeI18n> = pageLocale) {
-  mockLocaleIndex.value = pageLocale === 'zh-TW' ? 'zh-TW' : 'root'
+function mountAt(pageLocale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW' | ReturnType<typeof makeI18n> = pageLocale, P: 'en' | 'zh-TW' = mockPrimaryLocale.value) {
+  mockPrimaryLocale.value = P
+  mockLocaleIndex.value = pageLocale === P ? 'root' : pageLocale
   return mount(LocaleSwitcher, {
     global: {
       plugins: [typeof runtime === 'string' ? makeI18n(runtime) : runtime],
@@ -69,6 +79,7 @@ beforeEach(() => {
   chooseResult.value = 'stay'
   choose.mockClear()
   setPathname('/')
+  mockPrimaryLocale.value = 'en'
 })
 
 afterEach(() => {
@@ -125,6 +136,23 @@ describe('LocaleSwitcher UI', () => {
     expect(title.text()).toBe(currentLabel)
     expect(title.attributes('role')).toBeUndefined()
     expect(title.attributes('data-locale-option')).toBeUndefined()
+  })
+
+  // A22, under P = zh-TW: the same title/aria-label/options behaviour, reached through
+  // `localeIndex = 'root'` for the Chinese page (the primary-locale key under this P) instead of
+  // the literal 'zh-TW' key — `pageLocaleOf` must still resolve the page locale correctly either
+  // way (cross-area note 7/8).
+  it.each([
+    ['en', 'zh-TW', 'English', 'Switch language — English'],
+    ['zh-TW', 'en', '繁體中文', '切換語系 — 繁體中文'],
+  ] as const)('under P = zh-TW, opened in %s, offers exactly %s and titles/names the current locale (A22)', async (current, other, currentLabel, aria) => {
+    const wrapper = mountAt(current, current, 'zh-TW')
+    expect(wrapper.find('[data-locale-switcher-toggle]').attributes('aria-label')).toBe(aria)
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    const options = wrapper.findAll('[role="option"]')
+    expect(options.length).toBe(1)
+    expect(options[0].attributes('data-locale-option')).toBe(other)
+    expect(wrapper.find('[data-locale-current]').text()).toBe(currentLabel)
   })
 
   it('the current-locale title is not interactive at all', async () => {
@@ -328,7 +356,7 @@ describe('detectInitialLocale: the URL alone decides (spec.md table)', () => {
       setPathname(tc.path)
       window.localStorage.clear()
       if (tc.ls !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, tc.ls)
-      expect(detectInitialLocale()).toBe(tc.expected)
+      expect(detectInitialLocale('en')).toBe(tc.expected)
     })
   }
 
@@ -337,7 +365,7 @@ describe('detectInitialLocale: the URL alone decides (spec.md table)', () => {
   it('never lets the stored value override an unprefixed path', () => {
     setPathname('/challenges/door-is-open/')
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(detectInitialLocale()).toBe('en')
+    expect(detectInitialLocale('en')).toBe('en')
   })
 })
 
@@ -347,8 +375,8 @@ describe('localStorage SecurityError fallback', () => {
     vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError')
     })
-    expect(() => detectInitialLocale()).not.toThrow()
-    expect(detectInitialLocale()).toBe('zh-TW')
+    expect(() => detectInitialLocale('en')).not.toThrow()
+    expect(detectInitialLocale('en')).toBe('zh-TW')
   })
 
   it('persistLocale swallows setItem SecurityError without throwing', () => {

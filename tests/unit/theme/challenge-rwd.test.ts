@@ -20,6 +20,10 @@ vi.mock('vitepress', () => ({
   withBase: (url: string) => url,
 }))
 
+// `P` (D31): 'en', today's build, so `localeIndex: 'root'` above still means the English page
+// (T1) — unaffected by this file's own RWD assertions, which do not vary by locale.
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => 'en' as const }))
+
 const mergedNavVue = readFileSync(
   resolve(__dirname, '../../../.vitepress/theme/components/MergedNav.vue'),
   'utf-8',

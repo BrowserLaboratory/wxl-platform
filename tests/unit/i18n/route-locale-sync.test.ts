@@ -8,6 +8,7 @@ import { detectLocaleFromPath, type Locale } from '../../../.vitepress/theme/i18
 // as zh-TW" and Scenario "Pathological prefix `/zh-TWfoo` is treated as en".
 
 describe('detectLocaleFromPath', () => {
+  // P = en (today's build; T = zh-TW): every case unchanged (T1), with P passed explicitly.
   const cases: [string, Locale][] = [
     ['/', 'en'],
     ['/guide/', 'en'],
@@ -28,7 +29,15 @@ describe('detectLocaleFromPath', () => {
   ]
 
   it.each(cases)('path %s → locale %s', (path, expected) => {
-    expect(detectLocaleFromPath(path)).toBe(expected)
+    expect(detectLocaleFromPath(path, 'en')).toBe(expected)
+  })
+
+  // A26: the same table, mirrored under P = zh-TW (T = en) — every expectation flips with the
+  // two codes swapped.
+  it.each(cases)('under P = zh-TW, path %s → locale %s (A26)', (path, expectedUnderEn) => {
+    const mirrored = path.replaceAll('zh-TW', '\u0000').replaceAll('en', 'zh-TW').replaceAll('\u0000', 'en')
+    const expected = expectedUnderEn === 'en' ? 'zh-TW' : 'en'
+    expect(detectLocaleFromPath(mirrored, 'zh-TW')).toBe(expected)
   })
 })
 
