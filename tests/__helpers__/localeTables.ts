@@ -2,11 +2,15 @@
  * The cold-load decision table (A-§4.1, DT01–DT80) and the switcher table (A-§4.3, SW01–SW16),
  * transcribed column for column from `.proj.specs/0010-primary-locale-layout/traceability.md`.
  *
- * DT01–DT40 (`P = en`, `T = zh-TW`) and DT41–DT80 (`P = zh-TW`, `T = en`) are the same 40 rows
- * with the two locale codes swapped (confirmed row by row against the source table: DT01↔DT41,
- * DT05↔DT43, DT06↔DT44, DT33↔DT73, … every pair). `DT01_40` below is the literal transcription;
- * `DT` is it followed by its locale-swapped mirror, so the generation cannot drift from the
- * source without the mirroring itself being wrong in a way a swapped-row diff would show.
+ * DT01–DT40 (`P = en`, `T = zh-TW`) carry the same shape as DT41–DT80 (`P = zh-TW`, `T = en`),
+ * but DT41–DT80 is NOT a mechanical "swap the two locale codes, keep the row order" transform
+ * of DT01–40: the source table's own PP block (DT41–48) reorders its `stored = P` and
+ * `stored = T` pairs relative to DT01–08's order (DT05/06's content — `stored = T` — lands at
+ * DT43/44, and DT03/04's content — `stored = P` — lands at DT45/46; a generated mirror that
+ * keeps DT01–08's position would put DT05/06's content at DT45/46 instead, silently wrong).
+ * `DT01_40` and `DT41_80` below are both literal transcriptions of the source table, row by
+ * row, checked id by id against it — not generated from one another — so this file cannot drift
+ * from the source the way a positional generator already did once.
  *
  * `X` (one challenge, one article) and the two bases are NOT part of this table: callers
  * instantiate a row's `/X`-shaped fields against a concrete entry and base of their own choosing
@@ -36,23 +40,6 @@ export interface DTRow {
   line: Locale | null
   /** The locale the cold load's own write stores, or null when nothing is written. */
   written: Locale | null
-}
-
-function swap(locale: Locale): Locale {
-  return locale === 'en' ? 'zh-TW' : 'en'
-}
-
-function swapRow(row: DTRow, index: number): DTRow {
-  return {
-    ...row,
-    id: `DT${index}`,
-    P: swap(row.P),
-    T: swap(row.T),
-    stored: row.stored === 'en' || row.stored === 'zh-TW' ? swap(row.stored) : row.stored,
-    requested: row.requested === null ? null : swap(row.requested),
-    line: row.line === null ? null : swap(row.line),
-    written: row.written === null ? null : swap(row.written),
-  }
 }
 
 // DT01–DT40, `P = en`, `T = zh-TW` — transcribed literally from traceability.md.
@@ -106,10 +93,57 @@ const DT01_40: DTRow[] = [
   { id: 'DT40', P: 'en', T: 'zh-TW', arrival: 'NU', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
 ]
 
-export const DT: readonly DTRow[] = [
-  ...DT01_40,
-  ...DT01_40.map((row, i) => swapRow(row, i + 41)),
+// DT41–DT80, `P = zh-TW`, `T = en` — transcribed literally from traceability.md (NOT generated
+// from DT01_40: see the module doc comment above for why the PP block's row order differs).
+const DT41_80: DTRow[] = [
+  // PP: primary-locale page /X (DT41–DT48)
+  { id: 'DT41', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'none', counterpart: 'exists', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT42', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'none', counterpart: 'missing', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT43', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'en', counterpart: 'exists', redirect: 'to-T', requested: 'en', line: null, written: null },
+  { id: 'DT44', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'en', counterpart: 'missing', redirect: 'none', requested: 'en', line: 'en', written: null },
+  { id: 'DT45', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'zh-TW', counterpart: 'exists', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT46', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'zh-TW', counterpart: 'missing', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT47', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'invalid', counterpart: 'exists', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT48', P: 'zh-TW', T: 'en', arrival: 'PP', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: 'zh-TW', line: null, written: null },
+  // TP: translation page /T/X (DT49–DT56)
+  { id: 'DT49', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'none', counterpart: 'exists', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT50', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'none', counterpart: 'missing', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT51', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'en', counterpart: 'exists', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT52', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'en', counterpart: 'missing', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT53', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'zh-TW', counterpart: 'exists', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT54', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'zh-TW', counterpart: 'missing', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT55', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'invalid', counterpart: 'exists', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  { id: 'DT56', P: 'zh-TW', T: 'en', arrival: 'TP', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: 'en', line: null, written: 'en' },
+  // NT: not-found translation path /T/X (DT57–DT64) — the stored value changes nothing.
+  { id: 'DT57', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'none', counterpart: 'exists', redirect: 'to-P', requested: 'en', line: 'en', written: null },
+  { id: 'DT58', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'none', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT59', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'en', counterpart: 'exists', redirect: 'to-P', requested: 'en', line: 'en', written: null },
+  { id: 'DT60', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'en', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT61', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'zh-TW', counterpart: 'exists', redirect: 'to-P', requested: 'en', line: 'en', written: null },
+  { id: 'DT62', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'zh-TW', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT63', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'invalid', counterpart: 'exists', redirect: 'to-P', requested: 'en', line: 'en', written: null },
+  { id: 'DT64', P: 'zh-TW', T: 'en', arrival: 'NT', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  // NP: not-found primary-code path /P/X, R22 (DT65–DT72)
+  { id: 'DT65', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'none', counterpart: 'exists', redirect: 'to-P', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT66', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'none', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT67', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'en', counterpart: 'exists', redirect: 'to-P', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT68', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'en', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT69', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'zh-TW', counterpart: 'exists', redirect: 'to-P', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT70', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'zh-TW', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT71', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'invalid', counterpart: 'exists', redirect: 'to-P', requested: 'zh-TW', line: null, written: null },
+  { id: 'DT72', P: 'zh-TW', T: 'en', arrival: 'NP', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  // NU: not-found primary path /X (DT73–DT80)
+  { id: 'DT73', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'none', counterpart: 'exists', redirect: 'to-T', requested: 'zh-TW', line: 'zh-TW', written: null },
+  { id: 'DT74', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'none', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT75', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'en', counterpart: 'exists', redirect: 'to-T', requested: 'zh-TW', line: 'zh-TW', written: null },
+  { id: 'DT76', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'en', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT77', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'zh-TW', counterpart: 'exists', redirect: 'to-T', requested: 'zh-TW', line: 'zh-TW', written: null },
+  { id: 'DT78', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'zh-TW', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
+  { id: 'DT79', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'invalid', counterpart: 'exists', redirect: 'to-T', requested: 'zh-TW', line: 'zh-TW', written: null },
+  { id: 'DT80', P: 'zh-TW', T: 'en', arrival: 'NU', stored: 'invalid', counterpart: 'missing', redirect: 'none', requested: null, line: null, written: null },
 ]
+
+export const DT: readonly DTRow[] = [...DT01_40, ...DT41_80]
 
 export interface SWRow {
   id: string
@@ -122,8 +156,8 @@ export interface SWRow {
   chosen: 'own' | 'other' | 'either'
   counterpart: 'listed' | 'unlisted' | null
   decision: 'navigate' | 'stay'
-  /** Whether the navigation is a push (no replace) vs a push with no history semantics noted —
-   *  every SW decision that navigates is a push (0008 B3); kept for documentation only. */
+  /** The missing-translation line's locale shown at once when the choice stays (0008 D17), or
+   *  null when none shows. */
   line: Locale | null
 }
 

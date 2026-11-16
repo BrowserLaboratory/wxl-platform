@@ -153,8 +153,22 @@ describe('message files on disk (B19)', () => {
 // each naming "the other" by construction, rather than parameterised over the list. This guard
 // names the message that would have to be revisited (GD1's exact text) if the list ever grows,
 // so growing it is a decision, not a silent mismatch.
+function assertTwoLocaleGuard(locales: readonly string[]): void {
+  if (locales.length !== 2) {
+    throw new Error(
+      `The line and the mark are two-locale strings (D33), but the locale list has ${locales.length} members, not 2; parameterise them in the Japanese (ja) epic.`,
+    )
+  }
+}
+
 describe('two-locale guard (A31, D33, GD1)', () => {
   it('passes while the locale list has exactly two members', () => {
-    expect(LOCALES.length).toBe(2)
+    expect(() => assertTwoLocaleGuard(LOCALES)).not.toThrow()
+  })
+
+  it('fails with GD1\'s exact message once the list grows past two', () => {
+    expect(() => assertTwoLocaleGuard([...LOCALES, 'ja'])).toThrowError(
+      'The line and the mark are two-locale strings (D33), but the locale list has 3 members, not 2; parameterise them in the Japanese (ja) epic.',
+    )
   })
 })

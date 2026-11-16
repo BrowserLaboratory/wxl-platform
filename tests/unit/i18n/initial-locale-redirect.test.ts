@@ -9,6 +9,7 @@ import {
   localizePath,
 } from '../../../.vitepress/theme/i18n'
 import { DT_PAGE, X_INSTANCES, BASES } from '../../__helpers__/localeTables'
+import { lineLocale } from '../../../.vitepress/theme/i18n/arrival'
 
 /**
  * The stored locale preference is expressed as a NAVIGATION, not as an override
@@ -56,7 +57,7 @@ describe('redirectTargetForStoredLocale', () => {
   })
 
   // Flipped by D31/wave 2 (ticket Comments, cross-area note 1; DT01/02/07/08): the separate
-  // `DEFAULT_VISITING_LOCALE` constant this test named is gone, and "no preference" now falls
+  // default-locale constant this test named is gone, and "no preference" now falls
   // back to `P` itself (A1) — which a primary-locale page already is, so there is nothing left
   // to redirect to. Was: 'sends a visitor with no stored preference to the default visiting locale'.
   it('no longer redirects a visitor with no stored preference on a primary-locale page (A1, DT01)', () => {
@@ -173,6 +174,27 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
     expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES, rendered(entry), 'en')).toBe(expected)
   })
 
+  // A8 under P = zh-TW: the same alias-resolution property, mirrored — every `/zh-TW/…` entry
+  // of `PAGES` becomes an `/en/…` entry (the unprefixed entries are already the primary locale's
+  // own, unchanged), and the stored preference is `en` (T under this P).
+  const PAGES_ZH = [
+    '/', '/challenges', '/guide/',
+    '/challenge/door-is-open/', '/challenge/english-only/',
+    '/guide/python', '/reference/attack-log-export-format',
+    '/en/', '/en/challenges', '/en/guide/',
+    '/en/challenge/door-is-open/', '/en/guide/python', '/en/guide/zh-only',
+  ]
+
+  it.each([
+    ['/challenges.html', '/challenges', '/en/challenges'],
+    ['/challenges/', '/challenges', '/en/challenges'],
+    ['/guide/index.html', '/guide/', '/en/guide/'],
+    ['/no/relation/to/the/page', '/challenge/door-is-open/', '/en/challenge/door-is-open/'],
+  ] as const)('under P = zh-TW, with the URL path %s, builds the target from the entry %s: %s (A8)', (pathname, entry, expected) => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES_ZH, rendered(entry), 'zh-TW')).toBe(expected)
+  })
+
   // The whole decision table: every stored value it names × challenge and article × base `/`
   // and `/repo/`, with a query and a hash. Unknown and unreadable values act as none.
   const STORED = {
@@ -231,35 +253,56 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
  * (challenge and article). `redirectTargetForStoredLocale`'s target and `shouldPersistOnColdLoad`'s
  * write, per row (wave 2's "DT01-16/41-56 pure" row).
  */
+// The variants `stored === 'invalid'` must cover (A12/P1-3): an unrecognised code, an
+// unrecognised code in another shape, a lower-cased known code, an empty string, and an
+// unreadable `localStorage` — all of them "no preference" (`readStoredLocale` returns null).
+const INVALID_STORED_VARIANTS = ['fr', 'ja', 'zh-tw', '', 'unreadable'] as const
+
 describe('the cold-load decision table (DT01–16, DT41–56): page arrivals', () => {
   for (const row of DT_PAGE) {
     for (const x of X_INSTANCES) {
       for (const b of BASES) {
-        it(`${row.id} (${x.label}, base ${b.label}): ${row.arrival} stored ${row.stored}, counterpart ${row.counterpart}`, () => {
-          const T = row.T
-          const entry = row.arrival === 'PP' ? x.entry : localizePath(x.entry, T, row.P)
-          if (row.stored === 'invalid') {
-            window.localStorage.setItem(LOCALE_STORAGE_KEY, 'fr')
-          } else if (row.stored !== 'none') {
-            window.localStorage.setItem(LOCALE_STORAGE_KEY, row.stored)
-          }
-          const counterpartEntry = row.arrival === 'PP' ? localizePath(x.entry, T, row.P) : x.entry
-          const pages = row.counterpart === 'exists' ? [entry, counterpartEntry] : [entry]
-          const target = redirectTargetForStoredLocale(
-            loc(b.prefix + entry, '?q=1', '#h'),
-            b.base,
-            pages,
-            rendered(entry),
-            row.P,
-          )
-          if (row.redirect === 'none') {
-            expect(target).toBeNull()
-          } else {
-            const wantEntry = row.redirect === 'to-T' ? localizePath(entry, T, row.P) : entry
-            expect(target).toBe(b.prefix + wantEntry + '?q=1#h')
-          }
-          expect(shouldPersistOnColdLoad(rendered(entry), row.P)).toBe(row.written !== null)
-        })
+        const variants: readonly string[] = row.stored === 'invalid' ? INVALID_STORED_VARIANTS : [row.stored]
+        for (const variant of variants) {
+          const label = row.stored === 'invalid' ? `${row.stored} (${variant === '' ? 'empty' : variant})` : row.stored
+          it(`${row.id} (${x.label}, base ${b.label}): ${row.arrival} stored ${label}, counterpart ${row.counterpart}`, () => {
+            const T = row.T
+            const entry = row.arrival === 'PP' ? x.entry : localizePath(x.entry, T, row.P)
+            let spy: ReturnType<typeof vi.spyOn> | null = null
+            if (row.stored === 'invalid') {
+              if (variant === 'unreadable') {
+                spy = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+                  throw new DOMException('blocked', 'SecurityError')
+                })
+              } else {
+                window.localStorage.setItem(LOCALE_STORAGE_KEY, variant)
+              }
+            } else if (row.stored !== 'none') {
+              window.localStorage.setItem(LOCALE_STORAGE_KEY, row.stored)
+            }
+            try {
+              const counterpartEntry = row.arrival === 'PP' ? localizePath(x.entry, T, row.P) : x.entry
+              const pages = row.counterpart === 'exists' ? [entry, counterpartEntry] : [entry]
+              const target = redirectTargetForStoredLocale(
+                loc(b.prefix + entry, '?q=1', '#h'),
+                b.base,
+                pages,
+                rendered(entry),
+                row.P,
+              )
+              if (row.redirect === 'none') {
+                expect(target).toBeNull()
+              } else {
+                const wantEntry = row.redirect === 'to-T' ? localizePath(entry, T, row.P) : entry
+                expect(target).toBe(b.prefix + wantEntry + '?q=1#h')
+              }
+              expect(shouldPersistOnColdLoad(rendered(entry), row.P)).toBe(row.written !== null)
+              expect(lineLocale({ requested: row.requested!, entry, pages, released: true, P: row.P })).toBe(row.line)
+            } finally {
+              spy?.mockRestore()
+            }
+          })
+        }
       }
     }
   }
@@ -291,6 +334,30 @@ describe('shouldPersistOnColdLoad', () => {
     ['a failed load of a Traditional Chinese page (W3)', false, { kind: 'failed-load' }],
   ] as const)('%s: written %s', (_label, expected, arrival) => {
     expect(shouldPersistOnColdLoad(arrival, 'en')).toBe(expected)
+  })
+})
+
+// A13: direct coverage of the read, independent of the redirect/persist callers above.
+describe('readStoredLocale', () => {
+  it.each(['fr', 'ja', 'zh-tw', 'EN', ''])('is null for the unrecognised value %j', (value) => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, value)
+    expect(readStoredLocale()).toBeNull()
+  })
+
+  it('is null when localStorage is unreachable', () => {
+    const get = vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError')
+    })
+    try {
+      expect(readStoredLocale()).toBeNull()
+    } finally {
+      get.mockRestore()
+    }
+  })
+
+  it.each(['en', 'zh-TW'] as const)('is the value itself for the known locale %s', (value) => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, value)
+    expect(readStoredLocale()).toBe(value)
   })
 })
 

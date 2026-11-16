@@ -224,6 +224,19 @@ describe('the real Layout: around the not-found redirect', () => {
     expect(layout.find('[data-missing-translation]').exists()).toBe(false)
   })
 
+  // A11, D25: with no stored preference, a later navigation (not a cold load) asks for the
+  // page's own locale, not for `P` regardless of the page — a translation-only page must not
+  // show a line just because it is not `P`'s own.
+  it('shows no line on a later navigation to a translation-only page with no stored preference (A11, D25)', async () => {
+    arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
+    const layout = mountLayout()
+    await flushPromises()
+    arrive('/zh-TW/guide/zh-only', { isNotFound: false, relativePath: 'zh-TW/guide/zh-only.md' })
+    await flushPromises()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
   it('discards the carried locale once the landing has used it', async () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     arrive('/zh-TW/reference/attack-log-export-format', NOT_FOUND)
@@ -472,12 +485,18 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
   })
 
   it('writes no preference on a cold-load redirect or the navigation after it (W5)', async () => {
+    // DT05: a stored `zh-TW` preference on a primary-locale page with a published
+    // counterpart is a cold-load redirect — re-seeded so this test's own title (a redirect
+    // actually happens) is true, not vacuous (DT01's flip left "no preference" with nothing
+    // to redirect).
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     arrive('/challenges', { isNotFound: false, relativePath: 'challenges.md' })
     mountLayout()
     await flushPromises()
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
     arrive('/zh-TW/challenges', { isNotFound: false, relativePath: 'zh-TW/challenges.md' })
     await flushPromises()
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
   })
 })
 
@@ -690,8 +709,11 @@ describe('the real Layout: a locale switcher choice', () => {
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
   })
 
-  // The kept choice differs from the default visiting locale (zh-TW), so only the kept value can
-  // explain the later arrival's line.
+  // The kept choice (zh-TW) differs from both `P` (en) and the later arrival's own page locale
+  // (en, an unprefixed English-only article): only a kept choice that is genuinely read back
+  // can explain the later arrival's line being zh-TW — a kept choice that silently failed would
+  // fall back to `en` either way (P, or the page's own locale), so this discriminates where a
+  // kept choice equal to `P` would not.
   it('keeps the choice for the tab when storage refuses it, and a later arrival uses it (B6, W6)', async () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     arrive('/guide/python', GUIDE)
@@ -702,12 +724,12 @@ describe('the real Layout: a locale switcher choice', () => {
     try {
       arrive('/reference/attack-log-export-format', REFERENCE)
       await flushPromises()
-      expect(() => choose('en')).not.toThrow()
-      expect(readStoredLocale()).toBe('en')
-      // A later arrival on a Traditional Chinese-only page asks with the kept `en`.
-      arrive('/zh-TW/guide/zh-only', { isNotFound: false, relativePath: 'zh-TW/guide/zh-only.md' })
+      expect(() => choose('zh-TW')).not.toThrow()
+      expect(readStoredLocale()).toBe('zh-TW')
+      // A later arrival on an English-only article asks with the kept `zh-TW`.
+      arrive('/guide/english-only', { isNotFound: false, relativePath: 'guide/english-only.md' })
       await flushPromises()
-      expect(layout.get('[data-missing-translation]').attributes('lang')).toBe('en')
+      expect(layout.get('[data-missing-translation]').attributes('lang')).toBe('zh-TW')
       expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
     } finally {
       set.mockRestore()

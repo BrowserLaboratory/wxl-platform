@@ -99,6 +99,7 @@ const RENDERED: Record<string, { isNotFound: boolean; relativePath: string }> = 
   '/guide/': { isNotFound: false, relativePath: 'guide/index.md' },
   '/zh-TW/': { isNotFound: false, relativePath: 'zh-TW/index.md' },
   '/zh-TW/guide/': { isNotFound: false, relativePath: 'zh-TW/guide/index.md' },
+  '/en/guide/': { isNotFound: false, relativePath: 'en/guide/index.md' },
   '/zh-TW/no-such-page': { isNotFound: true, relativePath: 'zh-TW/no-such-page.md' },
   '/wxl/challenges/': { isNotFound: false, relativePath: 'challenges.md' },
 }
@@ -284,12 +285,16 @@ describe('the real Layout: route watcher', () => {
     w.unmount()
   })
 
-  // A29, under P = zh-TW: `/zh-TW/guide/` is now the primary (unprefixed-equivalent) tree and
-  // `/en/guide/` the translation; `RENDERED` is unaffected (the watcher never reads the page
-  // list), so the same fixture paths work with the expectation flipped.
+  // A29, under P = zh-TW (T = en): `/guide/` is the primary tree (unprefixed), `/en/guide/` is
+  // the translation tree, and `/zh-TW/guide/` is neither — it does not carry `/en/`'s prefix, so
+  // the rule's silent fallback resolves it to `P` too, same as the unprefixed path. These two
+  // fixture paths reuse the pre-switch literal strings `RENDERED` already covers (the watcher
+  // never reads the page list), with the expectation flipped for the new primary; the third row
+  // below is the one that actually exercises the translation tree under this `P`.
   it.each([
     ['/zh-TW/guide/', 'zh-TW'],
     ['/guide/', 'zh-TW'],
+    ['/en/guide/', 'en'],
   ] as const)('under P = zh-TW, navigating to %s drives the runtime locale to %s (A29)', async (path, expected) => {
     mockPrimaryLocale.value = 'zh-TW'
     const w = mountLayout()

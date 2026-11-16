@@ -114,6 +114,9 @@ describe('HomeContent with an untranslated challenge', () => {
     expect(card.attributes('href')).toBe('/challenge/v05-php-check/')
     expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
     expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
+    const translated = wrapper.findAll('a').find((a) => a.text().includes('限員工'))!
+    expect(translated.find('[data-locale-mark]').exists()).toBe(false)
+    expect(translated.find('[lang]').exists()).toBe(false)
   })
 
   // A28/A32, under P = zh-TW: the same Chinese-home scenario as above, reached via
