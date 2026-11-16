@@ -13,6 +13,12 @@ vi.mock('vitepress', () => ({
   useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
 
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which sets
+// `mockLocaleIndex` directly assuming 'root' means English) keeps its meaning unchanged (T1).
+// Cases that gain `P = zh-TW` expectations set this explicitly (A28, A32, BC14).
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 // Test the sorting and stats logic directly
 function computeStats(challenges: ChallengeData[]) {
   const total = challenges.length
@@ -97,6 +103,7 @@ describe('HomeContent with an untranslated challenge', () => {
   let HomeContent: typeof import('../../../.vitepress/theme/components/HomeContent.vue').default
 
   beforeEach(async () => {
+    mockPrimaryLocale.value = 'en'
     HomeContent = (await import('../../../.vitepress/theme/components/HomeContent.vue')).default
   })
 
@@ -107,6 +114,17 @@ describe('HomeContent with an untranslated challenge', () => {
     expect(card.attributes('href')).toBe('/challenge/v05-php-check/')
     expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
     expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
+  })
+
+  // A28/A32, under P = zh-TW: the same Chinese-home scenario as above, reached via
+  // `localeIndex = 'root'` (the primary-locale key) instead of the literal 'zh-TW' key — the
+  // generalised pageLocaleOf must still resolve the page to zh-TW.
+  it('marks the borrowed newest card 只有英文 under P = zh-TW, localeIndex root (A28, A32)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = 'root'
+    const wrapper = mount(HomeContent, { props: { challenges: HOME }, global: { plugins: [runtime('en')] } })
+    const card = wrapper.findAll('a').find((a) => a.text().includes('PHP Check'))!
+    expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
     const translated = wrapper.findAll('a').find((a) => a.text().includes('限員工'))!
     expect(translated.find('[data-locale-mark]').exists()).toBe(false)
     expect(translated.find('[lang]').exists()).toBe(false)

@@ -61,6 +61,12 @@ vi.mock('../../../.vitepress/theme/i18n/publishedPages', () => ({
   publishedPages: () => ['/', '/challenge/v05-php-check/', '/challenges', '/guide/english-only', '/guide/python', '/reference/attack-log-export-format', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/python', '/zh-TW/guide/zh-only'],
 }))
 
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which treats the
+// unprefixed tree as primary and `/zh-TW/` as the translation) keeps its meaning unchanged (T1).
+// Cases that gain `P = zh-TW` expectations set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 // ─── The shared-machine session gate ─────────────────────────────────────────
 //
 // The redirect the Layout performs reads the stored locale, which is one of the values
@@ -126,6 +132,7 @@ beforeEach(() => {
   mockBase.value = '/'
   arrive('/', { isNotFound: false, relativePath: 'index.md' })
   i18n.global.locale.value = 'en'
+  mockPrimaryLocale.value = 'en'
 })
 const mounted: { unmount: () => void }[] = []
 afterEach(() => {
@@ -395,13 +402,16 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
     expect(layout.get('[data-challenge-layout]').attributes('data-line')).toBe('zh-TW')
   })
 
-  it('stays on an English-only page with no stored value, the line in the default zh-TW (A2)', async () => {
+  // Flipped by D31/wave 2 (A1, DT01/02): no preference now falls back to `P` ('en'), and an
+  // English-only page is already there, so there is no longer a line to show. Was: 'stays on an
+  // English-only page with no stored value, the line in the default zh-TW (A2)'.
+  it('stays on an English-only page with no stored value, and shows no line (A1, DT02)', async () => {
     arrive('/challenge/v05-php-check/', CHALLENGE)
     mockFrontmatter.value = { layout: 'challenge' }
     const layout = mountLayout()
     await flushPromises()
     expect(mockGo).not.toHaveBeenCalled()
-    expect(layout.get('[data-challenge-layout]').attributes('data-line')).toBe('zh-TW')
+    expect(layout.get('[data-challenge-layout]').attributes('data-line')).toBe('none')
   })
 
   it('neither redirects nor shows the line for a learner who stored en (A4)', async () => {
@@ -413,7 +423,10 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
     expect(layout.find('[data-missing-translation]').exists()).toBe(false)
   })
 
-  it('sends an alias of a translated page to its counterpart entry, once, with replace (A1)', async () => {
+  // A8/wave 2: "no preference" no longer redirects (A1, DT01), so this now sets an explicit
+  // stored preference to exercise the alias-resolution property (unaffected by the flip).
+  it('sends an alias of a translated page to its counterpart entry, once, with replace (A8)', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     arrive('/Challenges.html?view=grid#top', { isNotFound: false, relativePath: 'challenges.md' })
     mountLayout()
     await flushPromises()
@@ -438,7 +451,11 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
 
   // L6 on an A1 landing: the landing is in the requested locale, so the carried value changes
   // nothing visible there. What can be seen is that the carry ends at the landing.
+  // Flipped by D31/wave 2: the first redirect here needs an explicit stored preference now
+  // (A1/DT01, "no preference" no longer redirects); L6's own property (the carried value does
+  // not survive to a later page) is unaffected.
   it('after an A1 redirect, a later page asks with the stored value, not the carried one (L6)', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     arrive('/challenges', { isNotFound: false, relativePath: 'challenges.md' })
     const layout = mountLayout()
     await flushPromises()
@@ -500,7 +517,11 @@ describe('the real Layout: the decision table A1–A5, A7, every column', () => 
       arrive(prefix + r.path, { isNotFound: false, relativePath: r.source })
       const layout = mountLayout()
       await flushPromises()
-      const want = stored === 'en' ? r.en : r.others
+      // Flipped by D31/wave 2 (A1/A2/A3, DT01/02/07/08): "no preference" (none, unknown,
+      // unreadable) no longer defaults to zh-TW — it falls back to `P` ('en' here), the same
+      // outcome as an explicit `en` preference. Only an explicit `zh-TW` preference still gets
+      // `r.others`.
+      const want = stored === 'zh-TW' ? r.others : r.en
       if (want.go === null) expect(mockGo).not.toHaveBeenCalled()
       else expect(mockGo).toHaveBeenCalledWith(prefix + want.go, { replace: true })
       const line = r.challenge

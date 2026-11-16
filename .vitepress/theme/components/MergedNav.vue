@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue'
 import { useData, withBase } from 'vitepress'
 import { useI18n } from 'vue-i18n'
-import { localizePath, type Locale } from '../i18n'
+import { localizePath, pageLocaleOf, type Locale } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 import LocaleSwitcher from './LocaleSwitcher.vue'
 import ShortLinkShare from './ShortLinkShare.vue'
 import ChallengeDoneBadge from './ChallengeDoneBadge.vue'
@@ -57,13 +58,13 @@ const { isDark, localeIndex } = useData()
 // and crawlers. VitePress resolves `localeIndex` from each page's own
 // relativePath, so it is already correct when the page is rendered.
 //
-// `localeIndex` is `'root'` for English (the locales key), hence the mapping.
-// Binary fallback matches detectLocaleFromPath: recognised, or English.
-const locale = computed<Locale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+// `localeIndex` is `'root'` for the primary locale `P` (the locales key), hence
+// `pageLocaleOf`. Fallback matches `detectLocaleFromPath`: recognised, or `P`.
+const locale = computed<Locale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 
 // localizePath takes a base-less path and withBase wraps its OUTPUT. Reversing
 // the two emits the locale segment outside the site base.
-const navLink = (path: string) => withBase(localizePath(path, locale.value))
+const navLink = (path: string) => withBase(localizePath(path, locale.value, primaryLocale()))
 
 // Translatable labels in this bar are rendered at the PAGE locale, not at the
 // vue-i18n runtime locale, and that is what `tp` is for. The runtime instance

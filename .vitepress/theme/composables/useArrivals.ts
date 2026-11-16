@@ -1,7 +1,7 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
-  DEFAULT_VISITING_LOCALE,
   detectLocaleFromPath,
+  otherLocale,
   persistLocale,
   readStoredLocale,
   redirectTargetForStoredLocale,
@@ -9,6 +9,7 @@ import {
   shouldPersistOnColdLoad,
   type Locale,
 } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 import { publishedPages } from '../i18n/publishedPages'
 import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, switcherDecision, targetPath } from '../i18n/arrival'
 import type { ChoiceOutcome } from '../i18n/missingTranslation'
@@ -56,6 +57,7 @@ export function useArrivals(deps: {
   holdLine: () => boolean
 }) {
   const { route, router, page, base, holdLine } = deps
+  const P = primaryLocale()
   const pages = publishedPages()
   const carry = createCarry()
   const entry = ref<string | null>(null)
@@ -87,9 +89,9 @@ export function useArrivals(deps: {
       return arrival
     }
     entry.value = arrival.entry
-    const prefixed = detectLocaleFromPath(arrival.entry) === 'zh-TW'
+    const prefixed = detectLocaleFromPath(arrival.entry, P) === otherLocale(P)
     requested.value = carry.take(arrival.entry)
-      ?? (coldLoad && prefixed ? 'zh-TW' : readStoredLocale() ?? DEFAULT_VISITING_LOCALE)
+      ?? (coldLoad && prefixed ? otherLocale(P) : readStoredLocale() ?? P)
     return arrival
   }
 
@@ -104,7 +106,7 @@ export function useArrivals(deps: {
   // C1–C3: a not-found arrival is replaced by its counterpart, or left as it is.
   const replaceNotFound = (): boolean => {
     if (current().kind !== 'not-found') return false
-    const decision = notFoundRedirect(window.location, base(), pages)
+    const decision = notFoundRedirect(window.location, base(), pages, P)
     if (!decision) return false
     redirect(decision.target, decision.requested)
     return true
@@ -121,7 +123,7 @@ export function useArrivals(deps: {
     if (!replaceNotFound() && coldLoadCurrent && window.location.pathname === coldLoadPathname) {
       // Recorded again, so the redirect and the line both use the stored value current now,
       // not the one read when the gate began to ask (A1–A4).
-      const target = redirectTargetForStoredLocale(window.location, base(), pages, record(true))
+      const target = redirectTargetForStoredLocale(window.location, base(), pages, record(true), P)
       if (target) redirect(target, requested.value)
     }
     released.value = true
@@ -144,7 +146,7 @@ export function useArrivals(deps: {
     requested.value === null || (!lineAtOnce.value && holdLine())
       ? null
       // A choice that stayed counts as released for its own line.
-      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value || lineAtOnce.value }))
+      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value || lineAtOnce.value, P }))
 
   // A locale switcher choice (B1–B7) is an arrival of its own, asking for the chosen locale. It
   // is written (W1, kept for the tab when storage refuses: D14), and it ends the cold load's claim
@@ -155,7 +157,7 @@ export function useArrivals(deps: {
     rememberChoice(locale)
     coldLoadCurrent = false
     const arrival = current()
-    const decision = switcherDecision({ chosen: locale, arrival, location: window.location, base: base(), pages })
+    const decision = switcherDecision({ chosen: locale, arrival, location: window.location, base: base(), pages, P })
     // Whatever it does, a choice is the newest request: a redirect's carry still waiting for its
     // landing must not outrank it (L6).
     carry.discard()
@@ -176,7 +178,7 @@ export function useArrivals(deps: {
     coldLoadCurrent = true
     coldLoadPathname = window.location.pathname
     const arrival = record(true)
-    if (shouldPersistOnColdLoad(arrival)) persistLocale('zh-TW')
+    if (shouldPersistOnColdLoad(arrival, P)) persistLocale(otherLocale(P))
   }
 
   return {

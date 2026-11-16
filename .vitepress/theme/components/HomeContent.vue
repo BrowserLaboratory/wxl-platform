@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { useI18n } from 'vue-i18n'
 import type { ChallengeData, ChallengeLocale } from '../../../platform/shared/challenges.data'
+import { pageLocaleOf } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
@@ -11,7 +13,7 @@ const { localeIndex } = useData()
 // carries the mark, resolved at the PAGE's locale — the runtime instance is `en` until hydration,
 // so reading it would ship the wrong word in the HTML as served — and its title and summary carry
 // the borrowed text's `lang`.
-const pageLocale = computed<ChallengeLocale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<ChallengeLocale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 const markText = computed(() => t('missing_translation.mark', {}, { locale: pageLocale.value }))
 const isBorrowed = (c: ChallengeData) => c.locale !== pageLocale.value
 const langOf = (c: ChallengeData) => (isBorrowed(c) ? c.locale : undefined)

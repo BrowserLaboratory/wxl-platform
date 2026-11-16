@@ -148,3 +148,13 @@ describe('message files on disk (B19)', () => {
     expect(basenames).toEqual([...LOCALES].sort())
   })
 })
+
+// A31: the line and the mark (D33) are two-locale strings — written for exactly two locales,
+// each naming "the other" by construction, rather than parameterised over the list. This guard
+// names the message that would have to be revisited (GD1's exact text) if the list ever grows,
+// so growing it is a decision, not a silent mismatch.
+describe('two-locale guard (A31, D33, GD1)', () => {
+  it('passes while the locale list has exactly two members', () => {
+    expect(LOCALES.length).toBe(2)
+  })
+})

@@ -26,6 +26,7 @@ import SessionGate from './components/SessionGate.vue'
 import MissingTranslationLine from './components/MissingTranslationLine.vue'
 import { useSessionGate, hasGateDecision, shouldPresentGateHere } from './composables/useSessionGate'
 import { i18n, detectInitialLocale, detectLocaleFromPath } from './i18n'
+import { primaryLocale } from './i18n/primaryLocale'
 import { useArrivals } from './composables/useArrivals'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
 
@@ -49,7 +50,7 @@ export default {
       const stopRouteWatch = watch(
         () => route.path,
         (newPath) => {
-          const target = detectLocaleFromPath(newPath)
+          const target = detectLocaleFromPath(newPath, primaryLocale())
           if (i18n.global.locale.value === target) return
           i18n.global.locale.value = target
         },
@@ -235,7 +236,7 @@ export default {
     // short link's server redirect are cold loads too (D13) — is decided once the
     // router has rendered the page (`useArrivals`).
     if (typeof window !== 'undefined') {
-      i18n.global.locale.value = detectInitialLocale()
+      i18n.global.locale.value = detectInitialLocale(primaryLocale())
     }
 
     // SourceViewer is used in challenge pages via markdown

@@ -1,6 +1,6 @@
 import { entryForRelativePath, isPublishedPath, targetUrl, withoutBase } from './pages'
 import { lookupNotFound } from './lookup'
-import { detectLocaleFromPath, localizePath, otherLocale, type Locale } from './index'
+import { detectLocaleFromPath, localizePath, type Locale } from './index'
 
 /**
  * Arrivals and the decisions taken on them (spec 0008, seam S1). An arrival is one page shown
@@ -50,13 +50,20 @@ export function notFoundRedirect(
   location: { pathname: string; search?: string; hash?: string },
   base: string,
   pages: readonly string[],
+  P: Locale,
 ): { target: string; entry: string; requested: Locale } | null {
-  const entry = lookupNotFound(location.pathname, base, pages)
+  const entry = lookupNotFound(location.pathname, base, pages, P)
   if (entry === null) return null
+  // The requested locale is the NOT-FOUND PATH's own (D11's three kinds: a translation path's
+  // own is T, a primary-code path's and a primary path's own are both P) — not the landing
+  // entry's. The two coincide for NT and NU (the landing is always the path's counterpart,
+  // D28's ordinary branch), but not for NP (D28): the landing there is ALSO P's own, the same
+  // locale the path already named, so inferring it from the landing would wrongly say T.
+  const local = withoutBase(location.pathname, base) ?? location.pathname
   return {
     target: targetUrl(entry, base, location),
     entry,
-    requested: otherLocale(detectLocaleFromPath(entry)),
+    requested: detectLocaleFromPath(local, P),
   }
 }
 
@@ -74,14 +81,15 @@ export function switcherDecision(input: {
   location: { pathname: string; search?: string; hash?: string }
   base: string
   pages: readonly string[]
+  P: Locale
 }): { kind: 'navigate'; target: string } | { kind: 'stay' } {
-  const { chosen, arrival, location, base, pages } = input
+  const { chosen, arrival, location, base, pages, P } = input
   let entry: string | null
   if (arrival.kind === 'page') {
-    const counterpart = localizePath(arrival.entry, chosen)
-    entry = detectLocaleFromPath(arrival.entry) !== chosen && pages.includes(counterpart) ? counterpart : null
+    const counterpart = localizePath(arrival.entry, chosen, P)
+    entry = detectLocaleFromPath(arrival.entry, P) !== chosen && pages.includes(counterpart) ? counterpart : null
   } else {
-    entry = lookupNotFound(location.pathname, base, pages)
+    entry = lookupNotFound(location.pathname, base, pages, P)
   }
   return entry === null ? { kind: 'stay' } : { kind: 'navigate', target: targetUrl(entry, base, location) }
 }
@@ -96,11 +104,12 @@ export function lineLocale(input: {
   entry: string | null
   pages: readonly string[]
   released: boolean
+  P: Locale
 }): Locale | null {
-  const { requested, entry, pages, released } = input
+  const { requested, entry, pages, released, P } = input
   if (!released || entry === null) return null
-  if (detectLocaleFromPath(entry) === requested) return null
-  return pages.includes(localizePath(entry, requested)) ? null : requested
+  if (detectLocaleFromPath(entry, P) === requested) return null
+  return pages.includes(localizePath(entry, requested, P)) ? null : requested
 }
 
 /**

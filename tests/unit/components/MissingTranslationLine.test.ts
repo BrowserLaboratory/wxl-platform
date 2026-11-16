@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
@@ -13,12 +13,21 @@ vi.mock('vitepress', () => ({
   withBase: (path: string) => base.value.replace(/\/$/, '') + path,
 }))
 
+// `P` (D31, A30): defaults to 'en', today's build, so every existing case below keeps its href
+// unchanged (T1). The new P = zh-TW cases below set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 function mountLine(locale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW') {
   const i18n = createI18n({ legacy: false, locale: runtime, fallbackLocale: 'en', messages: { en, 'zh-TW': zhTW } })
   return mount(MissingTranslationLine, { props: { locale }, global: { plugins: [i18n] } })
 }
 
 describe('MissingTranslationLine', () => {
+  beforeEach(() => {
+    mockPrimaryLocale.value = 'en'
+  })
+
   it('says, in Traditional Chinese, that the page has no Traditional Chinese version', () => {
     base.value = '/'
     const line = mountLine('zh-TW', 'en')
@@ -52,5 +61,19 @@ describe('MissingTranslationLine', () => {
     const line = mountLine('zh-TW', 'en')
     expect(line.findAll('button')).toHaveLength(0)
     expect(line.findAll('a')).toHaveLength(1)
+  })
+
+  // A30, under P = zh-TW: the href is relative to P, not hard-coded to zh-TW being the
+  // translation. The text and `lang` are unaffected (requested-locale properties only).
+  it('links to the primary-coded list under P = zh-TW, requested zh-TW (A30)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    base.value = '/'
+    expect(mountLine('zh-TW', 'en').get('a').attributes('href')).toBe('/challenges')
+  })
+
+  it('links to the en-prefixed list under P = zh-TW, requested en (A30)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    base.value = '/'
+    expect(mountLine('en', 'zh-TW').get('a').attributes('href')).toBe('/en/challenges')
   })
 })

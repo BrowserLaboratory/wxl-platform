@@ -149,7 +149,7 @@ describe('the not-found lookup', () => {
     ['/notice', '/zh-TW/notice'],
     ['/zh-TW/%E5%8F%83%E8%80%83', null],
   ])('finds the counterpart of %s: %s', (path, target) => {
-    expect(lookupNotFound(path, '/', PAGES)).toBe(target)
+    expect(lookupNotFound(path, '/', PAGES, 'en')).toBe(target)
   })
 
   it.each([
@@ -163,12 +163,12 @@ describe('the not-found lookup', () => {
     '/zh-TW/Reference/attack-log-export-format',
     '/zh-TW/no-such-page',
   ])('finds nothing for %s, and does not throw', (path) => {
-    expect(lookupNotFound(path, '/', PAGES)).toBeNull()
+    expect(lookupNotFound(path, '/', PAGES, 'en')).toBeNull()
   })
 
   it('strips the site base first, and returns the entry without it', () => {
-    expect(lookupNotFound('/repo/zh-TW/challenge/v05-php-check/', '/repo/', PAGES)).toBe('/challenge/v05-php-check/')
-    expect(lookupNotFound('/zh-TW/challenge/v05-php-check/', '/repo/', PAGES)).toBeNull()
+    expect(lookupNotFound('/repo/zh-TW/challenge/v05-php-check/', '/repo/', PAGES, 'en')).toBe('/challenge/v05-php-check/')
+    expect(lookupNotFound('/zh-TW/challenge/v05-php-check/', '/repo/', PAGES, 'en')).toBeNull()
   })
 
   it('tells whether a path itself is a published page, by the same normalisation', () => {
@@ -182,7 +182,7 @@ describe('the not-found lookup', () => {
 describe('the not-found lookup: a doubled prefix', () => {
   it('a path whose "counterpart" is still in its own locale has none', () => {
     const pages = ['/zh-TW/notice', '/notice']
-    expect(lookupNotFound('/zh-TW/zh-TW/notice', '/', pages)).toBeNull()
+    expect(lookupNotFound('/zh-TW/zh-TW/notice', '/', pages, 'en')).toBeNull()
   })
 })
 

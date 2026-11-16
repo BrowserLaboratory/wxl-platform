@@ -9,6 +9,8 @@ import { useChallengeProgress } from '../composables/useChallengeProgress'
 import { useProgressBlockReason } from '../composables/useSessionGate'
 import type { ShortLinkLocale } from '../../challenge/shortLink'
 import { linkMode } from '../linkMode'
+import { pageLocaleOf } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
@@ -20,7 +22,7 @@ const { localeIndex } = useData()
 // the wrong link for a reader who copies before that happens. The list gives the
 // short link in its own locale: `/en/c/NNN` or `/zh-TW/c/NNN`, never `/c/` or
 // `/zh/c/`, which are kept only so links already handed out keep opening.
-const pageLocale = computed<ShortLinkLocale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<ShortLinkLocale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 
 /**
  * Translate at the PAGE locale, the way the merged nav's `tp` does.

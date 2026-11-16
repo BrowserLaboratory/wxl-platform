@@ -39,6 +39,12 @@ vi.mock('../../../.vitepress/theme/i18n/publishedPages', () => ({
   publishedPages: () => ['/', '/challenges', '/guide/', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/'],
 }))
 
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which treats the
+// unprefixed tree as primary and `/zh-TW/` as the translation) keeps its meaning unchanged (T1).
+// The new P = zh-TW cases set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 // ─── The shared-machine session gate ─────────────────────────────────────────
 //
 // The redirect the Layout performs reads the stored locale, which is one of the values
@@ -116,6 +122,7 @@ beforeEach(() => {
   mockFrontmatter.value = {}
   setPath('/')
   i18n.global.locale.value = 'en'
+  mockPrimaryLocale.value = 'en'
 })
 afterEach(() => {
   for (const wrapper of mountedLayouts.splice(0)) wrapper.unmount()
@@ -270,6 +277,21 @@ describe('the real Layout: route watcher', () => {
     ['/zh-TW/guide/', 'zh-TW'],
     ['/guide/', 'en'],
   ] as const)('navigating to %s drives the runtime locale to %s', async (path, expected) => {
+    const w = mountLayout()
+    setPath(path)
+    await w.vm.$nextTick()
+    expect(i18n.global.locale.value).toBe(expected)
+    w.unmount()
+  })
+
+  // A29, under P = zh-TW: `/zh-TW/guide/` is now the primary (unprefixed-equivalent) tree and
+  // `/en/guide/` the translation; `RENDERED` is unaffected (the watcher never reads the page
+  // list), so the same fixture paths work with the expectation flipped.
+  it.each([
+    ['/zh-TW/guide/', 'zh-TW'],
+    ['/guide/', 'zh-TW'],
+  ] as const)('under P = zh-TW, navigating to %s drives the runtime locale to %s (A29)', async (path, expected) => {
+    mockPrimaryLocale.value = 'zh-TW'
     const w = mountLayout()
     setPath(path)
     await w.vm.$nextTick()
