@@ -64,16 +64,36 @@ describe('MissingTranslationLine', () => {
   })
 
   // A30, under P = zh-TW: the href is relative to P, not hard-coded to zh-TW being the
-  // translation. The text and `lang` are unaffected (requested-locale properties only).
-  it('links to the primary-coded list under P = zh-TW, requested zh-TW (A30)', () => {
+  // translation. The text and `lang` are unaffected (requested-locale properties only) — the
+  // full mirror of the two P = en text/lang/link-text cases above, not href alone.
+  it('says, in Traditional Chinese, requested zh-TW, under P = zh-TW (A30)', () => {
     mockPrimaryLocale.value = 'zh-TW'
     base.value = '/'
-    expect(mountLine('zh-TW', 'en').get('a').attributes('href')).toBe('/challenges')
+    const line = mountLine('zh-TW', 'en')
+    const root = line.get('[data-missing-translation]')
+    expect(root.attributes('lang')).toBe('zh-TW')
+    expect(root.get('[data-missing-translation-text]').text()).toBe('這一頁沒有繁體中文版本，所以顯示英文版。')
+    const link = root.get('a')
+    expect(link.text()).toBe('前往繁體中文題目清單')
+    expect(link.attributes('href')).toBe('/challenges')
   })
 
-  it('links to the en-prefixed list under P = zh-TW, requested en (A30)', () => {
+  it('says, in English, requested en, under P = zh-TW (A30)', () => {
     mockPrimaryLocale.value = 'zh-TW'
     base.value = '/'
-    expect(mountLine('en', 'zh-TW').get('a').attributes('href')).toBe('/en/challenges')
+    const line = mountLine('en', 'zh-TW')
+    const root = line.get('[data-missing-translation]')
+    expect(root.attributes('lang')).toBe('en')
+    expect(root.get('[data-missing-translation-text]').text()).toBe('This page has no English version, so it is shown in Traditional Chinese.')
+    const link = root.get('a')
+    expect(link.text()).toBe('Go to the English challenge list')
+    expect(link.attributes('href')).toBe('/en/challenges')
+  })
+
+  it('adds the site base to the link, under P = zh-TW (A30)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    base.value = '/repo/'
+    expect(mountLine('zh-TW', 'en').get('a').attributes('href')).toBe('/repo/challenges')
+    expect(mountLine('en', 'zh-TW').get('a').attributes('href')).toBe('/repo/en/challenges')
   })
 })

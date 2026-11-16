@@ -9,7 +9,7 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 const mockIsDark = ref(false)
 // VitePress resolves this per page from the page's own relativePath, so it is
 // already correct during SSR. `'root'` is what it reports for English.
-const mockLocaleIndex = ref<'root' | 'zh-TW'>('root')
+const mockLocaleIndex = ref<'root' | 'zh-TW' | 'en'>('root')
 // The production `withBase` is identity only because this site's base is '/'.
 // A non-identity double is what makes the localizePath-before-withBase
 // ordering testable at all — see the ordering test below.
@@ -389,6 +389,32 @@ describe('MergedNav', () => {
     // And no internal link may skip the base entirely — the previous version of
     // this test covered only the back link, so the hamburger links could drop
     // withBase and stay green.
+    const internal = wrapper.findAll('a')
+      .map(a => a.attributes('href') ?? '')
+      .filter(h => h.startsWith('/'))
+    expect(internal.length).toBe(3)
+    expect(internal.filter(h => !h.startsWith('/my-base/'))).toEqual([])
+  })
+
+  // A27, under P = zh-TW: the same ordering property, mirrored. `mountOpened`/`mountIn` hard-
+  // code `P = en` (`localeIndex === 'root'` means English there), so this mounts directly,
+  // setting `mockPrimaryLocale` and `mockLocaleIndex` relative to the new primary itself.
+  it.each([
+    ['zh-TW', ['/my-base/challenges/', '/my-base/', '/my-base/guide/'], ['/en/my-base/challenges/']],
+    ['en', ['/my-base/en/challenges/', '/my-base/en/', '/my-base/en/guide/'], ['/en/my-base/challenges/']],
+  ] as const)('under P = zh-TW, in %s, ALL THREE links wrap the localised path in the site base (A27)', async (locale, wanted, unwanted) => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = locale === 'en' ? 'en' : 'root'
+    mockBase.value = '/my-base'
+    const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n(locale)] } })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    expect(wrapper.find('[data-hamburger-menu]').exists()).toBe(true)
+    for (const href of wanted) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
+    }
+    for (const href of unwanted) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(false)
+    }
     const internal = wrapper.findAll('a')
       .map(a => a.attributes('href') ?? '')
       .filter(h => h.startsWith('/'))

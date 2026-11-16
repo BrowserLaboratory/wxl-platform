@@ -26,6 +26,11 @@ describe('detectLocaleFromPath', () => {
     ['/zh-TW#section', 'en'],
     // Empty string — defensive only; never produced by VitePress.
     ['', 'en'],
+    // A26: `P`'s own code is not a routing prefix at all, so it is ordinary path text — not
+    // terminated by a locale boundary the rule recognises as T's.
+    ['/en/x', 'en'],
+    // A26: a case mismatch on T's own code is not the prefix either (case-sensitive).
+    ['/zh-tw/x', 'en'],
   ]
 
   it.each(cases)('path %s → locale %s', (path, expected) => {
@@ -33,10 +38,15 @@ describe('detectLocaleFromPath', () => {
   })
 
   // A26: the same table, mirrored under P = zh-TW (T = en) — every expectation flips with the
-  // two codes swapped.
-  it.each(cases)('under P = zh-TW, path %s → locale %s (A26)', (path, expectedUnderEn) => {
+  // two codes swapped. Mapped to the actual mirrored path/locale pair up front, so the test
+  // title (and any failure) names what is really run, not the P = en row it was derived from.
+  const mirroredCases = cases.map(([path, expectedUnderEn]) => {
     const mirrored = path.replaceAll('zh-TW', '\u0000').replaceAll('en', 'zh-TW').replaceAll('\u0000', 'en')
-    const expected = expectedUnderEn === 'en' ? 'zh-TW' : 'en'
+    const expected: Locale = expectedUnderEn === 'en' ? 'zh-TW' : 'en'
+    return [mirrored, expected] as const
+  })
+
+  it.each(mirroredCases)('under P = zh-TW, path %s → locale %s (A26)', (mirrored, expected) => {
     expect(detectLocaleFromPath(mirrored, 'zh-TW')).toBe(expected)
   })
 })

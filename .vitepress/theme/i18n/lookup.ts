@@ -29,7 +29,18 @@ function stripPrimaryCodeSegment(local: string, P: Locale): string | null {
  */
 export function lookupNotFound(pathname: string, base: string, pages: readonly string[], P: Locale): string | null {
   const T = otherLocale(P)
-  const local = withoutBase(pathname, base)
+  const withoutBasePath = withoutBase(pathname, base)
+  // TA1: the strip runs on the DECODED path, same as `pathCandidates` below it — a
+  // percent-encoded primary-code prefix is still `P`'s own code once decoded. A path that
+  // fails to decode names no page here either (consistent with `pathCandidates`'s own rule).
+  let local: string | null = null
+  if (withoutBasePath !== null) {
+    try {
+      local = decodeURIComponent(withoutBasePath)
+    } catch {
+      local = null
+    }
+  }
   if (local !== null) {
     const stripped = stripPrimaryCodeSegment(local, P)
     if (stripped !== null && detectLocaleFromPath(stripped, P) === P && stripPrimaryCodeSegment(stripped, P) === null) {

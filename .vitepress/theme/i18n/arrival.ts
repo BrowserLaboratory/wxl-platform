@@ -59,7 +59,16 @@ export function notFoundRedirect(
   // entry's. The two coincide for NT and NU (the landing is always the path's counterpart,
   // D28's ordinary branch), but not for NP (D28): the landing there is ALSO P's own, the same
   // locale the path already named, so inferring it from the landing would wrongly say T.
-  const local = withoutBase(location.pathname, base) ?? location.pathname
+  const withoutBasePath = withoutBase(location.pathname, base) ?? location.pathname
+  // TA1: decoded, like the lookup itself — a percent-encoded locale prefix in the not-found
+  // URL is still that locale's own code once decoded. A path that fails to decode is used as
+  // written (this is only read to name `requested`, never compared against the page list).
+  let local: string
+  try {
+    local = decodeURIComponent(withoutBasePath)
+  } catch {
+    local = withoutBasePath
+  }
   return {
     target: targetUrl(entry, base, location),
     entry,

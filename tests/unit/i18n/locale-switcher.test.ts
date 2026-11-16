@@ -22,6 +22,7 @@ const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
 vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 import LocaleSwitcher from '../../../.vitepress/theme/components/LocaleSwitcher.vue'
+import { assertEveryLocaleHasALabel, localeSwitcherLabelKey } from '../../../.vitepress/theme/components/localeSwitcherLabels'
 import {
   detectInitialLocale,
   persistLocale,
@@ -440,5 +441,18 @@ describe('LocaleSwitcher without the Layout\'s provider', () => {
     expect(wrapper.findAll('[role="option"]')).toHaveLength(1)
     await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
     expect(readStoredLocale()).toBe('zh-TW')
+  })
+})
+
+// A22, D34: labels and options are derived from LOCALES, so a locale added to the list without
+// a label key is a loud failure, not a silent two-branch fallback.
+describe('LocaleSwitcher labels (A22, D34)', () => {
+  it('has a label key for every member of LOCALES', () => {
+    expect(() => assertEveryLocaleHasALabel()).not.toThrow()
+  })
+
+  it('throws naming the locale when a LOCALES member has no label key', () => {
+    expect(() => localeSwitcherLabelKey('ja' as unknown as Parameters<typeof localeSwitcherLabelKey>[0]))
+      .toThrowError('LocaleSwitcher: LOCALES carries "ja" with no label key in LOCALE_SWITCHER_LABEL_KEYS')
   })
 })

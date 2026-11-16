@@ -69,6 +69,21 @@ describe('notFoundRedirect', () => {
     },
   )
 
+  // A18, under both P: the same crafted/malformed inputs, each reshaped with the running P's
+  // and T's own codes instead of the literal 'zh-TW', neither throws nor finds a counterpart.
+  for (const P of ['en', 'zh-TW'] as const) {
+    const T = P === 'en' ? 'zh-TW' : 'en'
+    it.each([
+      `/${P}/no-such-page`,
+      `/${T}//evil.example/challenges`,
+      `/${P}/%2F%2Fevil.example`,
+      `/${T}/%E0%A4%A`,
+    ])(`P=${P}: gives nothing for the crafted input %s (A18)`, (path) => {
+      expect(() => notFoundRedirect(loc(path), '/', PAGES, P)).not.toThrow()
+      expect(notFoundRedirect(loc(path), '/', PAGES, P)).toBeNull()
+    })
+  }
+
   // D28: a not-found path whose first segment is P's own code (R22's old `/<P>/…` URLs, never a
   // real prefix) is looked up with that segment stripped, and the result counts only when the
   // remainder is itself a primary-locale entry — not a second P-code segment, and not T's.
@@ -82,12 +97,46 @@ describe('notFoundRedirect', () => {
     expect(notFoundRedirect(loc('/zh-TW/zh-TW/x'), '/', [...PAGES, '/zh-TW/x'], 'zh-TW')).toBeNull()
   })
 
-  // D28's fall-through to D27/A39: after the strip, /X is unlisted but /<T>/X is — one
-  // not-found redirect still, landing on the translation entry.
-  it('falls through to the translation entry when the stripped primary path is unlisted but its translation is listed (A39, D28)', () => {
-    expect(notFoundRedirect(loc('/en/en-only-article'), '/', [...PAGES, '/zh-TW/en-only-article'], 'en'))
-      .toEqual({ target: '/zh-TW/en-only-article', entry: '/zh-TW/en-only-article', requested: 'en' })
+  // A15: the primary-code strip (D28) must also resolve the alias forms a not-found path can
+  // carry — a bare code, a code with a trailing slash, and `.html`/`/index.html` — the same way
+  // the ordinary (non-D28) path does.
+  it.each([
+    ['/en', '/'],
+    ['/en/', '/'],
+    ['/en/index.html', '/'],
+    ['/en/guide/python.html', '/guide/python'],
+  ] as const)('resolves the alias %s to the primary entry %s (A15, D28)', (path, entry) => {
+    expect(notFoundRedirect(loc(path), '/', PAGES, 'en')).toEqual({ target: entry, entry, requested: 'en' })
   })
+
+  // TA1: the D28 strip must run on the DECODED path, not the raw one — a percent-encoded
+  // primary-code prefix is still `P`'s own code once decoded.
+  it('strips a percent-encoded primary-code segment (TA1, D28)', () => {
+    expect(notFoundRedirect(loc('/%65%6e/guide/python'), '/', PAGES, 'en'))
+      .toEqual({ target: '/guide/python', entry: '/guide/python', requested: 'en' })
+  })
+
+  // TA1: `requested` must also be read from the decoded path — a percent-encoded translation
+  // prefix is still T's own code once decoded, not a literal mismatch that falls back to P.
+  it('reads `requested` from the decoded path (TA1)', () => {
+    expect(notFoundRedirect(loc('/zh%2DTW/reference/attack-log-export-format'), '/', PAGES, 'en'))
+      .toEqual({ target: '/reference/attack-log-export-format', entry: '/reference/attack-log-export-format', requested: 'zh-TW' })
+  })
+
+  // D28's fall-through to D27/A39: after the strip, /X is unlisted but /<T>/X is — one
+  // not-found redirect still, landing on the translation entry. Both P and both bases (A39):
+  // this is a pure-function property that does not depend on `localStorage`, so there is no
+  // "every stored value" dimension to add at this layer.
+  for (const P of ['en', 'zh-TW'] as const) {
+    const T = P === 'en' ? 'zh-TW' : 'en'
+    for (const b of BASES) {
+      it(`falls through to the translation entry when the stripped primary path is unlisted but its translation is listed, P=${P}, base ${b.label} (A39, D28)`, () => {
+        const pages = [...PAGES, `/${T}/${P}-only-article`]
+        expect(notFoundRedirect(loc(`${b.prefix}/${P}/${P}-only-article`), b.base, pages, P))
+          .toEqual({ target: `${b.prefix}/${T}/${P}-only-article`, entry: `/${T}/${P}-only-article`, requested: P })
+      })
+    }
+  }
 
   // A17: not-found with no counterpart, and double/malformed prefixes, under both P — none of
   // these ever finds a counterpart or throws.
@@ -291,11 +340,18 @@ describe('switcherDecision', () => {
           const entry = row.page === 'primary' ? x.entry : localizePath(x.entry, T, row.P)
           const chosen = row.chosen === 'own' ? own : other
           const counterpart = localizePath(entry, chosen, row.P)
-          const pages = row.counterpart === 'listed' ? [counterpart] : []
+          // SW03/06/09/12 (an own-locale choice) have a null `row.counterpart`, not 'unlisted':
+          // the page itself (which `counterpart` equals here) is always in the list, so a
+          // mistaken navigate-to-self would have somewhere real to go to and this must still
+          // catch it (P2-4).
+          const pages = row.counterpart === 'unlisted' ? [] : [counterpart]
           const decision = switcherDecision({
             chosen, arrival: { kind: 'page', entry }, location: at(b.prefix + entry), base: b.base, pages, P: row.P,
           })
           expect(decision).toEqual(row.decision === 'stay' ? { kind: 'stay' } : { kind: 'navigate', target: b.prefix + counterpart })
+          // SWRow.line (P2-3): the missing-translation line's locale once the choice stays, or
+          // null when it does not show.
+          expect(lineLocale({ requested: chosen, entry, pages, released: true, P: row.P })).toBe(row.line)
         })
       }
     }

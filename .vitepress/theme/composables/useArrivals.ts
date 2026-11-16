@@ -91,7 +91,7 @@ export function useArrivals(deps: {
     entry.value = arrival.entry
     const prefixed = detectLocaleFromPath(arrival.entry, P) === otherLocale(P)
     requested.value = carry.take(arrival.entry)
-      ?? (coldLoad && prefixed ? otherLocale(P) : readStoredLocale() ?? P)
+      ?? (coldLoad && prefixed ? otherLocale(P) : readStoredLocale() ?? (prefixed ? otherLocale(P) : P))
     return arrival
   }
 
