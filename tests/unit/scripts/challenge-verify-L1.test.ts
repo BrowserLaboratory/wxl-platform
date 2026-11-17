@@ -98,6 +98,17 @@ describe('L1 layer (task 4.2)', () => {
     expect(result.results[0].reason).toBe(line)
   })
 
+  it('Y109 (D123): range.json unusable and no challenge.yaml → the PL line, not VF1', async () => {
+    rmSync(join(challengeDir(), 'challenge.yaml'))
+    const [, make, line] = RANGE_FAULTS.find(([label]) => label.startsWith('PL-E03'))!
+    make(rangeJson())
+    const runners = makeDefaultRunners({ projectRoot })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L1']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe('PL-E03: range.json is not valid JSON.')
+    expect(line).toBe('PL-E03: range.json is not valid JSON.')
+  })
+
   it.skipIf(platform() === 'win32' || process.getuid?.() === 0)('Y109: PL-E02 mode 000 → L1 fails with the PL line', async () => {
     E02[1](rangeJson())
     const runners = makeDefaultRunners({ projectRoot })

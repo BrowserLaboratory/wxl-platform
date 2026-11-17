@@ -2,13 +2,12 @@
 // reads `platform/challenge/<slug>/challenge.yaml` under `root` and parses it with
 // `parseDocument({ schema: 'core', merge: false, uniqueKeys: true, resolveKnownTags: false })`,
 // then `toJS({ maxAliasCount: 100 })`. A leading `---` document marker is accepted.
-// D147: `resolveKnownTags: false` matches the transform's own call (D146,
-// `create-wxl/src/layout-move.mjs`), so an explicit YAML 1.1 tag (`!!timestamp`, `!!binary`,
-// `!!merge`, `!!set`) never resolves to a `Date`, `Buffer`, merge or `Set`/`Map` here either; it
-// resolves to the plain scalar/mapping the core schema would otherwise give it, and a `!!merge`
-// key is kept unmerged, same as `merge: false` already does for an untagged `<<` key.
+// D146/D147: `resolveKnownTags: false` matches the transform's own call
+// (`create-wxl/src/layout-move.mjs`), so an explicit YAML 1.1 tag (`!!timestamp`, `!!binary`,
+// `!!merge`, `!!set`) is an unresolved tag: `yaml` reports a warning, never builds a `Date`,
+// `Buffer`, merge or `Set`/`Map`, and the read returns `invalid-yaml` (below).
 // T-0077 (Y2-Y6, Y112): a read or parse failure returns `{ ok: false, reason, path }` instead of
-// throwing. `reason` is `'absent'` (ENOENT), `'multi-document'` (more than one YAML document),
+// throwing. `reason` is `'absent'` (any read failure, ENOENT included), `'multi-document'` (more than one YAML document),
 // `'not-a-mapping'` (an empty/comments-only file, or a root that is a sequence, scalar or `null`)
 // or `'invalid-yaml'` (any `doc.errors`/`doc.warnings` entry — a duplicate key, a syntax error, an
 // unresolved or YAML 1.1 tag, D129/D146 — a non-scalar mapping key (D145), or a `toJS` exception:
@@ -45,13 +44,14 @@ export type DeclarationResult =
  * The error for a brief whose declaration could not be read (D56): PL-E13 when there is none,
  * PL-E14 for any other reason. The one place the two texts are written, so the page build (plugin)
  * and the list loader fail with the same words. `briefSourcePath` is the brief's path relative to
- * the site's source directory, `<locale>/challenge/<slug>/index.md`.
+ * the site's source directory, `<locale>/challenge/<slug>/index.md`; the PL-E13 text prints it
+ * repository-relative, as `platform/<locale>/challenge/<slug>/index.md`.
  */
 export function declarationReadError(briefSourcePath: string, slug: string, reason: DeclarationReason): SiteLayoutError {
   if (reason === 'absent') {
     return new SiteLayoutError(
       'PL-E13',
-      `PL-E13: ${briefSourcePath}: no platform/challenge/${slug}/challenge.yaml for this brief`,
+      `PL-E13: platform/${briefSourcePath}: no platform/challenge/${slug}/challenge.yaml for this brief`,
     )
   }
   return new SiteLayoutError(

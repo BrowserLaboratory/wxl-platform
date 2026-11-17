@@ -28,7 +28,7 @@ A number is assigned once by `pnpm create:challenge` and is unique within this s
 | 1 | Converge | `/grill-with-docs`, walking the design dimensions in `wxl-create` Step 0: vulnerability realism, the intended exploitation path, difficulty, red herrings, flag placement |
 | 2 | Spec | `/to-spec`. The spec states the vulnerability taught, the intended path from the page to the flag, the trust boundaries of [ADR-0005](../adr/0005-security-review-expected-findings.md), and what counts as an unintended solution. Every intended step and every boundary is a row of `traceability.md` |
 | 3 | Adversarial review | The red-team axis works the unintended-solution boundary on paper |
-| 4 | Tickets | `/to-tickets`; usually the challenge itself, then its Traditional Chinese brief |
+| 4 | Tickets | `/to-tickets`; usually the challenge with its primary-locale brief, then its translations |
 | 5 | Implement | `/implement` + `/tdd`, with the exploit spec as the first test: write `tests/challenges/<slug>.spec.ts` and watch it fail, then use `wxl-create` (from Step 1, with the spec's decisions as given parameters) to scaffold and write the vulnerable application until it passes. A metadata-only change uses `wxl-mutate` |
 | 6 | Code review | `/code-review` |
 | 7 | Security review | The project `security-review` skill, graded by ADR-0005 |

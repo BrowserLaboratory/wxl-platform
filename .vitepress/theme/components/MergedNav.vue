@@ -72,8 +72,8 @@ const navLink = (path: string) => withBase(localizePath(path, locale.value, prim
 // translating in the template against the instance ships English text into the
 // static HTML of a zh-TW page — the exact defect the href fix above exists to
 // avoid. Round 1 caught the href half fixed and the label half still carrying
-// the bug: the built zh-TW page emitted an English back-link label beside a
-// correct `/zh-TW/challenges/` href.
+// the bug: the built translation page emitted the wrong locale's back-link
+// label beside a correct `/<T>/challenges/` href.
 //
 // Which strings are exempt is NOT stated here. Three rounds of review each
 // found one more hardcoded English string in this bar, and each time the fix

@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { parseDocument } from 'yaml'
 import { VALID_TOOLS, validateChallengeDeclaration, type ChallengeDeclaration } from '../.vitepress/challenge/config.ts'
 import { scanSrcDirectory } from './challenge-utils.ts'
+import { parseYamlStrict } from './challenge-validate.ts'
 import type { Locale } from '../.vitepress/locales.ts'
 import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
 import { SiteLayoutError } from '../.vitepress/layout-error.ts'
@@ -102,6 +103,8 @@ export function discoverChallenges(root: string, primary: Locale, targetSlug?: s
 
 // ─── Declaration ────────────────────────────────────────────────────────────
 
+// The declaration is parsed by `challenge:validate`'s parser (D79, D129), so both tools reject the same files.
+
 /**
  * Read challenge.yaml as a whole file (D73). Absent and unparsable files come back as the
  * error text validateChallenge reports (Y68); a root that is not a mapping is left to
@@ -115,11 +118,9 @@ function readDeclaration(declarationPath: string): { value: unknown } | { error:
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { error: 'No challenge.yaml found' }
     return { error: `Cannot read file: ${declarationPath}` }
   }
-  const doc = parseDocument(raw)
-  if (doc.errors.length > 0) {
-    return { error: `Invalid YAML in challenge.yaml: ${doc.errors[0].message}` }
-  }
-  return { value: doc.toJS() }
+  const parsed = parseYamlStrict(raw)
+  if (!parsed.ok) return { error: `Invalid YAML in challenge.yaml: ${parsed.message}` }
+  return { value: parsed.value }
 }
 
 /** The brief's string `title`, or undefined when the brief is unreadable, has no frontmatter or no such key (Y67). */

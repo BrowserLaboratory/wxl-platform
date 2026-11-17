@@ -56,7 +56,7 @@ describe('redirectTargetForStoredLocale', () => {
     expect(redirectTargetForStoredLocale(loc('/zh-TW/guide/'), '/', LIST, rendered('/zh-TW/guide/'), 'en')).toBeNull()
   })
 
-  // Flipped by D31/wave 2 (ticket Comments, cross-area note 1; DT01/02/07/08): the separate
+  // Flipped by D25 (wave 2) (ticket Comments, cross-area note 1; DT01/02/07/08): the separate
   // default-locale constant this test named is gone, and "no preference" now falls
   // back to `P` itself (A1) — which a primary-locale page already is, so there is nothing left
   // to redirect to. Was: 'sends a visitor with no stored preference to the default visiting locale'.
@@ -219,7 +219,7 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
   }
   // Each row's expected target under base `/` and under `/repo/`, only when `zh-TW` is stored
   // explicitly (A3): with `en` stored nothing redirects (A4, own locale), and — flipped by
-  // D31/wave 2, A1/DT01/02/07/08 — with `none`/`unknown`/`unreadable` stored nothing redirects
+  // D25 (wave 2), A1/DT01/02/07/08 — with `none`/`unknown`/`unreadable` stored nothing redirects
   // either, since "no preference" now falls back to `P` ('en' in this fixture) and a
   // primary-locale page is already there.
   const ROWS = [

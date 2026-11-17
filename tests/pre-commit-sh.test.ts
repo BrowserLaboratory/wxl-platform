@@ -184,7 +184,7 @@ const ZH_PARAMETERISED_RULES = [
 ]
 const ZH_FIXTURE_RULES = [...ZH_TEST_CHALL_RULES, ...ZH_DOOR_RULES, ...ZH_PARAMETERISED_RULES]
 
-/** A challenge's four rules, `/<form>/<NNN>` at `/challenge/<slug>/` (or at the `L` page when `L` is given); the same four forms for each primary locale. */
+/** A challenge's four rules: `/c/<NNN>` at `/challenge/<slug>/`, `/en/c/<NNN>` at `at.en`, and `/zh/c/<NNN>` and `/zh-TW/c/<NNN>` at `at.zh`; the same four forms for each primary locale. */
 function fourRules(number: string, slug: string, at: { en: string; zh: string }): string[] {
   return [
     `/c/${number} /challenge/${slug}/`,
@@ -337,8 +337,9 @@ function validatorLog(): string {
   return log
 }
 
-describe('pre-commit.sh: trigger (H06)', () => {
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: trigger (H06; P = %s)', (P) => {
   it('ends in O1 when only README.md is staged', () => {
+    useFixture(P)
     addUnrelatedWork()
     write(repo, 'README.md', '# Changed\n')
     git(repo, ['add', 'README.md'])
@@ -351,6 +352,7 @@ describe('pre-commit.sh: trigger (H06)', () => {
   }, TIMEOUT)
 
   it('ends in O1 when only another file under platform/public/ is staged', () => {
+    useFixture(P)
     addUnrelatedWork()
     write(repo, 'platform/public/other.txt', 'other, changed\n')
     git(repo, ['add', 'platform/public/other.txt'])
@@ -746,6 +748,27 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     expect(run.stderr).not.toContain('logs')
     expectNoW3W4(run)
   }, TIMEOUT)
+
+  it.each(['en', 'zh-TW'] as const)('S40 (P = %s), with W3 forced: W4 names neither the ignored logs/ nor the ignored translation brief folder', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
+    write(repo, 'platform/challenge/logs/challenge.yaml', declarationText(2))
+    writeChallenge(repo, 'platform/challenge', 'tmp', 6, { briefs: [] })
+    writeBrief(repo, P, 'tmp')
+    writeBrief(repo, T, 'tmp')
+    git(repo, ['add', '-f', 'platform/challenge/tmp', `platform/${P}/challenge/tmp`])
+    // An unstaged hand edit of _redirects makes the hook say W3, so W4 is asked to name untracked folders.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a hand edit\n`)
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).not.toContain('logs')
+    expect(run.stderr).not.toContain(`platform/${T}/challenge/tmp/`)
+  }, TIMEOUT)
 })
 
 // ─── W3, W4 and the teacher's other work (AC-12, AC-14) ─────────────────────
@@ -763,7 +786,7 @@ function w4(dir: string): RegExp {
 
 /** W4's wording for an untracked English directory: left out of the file. */
 function w4LeftOut(dir: string): RegExp {
-  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects leaves it out\\.`)
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects leaves it out\\. To include it, git add it and commit again\\.$`, 'm')
 }
 
 /**
@@ -771,7 +794,7 @@ function w4LeftOut(dir: string): RegExp {
  * the challenge's `L` short links open the `P` page.
  */
 function w4Opens(dir: string, L: Locale, P: Locale): RegExp {
-  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects does not use it: its challenge's ${LOCALE_ENGLISH_NAMES[L]} short links open the ${LOCALE_ENGLISH_NAMES[P]} page, if there is one\\.`)
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects does not use it: its challenge's ${LOCALE_ENGLISH_NAMES[L]} short links open the ${LOCALE_ENGLISH_NAMES[P]} page, if there is one\\. To include it, git add it and commit again\\.$`, 'm')
 }
 
 /** W4b's wording for an untracked Traditional Chinese directory on `P = en` (spec 0008, H1a; today's sentence). */
@@ -933,6 +956,8 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     writeChallenge(repo, 'platform/challenge', 'draft', 5, { briefs: [P, T] })
     // An ignored directory, which W4 does not name.
     write(repo, 'platform/challenge/logs/run.log', 'ignored\n')
+    // An untracked file directly under the tree is no folder, so W4 does not name it.
+    write(repo, 'platform/challenge/stray.md', 'x\n')
     stageDoorChange()
     // As after pnpm dev: generated over the whole working tree, draft included.
     write(repo, REDIRECTS, generateRedirects(repo.dir))
@@ -953,6 +978,7 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     expect(run.stderr).toMatch(w4Opens(`platform/${T}/challenge/draft/`, T, P))
     expect(run.stderr).not.toMatch(w4LeftOut(`platform/${T}/challenge/draft/`))
     expect(run.stderr).not.toContain('logs')
+    expect(run.stderr).not.toContain('stray.md')
   }, TIMEOUT)
 
   it.each(['en', 'zh-TW'] as const)('H10, translation tree (P = %s): an untracked translation brief beside a tracked page is named as re-pointing to the primary page, with W3', (P) => {
@@ -1006,6 +1032,7 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     const run = runHook(repo)
 
     expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain('platform/zh-TW/challenge/test-chall/index.md carries key(s) number that a brief may not carry')
     expect(run.stderr).not.toContain('carries different numbers across locale trees')
     expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
     expectNothingChanged(before, snapshot(repo))
@@ -1027,14 +1054,17 @@ function addTeacherWork(): void {
   write(repo, 'platform/notes/untracked.txt', 'untracked notes\n')
 }
 
+/** The article before a locale's English name: `an` before a vowel letter, `a` otherwise (D151). */
+const article = (L: Locale): string => (/^[AEIOU]/.test(LOCALE_ENGLISH_NAMES[L]) ? 'an' : 'a')
+
 /** The W6 lines of S-§4.5, each as the hook prints it (without the newline). */
 const W6 = {
   a: (L: Locale, slug: string, P: Locale) =>
-    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is a ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no ${LOCALE_ENGLISH_NAMES[P]} brief platform/${P}/challenge/${slug}/index.md, the primary locale's, so CI would fail this commit.`,
+    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is ${article(L)} ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no ${LOCALE_ENGLISH_NAMES[P]} brief platform/${P}/challenge/${slug}/index.md, the primary locale's, so CI would fail this commit.`,
   b: (slug: string, P: Locale) =>
     `[pre-commit] ✗ platform/challenge/${slug}/challenge.yaml declares a challenge, but the index holds no ${LOCALE_ENGLISH_NAMES[P]} brief platform/${P}/challenge/${slug}/index.md, the primary locale's, so CI would fail this commit.`,
   c: (L: Locale, slug: string) =>
-    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is a ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no challenge declaration platform/challenge/${slug}/challenge.yaml, so CI would fail this commit.`,
+    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is ${article(L)} ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no challenge declaration platform/challenge/${slug}/challenge.yaml, so CI would fail this commit.`,
   d: (path: string) =>
     `[pre-commit] ✗ ${path} is outside the locale folders (PL-E08), so CI would fail this commit; move it as README.en.md describes in "Moving to the locale folders".`,
 }
@@ -1487,6 +1517,8 @@ describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', (
       'PL-E02: range.json could not be read (unknown).',
     ],
   ] as Array<[string, () => void, string]>)('S43, %s: exit 1 with that line, and nothing changes (the generator is the one that refuses)', (name, stage, line) => {
+    const generator = generatorLog()
+    const validator = validatorLog()
     stage()
     const wrapper = name.startsWith('PL-E02') ? gitWrapper(repo, 'show :range.json', 'fail') : null
     const before = snapshot(repo)
@@ -1496,6 +1528,8 @@ describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', (
     expect(run.status, run.stderr).toBe(1)
     expect(run.stderr).toContain(line)
     if (wrapper) expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged')), run.stderr).toHaveLength(1)
+    expect(readRecord(validator)).toEqual([])
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 

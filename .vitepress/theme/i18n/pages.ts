@@ -3,7 +3,7 @@
  * epic 0008's locale decisions ask of it (spec 0008, seam S2).
  *
  * **Spelling.** The one `cleanUrls` gives: a directory's `index.md` keeps its trailing
- * slash (`/`, `/guide/`, `/challenge/x/`, `/zh-TW/`), any other page file has none
+ * slash (`/`, `/guide/`, `/challenge/x/`, `/<code>/`), any other page file has none
  * (`/challenges`, `/guide/python`). Every entry is spelled this way, and a not-found
  * redirect is always given an entry as its target, never URL text.
  *
@@ -66,7 +66,8 @@ export function candidatesFromDecodedPath(path: string): string[] {
  *   5. a candidate matches when it equals a list entry exactly (case-sensitive) — see
  *      `firstListedEntry`.
  *
- * A page the router DID render is identified by its source file instead (`entryForRelativePath`).
+ * A page the router DID render is identified by its rewritten path (the primary locale's prefix
+ * already stripped) instead (`entryForRelativePath`).
  */
 export function pathCandidates(pathname: string, base: string): string[] {
   const local = withoutBase(pathname, base)

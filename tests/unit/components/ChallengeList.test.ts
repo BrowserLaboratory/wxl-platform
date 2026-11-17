@@ -783,8 +783,8 @@ describe('ChallengeList server rendering', () => {
     expect(html).not.toContain('Traditional Chinese only')
     expect(html).toMatch(/lang="en"[^>]*>PHP Check</)
     // A28's link half, the row's real requirement, not a fixture echo: `pageLocale` (localeIndex
-    // 'root' + P = zh-TW) is 'zh-TW', so the copy control's short link (`shortLinkPath`, which is
-    // NOT the page-mode URL D68 still hard-codes) is `/zh-TW/c/005` — not the fixture's own
+    // 'root' + P = zh-TW) is 'zh-TW', so the copy control's short link (`shortLinkPath`, not
+    // the page-mode URL, which `challengePagePath` gives, D68) is `/zh-TW/c/005` — not the fixture's own
     // `c.url`, which the anchor's `href` merely echoes and this case does not test.
     expect(html).toContain(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
   })

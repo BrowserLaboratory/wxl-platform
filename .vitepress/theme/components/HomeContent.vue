@@ -10,7 +10,7 @@ import { primaryLocale } from '../i18n/primaryLocale'
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
 
-// Spec 0008, S4: a latest-challenge card for a challenge borrowed from the other locale's brief
+// Spec 0008, S4: a latest-challenge card for a challenge borrowed from the primary locale's brief (D38)
 // carries the mark, resolved at the PAGE's locale — the runtime instance is `en` until hydration,
 // so reading it would ship the wrong word in the HTML as served — and its title and summary carry
 // the borrowed text's `lang`.

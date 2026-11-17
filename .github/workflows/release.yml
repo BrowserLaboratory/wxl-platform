@@ -75,7 +75,7 @@ jobs:
       - name: Run tests
         run: pnpm test --run
 
-      - name: Validate challenge frontmatter
+      - name: Validate challenge declarations and briefs
         run: pnpm challenge:validate
 
       - name: Build VitePress site

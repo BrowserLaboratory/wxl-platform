@@ -135,7 +135,7 @@ tags: [ idor, access-control, fastapi, sqlite ]
 wasmModule: /challenge/door-is-open/runtime.wasm  # 由 keygen 產生
 ```
 
-每個語系各有一份說明頁 `platform/<語系代碼>/challenge/<slug>/index.md`，frontmatter 只留三個 key：
+說明頁依語系放在 `platform/<語系代碼>/challenge/<slug>/index.md`：主語系那一份必備，其他語系的是翻譯，可以沒有。frontmatter 只留三個 key：
 
 ```yaml
 ---
@@ -242,7 +242,7 @@ npx --yes create-wxl@latest upgrade
 - 重新啟動 `pnpm dev`，改動才會生效。
 - 網站根網址換成新主語系的語言，`/c/NNN` 開的也是新主語系的頁面。
 - 已經發出去、不帶語系代碼的連結，開的是新主語系的頁面；`/<舊主語系>/…` 開頭的連結，只靠舊網址規則（舊主語系是 `zh-TW` 時）或找不到頁面那一頁把前綴去掉，才會回到根。
-- 每道題目必備的說明頁改成新主語系的那一份。某道題目缺這一份時，hook 會以 W6a 擋下 commit 並指出是哪一題，要先把它寫好。
+- 每道題目必備的說明頁改成新主語系的那一份。某道題目缺這一份時，pre-commit hook 會擋下 commit，並印出一行指出是哪一題、缺的是哪一份說明頁，要先把它寫好。
 - 首頁的 hero 與 nav 連結自己會跟著走，不用改。
 - `challenge.yaml` 的修改在題目清單重新整理後就看得到，在題目頁要重新啟動 `pnpm dev` 才會更新。
 
@@ -259,7 +259,7 @@ npx --yes create-wxl@latest upgrade
 7. **在 `range.json` 加上 `"primaryLocale": "en"`**（沒有這個檔就建立它），讓英文維持在根網址。沒有 `range.json`、或檔案裡沒有這個 key 的 fork，現在根網址放的是繁體中文，即使它沒有自己的頁面要搬也一樣。
 8. **執行 `pnpm build`**。
 
-根目錄有了 `range.json`，這個樹就算靶場：上游專用的測試會略過它，和任何靶場一樣。沒有 `upstream` 欄位的 `range.json`，`pnpm range:upgrade` 只能帶 `--from <版本>`，否則會停在 UP-E06。還沒 commit 的 `range.json` 只影響本機建置。
+根目錄有了 `range.json`，這個樹就算靶場：上游專用的測試會略過它，和任何靶場一樣。沒有 `upstream` 欄位的 `range.json`，`pnpm range:upgrade` 只能帶 `--from <版本>`，否則會停在 UP-E06（原因是 `upstream`），在 epic 0011 之前都是如此。還沒 commit 的 `range.json` 只影響本機建置。
 
 `smoke-fixtures/` 是保留名稱。頁面搬進 `platform/en/smoke-fixtures/` 之類的資料夾（手動搬或升級搬都一樣）後，正式建置不會發布它們。
 
@@ -324,9 +324,9 @@ const siteBase = process.env.SITE_BASE || '/'
 >
 > `platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
 >
-> 複製出來的短連結，兩種主語系下都帶清單的語系代碼：在英文頁面或清單上是 `/en/c/NNN`，在繁體中文的是 `/zh-TW/c/NNN`。每道有永久編號的題目，每個語系的連結都有；該語系沒有這道題目的版本時，開的是主語系的頁面。`/c/NNN` 是主語系的頁面。舊版發出的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開，只是不再發出。
+> 複製出來的短連結，兩種主語系下都帶它所在的頁面或清單的語系代碼：在英文頁面或清單上是 `/en/c/NNN`，在繁體中文的是 `/zh-TW/c/NNN`。每道有永久編號的題目，每個語系的連結都有；該語系沒有這道題目的版本時，開的是主語系的頁面。`/c/NNN` 是主語系的頁面。舊版發出的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開，只是不再發出。
 >
-> 主語系代碼的短連結與 `/c/NNN`，會跟著學習者的語系偏好走：選過翻譯語系的學習者，在這道題目有那個翻譯時會被帶到翻譯；沒有語系偏好的學習者，留在他打開的網址的語系，網站不替他換語系。翻譯代碼的短連結一律開那個翻譯。直接打開帶語系代碼的頁面（輸入、貼上、重新整理），會把學習者的語系偏好設成那個語系；帶主語系代碼的短連結開的是根目錄底下的頁面，不設定任何東西。
+> 主語系代碼的短連結與 `/c/NNN`，會跟著學習者的語系偏好走：選過翻譯語系的學習者，在這道題目有那個翻譯時會被帶到翻譯；沒有語系偏好的學習者，留在他打開的網址的語系，網站不替他換語系。翻譯代碼的短連結不跟著語系偏好走：這道題目有那個翻譯時，不論語系偏好為何都開那個翻譯；沒有時，開主語系那一頁。直接打開帶語系代碼的頁面（輸入、貼上、重新整理），會把學習者的語系偏好設成那個語系；帶主語系代碼的短連結開的是根目錄底下的頁面，不設定任何東西。
 >
 > 英文是主語系時，`/en/c/NNN` 開的是根目錄底下的英文頁，語系偏好是繁體中文的學習者可能被帶到繁體中文翻譯；繁體中文是主語系時，`/en/c/NNN` 開的是 `/en/challenge/<slug>/`，任何學習者都會看到英文。繁體中文是主語系的靶場，舊的 `/zh-TW/…` 網址會回到根：Cloudflare Pages 靠 `_redirects` 的規則，其他主機靠找不到頁面的那一頁；在 Cloudflare Pages 上，`platform/public/zh-TW/` 底下的檔案也會被同一條規則轉走。改了 `primaryLocale` 之後，要 commit `range.json`（pre-commit hook 會重新產生 `_redirects`）或執行 `pnpm redirects:generate`。還沒 commit 的 `range.json` 只改本機建置。從舊版升級到這一版的靶場，要重新產生 `_redirects` 才會有新的規則：CI 回報它過期時，執行 `pnpm redirects:generate` 再 commit 結果。
 

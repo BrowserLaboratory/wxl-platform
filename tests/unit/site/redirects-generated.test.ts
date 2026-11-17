@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { LOCALES } from '../../../.vitepress/locales'
 import {
@@ -116,7 +116,7 @@ describe('generateRedirects', () => {
 
   interface TargetCase {
     row: string
-    primary: Primary
+    primary?: Primary
     setup: (root: string) => void
     include?: (slug: string, tree: string) => boolean
     expected: Rule[]
@@ -145,6 +145,11 @@ describe('generateRedirects', () => {
     {
       row: 'S4 zh-TW, primary and en briefs',
       primary: 'zh-TW',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      expected: four('001', [DOOR, DOOR_EN, DOOR, DOOR]),
+    },
+    {
+      row: 'S4 zh-TW by default, no range.json, primary and en briefs',
       setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
       expected: four('001', [DOOR, DOOR_EN, DOOR, DOOR]),
     },
@@ -182,7 +187,7 @@ describe('generateRedirects', () => {
   ]
 
   it.each(targetCases)('numbered rules, $row (S1–S8, D58)', ({ primary, setup, include, expected }) => {
-    setPrimary(root, primary)
+    if (primary !== undefined) setPrimary(root, primary)
     setup(root)
     expect(numbered(generateRedirects(root, include ? { includeSlug: include } : {}))).toEqual(expected)
   })
@@ -274,6 +279,17 @@ describe('generateRedirects', () => {
       writeFileSync(target, 'kept\n')
       expect(() => writeRedirects(root)).toThrow(firstLine)
       expect(readFileSync(target, 'utf8')).toBe('kept\n')
+    })
+
+    it('the command reads range.json before it looks for platform/public: the PL line is the first stderr line', () => {
+      writeRange(root, '{')
+      const script = resolve(__dirname, '../../../scripts/generate-redirects.ts')
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', script, '--root', root], {
+        encoding: 'utf8',
+        env: { ...process.env, NODE_NO_WARNINGS: '1' },
+      })
+      expect(run.status).toBe(1)
+      expect(run.stderr.split('\n')[0]).toBe('PL-E03: range.json is not valid JSON.')
     })
   })
 
@@ -572,20 +588,26 @@ describe('generateRedirects', () => {
 
     it('an all-digit slug equal to another challenge’s padded number is refused', () => {
       setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
       challenge(root, '005', 9, [primary])
       challenge(root, 'other', 5, [primary])
-      expect(() => generateRedirects(root)).toThrow(
-        new Error("redirects: challenge slug \"005\" equals challenge 005's padded number"),
-      )
+      const line = new Error("redirects: challenge slug \"005\" equals challenge 005's padded number")
+      expect(() => generateRedirects(root)).toThrow(line)
+      expect(() => writeRedirects(root)).toThrow(line)
+      expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
     })
 
     it('a four-digit slug equal to another challenge’s number is refused', () => {
       setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
       challenge(root, '1234', 9, [primary])
       challenge(root, 'other', 1234, [primary])
-      expect(() => generateRedirects(root)).toThrow(
-        new Error("redirects: challenge slug \"1234\" equals challenge 1234's padded number"),
-      )
+      const line = new Error("redirects: challenge slug \"1234\" equals challenge 1234's padded number")
+      expect(() => generateRedirects(root)).toThrow(line)
+      expect(() => writeRedirects(root)).toThrow(line)
+      expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
     })
 
     it('a slug equal to its own padded number is accepted', () => {
@@ -610,11 +632,8 @@ describe('the committed _redirects', () => {
    * Traditional Chinese brief beside a tracked English page re-points its rules here as it does
    * there.
    *
-   * Not the directory listing: `challenge-keygen.test.ts` scaffolds a throwaway
-   * challenge into the real `platform/challenge/` to drive the keygen CLI, and
-   * vitest runs test files in parallel — so a plain listing here sees a
-   * directory that exists for a few hundred milliseconds and is nobody's. Git's
-   * index includes staged files, so a challenge being added is covered from the
+   * Not the directory listing, as in the hook: an untracked or ignored directory in the working
+   * tree is not one of this tree's challenges. Git's index includes staged files, so a challenge being added is covered from the
    * moment it is staged, which is before it can be committed or built.
    */
   function trackedSlugs(): Map<string, Set<string>> {

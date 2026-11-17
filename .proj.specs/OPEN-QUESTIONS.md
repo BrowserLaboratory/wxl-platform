@@ -1133,3 +1133,118 @@ account (spec 0009 O3 (c)); inferred: GitHub's API covers MN2 and MN7 but not th
 **Revisit when.** A harness can read those settings without the user's credentials (for example
 GitHub's API for the environment and the ruleset), or after T-0073 shows what the report misses.
 
+---
+
+## OQ-029 — What should the declaration reader report when challenge.yaml exists but cannot be read (EACCES, EISDIR)?
+
+**Deferred on:** 2026-11-17
+**Status:** open
+
+**Reason.** `readChallengeDeclaration` (`.vitepress/challenge/declaration.ts`) maps any failure of
+`readFileSync` to the reason `'absent'`, ENOENT included. A `challenge.yaml` that exists but cannot be
+read (permission denied, or a directory in its place) is therefore reported as missing: the page
+build and the list loader give PL-E13 (no declaration), `challenge:keygen` prints `[skip]`. The
+behaviour is left as it is in the layout-switch ticket; what to report instead is a decision about the
+reason set (Y2-Y6) and the error table.
+
+**Evidence.** `.vitepress/challenge/declaration.ts`, the `catch` around `readFileSync` in
+`readChallengeDeclaration` (verified by reading the code; the EACCES and EISDIR cases were not run).
+
+**Blocks.** Nothing in the layout switch. Options: a fifth reason (for example `unreadable`) with its
+own PL line; or keep `'absent'` and document that it covers every read failure.
+
+**Not blocked.** The layout-switch ticket, whose declaration comment now says `'absent'` covers any
+read failure.
+
+**Revisit when.** A ticket next changes the declaration reader's reasons or the PL-E13 / PL-E14 texts.
+
+---
+
+## OQ-030 — Should the run-time locale be detected from a path with the site base removed?
+
+**Deferred on:** 2026-11-17
+**Status:** open
+
+**Reason.** T-0077's stage 6 (finding SPEC-A-30) read that `.vitepress/theme/index.ts` passes
+`route.path`, and `.vitepress/theme/i18n/index.ts` passes `window.location.pathname`, to
+`detectLocaleFromPath`. Both include the site base in the browser, and the function compares only a
+leading `/<T>/`. Under a base such as `/repo/` every translation page is therefore detected as the
+primary locale, so components using the run-time `t` show the other language's interface strings.
+The defect has been present since epic 0008 (then on `/repo/zh-TW/` pages); the layout switch moved
+it to `/repo/en/` pages under the upstream default. It has to be observed in a browser before it is
+fixed, and it is not T-0077's to fix: row A29 writes `detectLocaleFromPath(location.pathname, P)`,
+and A7's base scope names only A1–A5 and A14–A17.
+
+**Evidence.** At `654a370`: `.vitepress/theme/index.ts:50-55` (the route watcher),
+`.vitepress/theme/i18n/index.ts:64-69` (`detectLocaleFromPath`) and `:154-157`
+(`detectInitialLocale`). Verified by reading the code; the same two calls exist at `040a5ec`.
+Not yet observed in a browser. Inferred: GitHub Pages ranges (base `/<repo>/`) are affected, Cloudflare
+Pages ranges (base `/`) are not.
+
+**Blocks.** A correct interface language on translation pages of a range served under a base.
+Options: strip the base before the two calls; or have `detectLocaleFromPath` take the base. Either
+changes A29's text, so it needs a spec row.
+
+**Not blocked.** T-0077: the rows it claims are met as written, and the page's static content and
+`lang` come from the build, not from this detection.
+
+**Revisit when.** Stage 8 of T-0077 runs on the GitHub Pages range (F-3, base `/<repo>/`), which can
+observe it; then a ticket of its own, test-first.
+
+---
+
+## OQ-031 — Should choosing a translation on a not-found page for a primary-prefixed path go to that translation before the gate opens?
+
+**Deferred on:** 2026-11-17
+**Status:** open
+
+**Reason.** T-0077's stage 6 (finding SPEC-A-37): with `P = zh-TW`, choosing English on the
+not-found page for a primary-prefixed path such as `/zh-TW/guide/python`, while the gate is still
+closed, lands on the primary page `/guide/python`. The preference is stored as `en`, the landing
+shows no line because `/en/guide/python` exists, and no cold-load redirect follows. The code does
+what A23 ("whatever is chosen … never a line"), SW13 and SW15 state, so changing it means changing
+A23 and D28. The case is reachable only for the short time the gate holds the not-found page, and
+with two locales the next cold load goes to the chosen translation.
+
+**Evidence.** At `654a370`: `.vitepress/theme/i18n/arrival.ts:113-115` (`switcherDecision` returns
+`lookupNotFound`'s result for an arrival that is not a page). Spec 0010 `traceability.md`: rows A23,
+SW13, SW15 and D28. Verified by reading the code and the rows; not observed in a browser.
+
+**Blocks.** The switcher's rule on a not-found page once a range has more than one translation
+locale. Options: keep A23; or go to `localizePath(<lookup result>, chosen, P)` when that page is
+published.
+
+**Not blocked.** T-0077 and epic 0010: no change, as revision 2.4 of spec 0010's traceability
+records.
+
+**Revisit when.** The epic that adds a third locale specifies the switcher for several translation
+locales.
+
+---
+
+## OQ-032 — What should PL-E12 name as `<page>` for a `layout: home` page that is not a locale's `index.md`?
+
+**Deferred on:** 2026-11-17
+**Status:** open
+
+**Reason.** T-0077's stage 6 (finding SPEC-B-07): `localizeHomeLinks` writes PL-E12's `<page>` as
+`<pageLocale>/index.md`, while the configuration calls it for every page in a locale folder and the
+function looks only at `layout === 'home'`. A page such as `en/landing.md` with `layout: home` would
+have PL-E12 name the wrong file. Seam 0010-S7's signature has no source path, and D13 does not say
+how a `layout: home` page that is not a locale's home is treated, so either answer is a new
+decision. In T-0077 the behaviour and the signature stay; only the header comment of
+`.vitepress/home-links.ts` is corrected to state what the code does.
+
+**Evidence.** At `654a370`: `.vitepress/home-links.ts:86-87`; `.vitepress/config.mts:149-152`. Spec
+0010 `traceability.md`: seam 0010-S7, D13, rows B62–B69. Verified by reading the code; upstream has
+no such page, so no build shows it today.
+
+**Blocks.** A correct file name in PL-E12 for such a page. Options: (A) apply D13 to every
+`layout: home` page and pass the source path as a fifth parameter of 0010-S7; (B) apply D13 only to
+`<locale>/index.md` and call the function only for those pages.
+
+**Not blocked.** PL-E12 for each locale's home page, which is every case upstream and a range
+created by create-wxl have.
+
+**Revisit when.** A range reports a `layout: home` page outside `<locale>/index.md`, or the next
+epic that changes 0010-S7.

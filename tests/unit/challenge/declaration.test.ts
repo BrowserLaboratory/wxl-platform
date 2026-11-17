@@ -226,7 +226,7 @@ describe('Y112: D129 YAML boundaries (read half)', () => {
   })
 })
 
-describe('D145: a mapping key that is not a scalar throws (working test, claims no row)', () => {
+describe('D145: a mapping key that is not a scalar is invalid-yaml (working test, claims no row)', () => {
   function expectInvalidYamlWithoutWarning(text: string) {
     const root = mkdtempSync(join(tmpdir(), 'wxl-declaration-'))
     const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})

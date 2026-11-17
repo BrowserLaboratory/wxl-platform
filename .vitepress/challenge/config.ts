@@ -11,8 +11,6 @@ const BRIEF_ONLY_KEYS = BRIEF_KEYS
 export interface ChallengeDeclaration {
   backend: BackendType
   app: string
-  /** @deprecated Use src/ auto-scan instead. Kept for backward compatibility during migration. */
-  fs?: Record<string, string>
   source_visible: boolean
   /**
    * Virtual paths shown in the white-box source viewer in addition to the app file.
@@ -29,7 +27,6 @@ export interface ChallengeDeclaration {
   // optional metadata
   difficulty?: string
   category?: string
-  description?: string
   date?: string
   tags?: string[]
 }
@@ -142,7 +139,6 @@ export function validateChallengeDeclaration(raw: unknown): ChallengeDeclaration
   return {
     backend: obj.backend as BackendType,
     app: obj.app as string,
-    fs: obj.fs as Record<string, string> | undefined,
     source_visible: obj.source_visible === true,
     source_files: (Array.isArray(obj.source_files) ? obj.source_files : []) as string[],
     packages: (Array.isArray(obj.packages) ? obj.packages : []) as string[],
@@ -151,7 +147,6 @@ export function validateChallengeDeclaration(raw: unknown): ChallengeDeclaration
     tools: obj.tools as (typeof VALID_TOOLS)[number][] | undefined,
     difficulty: obj.difficulty as string | undefined,
     category: obj.category as string | undefined,
-    description: obj.description as string | undefined,
     date: obj.date as string | undefined,
     tags: (Array.isArray(obj.tags) ? obj.tags : undefined) as string[] | undefined,
   }

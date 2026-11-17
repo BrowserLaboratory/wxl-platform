@@ -1,10 +1,11 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { watch, loadChallengeLists } from '../../../platform/shared/challenges.data'
 import { LOCALES, type Locale } from '../../../.vitepress/locales'
 import { declarationReadError } from '../../../.vitepress/challenge/declaration'
+import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 
 // T-0077 wave 3 (0010-S18; D40): there is one data loader, `platform/shared/challenges.data.ts`, a
 // VitePress `{ watch, load }` loader that reads every locale folder's briefs and every challenge's
@@ -85,6 +86,15 @@ describe.each(PRIMARIES)('loadChallengeLists, P = %s', (P) => {
       const loaded = loadChallengeLists(tree.srcDir, tree.files, { locales: LOCALES, primary: P })
       await expect(loaded).rejects.toThrow(new RegExp(`^${reason === 'absent' ? 'PL-E13' : 'PL-E14'}: `))
       await expect(loaded).rejects.toThrow(declarationReadError(`${P}/challenge/x/index.md`, 'x', reason).message)
+      // Whole-message equality against the formatter, then against the text written out by hand
+      // (repository-relative paths), so a drift in the formatter itself is caught too.
+      await expect(loaded).rejects.toMatchObject({ message: declarationReadError(`${P}/challenge/x/index.md`, 'x', reason).message })
+      await expect(loaded).rejects.toMatchObject({
+        message:
+          reason === 'absent'
+            ? `PL-E13: platform/${P}/challenge/x/index.md: no platform/challenge/x/challenge.yaml for this brief`
+            : `PL-E14: platform/challenge/x/challenge.yaml: not one YAML mapping (${reason})`,
+      })
     },
   )
 
@@ -137,7 +147,16 @@ describe.each(PRIMARIES)('loadChallengeLists, P = %s', (P) => {
 // imports the one loader through the same line, so a translation skeleton can copy a page unchanged.
 describe('the list and home pages use the one loader (B79)', () => {
   const PLATFORM = resolve(__dirname, '../../../platform')
-  const PAGES = LOCALES.flatMap((code) => [`${code}/index.md`, `${code}/challenges.md`])
+  const PRIMARY = readPrimaryLocale(resolve(PLATFORM, '..', 'range.json'))
+  // A range may keep only the primary locale's pages: the locales whose pages exist are checked.
+  const PAGES = LOCALES.flatMap((code) => [`${code}/index.md`, `${code}/challenges.md`]).filter((page) =>
+    existsSync(join(PLATFORM, page)),
+  )
+
+  it("the primary locale's home and list pages exist", () => {
+    expect(PAGES).toContain(`${PRIMARY}/index.md`)
+    expect(PAGES).toContain(`${PRIMARY}/challenges.md`)
+  })
 
   it.each(PAGES)('platform/%s imports ../shared/challenges.data.ts', (page) => {
     const text = readFileSync(join(PLATFORM, page), 'utf8')

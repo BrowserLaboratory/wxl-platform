@@ -464,6 +464,7 @@ describe('validateChallenge: declaration, brief and structure checks', () => {
       ['-1', 'number -1'],
       ['1.5', 'number 1.5'],
       ['"7"', 'number "7"'],
+      ['"007"', 'number "007"'],
     ])('number: %s -> %s is not an integer greater than zero', (value, text) => {
       writeTree(tmpDir, { declaration: [`number: ${value}`, 'backend: fastapi', 'app: app.py'].join('\n') })
       const result = validateChallenge(tmpDir, 'x')

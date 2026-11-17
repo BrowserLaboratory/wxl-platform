@@ -1,11 +1,18 @@
 # Spec 0010: Primary-locale layout — every locale in its own folder, the range chooses the root
 
-Status: revision 2.2 (2026-11-15). Revision 2.1 (traceability "Revision 2.1", T-0076 stage 5) adds
+Status: revision 2.4 (2026-11-17). Revision 2.1 (traceability "Revision 2.1", T-0076 stage 5) adds
 D143 (`platform/challenge/index.md` is an ordinary page, not a single-file brief) and D144 (the
 upgrade's move never lets `yaml` write to the terminal; a warning fails the parse). Revision 2.2
 (traceability "Revision 2.2", T-0076 stage 7) adds D145 (a mapping key that is not a scalar fails
 the parse, in the move and in the declaration reader) and D146 (both parsers pass
-`resolveKnownTags: false`, so an explicit YAML 1.1 tag fails the parse), and extends rows U25 and U47. Revision 1, with the same day's self-check applied (traceability
+`resolveKnownTags: false`, so an explicit YAML 1.1 tag fails the parse), and extends rows U25 and U47 (and D147, the site half of D145/D146). Revision 2.3
+(traceability "Revision 2.3", T-0077 stage 5) adds D148 (B90 keeps the two pinned setup-record
+sentences), D149 (Overridden contracts completed for T-0077) and D150 (S51's refusal text); no
+behaviour row changes. Revision 2.4 (traceability "Revision 2.4", T-0077 stage 6) adds D151 (the
+article before a locale's display name in the hook's W6a and W6c lines: `an English brief`, `a
+Traditional Chinese brief`), D152 (keygen stops on a declaration the reader rejects; row Y114) and
+D153 (three more upstream-only entries in D124's list), and rewrites or annotates in place the rows
+and decisions that revision names. Revision 1, with the same day's self-check applied (traceability
 "Checks on revision 1"), was reviewed in stage 3 round 1 (`review/round-1-C.md`, `-V.md`, `-K.md`,
 `-R.md`). Revision 2 applies round 1's disposition (`review/disposition.md`): every P1 and P2 finding
 is fixed or declined with its reason; it adds decisions D122–D141, rows B93–B95, S76–S80, Y107–Y113,
@@ -16,8 +23,9 @@ and adds D142 and PAT6. Round 1 found no P0, so the stage 3 gate is met; by the
 self-checked instead (traceability "Checks on revision 2"). Derived from `traceability.md`, which
 holds:
 
-- the decisions D1–D146 (stage 1 decisions realised, and the new decisions of stage 2 and of
-  revisions 2, 2.1 and 2.2, each approved under the user's standing authorization of 2026-11-15; as
+- the decisions D1–D153 (stage 1 decisions realised, and the new decisions of stage 2 and of
+  revisions 2, 2.1, 2.2, 2.3 and 2.4, each approved under the user's standing authorization of
+  2026-11-15, revision 2.4's under that of 2026-11-17; as
   `docs/agents/workflow.md` requires, each new or changed D-number is still confirmed by the user
   from a short decision summary before it is implemented);
 - the seams 0010-S1 to 0010-S52 and the ticket constraints T1–T9;
@@ -275,7 +283,9 @@ only through `pageLocaleOf(localeIndex, P)` (D32).
   differently on the two hosts, accepted, while under `P = en`, which has no old-address rule, both
   hosts land alike on the not-found page (D138). A short link coded with the primary locale lands on a primary-locale page, so it
   follows the preference (D30): on a Traditional-Chinese-primary range `/zh-TW/c/NNN` opens English
-  for a learner who chose English, while a translation-coded link always opens that translation.
+  for a learner who chose English, while a translation-coded link opens that translation whatever
+  the locale preference when the challenge has it, and opens the primary locale's page when it does
+  not (D58).
 - The line and the mark keep their two-locale sentences, correct under either primary locale; a
   unit test fails at any other list length and names the Japanese epic (D33). The switcher menu is
   the list minus the page locale, plus the page locale while the line shows (D34). The session
@@ -299,12 +309,17 @@ use the page locale's language tag in UTC (D45). Every numbered row has a copy c
 Traditional-Chinese-only, live in a reserved `smoke-fixtures` folder of each locale folder and are
 published only when the build runs with `WXL_SMOKE_PAGES` exactly `1`; CI's smoke job sets it and
 the production build job fails if any trace of them ships, so the predicate and every
-`smoke-fixtures` literal live in node-only modules, never in the client bundle. The flag never
+`smoke-fixtures` literal live in node-only modules, never in the client bundle. One node-only
+module exports both the predicate `isSmokeFixturePage`, which the page list uses, and the globs
+`SMOKE_FIXTURE_GLOBS`, derived from the locale list, which `srcExclude` uses; the two describe the
+same set of paths. The flag never
 changes the primary locale, and the layout check treats fixture pages as ordinary locale pages in
 every mode. The Traditional Chinese reference page is added (D51), and an upstream-only test requires
 every page in every locale (D52). Every test that asserts on upstream's own content is
 upstream-only too, and every other test derives what it expects from the primary locale and the
-tree it runs on, so a range's CI, which runs the same jobs, passes (D54, D124). Exploit specs keep their URL, which now opens the primary brief
+tree it runs on, so a range's CI, which runs the same jobs, passes (D54, D124; D153 adds U136's
+root half, B95's comparison with create-wxl's copy and B60's literal equality of the site title and
+description). Exploit specs keep their URL, which now opens the primary brief
 (D53).
 
 **Short links, numbers and the hook (D57–D72, D118, D121).** The rule forms come from the locale
@@ -327,8 +342,10 @@ from the index (D65–D67, D122, D126). One function gives a challenge
 page's path for the generator and the copy control (D68). Whether T-0058 and T-0059 are taken is
 stage 4's call; the spec recommends both (D72).
 
-**Tools on the declaration (D80–D90, D123, D129, D145, D146).** Every tool that reads `range.json` reads it
-first and stops on an unusable one with its PL line before touching any challenge (D123). A
+**Tools on the declaration (D80–D90, D123, D129, D145, D146, D152).** Every tool that reads `range.json` reads it
+first and stops on an unusable one with its PL line before touching any challenge (D123); where a
+criterion says that line is the first on stderr, lines Node itself prints as runtime warnings are
+not counted. A
 declaration with a duplicate key, an unresolved tag, too many aliases, an alias without its
 anchor or a mapping key that is not a scalar (a collection or an alias) is invalid YAML (D129,
 D145); so is an explicit YAML 1.1 tag such as `!!timestamp`, `!!binary`, `!!merge` or `!!set`,
@@ -336,14 +353,17 @@ because the reader passes `resolveKnownTags: false` and such a tag is unresolved
 declaration reader checks keys before converting, so `yaml` writes nothing to the terminal, and
 every value it returns is a string, number, boolean, null, sequence or mapping.
 keygen writes `wasmModule` into `challenge.yaml` only when
-its bytes change and tracks the declaration and `src/`, never a brief (D80). Flat single-file
+its bytes change and tracks the declaration and `src/`, never a brief (D80); on a declaration the
+reader rejects it stops with exit 1, printing `[<slug>] ` and PL-E14's text, and writes no file for
+any later challenge (D152). Flat single-file
 challenges are gone from every tool (D81). `create:challenge` runs the layout check first and
 refuses a legacy-layout tree, then writes the primary brief, the declaration and `src/`, with
 scaffold text keyed by locale, and refuses a slug that any challenge directory or locale brief
 folder already holds (D82–D84). The slug grammar is enforced only there (and by the generator if
 T-0059 is taken); other tools accept any directory name. The L4 player package reads the primary
 brief (D85). Validation checks the declaration once, every brief that exists, the primary brief's
-presence and the challenge directory's structure (D86, D117). A running dev server shows a
+presence and the challenge directory's structure (D86, D117); when the declaration check fails, no
+other check runs for that challenge. A running dev server shows a
 declaration edit in the lists after a reload and on the challenge page after a restart (D87, N18).
 retype changes only `challenge.yaml`; analyze takes the title from the primary brief (D89, D90).
 
@@ -528,7 +548,7 @@ judged at the seam its rows name; the rows hold the literal values.
   entry state the rules above and are true under both primaries; none
   says English is the root, `'root'` means English, that a default visiting locale exists, or that a
   learner with no preference sees the primary locale (they see the locale of the address they
-  opened).
+  opened, except on the landing of a not-found redirect, AC-12).
   (A34–A37)
 
 ### Lists, home page, smoke fixtures (area L)
@@ -557,11 +577,12 @@ judged at the seam its rows name; the rows hold the literal values.
   list pages' `<meta name="description">` stays the site's; on the built upstream test build, `/challenges`, `/en/challenges`, `/` and
   `/en/` show the same strings with JavaScript disabled and after hydration. (L23–L28, L30–L33,
   L45, L46)
-- **AC-23** Only `WXL_SMOKE_PAGES=1` publishes the two fixture pages, and the page list and
-  `srcExclude` agree through `isSmokeFixturePage`, which, like every `smoke-fixtures` literal,
-  is outside the client entry's import graph; CI's production build fails if any trace of
-  `smoke-fixtures` ships; the smoke suite fails fast with a message naming the flag when a fixture
-  is missing; `missing-translation.spec.ts`'s cases run on the fixtures (no case names the export
+- **AC-23** Only `WXL_SMOKE_PAGES=1` publishes the two fixture pages, and the page list (through
+  the predicate `isSmokeFixturePage`) and `srcExclude` (through the globs `SMOKE_FIXTURE_GLOBS`)
+  describe the same set of paths; one node-only module exports both and, like every
+  `smoke-fixtures` literal, is outside the client entry's import graph; CI's production build fails
+  if any trace of `smoke-fixtures` ships; when a fixture is missing, the smoke run fails before any
+  case of the file passes, with a message naming `WXL_SMOKE_PAGES=1`; `missing-translation.spec.ts`'s cases run on the fixtures (no case names the export
   format reference) and pass; the page-list spelling test passes on the test build. (L34–L39, L47)
 - **AC-24** The Traditional Chinese export-format reference has the English page's headings, table
   rows, fenced blocks and inline code; the notes page links to it in its own folder; the
@@ -659,13 +680,17 @@ judged at the seam its rows name; the rows hold the literal values.
   without `wasm_fs_list` shows the runtime error naming `pnpm challenge:keygen`; stage 8 shows the
   same tool surface on both locale pages. (Y49–Y51)
 - **AC-39** keygen processes only challenge directories with a `challenge.yaml`, writes `wasmModule`
-  there (deleting legacy fields, other lines unchanged, no brief touched), leaves each upstream file
+  there (deleting legacy fields; the other keys' values, order and comments unchanged, formatting as
+  `yaml`'s `toString({ lineWidth: 0 })` writes it; no brief touched), leaves each upstream file
   byte-identical after `--force`, writes nothing when the bytes would not change, is stale only for
   the declaration, `src/`, `.fsignore` and the template, converges on a second run (or the ticket
   stops for the user, D133), aborts on a
-  payload failure with both files unchanged, ignores flat files, keeps every `source_files`
-  failure, and on an unusable `range.json` exits 1 with its PL line first and writes nothing
-  (Y107). (Y52–Y61, Y107)
+  payload failure with both files unchanged, ends with PL-E08, no flat-file warning and nothing
+  written on a tree holding a flat file (Y60), keeps every `source_files`
+  failure, on an unusable `range.json` exits 1 with its PL line first and writes nothing
+  (Y107), and on a declaration `readChallengeDeclaration` rejects exits 1 with one stderr line,
+  `[<slug>] ` followed by PL-E14's text, and writes no file for any later challenge (Y114).
+  (Y52–Y61, Y107, Y114)
 - **AC-40** retype changes only the named keys of `challenge.yaml` (comments, order and briefs
   byte-identical), refuses a slug without one, keeps the backend-swap flow, and never reads a brief;
   analyze titles from the primary brief (slug fallback), reads the rest from the declaration,
@@ -807,7 +832,7 @@ judged at the seam its rows name; the rows hold the literal values.
   outside `platform/` plus `platform/shared/` and `platform/public/` in place of step 1, also give a
   building site; the upgraded range's unit suite passes; a fork with no page of its own pulls the release, builds and serves Traditional Chinese at
   the root until `range.json` records `en`. (V-U1–V-U5)
-- **AC-61** Each test D124 lists is upstream-only: declared through one helper that skips it with
+- **AC-61** Each test D124 lists (D153's three entries included) is upstream-only: declared through one helper that skips it with
   the upstream decision's reason in a range and in a fork and runs it on upstream (stage 6 checks
   each uses the helper); upstream's CI cannot skip them silently, because the `test` job's existing
   expectation check fails under `WXL_EXPECT_UPSTREAM=true` when the decision is false and the smoke

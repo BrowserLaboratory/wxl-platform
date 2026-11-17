@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { LOCALES, DEFAULT_PRIMARY_LOCALE, isKnownLocale, LOCALE_ENGLISH_NAMES } from '../../../.vitepress/locales'
+import { otherLocale } from '../../../.vitepress/theme/i18n'
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 const IS_GIT_CHECKOUT = existsSync(join(REPO_ROOT, '.git'))
@@ -59,5 +60,17 @@ describe.skipIf(!IS_GIT_CHECKOUT)('B18: no locale enumeration outside the locale
     for (const line of lines) {
       expect(line.startsWith('.vitepress/locales.ts:')).toBe(true)
     }
+  })
+})
+
+describe('otherLocale reads the locale list (D4, D33)', () => {
+  it('names, for every locale on the list, the other member of the list', () => {
+    for (const code of LOCALES) {
+      expect(otherLocale(code)).toBe(LOCALES.find((c) => c !== code))
+    }
+  })
+
+  it('does not spell a locale code in its own body', () => {
+    expect(otherLocale.toString()).not.toMatch(/['"](en|zh-TW)['"]/)
   })
 })

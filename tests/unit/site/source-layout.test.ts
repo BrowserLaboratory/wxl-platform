@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, statSync, unlinkSync } from 'node:fs'
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
 import { tmpdir, platform } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { classifySourcePath, checkSourceLayout } from '../../../.vitepress/source-layout'
@@ -149,23 +149,6 @@ function pathLines(error: SiteLayoutError): string[] {
   return error.message.split('\n').slice(1).map((line) => line.trim())
 }
 
-/** Probes the temporary volume for case-insensitivity, in a directory of its own (U55's pattern,
- *  create-wxl/test/upgrade-aliases.test.mjs `isCaseInsensitive`). */
-function isCaseInsensitiveFs(): boolean {
-  const dir = mkdtempSync(join(tmpdir(), 'wxl-case-probe-'))
-  try {
-    writeFileSync(join(dir, 'CaseProbe.tmp'), 'x')
-    try {
-      statSync(join(dir, 'caseprobe.tmp'))
-      return true
-    } catch {
-      return false
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
-
 describe('checkSourceLayout (0010-S2; B20–B36, B91)', () => {
   const BOTH: readonly ('en' | 'zh-TW')[] = ['en', 'zh-TW']
 
@@ -218,10 +201,6 @@ describe('checkSourceLayout (0010-S2; B20–B36, B91)', () => {
     })
 
     it('zh-tw/index.md is in the PL-E08 list, in a tree with no zh-TW/', () => {
-      if (isCaseInsensitiveFs()) {
-        // zh-tw/ and zh-TW/ would collide on this filesystem (U55's pattern).
-        return
-      }
       const root = fixtureTree([
         'en/index.md',
         'challenge/x/challenge.yaml',
@@ -237,9 +216,6 @@ describe('checkSourceLayout (0010-S2; B20–B36, B91)', () => {
     })
 
     it('EN/index.md is in the PL-E08 list, in a tree with no en/', () => {
-      if (isCaseInsensitiveFs()) {
-        return
-      }
       const root = fixtureTree([
         'zh-TW/index.md',
         'challenge/x/challenge.yaml',
@@ -415,6 +391,22 @@ describe('checkSourceLayout (0010-S2; B20–B36, B91)', () => {
     })
   })
 
+  describe.skipIf(platform() === 'win32')('B33: symbolic links beneath a locale folder named like a locale', () => {
+    it('platform/en/zh-TW/a.md and platform/en/zh-TW/sub are in the PL-E07 list, not PL-E09', () => {
+      const root = fixtureTree(VALID_FILES)
+      const outside = mkdtempSync(join(tmpdir(), 'wxl-layout-target-'))
+      tempDirs.push(outside)
+      writeFileSync(join(outside, 'real-a.md'), '# page\n')
+      mkdirSync(join(outside, 'real-sub'), { recursive: true })
+      mkdirSync(join(root, 'en', 'zh-TW'), { recursive: true })
+      symlinkSync(join(outside, 'real-a.md'), join(root, 'en', 'zh-TW', 'a.md'))
+      symlinkSync(join(outside, 'real-sub'), join(root, 'en', 'zh-TW', 'sub'), 'dir')
+      const error = errorOf(() => checkSourceLayout(root, 'en'))
+      expect(error.code).toBe('PL-E07')
+      expect(pathLines(error)).toEqual(['"platform/en/zh-TW/a.md"', '"platform/en/zh-TW/sub"'])
+    })
+  })
+
   describe.skipIf(platform() === 'win32')('B34: symbolic links in excluded areas are not checked', () => {
     it('returns, no error', () => {
       const root = fixtureTree(VALID_FILES)
@@ -466,5 +458,68 @@ describe('checkSourceLayout (0010-S2; B20–B36, B91)', () => {
       expect(error.code).toBe('PL-E07')
       expect(pathLines(error)).toEqual(['"platform"'])
     })
+  })
+})
+
+const BOTH_PRIMARIES = ['en', 'zh-TW'] as const
+
+// B95: no character of a first line or path line of PL-E07–PL-E10 is below U+0020 (apart from the
+// line breaks between lines) or in U+007F–U+009F, whatever a file name holds.
+describe('B95: control characters in a path are escaped in PL-E07–PL-E10', () => {
+  const noControl = (text: string) =>
+    [...text].every((ch) => {
+      const cp = ch.codePointAt(0)!
+      return cp >= 0x20 && !(cp >= 0x7f && cp <= 0x9f)
+    })
+  const linesClean = (error: SiteLayoutError) => error.message.split('\n').every(noControl)
+
+  /** A fixture tree whose file names hold control characters; a file system that refuses such a
+   *  name skips the case with the reason. */
+  function controlTree(files: string[], ctx: { skip: (reason: string) => never }): string {
+    try {
+      return fixtureTree(files)
+    } catch (err) {
+      return ctx.skip(`this file system refuses a file name with a control character: ${String(err)}`)
+    }
+  }
+
+  it.each(['\u001b', '\u009b'])('PL-E07: a symbolic link named with %j', (ch, ctx) => {
+    if (platform() === 'win32') return ctx.skip('symbolic links need privileges on Windows')
+    const root = controlTree(VALID_FILES, ctx)
+    const outside = mkdtempSync(join(tmpdir(), 'wxl-layout-target-'))
+    tempDirs.push(outside)
+    writeFileSync(join(outside, 'real.md'), '# page\n')
+    try {
+      symlinkSync(join(outside, 'real.md'), join(root, 'en', `l${ch}k.md`))
+    } catch (err) {
+      return ctx.skip(`cannot create the link: ${String(err)}`)
+    }
+    const error = errorOf(() => checkSourceLayout(root, 'en'))
+    expect(error.code).toBe('PL-E07')
+    expect(pathLines(error)).toHaveLength(1)
+    expect(linesClean(error)).toBe(true)
+  })
+
+  it.each(['\u001b', '\u009b'])('PL-E08: a page outside the locale folders named with %j', (ch, ctx) => {
+    const root = controlTree([...VALID_FILES, `gui${ch}de/x.md`], ctx)
+    const error = errorOf(() => checkSourceLayout(root, 'en'))
+    expect(error.code).toBe('PL-E08')
+    expect(pathLines(error)).toHaveLength(1)
+    expect(linesClean(error)).toBe(true)
+  })
+
+  it.each(['\u001b', '\u009b'])('PL-E09: an entry beneath a locale-named folder named with %j', (ch, ctx) => {
+    const root = controlTree([...VALID_FILES, `en/zh-TW/a${ch}.md`], ctx)
+    const error = errorOf(() => checkSourceLayout(root, 'en'))
+    expect(error.code).toBe('PL-E09')
+    expect(pathLines(error)).toHaveLength(1)
+    expect(linesClean(error)).toBe(true)
+  })
+
+  it.each(BOTH_PRIMARIES)('PL-E10: the first line for primary %s', (primary) => {
+    const root = fixtureTree(VALID_FILES.filter((f) => f !== `${primary}/index.md`))
+    const error = errorOf(() => checkSourceLayout(root, primary))
+    expect(error.code).toBe('PL-E10')
+    expect(linesClean(error)).toBe(true)
   })
 })

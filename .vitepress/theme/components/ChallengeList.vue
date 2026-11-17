@@ -100,7 +100,7 @@ onMounted(() => { void loadProgress() })
 const progressBlockReason = useProgressBlockReason()
 
 /**
- * Spec 0008, S4: an entry borrowed from the other locale's brief (the list has none of its own).
+ * Spec 0008, S4: an entry borrowed from the primary locale's brief (D38) (the list has none of its own).
  * It carries the mark naming the locale it is in — resolved at the PAGE's locale, like every
  * string here, so the HTML as served already says it — and its title and summary carry that
  * locale's `lang`.

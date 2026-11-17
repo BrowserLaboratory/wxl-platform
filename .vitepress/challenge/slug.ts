@@ -1,8 +1,8 @@
-// The challenge page's slug (seam 0010-S42; Y49). Every brief now lives per-folder —
-// `challenge/<slug>/index.md` or, under the locale folders, `<L>/challenge/<slug>/index.md`
-// — so the slug is always the parent directory's name. The flat `<slug>.md` form this once
-// also accepted is gone with the old layout: a relative path with no parent directory to
-// take the slug from derives no slug.
+// The challenge page's slug (seam 0010-S42; Y49). `relativePath` is the page's path after the
+// primary locale's rewrite: `challenge/<slug>/index.md` for a primary-locale brief (its source is
+// `<P>/challenge/<slug>/index.md`) and `<L>/challenge/<slug>/index.md` for any other locale, so
+// the slug is always the parent directory's name. A relative path with no parent directory
+// derives no slug.
 
 export function slugFromRelativePath(relativePath: string): string | undefined {
   const parts = relativePath.replace(/\.md$/, '').split('/')

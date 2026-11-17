@@ -30,9 +30,10 @@ import type { ChoiceOutcome } from '../i18n/missingTranslation'
  *
  * - **Cold load.** `recordColdLoad` notes the first arrival when the Layout mounts, which is
  *   after VitePress's router has rendered it. `release` runs once the session gate lets the
- *   page go (A6, C11): a not-found arrival is replaced by its counterpart (C1, C2); a page is
- *   sent to its counterpart's list entry only when that counterpart is published, and
- *   otherwise stays with the line (A1–A4); a failed load is left alone (C8). Either redirect
+ *   page go (A6, C11): a not-found arrival is replaced by its counterpart (C1, C2); a page whose
+ *   stored preference is `T` is sent to its counterpart's list entry when that counterpart is
+ *   published, and otherwise stays with the line in `T` (A3, A4); with no preference, or with
+ *   `P` stored, it stays and shows no line (A1, A2, D25); a failed load is left alone (C8). Either redirect
  *   carries the arrival's requested locale to its landing (L6).
  * - **Later arrivals.** A change of path — not of hash or query alone (L8) — is classified
  *   again; a not-found one is replaced the same way, once the first arrival has been released
@@ -47,7 +48,7 @@ import type { ChoiceOutcome } from '../i18n/missingTranslation'
  *
  * **The stored preference.** Written by the learner's explicit acts only: a switcher choice
  * (W1; kept in memory for the tab when storage refuses, D14), and the cold load of a published
- * page under `/zh-TW/` — also through a short link's redirect or a reload (W2, D13) — decided
+ * translation page (under `/<T>/`), which stores `T` — also through a short link's redirect or a reload (W2, D13) — decided
  * from the page the router rendered (D16), not from the URL, and without waiting for the gate:
  * the gate's clear leaves `wxl-locale` alone. Nothing else here writes it: the redirects and
  * later arrivals are the site's doing, not the learner's choices (D5, W3–W5).

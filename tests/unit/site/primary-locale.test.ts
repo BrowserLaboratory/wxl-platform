@@ -269,7 +269,28 @@ describe('B10: a string off the list is PL-E06, JSON-quoted (D140)', () => {
       `PL-E06: "primaryLocale" in range.json is ${quoted}, which is not on the locale list: en, zh-TW.`,
     )
     for (const ch of firstLine) {
-      expect(ch.codePointAt(0)!).toBeGreaterThanOrEqual(0x20)
+      const cp = ch.codePointAt(0)!
+      expect(cp).toBeGreaterThanOrEqual(0x20)
+      expect(cp >= 0x7f && cp <= 0x9f).toBe(false)
+    }
+  })
+})
+
+// B95: a control character inside a non-string value does not reach PL-E05's first line.
+describe('B95: PL-E05 escapes control characters inside the value', () => {
+  it.each([[['\u001b[31m', '\u009b']], [{ '\u001b': '\u007f' }]])('the first line for %j holds none', (value) => {
+    let error: unknown
+    try {
+      parsePrimaryLocale(JSON.stringify({ primaryLocale: value }))
+    } catch (err) {
+      error = err
+    }
+    expect((error as InstanceType<typeof SiteLayoutError>).code).toBe('PL-E05')
+    for (const ch of (error as Error).message) {
+      if (ch === '\n') continue
+      const cp = ch.codePointAt(0)!
+      expect(cp).toBeGreaterThanOrEqual(0x20)
+      expect(cp >= 0x7f && cp <= 0x9f).toBe(false)
     }
   })
 })

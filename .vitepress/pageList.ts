@@ -9,7 +9,9 @@ const NEVER_PAGES = new Set(['node_modules', 'dist'])
 /**
  * Top-level directories of the source directory that hold no pages: `public/` is copied
  * verbatim and never rendered, and `shared/` holds the data loaders (spec 0008, the page-list
- * oracle).
+ * oracle). Together with `CHALLENGE_SRC_RE` below it is the same exclusion as the `public/**`,
+ * `shared/**` and `challenge/<slug>/src` globs of the config's `srcExclude`; the two are written
+ * separately and must change together.
  */
 const NOT_PAGES_AT_TOP = new Set(['public', 'shared'])
 

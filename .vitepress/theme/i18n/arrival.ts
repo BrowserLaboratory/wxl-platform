@@ -58,8 +58,8 @@ export function requestedLocaleForPageArrival(
 /**
  * Where a not-found arrival goes (rows C1–C3): the counterpart's list entry, and the target to
  * navigate to — that entry with the base put back and the query and hash kept. Null when the
- * path has no counterpart in the list. The requested locale is the one the not-found path
- * named, which is the other locale of the target.
+ * path has no counterpart in the list. The requested locale is the not-found path's own (D27, D28): `T` for a
+ * translation path, `P` for a primary-code path or a primary path.
  */
 export function notFoundRedirect(
   location: { pathname: string; search?: string; hash?: string },
@@ -93,8 +93,8 @@ export function notFoundRedirect(
  * list entry (D16), with the location's query and hash kept, or `stay`. On a page, the chosen
  * locale's counterpart of the page's entry when the list has it; the page's own locale, or a
  * counterpart the list lacks, stays. On the not-found page or a failed load, the lookup
- * algorithm's counterpart of the path, whatever was chosen: the menu there offers only the other
- * locale, since the line never shows on the not-found page.
+ * algorithm's counterpart of the path, whatever was chosen: the menu there offers the locale list
+ * minus the page locale (D34), since the line never shows on the not-found page.
  */
 export function switcherDecision(input: {
   chosen: Locale

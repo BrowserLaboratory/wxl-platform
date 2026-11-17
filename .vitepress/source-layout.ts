@@ -1,6 +1,6 @@
-// The layout check's page predicate (seam 0010-S2; D116). `checkSourceLayout` is T-0077's;
-// `classifySourcePath` is the predicate it is built on, exported here. `sourcePath` is relative
-// to `platform/` (as PL-E11's `<page>` is).
+// The layout check (seam 0010-S2): `checkSourceLayout` (D1, D5, D6, D20; PL-E07–PL-E10) and the
+// page predicate `classifySourcePath` (D116). Both rest on `isExcluded` and `isLocaleFolderPath`
+// below. `sourcePath` is relative to `platform/` (as PL-E11's `<page>` is).
 
 import { readdirSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
@@ -52,17 +52,21 @@ function isExcludedDir(childRel: string): boolean {
 }
 
 /** Every `.md` page anywhere beneath `dir` (relative to the source root, as `rel`), skipping the
- *  same excluded areas `checkSourceLayout`'s main walk does. Used only for a direct entry of a
- *  locale folder that is itself named like a listed locale (B31): every page under it still
- *  collides with that locale's URL prefix. */
-function mdFilesBeneath(dir: string, rel: string): string[] {
+ *  same excluded areas `checkSourceLayout`'s main walk does. A symbolic link beneath `dir` is
+ *  recorded in `v.e07` and not followed. Used only for a direct entry of a locale folder that is
+ *  itself named like a listed locale (B31): every page under it still collides with that locale's
+ *  URL prefix. */
+function mdFilesBeneath(dir: string, rel: string, v: Violations): string[] {
   const found: string[] = []
   for (const item of readdirSync(dir, { withFileTypes: true })) {
     const childRel = `${rel}/${item.name}`
     if (item.name.startsWith('.') || item.name === 'node_modules' || item.name === 'dist') continue
-    if (item.isSymbolicLink()) continue
+    if (item.isSymbolicLink()) {
+      v.e07.push(childRel)
+      continue
+    }
     if (item.isDirectory()) {
-      found.push(...mdFilesBeneath(join(dir, item.name), childRel))
+      found.push(...mdFilesBeneath(join(dir, item.name), childRel, v))
     } else if (item.isFile() && item.name.endsWith('.md')) {
       found.push(childRel)
     }
@@ -93,7 +97,7 @@ function walkSourceTree(srcDir: string, dir: string, rel: string, primary: Local
       const base = item.isDirectory() ? item.name : item.name.replace(/\.md$/, '')
       if ((LOCALES as readonly string[]).includes(base)) {
         if (item.isDirectory()) {
-          const pages = mdFilesBeneath(join(dir, item.name), childRel)
+          const pages = mdFilesBeneath(join(dir, item.name), childRel, v)
           if (pages.length > 0) v.e09.push(...pages)
           else v.e09.push(`${childRel}/`)
         } else {

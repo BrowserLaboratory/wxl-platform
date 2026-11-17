@@ -64,7 +64,7 @@ describe('localizeHomeLinks', () => {
     const error = errorOf(() => localizeHomeLinks(fm, 'en', 'en', PAGES))
     expect(error.code).toBe('PL-E12')
     expect(error.message).toBe(
-      `PL-E12: "en/index.md" has hero.actions[0].link ${JSON.stringify(link)}, which is a relative link; write it from the locale’s home page, such as "/guide/".`,
+      `PL-E12: "en/index.md" has hero.actions[0].link ${JSON.stringify(link)}, which is a relative link; write it from the locale's home page, such as "/guide/".`,
     )
   })
 
@@ -77,24 +77,52 @@ describe('localizeHomeLinks', () => {
           const error = errorOf(() => localizeHomeLinks(fm, pageLocale, primary, PAGES))
           expect(error.code).toBe('PL-E12')
           expect(error.message).toContain('already carries a locale prefix')
+          expect(error.message).toBe(
+            `PL-E12: "${pageLocale}/index.md" has hero.actions[0].link ${JSON.stringify(link)}, which already carries a locale prefix; write it from the locale's home page, the build adds the prefix.`,
+          )
         }
       }
     })
 
-    it('passes when pages holds a code-like page in the page locale', () => {
-      const pages = ['/', '/english/', '/enroll/', '/zh-TWx/']
-      for (const link of ['/english/', '/enroll/', '/zh-TWx/']) {
-        const fm = { layout: 'home', hero: { actions: [{ link }] } }
-        expect(() => localizeHomeLinks(fm, 'en', 'en', pages)).not.toThrow()
+    // The first segment is read without a query or hash (C-11).
+    it.each(['/zh-TW#x', '/zh-TW?x', '/en#x', '/en/?a#b'])('%s throws "already carries a locale prefix" for 2 P x 2 page locales', (link) => {
+      for (const primary of ['en', 'zh-TW'] as const) {
+        for (const pageLocale of ['en', 'zh-TW'] as const) {
+          const fm = { layout: 'home', hero: { actions: [{ link }] } }
+          const error = errorOf(() => localizeHomeLinks(fm, pageLocale, primary, ['/', '/en/', '/zh-TW/']))
+          expect(error.code).toBe('PL-E12')
+          expect(error.message).toContain('already carries a locale prefix')
+        }
       }
     })
 
-    it('throws "does not name a published page" when pages lacks the code-like page', () => {
-      const error = errorOf(() =>
-        localizeHomeLinks({ layout: 'home', hero: { actions: [{ link: '/english/' }] } }, 'en', 'en', ['/']),
-      )
-      expect(error.code).toBe('PL-E12')
-      expect(error.message).toContain('does not name a published page')
+    const CODE_LIKE = ['/english/', '/enroll/', '/zh-TWx/']
+    describe.each([
+      ['en', 'en'],
+      ['en', 'zh-TW'],
+      ['zh-TW', 'en'],
+      ['zh-TW', 'zh-TW'],
+    ] as const)('primary %s, page locale %s', (primary, pageLocale) => {
+      const prefix = pageLocale === primary ? '' : `/${pageLocale}`
+
+      it('passes when pages holds a code-like page in the page locale', () => {
+        const pages = pageLocale === primary ? ['/', ...CODE_LIKE] : ['/', `${prefix}/`, ...CODE_LIKE.map((link) => `${prefix}${link}`)]
+        for (const link of CODE_LIKE) {
+          const fm = { layout: 'home', hero: { actions: [{ link }] } }
+          expect(() => localizeHomeLinks(fm, pageLocale, primary, pages)).not.toThrow()
+          expect((localizeHomeLinks(fm, pageLocale, primary, pages).hero as { actions: { link: string }[] }).actions[0].link).toBe(`${prefix}${link}`)
+        }
+      })
+
+      it('throws "does not name a published page" when pages lacks the code-like page', () => {
+        const pages = pageLocale === primary ? ['/'] : ['/', `${prefix}/`]
+        for (const link of CODE_LIKE) {
+          const error = errorOf(() => localizeHomeLinks({ layout: 'home', hero: { actions: [{ link }] } }, pageLocale, primary, pages))
+          expect(error.code).toBe('PL-E12')
+          expect(error.message).toContain('does not name a published page')
+          expect(error.message).not.toContain('already carries a locale prefix')
+        }
+      })
     })
   })
 
@@ -221,6 +249,9 @@ describe('localizeHomeLinks', () => {
             )
             expect(heroError.code).toBe('PL-E12')
             expect(heroError.message).toContain('is a protocol-relative link')
+            expect(heroError.message).toBe(
+              `PL-E12: "${pageLocale}/index.md" has hero.actions[0].link ${JSON.stringify(link)}, which is a protocol-relative link; write a site link from the locale's home page, or an external link with its scheme.`,
+            )
 
             const featuresError = errorOf(() =>
               localizeHomeLinks({ layout: 'home', features: [{ link }] }, pageLocale, primary, PAGES),
@@ -235,6 +266,21 @@ describe('localizeHomeLinks', () => {
     it.each(['https://example.org/', 'mailto:a@example.org', '#top'])('%s still passes unchecked', (link) => {
       const fm = { layout: 'home', hero: { actions: [{ link }] } }
       expect(() => localizeHomeLinks(fm, 'en', 'en', [])).not.toThrow()
+    })
+  })
+
+  // B95: no control character reaches a first line or path line of PL-E12.
+  describe('B95: control characters in a link are escaped in PL-E12', () => {
+    const noControl = (text: string) => [...text].every((ch) => {
+      const cp = ch.codePointAt(0)!
+      return cp >= 0x20 && !(cp >= 0x7f && cp <= 0x9f)
+    })
+
+    it.each(['\u009b[31m', '/en/\u001b', '//\u001b[31m', '\u007f'])('link %j gives a PL-E12 text free of control characters', (link) => {
+      const fm = { layout: 'home', hero: { actions: [{ link }] } }
+      const error = errorOf(() => localizeHomeLinks(fm, 'en', 'en', PAGES))
+      expect(error.code).toBe('PL-E12')
+      expect(noControl(error.message.replace(/\n/g, ''))).toBe(true)
     })
   })
 })
