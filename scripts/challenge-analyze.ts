@@ -18,7 +18,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { resolve, dirname, join, basename, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseDocument } from 'yaml'
-import { VALID_TOOLS, validateChallengeDeclaration, type ChallengeConfig } from '../.vitepress/challenge/config.ts'
+import { VALID_TOOLS, validateChallengeDeclaration, type ChallengeDeclaration } from '../.vitepress/challenge/config.ts'
 import { scanSrcDirectory } from './challenge-utils.ts'
 import type { Locale } from '../.vitepress/locales.ts'
 import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
@@ -153,7 +153,7 @@ export function validateChallenge(challenge: ChallengeFile): string[] {
     return errors
   }
 
-  let declaration: Omit<ChallengeConfig, 'title'>
+  let declaration: ChallengeDeclaration
   try {
     declaration = validateChallengeDeclaration(read.value)
   } catch (e) {

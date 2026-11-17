@@ -9,11 +9,11 @@ These seven tools form the shared baseline. Skill prose may invoke them without 
 | Tool | Claude Code | Codex | Purpose in this skill |
 |------|-------------|-------|-----------------------|
 | `Bash` | ✓ | ✓ | Run `pnpm` scripts, `git`, `wasm-tools`, shell utilities. |
-| `Read` | ✓ | ✓ | Read skeletons, frontmatter, configs, references. |
-| `Write` | ✓ | ✓ | Create new files (vuln code, spec, frontmatter rewrites). |
-| `Edit` | ✓ | ✓ | Patch existing files (frontmatter fields, vuln code revisions). |
+| `Read` | ✓ | ✓ | Read skeletons, `challenge.yaml`, brief frontmatter, configs, references. |
+| `Write` | ✓ | ✓ | Create new files (vuln code, spec, `challenge.yaml` or brief rewrites). |
+| `Edit` | ✓ | ✓ | Patch existing files (`challenge.yaml` keys, brief frontmatter fields, vuln code revisions). |
 | `Glob` | ✓ | ✓ | Discover files by pattern. |
-| `Grep` | ✓ | ✓ | Search file contents (verify checks, frontmatter inspection). |
+| `Grep` | ✓ | ✓ | Search file contents (verify checks, `challenge.yaml` and brief frontmatter inspection). |
 | `WebFetch` | ✓ | ✓ | Fetch external documentation when looking up vuln payloads. |
 
 ## Forbidden categories of primitives
