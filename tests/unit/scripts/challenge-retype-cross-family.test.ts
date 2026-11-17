@@ -5,32 +5,27 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { retypeChallenge } from '../../../scripts/challenge-retype'
 
 const FASTAPI_APP = 'from fastapi import FastAPI\napp = FastAPI()\n# vuln body here\n'
-const INDEX = [
-  '---',
-  'title: Door Is Open',
+const DECLARATION = [
   'backend: fastapi',
   'app: app.py',
   'difficulty: easy',
   'category: web',
-  '---',
-  '',
-  '# Body',
   '',
 ].join('\n')
 
 describe('retypeChallenge — cross-language fail-fast', () => {
   let projectRoot: string
   let slugDir: string
-  let indexPath: string
+  let declarationPath: string
   let appPath: string
 
   beforeEach(() => {
     projectRoot = mkdtempSync(join(tmpdir(), 'challenge-retype-cross-'))
     slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    indexPath = join(slugDir, 'index.md')
+    declarationPath = join(slugDir, 'challenge.yaml')
     appPath = join(slugDir, 'src', 'app.py')
-    writeFileSync(indexPath, INDEX)
+    writeFileSync(declarationPath, DECLARATION)
     writeFileSync(appPath, FASTAPI_APP)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), 'FLAG{test}')
   })
@@ -50,9 +45,10 @@ describe('retypeChallenge — cross-language fail-fast', () => {
     expect(result.message).toContain('manual retype required')
     expect(keygenCalled).toBe(false)
 
-    // Filesystem untouched: index.md and src/app.py unchanged byte-for-byte.
-    expect(readFileSync(indexPath, 'utf8')).toBe(INDEX)
+    // Filesystem untouched: challenge.yaml and src/app.py unchanged byte-for-byte.
+    expect(readFileSync(declarationPath, 'utf8')).toBe(DECLARATION)
     expect(readFileSync(appPath, 'utf8')).toBe(FASTAPI_APP)
+    expect(readdirSync(slugDir).sort()).toEqual(['challenge.yaml', 'src'])
     expect(readdirSync(join(slugDir, 'src')).sort()).toEqual(['app.py', 'flag.txt'])
   })
 })

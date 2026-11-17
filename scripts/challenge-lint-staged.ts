@@ -103,7 +103,7 @@ export function runLintStaged(root: string, slugs: string[]): LintStagedResult {
     }
 
     // ── Step 2: Analysis (challenge-analyze.ts — warnings) ────────────
-    const challenges = discoverChallenges(challengesDir, slug)
+    const challenges = discoverChallenges(root, primary, slug)
     if (challenges.length === 0) continue
 
     const analysisResult = analyzeChallenge(challenges[0])

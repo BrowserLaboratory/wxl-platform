@@ -5,16 +5,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { retypeChallenge, syncSpecExploitPath } from '../../../scripts/challenge-retype'
 
 const FASTAPI_APP = 'from fastapi import FastAPI\napp = FastAPI()\n'
-const INDEX = [
-  '---',
-  'title: Door Is Open',
+const DECLARATION = [
   'backend: fastapi',
   'app: app.py',
   'difficulty: easy',
   'category: web',
-  '---',
-  '',
-  '# Body',
   '',
 ].join('\n')
 
@@ -42,7 +37,7 @@ describe('retypeChallenge — spec.ts EXPLOIT_PATH sync', () => {
     projectRoot = mkdtempSync(join(tmpdir(), 'challenge-retype-spec-'))
     const slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    writeFileSync(join(slugDir, 'index.md'), INDEX)
+    writeFileSync(join(slugDir, 'challenge.yaml'), DECLARATION)
     writeFileSync(join(slugDir, 'src', 'app.py'), FASTAPI_APP)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), 'FLAG{test}')
 
