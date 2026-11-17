@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { indexSlugs } from '../../../scripts/generate-redirects'
+import { indexSlugs, writeRedirects } from '../../../scripts/generate-redirects'
+import { SiteLayoutError } from '../../../.vitepress/layout-error'
 import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../../../scripts/challenge-numbers'
 
 // `platform/public/_redirects` carries the classroom short links. They are handed to
@@ -463,5 +464,76 @@ describe('_redirects target checks on other ranges', () => {
     const faults = orphanFaults(parseRules(), docs)
     expect(faults).toHaveLength(2)
     for (const fault of faults) expect(fault).toContain('"orphan"')
+  })
+})
+
+// B38 (generator half): the full-mode entry reads P, then runs the layout check, before it reads a
+// challenge or writes a file. Trees are built under os.tmpdir().
+describe('redirects:generate on an old-layout tree (B38)', () => {
+  let root: string
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'redirects-layout-'))
+  })
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const PL_E08_FIRST_LINE =
+    'PL-E08: these pages are outside the locale folders. Every page lives in platform/<locale>/ for a locale on the locale list (en, zh-TW); a range on the old layout moves its pages as README.en.md describes in "Moving to the locale folders" (README.md: 「搬到語系資料夾」):'
+
+  function oldLayout(): string {
+    mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+    mkdirSync(join(root, 'platform', 'challenge', 'x'), { recursive: true })
+    writeFileSync(join(root, 'platform', 'index.md'), '# home\n')
+    writeFileSync(join(root, 'platform', 'challenge', 'x', 'index.md'), '---\nnumber: 1\n---\n')
+    // A declaration with no number: were the challenges read first, this would be the fault.
+    writeFileSync(join(root, 'platform', 'challenge', 'x', 'challenge.yaml'), 'title: x\n')
+    return join(root, 'platform', 'public', '_redirects')
+  }
+
+  function thrown(): unknown {
+    try {
+      writeRedirects(root)
+    } catch (err) {
+      return err
+    }
+    return undefined
+  }
+
+  it('throws PL-E08 with its first line and lists the pages, and writes no file', () => {
+    const target = oldLayout()
+    const err = thrown()
+    expect(err).toBeInstanceOf(SiteLayoutError)
+    expect((err as SiteLayoutError).code).toBe('PL-E08')
+    const lines = (err as Error).message.split('\n')
+    expect(lines[0]).toBe(PL_E08_FIRST_LINE)
+    expect(lines).toContain('  "platform/challenge/x/index.md"')
+    expect(lines).toContain('  "platform/index.md"')
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('reads range.json first: an unusable one is PL-E03, not PL-E08 (D123)', () => {
+    const target = oldLayout()
+    writeFileSync(join(root, 'range.json'), '{')
+    const err = thrown()
+    expect((err as SiteLayoutError).code).toBe('PL-E03')
+    expect((err as Error).message.split('\n')[0]).toBe('PL-E03: range.json is not valid JSON.')
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('the same challenge in the new layout writes the file', () => {
+    mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+    mkdirSync(join(root, 'platform', 'en', 'challenge', 'x'), { recursive: true })
+    mkdirSync(join(root, 'platform', 'challenge', 'x'), { recursive: true })
+    writeFileSync(join(root, 'range.json'), '{"primaryLocale":"en"}')
+    writeFileSync(join(root, 'platform', 'en', 'index.md'), '# home\n')
+    writeFileSync(join(root, 'platform', 'en', 'challenge', 'x', 'index.md'), '# x\n')
+    writeFileSync(join(root, 'platform', 'challenge', 'x', 'challenge.yaml'), 'number: 1\n')
+
+    const target = writeRedirects(root)
+    expect(existsSync(target)).toBe(true)
+    expect(readFileSync(target, 'utf8')).toContain('/c/001')
   })
 })

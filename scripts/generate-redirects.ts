@@ -14,28 +14,20 @@
  * `tests/unit/site/redirects-generated.test.ts` fails when the committed file
  * and the tree disagree.
  *
- * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every
- * commit that carries a change at a watched path: `platform/challenge/`,
- * `platform/zh-TW/challenge/` or `platform/public/_redirects` itself. The hook
- * validates only the `platform/challenge/` paths its `ACMRD` filter selects; a
- * type change, the Traditional Chinese tree and this file only trigger
- * regeneration. Afterwards the working tree's file equals the staged one (D3),
- * whatever unstaged edit it held. The hook has
- * already put the staged snapshot in the working tree under `platform/`, but
- * ignored directories stay on disk, so the pages are restricted to the index
- * slugs: per locale tree, the slugs whose `<tree>/<slug>/index.md` is in git's
- * index. A page counts only when its own tree lists its slug, so an ignored or
- * untracked directory is never included, in either tree: an English one gets
- * no rules, and a Traditional Chinese one leaves its challenge's two
- * Traditional Chinese rules pointing at the English page. The output goes to
- * stdout; the hook writes and stages it only once generation succeeded.
- * Before calling it, the hook refuses an orphan brief (D12): a Traditional
- * Chinese brief whose slug the English tree's index slugs lack, which
- * `redirects.test.ts` ("backs every translated slug with a root-locale
- * challenge") would fail in CI.
+ * Full mode reads the primary locale `P` from `range.json` first (D123), then checks the
+ * layout of `platform/` (D19), then writes the file; every challenge's rules follow D58 from
+ * its declaration `platform/challenge/<slug>/challenge.yaml` and its briefs
+ * `platform/<locale>/challenge/<slug>/index.md`.
+ *
+ * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every commit that carries a
+ * change at a watched path. It reads the index slugs (`indexSlugs`); the hook has already put
+ * the staged snapshot in the working tree under `platform/`, but ignored directories stay on
+ * disk, so a file counts only when git's index lists it. The output goes to stdout; the hook
+ * writes and stages it only once generation succeeded. Segments 4c and wave 6 rewrite this
+ * mode on the split layout.
  */
 
-import { writeFileSync, existsSync } from 'node:fs'
+import { writeFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -47,73 +39,122 @@ import {
   padChallengeNumber,
   isChallengeNumber,
 } from './challenge-numbers.ts'
-import { challengePagePath } from '../.vitepress/challenge/shortLink.ts'
-
-// The primary locale of the tree. Segment 4b replaces this constant with the tree's P (range.json).
-const PRIMARY = 'en' as const
+import { challengePagePath, SLUG_GRAMMAR } from '../.vitepress/challenge/shortLink.ts'
+import { LOCALES, LOCALE_ENGLISH_NAMES, type Locale } from '../.vitepress/locales.ts'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { checkSourceLayout } from '../.vitepress/source-layout.ts'
+import { jsonStringifyEscaped } from '../.vitepress/layout-error.ts'
 
 /**
- * The four short-link forms, in the order each challenge's rules are written. `/en/c/` and
- * `/zh-TW/c/` are what the copy control gives; `/c/` and `/zh/c/`, given out before spec 0008,
- * are kept so links already handed out keep opening. A Traditional Chinese form targets the
- * Traditional Chinese page.
+ * A short-link form: the rule source prefix and the locale whose page it opens. `null` is the
+ * primary locale (`/c/` opens the primary locale's page, whichever locale that is).
  */
-const FORMS: ReadonlyArray<{ prefix: string; chinese: boolean }> = [
-  { prefix: '/c/', chinese: false },
-  { prefix: '/en/c/', chinese: false },
-  { prefix: '/zh/c/', chinese: true },
-  { prefix: '/zh-TW/c/', chinese: true },
+export interface Form {
+  prefix: string
+  locale: Locale | null
+}
+
+/**
+ * The short-link forms, in the order each challenge's rules are written (D57): `/c/`, then
+ * `/<L>/c/` for each locale `L` of the list in list order, the legacy alias `/zh/c/` written
+ * immediately before `/zh-TW/c/`. `/en/c/` and `/zh-TW/c/` are what the copy control gives;
+ * `/c/` and `/zh/c/`, given out before spec 0008, are kept so links already handed out keep
+ * opening. The order does not depend on `P`, so switching `P` changes targets only.
+ */
+const FORMS: ReadonlyArray<Form> = [
+  { prefix: '/c/', locale: null },
+  ...LOCALES.flatMap((locale): Form[] => [
+    ...(locale === 'zh-TW' ? [{ prefix: '/zh/c/', locale }] : []),
+    { prefix: `/${locale}/c/`, locale },
+  ]),
 ]
-
-/**
- * The four parameterised rules, one per form and in the same order, always last. `/zh/c/` and
- * `/zh-TW/c/` cannot fall back to the English page: a slug rule does not know whether the
- * translation exists, and the site's not-found handling takes a missing one there.
- */
-const PARAMETERISED: ReadonlyArray<[string, string]> = FORMS.map(({ prefix, chinese }) => [
-  `${prefix}:slug`,
-  challengePagePath(':slug', chinese ? 'zh-TW' : 'en', PRIMARY),
-])
 
 const STATUS = '302'
 
-const HEADER = `# Cloudflare Pages redirect rules. This file is copied verbatim to the site root
-# by VitePress (everything under platform/public/ lands in .vitepress/dist/).
-#
-# It has no effect under \`pnpm dev\` — the VitePress dev server does not read it.
-# Test it with \`pnpm pages:dev\`, which serves the built output through the same
-# Pages runtime that production uses.
-#
-# Syntax: <from> <to> <status>. \`:name\` captures one path segment and is
-# substituted on the right. First matching rule wins, so put specific rules
-# above general ones. Cloudflare Pages allows 2,000 static and 100 dynamic
-# rules. Every numbered challenge takes four static rules and the slug links
-# are four dynamic ones, so a range holds at most 500 numbered challenges.
-#
-# \`platform/public/_redirects\` is generated from the challenges; do not edit it
-# by hand. \`pnpm create:challenge\` and the pre-commit hook regenerate it when
-# challenges change. Commit it together with them: GitHub Pages does not read
-# it, but CI checks that it matches the challenges. If CI reports it stale, run
-# \`pnpm redirects:generate\` and commit the result.
-#
-# \`pnpm build\` rewrites it too. The CI check is
-# tests/unit/site/redirects-generated.test.ts.`
+/** Cloudflare Pages' limit on static redirect rules (K1). */
+const STATIC_RULE_LIMIT = 2000
 
-const NUMERIC_SECTION = `# Numbered short links, four per challenge. A number is assigned once and
-# never reused, so a link printed on a handout keeps pointing at the same
-# challenge even after the challenge is renamed. The copy control gives
-# /en/c/NNN and /zh-TW/c/NNN; /c/NNN and /zh/c/NNN are kept so links already
-# handed out keep opening. The two Traditional Chinese rules open the English
-# page while the challenge has no Traditional Chinese page.
-#
-# These come first on purpose: Cloudflare takes the first match and \`/c/:slug\`
-# matches any single segment, a number included. A numeric rule placed after it
-# would never run, and nothing about that would be visible at deploy time.`
+/** The old-address rule, written last and only when `P = zh-TW` (D60). */
+const OLD_ADDRESS_RULE: [string, string] = ['/zh-TW/*', '/:splat']
+
+/** Wrap prose into `# ` comment lines that read back, joined by one space, as the same text. */
+function commentLines(text: string, width = 78): string[] {
+  const lines: string[] = []
+  let line = ''
+  for (const word of text.split(' ')) {
+    if (line !== '' && `# ${line} ${word}`.length > width) {
+      lines.push(`# ${line}`)
+      line = word
+    } else {
+      line = line === '' ? word : `${line} ${word}`
+    }
+  }
+  if (line !== '') lines.push(`# ${line}`)
+  return lines
+}
+
+/**
+ * The file's header. The capacity sentences are computed from the form list (K1–K3): F forms
+ * take F static rules per numbered challenge and F dynamic slug rules, and the old-address rule
+ * of `P = zh-TW` is one more dynamic rule.
+ */
+export function redirectsHeader(primary: Locale, forms: ReadonlyArray<Form> = FORMS): string {
+  const f = forms.length
+  const n = Math.floor(STATIC_RULE_LIMIT / f)
+  const k1 = `Cloudflare Pages allows 2,000 static and 100 dynamic rules. Every numbered challenge takes one static rule per short-link form, ${f} in all, so a range holds at most ${n} numbered challenges.`
+  const k2 = primary === 'zh-TW'
+    ? `The slug links take ${f} dynamic rules, and the rule for old /zh-TW/ addresses takes 1 more.`
+    : `The slug links take ${f} dynamic rules.`
+  const syntax = [
+    '# Cloudflare Pages redirect rules. This file is copied verbatim to the site root',
+    '# by VitePress (everything under platform/public/ lands in .vitepress/dist/).',
+    '#',
+    '# It has no effect under `pnpm dev` — the VitePress dev server does not read it.',
+    '# Test it with `pnpm pages:dev`, which serves the built output through the same',
+    '# Pages runtime that production uses.',
+    '#',
+  ]
+  const generated = [
+    '#',
+    '# `platform/public/_redirects` is generated from the challenges; do not edit it',
+    '# by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when',
+    '# challenges change. Commit it together with them: GitHub Pages does not read',
+    '# it, but CI checks that it matches the challenges. If CI reports it stale, run',
+    '# `pnpm redirects:generate` and commit the result.',
+    '#',
+    '# `pnpm build` rewrites it too. The CI check is',
+    '# tests/unit/site/redirects-generated.test.ts.',
+  ]
+  return [
+    ...syntax,
+    ...commentLines(
+      `Syntax: <from> <to> <status>. \`:name\` captures one path segment and is substituted on the right. First matching rule wins, so put specific rules above general ones. ${k1} ${k2}`,
+    ),
+    ...generated,
+  ].join('\n')
+}
+
+/** The numbered section's comment (K4), with `P`'s name filled in, then the order paragraph. */
+function numericSection(primary: Locale, forms: ReadonlyArray<Form> = FORMS): string {
+  const k4 = `Numbered short links, ${forms.length} per challenge. A number is assigned once and never reused, so a link printed on a handout keeps pointing at the same challenge even after the challenge is renamed. The copy control gives each locale's own form, /en/c/NNN and /zh-TW/c/NNN; /c/NNN, which opens the primary locale's page, and /zh/c/NNN are kept so links already handed out keep opening. A locale's rules open the ${LOCALE_ENGLISH_NAMES[primary]} page, the primary locale's, while the challenge has no page in that locale, or, for a challenge without a primary-locale page, the first locale's page that exists.`
+  return [
+    ...commentLines(k4),
+    '#',
+    '# These come first on purpose: Cloudflare takes the first match and `/c/:slug`',
+    '# matches any single segment, a number included. A numeric rule placed after it',
+    '# would never run, and nothing about that would be visible at deploy time.',
+  ].join('\n')
+}
 
 const PARAMETERISED_SECTION = `# Slug short links for classroom use — students can be given /en/c/<slug> or
 # /zh-TW/c/<slug> to type or paste rather than the full /challenge/<slug>/ path;
 # /c/<slug> and /zh/c/<slug> keep working. Parameterised, so they follow a
 # rename; the numbered rules above are what survives one.`
+
+/** K5: the old-address section, written only when `P = zh-TW`. */
+const OLD_ADDRESS_SECTION = commentLines(
+  "Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range's primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/<path> goes to /<path>. Last on purpose: every /zh-TW/c/ rule above must match first.",
+).join('\n')
 
 interface NumericRule {
   number: number
@@ -121,81 +162,130 @@ interface NumericRule {
   to: string
 }
 
+/** The tree names `includeSlug` is asked about: a challenge declaration, or a locale's brief tree. */
+export type IncludeTree = 'declaration' | Locale
+
 export interface GenerateOptions {
   /**
-   * Which pages to include, asked once per page with its slug and the locale
-   * tree it sits in (`root` or `zh-TW`). Defaults to all of them.
+   * Which files to include, asked once per file with its slug and the tree it sits in: the
+   * challenge declaration (`declaration`) or a locale's brief (`en`, `zh-TW`, … the locale
+   * list's codes). Defaults to all of them.
    *
-   * Two callers restrict it, both to what git tracks:
+   * Two callers restrict it, both to what git tracks (the `--staged` call and the guard test
+   * are rewritten on the new keys by segment 4c):
    *
    * - The guard test that compares the committed file with freshly generated
-   *   content passes a slug-only predicate: a slug whose `index.md` git tracks
-   *   in either tree. Other test files scaffold a throwaway challenge into the
-   *   real `platform/challenge/` tree to exercise the keygen CLI, and vitest
-   *   runs test files in parallel — so the guard can observe a directory that
-   *   exists for a few hundred milliseconds and belongs to nobody. Bounding it
-   *   to what git tracks removes that race without weakening the assertion: an
-   *   unregenerated file is still caught the moment the new challenge is
-   *   staged, which is before it can be committed or built.
-   * - The pre-commit hook (`--staged`) passes the index slugs, per tree: a page
-   *   counts only when its own tree's `<slug>/index.md` is in the index. The
-   *   hook has already refused a snapshot whose Traditional Chinese index slugs
-   *   are not all English ones (D12), so no brief here lacks its page. A
-   *   Traditional Chinese page left out this way re-points its challenge's two
-   *   Traditional Chinese rules at the English page. On a clean checkout, as in
-   *   CI, both give the same file.
+   *   content. Other test files scaffold a throwaway challenge into the real tree to exercise
+   *   the keygen CLI, and vitest runs test files in parallel — so the guard can observe a
+   *   directory that exists for a few hundred milliseconds and belongs to nobody. Bounding it
+   *   to what git tracks removes that race without weakening the assertion.
+   * - The pre-commit hook (`--staged`) passes the index slugs: a file counts only when it is
+   *   in the index. A brief left out this way re-points its locale's rules at the primary
+   *   locale's page (D58). On a clean checkout, as in CI, both give the same file.
    */
-  includeSlug?: (slug: string, locale: string) => boolean
+  includeSlug?: (slug: string, tree: string) => boolean
+}
+
+/** The slugs under `platform/<locale>/challenge/` whose folder holds an `index.md` file (D127). */
+function briefSlugs(root: string, locale: Locale): string[] {
+  const dir = join(root, 'platform', locale, 'challenge')
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .filter((d) => {
+      try {
+        return statSync(join(dir, d.name, 'index.md')).isFile()
+      } catch {
+        return false
+      }
+    })
+    .map((d) => d.name)
+    .sort()
+}
+
+/** D150: the slug lines (outside the grammar, or equal to another challenge's padded number), UTF-16 sorted. */
+function slugFaults(names: ReadonlySet<string>, numbers: ReadonlyMap<string, number>): string[] {
+  const faults: string[] = []
+  for (const name of names) {
+    if (!SLUG_GRAMMAR.test(name)) {
+      faults.push(`redirects: challenge slug ${jsonStringifyEscaped(name)} is outside ${SLUG_GRAMMAR.source}`)
+    }
+  }
+  const padded = new Map<string, string>()
+  for (const [slug, number] of numbers) padded.set(padChallengeNumber(number), slug)
+  for (const name of names) {
+    if (!/^[0-9]+$/.test(name)) continue
+    const holder = padded.get(name)
+    if (holder !== undefined && holder !== name) {
+      faults.push(`redirects: challenge slug ${jsonStringifyEscaped(name)} equals challenge ${name}'s padded number`)
+    }
+  }
+  return faults.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 }
 
 /**
- * The numeric rules the tree calls for, ordered by number, then `/c/`, `/en/c/`,
- * `/zh/c/`, `/zh-TW/c/`.
+ * The numeric rules the tree calls for, ordered by number, then the form order.
  *
- * Every challenge with an included English page gets all four. Translation is
- * optional by design — `redirects.test.ts` asserts the subset direction and not
- * equality — so a challenge's Traditional Chinese short links exist whether or
- * not it has a Traditional Chinese page: they point at that page when it is
- * included and at the English page otherwise, rather than at a page known not
- * to exist. Adding or deleting a Traditional Chinese brief, or leaving its
- * directory untracked or ignored, re-points those two rules; it never adds or
- * removes them.
+ * A challenge is its declaration `platform/challenge/<slug>/challenge.yaml`, which carries the
+ * number; its briefs `platform/<L>/challenge/<slug>/index.md` are pages and are never read for
+ * a number. A challenge with at least one included brief gets one rule per form, for a form of
+ * locale `L` at `L`'s page when its brief is included, otherwise at the primary locale's page
+ * `P` when that brief is included, otherwise at the first locale of the list whose brief is
+ * included (D58). A rule never targets a page known not to exist. Adding or deleting a
+ * translation, or leaving its directory untracked or ignored, re-points rules; it never adds or
+ * removes them. A challenge with no included brief gets none.
  *
- * A challenge with only an included Traditional Chinese page, which the hook and
- * CI's tree check refuse (D12) but `--no-verify` can commit, gets only its two
- * Traditional Chinese rules, pointing at that page.
+ * A brief with no included declaration has no number: that is a number fault (D64 b).
  */
-function numericRules(root: string, options: GenerateOptions = {}): NumericRule[] {
+function numericRules(root: string, primary: Locale, options: GenerateOptions = {}): NumericRule[] {
   const include = options.includeSlug ?? (() => true)
-  const entries = collectChallengeNumbers(root).filter((e) => include(e.slug, e.locale))
+  const entries = collectChallengeNumbers(root).filter((e) => include(e.slug, 'declaration'))
+  const briefs = new Map<Locale, Set<string>>(
+    LOCALES.map((locale) => [locale, new Set(briefSlugs(root, locale).filter((slug) => include(slug, locale)))]),
+  )
 
-  const failures = checkChallengeNumbers(entries).filter((c) => !c.passed)
+  // D150, after the primary locale and before any number fault.
+  const names = new Set<string>(entries.map((e) => e.slug))
+  for (const set of briefs.values()) for (const slug of set) names.add(slug)
+  const numbers = new Map<string, number>()
+  for (const e of entries) if (isChallengeNumber(e.value)) numbers.set(e.slug, e.value)
+  const slugLines = slugFaults(names, numbers)
+  if (slugLines.length > 0) throw new Error(slugLines.join('\n'))
+
+  const failures = checkChallengeNumbers(entries).filter((c) => !c.passed).map((c) => c.message)
+  const declared = new Set(entries.map((e) => e.slug))
+  for (const slug of [...names].sort()) {
+    if (declared.has(slug)) continue
+    for (const locale of LOCALES) {
+      if (briefs.get(locale)?.has(slug)) {
+        const brief = ['platform', locale, 'challenge', slug, 'index.md'].join('/')
+        const declaration = ['platform', 'challenge', slug, 'challenge.yaml'].join('/')
+        failures.push(`${slug} (${brief}) has no declaration ${declaration}, so no number`)
+      }
+    }
+  }
   if (failures.length > 0) {
     throw new Error(
       'Cannot generate _redirects: the challenge tree is inconsistent.\n' +
-        failures.map((f) => `  - ${f.message}`).join('\n'),
+        failures.map((f) => `  - ${f}`).join('\n'),
     )
   }
 
-  // One challenge per slug, with the locale trees its included pages sit in.
-  const bySlug = new Map<string, { number: number; locales: Set<string> }>()
+  const rules: NumericRule[] = []
   for (const entry of entries) {
     if (!isChallengeNumber(entry.value)) continue // unreachable: checked above
-    const challenge = bySlug.get(entry.slug) ?? { number: entry.value, locales: new Set<string>() }
-    challenge.locales.add(entry.locale)
-    bySlug.set(entry.slug, challenge)
-  }
-
-  const rules: NumericRule[] = []
-  for (const [slug, { number, locales }] of bySlug) {
-    const padded = padChallengeNumber(number)
-    const english = challengePagePath(slug, 'en', PRIMARY)
-    // The Traditional Chinese page when it is included, the English page otherwise (G3).
-    const chinese = locales.has('zh-TW') ? challengePagePath(slug, 'zh-TW', PRIMARY) : english
+    const slug = entry.slug
+    const has = (locale: Locale) => briefs.get(locale)?.has(slug) ?? false
+    const fallback = has(primary) ? primary : LOCALES.find(has)
+    if (fallback === undefined) continue
+    const padded = padChallengeNumber(entry.value)
     for (const form of FORMS) {
-      // Without an included English page only the Traditional Chinese forms are written (G9).
-      if (!form.chinese && !locales.has('root')) continue
-      rules.push({ number, from: `${form.prefix}${padded}`, to: form.chinese ? chinese : english })
+      const locale = form.locale ?? primary
+      rules.push({
+        number: entry.value,
+        from: `${form.prefix}${padded}`,
+        to: challengePagePath(slug, has(locale) ? locale : fallback, primary),
+      })
     }
   }
 
@@ -211,30 +301,48 @@ function formatRules(rows: ReadonlyArray<[string, string]>): string[] {
   return rows.map(([from, to]) => `${from.padEnd(fromWidth)}  ${to.padEnd(toWidth)}  ${STATUS}`)
 }
 
-/** The complete contents of `platform/public/_redirects` for a given repository root. */
+/**
+ * The complete contents of `platform/public/_redirects` for a given repository root. `P` is read
+ * first, before any challenge (D123). The layout check is `writeRedirects`'s: this function is
+ * also called on index snapshots and by guards (D19).
+ */
 export function generateRedirects(root: string, options: GenerateOptions = {}): string {
-  const numeric = numericRules(root, options)
+  const primary = readPrimaryLocale(join(root, 'range.json'))
+  const numeric = numericRules(root, primary, options)
+  // Slug rules: one per form, after every numbered rule, at the form locale's page (D59). A slug
+  // rule cannot know whether the page exists; the site's not-found handling takes a missing one.
+  const parameterised: Array<[string, string]> = FORMS.map((form) => [
+    `${form.prefix}:slug`,
+    challengePagePath(':slug', form.locale ?? primary, primary),
+  ])
+  const oldAddress = primary === 'zh-TW'
   const rows: Array<[string, string]> = [
     ...numeric.map((r) => [r.from, r.to] as [string, string]),
-    ...PARAMETERISED.map(([from, to]) => [from, to] as [string, string]),
+    ...parameterised,
+    ...(oldAddress ? [OLD_ADDRESS_RULE] : []),
   ]
   const lines = formatRules(rows)
   const numericLines = lines.slice(0, numeric.length)
-  const parameterisedLines = lines.slice(numeric.length)
+  const parameterisedLines = lines.slice(numeric.length, numeric.length + parameterised.length)
+  const oldAddressLines = lines.slice(numeric.length + parameterised.length)
 
-  const blocks = [HEADER, '']
-  if (numericLines.length > 0) blocks.push(NUMERIC_SECTION, ...numericLines, '')
+  const blocks = [redirectsHeader(primary), '']
+  if (numericLines.length > 0) blocks.push(numericSection(primary), ...numericLines, '')
   blocks.push(PARAMETERISED_SECTION, ...parameterisedLines, '')
+  if (oldAddress) blocks.push(OLD_ADDRESS_SECTION, ...oldAddressLines, '')
   return blocks.join('\n')
 }
 
 /**
- * Rewrite `platform/public/_redirects`.
+ * Rewrite `platform/public/_redirects` (the full mode; the CLI and `create:challenge` go through it).
  *
- * Generation runs first and throws on an inconsistent tree, so a refusal leaves
- * whatever was on disk untouched rather than writing a partial file.
+ * `P` is read first, then the layout check runs on `platform/` (D19, D123); generation then
+ * throws on an inconsistent tree, so a refusal leaves whatever was on disk untouched rather
+ * than writing a partial file.
  */
 export function writeRedirects(root: string, options: GenerateOptions = {}): string {
+  const primary = readPrimaryLocale(join(root, 'range.json'))
+  checkSourceLayout(join(root, 'platform'), primary)
   const content = generateRedirects(root, options)
   const target = join(root, 'platform', 'public', '_redirects')
   writeFileSync(target, content, 'utf-8')
