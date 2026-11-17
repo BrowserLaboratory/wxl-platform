@@ -3318,6 +3318,28 @@ left `_redirects` and every `challenge.yaml` byte-identical; `pnpm test:smoke` (
 so it is recorded as a flaky run (the runtime not ready within 180 s in one Code panel case); `pnpm test:challenges`
 4 passed; `python3 scripts/verify-project.py` passed.
 
+## Stage 7 security review
+
+Reviewed on 2026-11-17 with the project `security-review` skill (`.claude/skills/security-review/SKILL.md`). Report:
+`.proj.specs/0010-primary-locale-layout/review/security-T-0077.md`.
+
+- Surface: requested base `origin/main` (`7f601a1`), merge-base `040a5ec`, HEAD `ad623ed`; the committed layer is the
+  whole review (nothing pending or untracked).
+- Method: five candidate reviewers, one per attack surface, listed 56 candidates without judging them; each candidate
+  then went to its own independent reviewer for false-positive validation. All `harness-reviewer`, read-only.
+- Result: **1 confirmed (Medium), 55 rejected** (5 false positives, 50 real behaviours with no security impact or
+  accepted by the spec's trust boundaries). The rejected candidates' follow-up suggestions are in the report's table.
+- **SR-1 (open redirect, Cloudflare Pages).** The old-address rule this ticket adds for a Traditional-Chinese-primary
+  range, `/zh-TW/*  /:splat  302` (D60, D118; `platform/public/_redirects:67`), answers `/zh-TW//evil.example` with an
+  off-site `Location`. The parent reproduced it on 2026-11-17 against the production build under
+  `wrangler pages dev` (wrangler 4.123.0, the Pages runtime in local workerd; **not** Cloudflare's edge): the literal
+  `//` forms and the raw backslash forms redirect off-site; the percent-encoded forms stay same-origin. Whether the
+  edge normalises the path first is still unobserved (S61, stage 8).
+- **Not fixed in this stage.** D118 leaves the choice to the user ("no rule is changed without that choice"), so the
+  parent stopped before stage 8 and put the three options to the user: the safe-by-construction rule set D118 names
+  (the parent's recommendation), dropping the Cloudflare rule and relying on the not-found page's client-side strip
+  (D28), or keeping R22 as written and letting S61 decide on the preview.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
