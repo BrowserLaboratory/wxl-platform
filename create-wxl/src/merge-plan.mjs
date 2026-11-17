@@ -35,6 +35,20 @@ export class PlanningError extends Error {
   }
 }
 
+/** D107, U59, U112: the nine anchor files (0004's A1-A9 plus the deploy template) whose change
+ * between base and target adds the one UP-A12 line. Exported so a test can pin the list. */
+export const ANCHOR_PATHS = [
+  'package.json',
+  'README.md',
+  'README.en.md',
+  'CONTRIBUTE.md',
+  '.vitepress/config.mts',
+  '.vitepress/challenge/shortLink.ts',
+  'platform/en/index.md',
+  'platform/zh-TW/index.md',
+  'scripts/templates/deploy.yml.template',
+]
+
 const BINARY_SCAN_BYTES = 8000
 
 function isBinary(buf) {
@@ -606,23 +620,11 @@ export async function planMerge({ deps, guard, rangeRoot, realRangeRoot, baseDir
   attention.sort((a, b2) => (a.path < b2.path ? -1 : a.path > b2.path ? 1 : 0))
 
   // Fork:init-derived content (traceability.md "Fork:init-derived content", T-0027 increment 20,
-  // U59): when ANY of the nine anchor files (0004's A1-A9 plus the deploy template) differs
-  // between base and target, the report adds ONE UP-A12 line -- not one per anchor, and not tied
-  // to any single path, so it is appended after the path-sort above, with no `path` field of its
-  // own (`upgrade-report.mjs`'s own sort already places a `UP-A12` item last regardless of this
-  // append order; this is also why `attention.sort`, above, never sees it). The nine paths are
-  // written as literals here, at this one call site -- there is no shared module exporting them.
-  const ANCHOR_PATHS = [
-    'package.json',
-    'README.md',
-    'README.en.md',
-    'CONTRIBUTE.md',
-    '.vitepress/config.mts',
-    '.vitepress/challenge/shortLink.ts',
-    'platform/index.md',
-    'platform/zh-TW/index.md',
-    'scripts/templates/deploy.yml.template',
-  ]
+  // U59): when ANY of the nine anchor files (`ANCHOR_PATHS`, exported at module top level, D107,
+  // U112) differs between base and target, the report adds ONE UP-A12 line -- not one per anchor,
+  // and not tied to any single path, so it is appended after the path-sort above, with no `path`
+  // field of its own (`upgrade-report.mjs`'s own sort already places a `UP-A12` item last
+  // regardless of this append order; this is also why `attention.sort`, above, never sees it).
   // T-0027 verification follow-up (item 4, approved sub-case, 2026-11-09): the same exact-name
   // (case-sensitive) presence rule as the U53 fix, above (`baseFileSet`/`targetFileSet`), not a
   // path read -- on a case-insensitive filesystem, joining `anchorPath` onto `targetDir` and
