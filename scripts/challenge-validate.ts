@@ -1,7 +1,12 @@
 /**
  * challenge-validate.ts
  *
- * CLI tool that validates challenge structure and frontmatter.
+ * CLI tool that validates each challenge's declaration, briefs and directory.
+ *
+ * A challenge is `platform/challenge/<slug>/{challenge.yaml,src/}` plus one brief per locale at
+ * `platform/<locale>/challenge/<slug>/index.md`. The command reads range.json, then checks the
+ * source layout (PL-E07..PL-E10), then validates the declaration once and every brief that exists
+ * in a listed locale; the primary locale's brief is required (VM10).
  *
  * Usage:
  *   pnpm challenge:validate              # validate all challenges
@@ -11,14 +16,21 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { resolve, dirname, join, basename } from 'node:path'
+import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse as parseYaml } from 'yaml'
+import { parseDocument, visit, isScalar, type Pair } from 'yaml'
+import { readChallengeDeclaration, type DeclarationReason } from '../.vitepress/challenge/declaration.ts'
 import {
-  validateChallengeConfig,
   VALID_TOOLS,
+  BRIEF_KEYS,
+  validateChallengeDeclaration,
+  validateChallengeBrief,
   type BackendType,
 } from '../.vitepress/challenge/config.ts'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { LOCALES } from '../.vitepress/locales.ts'
+import { checkSourceLayout } from '../.vitepress/source-layout.ts'
+import { SiteLayoutError } from '../.vitepress/layout-error.ts'
 import { parseFsIgnore } from './fsignore.ts'
 import {
   isChallengeNumber,
@@ -55,65 +67,121 @@ const BACKEND_EXT_MAP: Record<BackendType, { ext: string; lang: string }> = {
   php: { ext: '.php', lang: 'PHP' },
 }
 
+// ─── YAML parsing for validate's messages (D129) ───────────────────────────────────────────
+
+const YAML_OPTIONS = { schema: 'core', merge: false, uniqueKeys: true, resolveKnownTags: false } as const
+
+const NON_SCALAR_KEY_TEXT = 'a mapping key is not a scalar'
+
+type YamlOutcome = { ok: true; value: unknown } | { ok: false; message: string }
+
+/** `yaml`'s parse of `src` with the declaration reader's options (D129), reporting the first
+ *  problem's text instead of the reader's bare reason. */
+function parseYamlStrict(src: string): YamlOutcome {
+  const doc = parseDocument(src, YAML_OPTIONS)
+  const first = doc.errors[0] ?? doc.warnings[0]
+  if (first) return { ok: false, message: first.message }
+  let nonScalarKey = false
+  visit(doc, {
+    Pair(_, pair: Pair) {
+      if (!isScalar(pair.key)) {
+        nonScalarKey = true
+        return visit.BREAK
+      }
+    },
+  })
+  if (nonScalarKey) return { ok: false, message: NON_SCALAR_KEY_TEXT }
+  try {
+    return { ok: true, value: doc.toJS({ maxAliasCount: 100 }) }
+  } catch (err) {
+    return { ok: false, message: (err as Error).message }
+  }
+}
+
+function declarationFailureMessage(reason: DeclarationReason, slug: string, path: string): string {
+  switch (reason) {
+    case 'absent':
+      return `platform/challenge/${slug}/challenge.yaml not found`
+    case 'not-a-mapping':
+      return 'challenge.yaml is not a YAML mapping'
+    case 'multi-document':
+      return 'challenge.yaml holds more than one YAML document'
+    case 'invalid-yaml': {
+      let detail = NON_SCALAR_KEY_TEXT
+      try {
+        const outcome = parseYamlStrict(readFileSync(path, 'utf-8'))
+        if (!outcome.ok && outcome.message !== '') detail = outcome.message
+      } catch {
+        // the reader saw the file a moment ago; keep the fixed text
+      }
+      return `invalid YAML in challenge.yaml: ${detail}`
+    }
+  }
+}
+
+// ─── Brief checks (D74, VM6-VM9, VM14, VM15) ───────────────────────────────────────────────────
+
+function checkBrief(briefPath: string, locale: string, slug: string): CheckResult {
+  const label = `brief (${locale})`
+  const rel = `platform/${locale}/challenge/${slug}/index.md`
+  const parsed = parseMd(readFileSync(briefPath, 'utf-8'))
+  if (!parsed) return { label, passed: false, message: `${rel}: no YAML frontmatter found` }
+  const outcome = parseYamlStrict(parsed.fmRaw)
+  if (!outcome.ok) return { label, passed: false, message: `${rel}: invalid YAML: ${outcome.message}` }
+  if (outcome.value !== null && (typeof outcome.value !== 'object' || Array.isArray(outcome.value))) {
+    return { label, passed: false, message: `${rel}: invalid YAML: the frontmatter is not a mapping` }
+  }
+  const frontmatter = (outcome.value ?? {}) as Record<string, unknown>
+  const extra = Object.keys(frontmatter).filter((key) => !(BRIEF_KEYS as readonly string[]).includes(key))
+  if (extra.length > 0) {
+    return {
+      label,
+      passed: false,
+      message: `${rel} carries key(s) ${extra.join(', ')} that a brief may not carry; a brief holds only title, description and layout, and the challenge declaration belongs in platform/challenge/${slug}/challenge.yaml`,
+    }
+  }
+  try {
+    validateChallengeBrief(frontmatter)
+  } catch (err) {
+    return { label, passed: false, message: `${rel}: ${(err as Error).message}` }
+  }
+  return { label, passed: true, message: rel }
+}
+
 // ─── Core validation function ───────────────────────────────────────────────
 
 /**
- * Validate a single challenge by its markdown file path.
+ * Validate a single challenge by its slug under `root`.
  *
- * @param mdPath  Absolute path to the challenge markdown file
- * @returns       Validation result with individual check outcomes
+ * @param root  The repository root (the directory holding `platform/`)
+ * @param slug  The challenge's slug
+ * @returns     Validation result with individual check outcomes
  */
-export function validateChallenge(mdPath: string): ValidationResult {
-  const filename = basename(mdPath)
-  const slug = filename === 'index.md'
-    ? basename(dirname(mdPath))
-    : basename(mdPath, '.md')
-
-  const isPerFolder = filename === 'index.md'
-  const baseDir = dirname(mdPath)
+export function validateChallenge(root: string, slug: string): ValidationResult {
+  const baseDir = join(root, 'platform', 'challenge', slug)
   const checks: CheckResult[] = []
 
-  // ── Check 1: Frontmatter exists and is parseable YAML ───────────────────
-  const raw = readFileSync(mdPath, 'utf-8')
-  const parsed = parseMd(raw)
-  if (!parsed) {
-    checks.push({ label: 'frontmatter', passed: false, message: 'no YAML frontmatter found' })
+  // ── Check 1: the declaration is read ────────────────────────────────────
+  const declaration = readChallengeDeclaration(root, slug)
+  if (!declaration.ok) {
+    checks.push({ label: 'declaration', passed: false, message: declarationFailureMessage(declaration.reason, slug, declaration.path) })
     return { slug, checks, allPassed: false }
   }
-
   let fm: Record<string, unknown>
   try {
-    fm = parseYaml(parsed.fmRaw)
-    if (typeof fm !== 'object' || fm === null) {
-      throw new Error('frontmatter is not an object')
-    }
+    validateChallengeDeclaration(declaration.value)
+    fm = declaration.value
   } catch (err) {
-    checks.push({
-      label: 'frontmatter',
-      passed: false,
-      message: `invalid YAML: ${(err as Error).message}`,
-    })
+    checks.push({ label: 'declaration', passed: false, message: (err as Error).message })
     return { slug, checks, allPassed: false }
   }
-
-  // ── Check 2: Required fields present (uses validateChallengeConfig) ─────
-  try {
-    validateChallengeConfig(fm)
-    checks.push({ label: 'frontmatter', passed: true, message: 'valid YAML with required fields' })
-  } catch (err) {
-    checks.push({
-      label: 'frontmatter',
-      passed: false,
-      message: (err as Error).message,
-    })
-    return { slug, checks, allPassed: false }
-  }
+  checks.push({ label: 'declaration', passed: true, message: 'valid challenge.yaml with required keys' })
 
   // ── Check 2b: Challenge number present and shaped ───────────────────────
-  // The number is what a printed handout names, so it is checked on every
-  // challenge rather than only on the ones a redirect rule happens to cover.
-  // Agreement across locale trees and uniqueness across challenges are not
-  // visible from a single page; they run once over the whole tree in main().
+  // The number (from challenge.yaml) is what a printed handout names, so it is checked on
+  // every challenge rather than only on the ones a redirect rule happens to cover.
+  // Uniqueness across challenges is not visible from a single declaration; it runs once
+  // over the whole tree in main().
   const numberValue = fm.number
   if (isChallengeNumber(numberValue)) {
     checks.push({ label: 'number', passed: true, message: `number ${numberValue}` })
@@ -121,7 +189,7 @@ export function validateChallenge(mdPath: string): ValidationResult {
     checks.push({
       label: 'number',
       passed: false,
-      message: 'no `number` in frontmatter; assign one greater than every number ever assigned',
+      message: 'no `number` in challenge.yaml; assign one greater than every number ever assigned',
     })
   } else {
     checks.push({
@@ -151,49 +219,22 @@ export function validateChallenge(mdPath: string): ValidationResult {
   }
 
   // ── Check 4: App file exists ────────────────────────────────────────────
-  if (isPerFolder) {
-    const appPath = resolve(baseDir, 'src', app)
-    if (existsSync(appPath)) {
-      checks.push({ label: 'app', passed: true, message: `src/${app} exists` })
-    } else {
-      checks.push({ label: 'app', passed: false, message: `src/${app} not found` })
-    }
+  const appPath = resolve(baseDir, 'src', app)
+  if (existsSync(appPath)) {
+    checks.push({ label: 'app', passed: true, message: `src/${app} exists` })
   } else {
-    const appPath = resolve(baseDir, app)
-    if (existsSync(appPath)) {
-      checks.push({ label: 'app', passed: true, message: `${app} exists` })
-    } else {
-      checks.push({ label: 'app', passed: false, message: `${app} not found` })
-    }
+    checks.push({ label: 'app', passed: false, message: `src/${app} not found` })
   }
 
   // ── Check 5: Flag file exists ───────────────────────────────────────────
   const flagRef = (fm.flag as string) ?? 'flag.txt'
   let resolvedFlagPath: string | null = null
-  if (isPerFolder) {
-    const flagPath = resolve(baseDir, 'src', flagRef)
-    if (existsSync(flagPath)) {
-      checks.push({ label: 'flag', passed: true, message: `src/${flagRef} exists` })
-      resolvedFlagPath = flagPath
-    } else {
-      checks.push({ label: 'flag', passed: false, message: `src/${flagRef} not found` })
-    }
+  const flagPath = resolve(baseDir, 'src', flagRef)
+  if (existsSync(flagPath)) {
+    checks.push({ label: 'flag', passed: true, message: `src/${flagRef} exists` })
+    resolvedFlagPath = flagPath
   } else {
-    // Legacy: check for /flag.txt in fs map
-    const fsMap = (fm.fs ?? {}) as Record<string, string>
-    const flagEntry = Object.keys(fsMap).find((vpath) => vpath === '/flag.txt')
-    if (flagEntry) {
-      const flagFile = fsMap[flagEntry]
-      const flagPath = resolve(baseDir, flagFile)
-      if (existsSync(flagPath)) {
-        checks.push({ label: 'flag', passed: true, message: `${flagFile} exists (via fs map)` })
-        resolvedFlagPath = flagPath
-      } else {
-        checks.push({ label: 'flag', passed: false, message: `${flagFile} not found (referenced in fs map)` })
-      }
-    } else {
-      checks.push({ label: 'flag', passed: false, message: 'no /flag.txt entry in fs map' })
-    }
+    checks.push({ label: 'flag', passed: false, message: `src/${flagRef} not found` })
   }
 
   // ── Check 5b: Flag content is long enough to redact by value ────────────
@@ -257,25 +298,50 @@ export function validateChallenge(mdPath: string): ValidationResult {
   }
 
   // ── Check 7: .fsignore parseable ────────────────────────────────────────
-  if (isPerFolder) {
-    const fsIgnorePath = resolve(baseDir, 'src', '.fsignore')
-    if (existsSync(fsIgnorePath)) {
-      try {
-        const content = readFileSync(fsIgnorePath, 'utf-8')
-        parseFsIgnore(content)
-        checks.push({ label: '.fsignore', passed: true, message: 'valid and parseable' })
-      } catch (err) {
-        checks.push({
-          label: '.fsignore',
-          passed: false,
-          message: `parse error: ${(err as Error).message}`,
-        })
-      }
-    } else {
-      checks.push({ label: '.fsignore', passed: true, message: 'not present (using defaults)' })
+  const fsIgnorePath = resolve(baseDir, 'src', '.fsignore')
+  if (existsSync(fsIgnorePath)) {
+    try {
+      const content = readFileSync(fsIgnorePath, 'utf-8')
+      parseFsIgnore(content)
+      checks.push({ label: '.fsignore', passed: true, message: 'valid and parseable' })
+    } catch (err) {
+      checks.push({
+        label: '.fsignore',
+        passed: false,
+        message: `parse error: ${(err as Error).message}`,
+      })
     }
   } else {
-    checks.push({ label: '.fsignore', passed: true, message: 'not applicable (legacy structure)' })
+    checks.push({ label: '.fsignore', passed: true, message: 'not present (using defaults)' })
+  }
+
+  // ── Check 8: the challenge directory holds only src/ and challenge.yaml (D117) ──
+  const stray = readdirSync(baseDir)
+    .filter((name) => name !== 'src' && name !== 'challenge.yaml' && !name.startsWith('.'))
+    .sort()
+  if (stray.length > 0) {
+    checks.push({
+      label: 'structure',
+      passed: false,
+      message: `platform/challenge/${slug}/ holds ${stray.join(', ')}; a challenge directory holds only src/ and challenge.yaml`,
+    })
+  } else {
+    checks.push({ label: 'structure', passed: true, message: 'only src/ and challenge.yaml' })
+  }
+
+  // ── Check 9: the briefs, primary locale first ───────────────────────────
+  const primary = readPrimaryLocale(join(root, 'range.json'))
+  for (const locale of [primary, ...LOCALES.filter((l) => l !== primary)]) {
+    const briefPath = join(root, 'platform', locale, 'challenge', slug, 'index.md')
+    if (existsSync(briefPath)) {
+      checks.push(checkBrief(briefPath, locale, slug))
+    } else if (locale === primary) {
+      checks.push({
+        label: `brief (${locale})`,
+        passed: false,
+        message: `platform/${locale}/challenge/${slug}/index.md not found; every challenge has a brief in the primary locale (${locale})`,
+      })
+    }
   }
 
   const allPassed = checks.every((c) => c.passed)
@@ -284,34 +350,31 @@ export function validateChallenge(mdPath: string): ValidationResult {
 
 // ─── Discovery ──────────────────────────────────────────────────────────────
 
-/**
- * Discover all challenge markdown files.
- *
- * @param challengesDir  The platform/challenge directory
- * @param target         Optional slug to filter to a single challenge
- * @returns              Array of absolute paths to challenge .md files
- */
-export function discoverChallenges(challengesDir: string, target?: string): string[] {
-  if (!existsSync(challengesDir)) return []
-
-  // New pattern: platform/challenge/<slug>/index.md
-  const newPatternFiles = readdirSync(challengesDir, { withFileTypes: true })
+function directoryNames(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
-    .filter((d) => existsSync(join(challengesDir, d.name, 'index.md')))
-    .filter((d) => !target || d.name === target)
-    .map((d) => join(challengesDir, d.name, 'index.md'))
+    .map((d) => d.name)
+}
 
-  // Legacy pattern: platform/challenge/<slug>.md (fallback)
-  const legacyFiles = readdirSync(challengesDir)
-    .filter((f) => f.endsWith('.md') && f !== 'index.md')
-    .filter((f) => {
-      const slug = f.replace(/\.md$/, '')
-      return !newPatternFiles.some((nf) => nf.includes(`/${slug}/index.md`))
-    })
-    .filter((f) => !target || f === `${target}.md`)
-    .map((f) => join(challengesDir, f))
-
-  return [...newPatternFiles, ...legacyFiles]
+/**
+ * Discover every challenge slug: each directory under `platform/challenge/` together with each
+ * directory under a listed locale's `platform/<locale>/challenge/` (D86), so a brief without a
+ * declaration and a declaration without a brief are both reported.
+ *
+ * @param root    The repository root
+ * @param target  Optional slug to filter to a single challenge
+ * @returns       Sorted, de-duplicated slugs
+ */
+export function discoverChallenges(root: string, target?: string): string[] {
+  const slugs = new Set<string>(directoryNames(join(root, 'platform', 'challenge')))
+  for (const locale of LOCALES) {
+    // D127: a brief is a folder's index.md; any other entry there makes no slug.
+    for (const name of directoryNames(join(root, 'platform', locale, 'challenge'))) {
+      if (existsSync(join(root, 'platform', locale, 'challenge', name, 'index.md'))) slugs.add(name)
+    }
+  }
+  return [...slugs].filter((slug) => !target || slug === target).sort()
 }
 
 // ─── CLI output ─────────────────────────────────────────────────────────────
@@ -339,18 +402,31 @@ async function main(): Promise<void> {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = dirname(__filename)
   const root = resolve(__dirname, '..')
-  const challengesDir = resolve(root, 'platform', 'challenge')
 
-  const files = discoverChallenges(challengesDir, target)
+  // D19, D123: range.json is read first; a fault in it, or in the layout, stops the command before
+  // anything is validated, with the error's own text (no class name, no stack).
+  try {
+    const primary = readPrimaryLocale(join(root, 'range.json'))
+    // D19: then the layout check, so a legacy-layout page is named before any challenge is.
+    checkSourceLayout(join(root, 'platform'), primary)
+  } catch (err) {
+    if (err instanceof SiteLayoutError) {
+      console.error(err.message)
+      process.exit(1)
+    }
+    throw err
+  }
 
-  if (files.length === 0) {
+  const slugs = discoverChallenges(root, target)
+
+  if (slugs.length === 0) {
     console.error(target ? `Challenge not found: ${target}` : 'No challenge files found')
     process.exit(1)
   }
 
   let allPassed = true
-  for (const f of files) {
-    const result = validateChallenge(f)
+  for (const slug of slugs) {
+    const result = validateChallenge(root, slug)
     printResult(result)
     if (!result.allPassed) allPassed = false
   }

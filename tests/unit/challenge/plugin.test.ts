@@ -8,6 +8,7 @@ import { LOCALES as REAL_LOCALES } from '../../../.vitepress/locales'
 
 const BASE_FRONTMATTER = {
   title: 'Test Challenge',
+  layout: 'challenge',
   backend: 'flask' as const,
   app: './app.py',
   fs: { '/flag.txt': 'FLAG{test}' },
@@ -37,6 +38,15 @@ describe('processChallengeFrontmatter - simplified (no encryption)', () => {
 })
 
 describe('processChallengeFrontmatter - validators', () => {
+  it('throws when title is missing (a brief fault reaches processChallengeFrontmatter; pins the missing-title behaviour)', () => {
+    const { title: _title, ...withoutTitle } = BASE_FRONTMATTER
+    expect(() => processChallengeFrontmatter(withoutTitle)).toThrow('title must be a non-empty string')
+  })
+
+  it('throws when description is not a string (a brief fault reaches processChallengeFrontmatter)', () => {
+    expect(() => processChallengeFrontmatter({ ...BASE_FRONTMATTER, description: 42 })).toThrow('description must be a string')
+  })
+
   it('throws when app is not a string (validateChallengeDeclaration now checked)', () => {
     expect(() => processChallengeFrontmatter({ ...BASE_FRONTMATTER, app: 3 })).toThrow(/app must be a string/)
   })

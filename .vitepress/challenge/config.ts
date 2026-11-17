@@ -136,8 +136,10 @@ export function validateChallengeConfig(raw: unknown): ChallengeConfig {
   }
 }
 
-// A brief's frontmatter (D74, VM6-VM15). Y23 alone: the full key/type checks (VM6-VM9, VM14, VM15)
-// are Y24-Y29's (wave 5, challenge-validate.ts), not implemented here yet.
+// A brief's frontmatter (D74, VM6-VM15). The value checks (VM7-VM9: title, layout, description) live
+// here, without a path, so the build and `challenge:validate` fail with the same words; validate
+// prefixes the brief's path (`<path>: <message>`). The key set (VM6) and the frontmatter's
+// presence and syntax (VM14, VM15) are validate's own (scripts/challenge-validate.ts).
 export interface ChallengeBrief {
   title: string
   layout: 'challenge'
@@ -145,6 +147,15 @@ export interface ChallengeBrief {
 }
 
 export function validateChallengeBrief(raw: Record<string, unknown>): ChallengeBrief {
+  if (typeof raw.title !== 'string' || raw.title === '') {
+    throw new Error('title must be a non-empty string')
+  }
+  if (raw.layout !== 'challenge') {
+    throw new Error('layout must be challenge')
+  }
+  if (raw.description !== undefined && typeof raw.description !== 'string') {
+    throw new Error('description must be a string')
+  }
   return {
     title: raw.title as string,
     layout: raw.layout as 'challenge',
