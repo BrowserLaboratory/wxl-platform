@@ -250,7 +250,7 @@ No tool changes the primary locale afterwards, and it has a cost:
 - Edit `primaryLocale` in `range.json` and commit it; the pre-commit hook regenerates `platform/public/_redirects`, or run `pnpm redirects:generate` yourself.
 - Restart `pnpm dev` for the change to take effect.
 - The site's root address changes language, and `/c/NNN` opens the new primary locale's page.
-- Links already handed out without a locale code open the new primary locale's page; links that start with `/<old primary locale>/…` reach the root only through the old-address rules (when the old primary locale was `zh-TW`) or through the not-found page, which strips the prefix.
+- Links already handed out without a locale code open the new primary locale's page; links that start with `/<old primary locale>/…` reach the root only through the old-address rules (when the old primary locale was `zh-TW`: one for each top-level page and folder) or through the not-found page, which strips the prefix.
 - The brief every challenge must have becomes the new primary locale's. When some challenge lacks it, the pre-commit hook refuses the commit with a line that names the challenge and the missing brief, so write each such brief first.
 - The hero and nav links on the home pages follow by themselves.
 - A `challenge.yaml` edit shows in the challenge list after a reload, and on the challenge page only after you restart `pnpm dev`.

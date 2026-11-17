@@ -35,10 +35,10 @@ Git 結果由 parent 擷取，審查者都只讀不改。
 
 ## 結論
 
-**1 項成立（Medium），55 項駁回**（5 項誤報、50 項行為屬實但不是安全缺陷）。
+**1 項成立（Medium，已修正），55 項駁回**（5 項誤報、50 項行為屬實但不是安全缺陷）。
 
 - 成立的 SR-1 是 Cloudflare Pages 上的 open redirect，來自這張票新增的舊位址規則。它是 spec 自己點名要在本階段審視、在 stage 8 以 S61 擋關的項目（D118、TB5）。
-  依 D118，規則要不要改由使用者選擇，所以**本階段沒有修改規則**；見「待使用者決定」。
+  依 D118，規則要不要改由使用者選擇；使用者在 2026-11-17 選了依構造就安全的形式，已在 commit `de88bfb` 修正並重測，見「SR-1 的處置」。
 - 駁回的候選裡，多數的底層行為屬實，整理在「駁回的候選」表的追蹤建議欄，留給使用者決定要不要開票。
 
 ## 成立的發現
@@ -128,7 +128,34 @@ Pages 的 runtime 跑在本機的 workerd），以 `curl -s --path-as-is -D -` �
 
 四、考慮只在曾經提供 `/zh-TW/…` 位址的 range 產生這條規則，縮小暴露面（spec.en.md:405 已經指出新建的繁中主語系 range 也會帶這條規則）。
 
-## 待使用者決定
+## SR-1 的處置（2026-11-17）
+
+使用者在對話中親自選擇：「改成安全形式」（下一節的選項 1）。修正在 commit `de88bfb`（orchestrator 的 SR1 段，test-first，兩位獨立檢查者，一輪修正）：
+
+- `/zh-TW/*  /:splat` 移除。繁中主語系的靶場改由主語系資料夾的頂層內容產生規則：`/zh-TW/  /`、每個頂層頁面一條靜態規則、每個含頁面的頂層資料夾一條 `/zh-TW/<資料夾>/*  /<資料夾>/:splat`。每個目標都以固定名稱開頭（D154，traceability 修訂 2.5）。
+- 名稱不符合 `^[A-Za-z0-9][A-Za-z0-9._-]*$`、名為 `c` 或 `smoke-fixtures`、或不算頁面資料夾的頂層項目沒有規則，由找不到頁面那一頁在瀏覽器端處理。
+- hook 在任何語系資料夾底下新增、刪除 `.md` 時重新產生 `_redirects`。
+- 修正後完整測試：vitest 7268 通過、0 失敗。
+
+**parent 修正後的本機重測**：同樣在 `wrangler pages dev`（wrangler 4.123.0，本機的 Pages runtime，**不是 Cloudflare 的邊緣**）對 HEAD 的 production 建置送出下列路徑。
+
+| 路徑 | 狀態 | Location | 判定 |
+|---|---|---|---|
+| `/zh-TW/`、`/zh-TW/challenges` | 302 | `/`、`/challenges` | 同源 |
+| `/zh-TW/guide/notes`、`/zh-TW/challenge/door-is-open/` | 302 | `/guide/notes`、`/challenge/door-is-open/` | 同源 |
+| `/zh-TW/c/001` | 302 | `/challenge/door-is-open/` | 同源 |
+| S61 的全部輸入（`//`、`///`、`%2F%2F`、`%2f%2f`、`%2F/`、`%252F%252F`、`%5C`、`%5C%5C`、`%5C/`、`%09`、`%0A`、`%0D`、兩種原始反斜線） | 404 | 無 | 沒有轉址 |
+| `/zh-TW/guide//evil.example`、`/zh-TW/guide///evil.example` | 302 | `/guide//evil.example`、`/guide///evil.example` | 同源 |
+| `/zh-TW/guide/%5Cevil.example`、原始反斜線 `/zh-TW/guide/\evil.example` | 302 | `/guide/%5Cevil.example`、`/guide//evil.example` | 同源 |
+| `/zh-TW/challenge//evil.example` | 302 | `/challenge//evil.example` | 同源 |
+| `/zh-TW/guide/../../evil.example` | 404 | 無 | 沒有轉址 |
+| `/zh-TW/en/guide/notes`、`/zh-TW/zh-TW/guide/notes` | 404 | 無 | 沒有轉址（由找不到頁面那一頁處理） |
+
+沒有任何輸入得到站外的 Location。S61 仍要在 stage 8 於真正的 preview 上執行；依構造它應該成立，但邊緣的行為到那時才算觀察過。
+
+SR1 的檢查者留下的低嚴重度項目（不擋本階段）：D154 之後 K1 的容量句對繁中主語系略為高估（舊位址的靜態規則也佔 Cloudflare 的 2,000 條額度）；README 對 `platform/public/zh-TW/` 的例外沒提到路徑等於頂層頁面名稱的檔案；三處註解用語。
+
+## 當時交給使用者的選項
 
 D118 規定：S61 不通過時，由使用者在「照 R22 原樣」與「依構造就安全的形式」之間選擇，在那之前不改任何規則。本機實測已經重現站外轉址，
 所以 parent 在 stage 8 之前就把選擇交給使用者，沒有自行修改 `scripts/generate-redirects.ts` 或 `platform/public/_redirects`。選項：
