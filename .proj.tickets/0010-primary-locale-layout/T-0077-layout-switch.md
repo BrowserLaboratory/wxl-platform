@@ -1487,7 +1487,8 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
     before and after this run shows the same `platform/` adds/renames/modifications wave 1 already
     staged, nothing added, removed or re-staged.
 
-- 2026-11-16 (wave 2 part B2 (resumed), independent-checker fix list continued). A previous
+- 2026-11-17 (wave 2 part B2 (resumed), independent-checker fix list continued; date corrected by
+  B3 below — the work recorded in this entry was done on 2026-11-17, not 2026-11-16). A previous
   executor run of this exact part was cut off by an authentication error partway through; its
   uncommitted edits were already in the working tree when this run started (`git diff HEAD` — 14
   files: 5 production, 9 test). Read that diff first, verified each item against it, kept every
@@ -1673,12 +1674,141 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
       exits non-zero with [slug] and \"payload integrity\", leaving index.md and runtime.wasm
       untouched" (wave 5, Y59).
     No other failure, no new failure: the total rose from wave 2 part B1's ending 5948 by exactly
-    132 (this wave's new/fixed cases: 3 new `not-found-wiring.test.ts` cases, the already-resumed
-    diff's P = zh-TW matrices across 9 test files, minus the one removed page-mode assertion).
+    132 (this wave's new/fixed cases: 3 new `not-found-wiring.test.ts` cases, plus the
+    already-resumed diff's P = zh-TW matrices across 9 test files — the one assertion removed
+    from an existing `ChallengeList.test.ts` case, the deferred page-mode check, is a count of
+    assertions within one case, not of test cases, and does not subtract from this total).
   - `pnpm --dir create-wxl test` not run: this wave touches neither `create-wxl/` nor fork:init
     (confirmed: `git status --short -- create-wxl/` prints nothing, both before and after).
   - No file under `platform/` was created, moved or edited by this wave; `git status --short`
     before and after shows the same `platform/` adds/renames/modifications wave 1 already staged.
+
+- 2026-11-17 (wave 2 part B3, closing part). Scope confirmed by the parent under the 2026-11-16
+  standing authorization quoted above (「授權：所有建議我都同意，權限都授權到兩個 epic 完成…」) and
+  the same day's "why D108's move is not committed yet" entry: HEAD `9abe622` carries parts 1, B1,
+  B2; this part reverts B2's choice (replacing the SW real-Layout table with four representative
+  mirrors) back to the approved plan — no plan row dropped or replaced by an executor — and closes
+  the items below. Files touched: `tests/unit/i18n/not-found-wiring.test.ts`,
+  `tests/unit/components/ChallengeList.test.ts`, this ticket. No file under `platform/` touched;
+  no `git add`/`commit`/`stash`/`checkout`/`reset`/`restore` run.
+  1. **SW01–SW16 on the real, mounted Layout, done — added, not a replacement.** The existing
+     hand-written cases under `describe('the real Layout: a locale switcher choice', …)` (B1, B3,
+     B5–B7, D17, L5, L8, W6 — including the three B2 mirrors A21/A23×2) stay: they each carry a
+     dimension the SW table does not model (the gate, the base, a hash-only change, storage
+     refusal), so replacing them would drop coverage, not just reorganise it. Added, instead, a new
+     `describe.each(['en','zh-TW'])('… the full SW table (P = %s)', …)` with
+     `it.each(SW.filter(r => r.P === P))` over `tests/__helpers__/localeTables.ts`'s SW01–SW16,
+     asserting Decision (navigate with no `replace`, or stay), the Line column (shown at once when
+     stay, never on SW13–16), and Writes (`wxl-locale` always equals the chosen locale, SW13–16
+     included) for every row. `npx vitest run tests/unit/i18n/not-found-wiring.test.ts -t "full SW
+     table"` → 16 passed, pass on first run, as the resumed B2 entry's S1-j finding predicted (the
+     pure-function table already proves the decision/target/line arithmetic exhaustively). Proved
+     non-vacuous by a temporary mutation of `switcherDecision` (`arrival.ts`) to ignore its `P`
+     argument and always use `'en'`: SW07 and SW10 (P = zh-TW) turned red —
+     `expected 'stay' to be 'navigate'` — reverted (`git diff` clean afterwards).
+  2. **`publishedPages` made P-dependent, done.** The mock in `not-found-wiring.test.ts` (lines
+     60–68 before this change) now returns, per `mockPrimaryLocale.value`, only the pages a build
+     with that P actually publishes (no `/en/...` entries under P = en, no `/zh-TW/...` entries
+     under P = zh-TW). `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` → 153 passed, pass
+     on first run: no existing case asserted a page only the other locale's build would publish.
+  3. **A15/A19 D29 case re-landed on `/guide/python`, done.** "a stored T preference does not cause
+     a second cold-load redirect after an NP landing (A19, D29)" now lands its second, direct
+     arrival on `/guide/python` (whose `/zh-TW/guide/python` counterpart IS published) instead of
+     `/challenge/v05-php-check/` (whose counterpart is not). Pass on first run. Proved non-vacuous
+     by temporarily making the route watcher treat every later arrival as a cold load too (it called
+     `redirectTargetForStoredLocale` unconditionally): turned red —
+     `expected "vi.fn()" to not be called at all, but actually been called 1 times` with
+     `go('/zh-TW/guide/python', {replace:true})` — reverted (`git diff` clean on
+     `useArrivals.ts` afterwards).
+  4. **A19b `setItem` spy, both P, done.** Both "writes no preference on the way through" cases
+     (P = en original, P = zh-TW mirror) now spy on `window.localStorage.setItem` across the whole
+     redirect-then-navigation sequence, in a `try`/`finally`. Pass on first run (S2-b's own earlier
+     proof already showed the production code never calls `setItem` on this path).
+  5. **S2-b/W5 spy cleanup into `finally`, done.** `writes no preference on a cold-load redirect or
+     the navigation after it (W5)` now restores its spy in a `finally` around the same body. Pure
+     refactor; pass on first run, assertions unchanged.
+  6. **A20 mirror, full call list, done.** Removed `mockGo.mockReset()` from the P = zh-TW mirror of
+     "does the same for a client-side navigation to a missing translation"; added
+     `expect(mockGo).not.toHaveBeenCalled()` after the first mount. Pass on first run. The handoff's
+     own suggested non-vacuity mutation (hardcoding `primaryLocale()`'s call site to `'en'` inside
+     `useArrivals.ts`) did NOT turn this case red under the now-P-dependent `publishedPages` fixture
+     (item 2 above): the wrongly-computed target `/zh-TW/guide/python` is correctly absent from the
+     real P = zh-TW page list either way, so the fixture's own realism defeats that specific
+     mutation. Found an alternative that does discriminate: additionally hardcoding `pages` to the
+     P = en-shaped list inside `useArrivals.ts` turned it red —
+     `expected "vi.fn()" to be called 1 times, but got 2 times`, the extra call being
+     `go('/zh-TW/guide/python', {replace:true})` — reverted (`git diff` clean afterwards). Flagged
+     for the parent: the handoff's described mutation for this item no longer reproduces post-item-2;
+     the alternative above was used instead.
+  7. **A23 'goes to the counterpart' mirror, call count, done.** Added
+     `expect(mockGo).toHaveBeenCalledTimes(1)` to the P = zh-TW mirror. Pass on first run.
+  8. **A23 'writes the choice' mirror, no-go assertion, done.** Added
+     `expect(mockGo).not.toHaveBeenCalled()` right after `choose('zh-TW')` resolves to `'stay'`. Pass
+     on first run.
+  9. **A32/A28 SSR mirrors, done — one value corrected from the handoff's literal text.** Added two
+     `P = zh-TW` mirrors in `ChallengeList.test.ts`'s `describe('ChallengeList server rendering', …)`.
+     The second (`CHINESE_ONLY_ZH`, `mockLocaleIndex.value = 'en'`, runtime `'zh-TW'`) matches the
+     handoff exactly and passed on the first run. The first, as literally specified
+     (`mockLocaleIndex.value = 'en'`), is unsatisfiable: with P = zh-TW and `localeIndex = 'en'`,
+     `pageLocaleOf` returns `'en'`, under which `BORROWED_ZH`'s PHP Check entry (`locale: 'en'`) is
+     native, not borrowed, so it could never carry the `只有英文` mark or `lang="en"` the handoff's
+     own assertions ask for — the same mounting mistake the resumed B2 entry's own comment (at the
+     mounted-component mirror, "the 'Chinese list' under this P is localeIndex 'root' … not 'en'")
+     had already named and fixed once in this exact file. Used `mockLocaleIndex.value = 'root'`
+     (matching that comment) with runtime `'en'` (mirroring the original P = en case's own
+     deliberately-different-from-page-locale runtime) instead; both mirrors pass on the first run.
+     Flagged for the parent as a correction, not a silent substitution.
+  10. **ChallengeList page-mode deferral comment + negative short-link check, done.** The comment at
+      "marks a Traditional Chinese-only entry in the English list, with no short link (A32, E3)" now
+      names the rows that take over the deferred page-mode assertion — `S54` ("Page mode × entry,
+      both P"), under the "Copy control" section's seams `0010-S30`/`0010-S26` — at wave 4. Restored
+      `expect(row.text()).not.toContain('/en/c/007')` (same literal as the P = en case at line 881;
+      the short link's prefix follows the list's own locale, not P, so the theoretical value is
+      identical). Pass on first run.
+  11. **`shortLink.ts`'s P-ignoring prefix recorded for wave 4, done — this item.** `.vitepress/
+      challenge/shortLink.ts:123`'s `locale === 'zh-TW' ? '/zh-TW' : ''` still hard-codes the
+      zh-TW-prefix rule regardless of `primaryLocale()` (D68 names this exact line for removal).
+      Covering rows: `D68` (the fix itself), `S52` (`challengePagePath`, the function `challengeLink`
+      must be rewired to), `S54` ("Page mode × entry, both P", the test this defect blocks).
+      Related rows in the same "Copy control" section, same defect's blast radius: `S53` (short
+      mode × list locale × entry), `S55` (nav control on a challenge page), `S56` (built-site
+      smoke). Reproduced by item 10's test comment (now updated) and by the earlier resumed-B2 entry
+      (SECTION 1, "Component matrices") which first found it. Owner: wave 4 (area S).
+  - **Commands run, with exact counts:**
+    - `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` → 169 passed (169; 153 before this
+      part, +16 from item 1's new SW matrix).
+    - `npx vitest run tests/unit/components/ChallengeList.test.ts` → 77 passed (77; 75 before this
+      part, +2 from item 9).
+    - `npx vue-tsc --noEmit -p tsconfig.json`, filtered to this wave's touched files: zero errors in
+      `not-found-wiring.test.ts`, `ChallengeList.test.ts`, `arrival.ts`, `useArrivals.ts`,
+      `localeTables.ts`. The one hit still present in a touched file
+      (`ChallengeList.test.ts:829`, `Property 'exists' does not exist on type 'Omit<DOMWrapper<Element>,
+      "exists">'`) is the same pre-existing, unrelated error wave 2 part B2 already recorded at its
+      former line 805 — confirmed outside every line this part changed.
+    - `npx vitest run tests/unit/i18n/ tests/unit/components/ tests/unit/layouts/ tests/unit/theme/`
+      (broader regression sweep) → 1 failed, 42 passed (43 files); 1 failed, 1931 passed (1932
+      tests) — the one failure is the carried `locales.test.ts` B18 command 2, unchanged.
+    - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+      --run --no-file-parallelism` → **Test Files 4 failed | 145 passed (149); Tests 6 failed | 6092
+      passed (6098)**, exit 1. Run twice with a JSON reporter to get machine-checkable exact names;
+      the first of the two (while an earlier, stray background instance of the same command — this
+      session's own leftover, killed mid-run — was still writing to the same live-tree fixture
+      `platform/challenge/door-is-open/`) showed 4 extra, non-reproducing failures in
+      `challenge-keygen.test.ts`'s "CLI rejects an unusable source_files entry" describe (a
+      pre-existing, out-of-scope test that writes into the live repository tree and cleans up only
+      in its own `afterEach` — already named as such in the 2026-11-16 "parent, new session" entry
+      above); a second, clean run with no concurrent instance reproduced exactly the six carried
+      failures named in the handoff, by file and title, with no other and no new failure:
+      `tests/unit/i18n/locales.test.ts` B18 command 2; `tests/unit/site/redirects-generated.test.ts`'s
+      byte-identical case; `tests/unit/site/redirects.test.ts`'s three cases; `tests/unit/scripts/
+      challenge-keygen.test.ts`'s Y59 payload-integrity case. The total rose from the corrected B2
+      entry's 6080 by exactly 18 (16 new SW-matrix cases + 2 new SSR mirrors; every other item in
+      this part edited an existing case's assertions without adding or removing a case).
+    - `pnpm --dir create-wxl test` not run: this part touches neither `create-wxl/` nor fork:init
+      (confirmed: `git status --short -- create-wxl/` prints nothing).
+  - No file under `platform/` was created, moved or edited by this part; `git status --short`
+    before and after this run shows the same `platform/` adds/renames/modifications wave 1 already
+    staged, nothing added, removed or re-staged.
 
 ## Test plan (stage 5)
 
