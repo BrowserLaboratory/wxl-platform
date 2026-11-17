@@ -11,7 +11,8 @@
  *   brief, door (#2) has both an `en` and a `zh-TW` brief;
  * - `zh-TW`: no `range.json` (the default primary locale is `zh-TW`); test-chall
  *   has only a `zh-TW` brief, door has both;
- * and in both `.archive/challenge/old-chall/` (#3), a valid retired challenge. Each holds:
+ * and in both `.archive/challenge/old-chall/` (#3), a valid retired challenge, and a page
+ * `platform/<variant>/guide/notes.md` (the old-address section of a `zh-TW` primary names its folder, D154). Each holds:
  * - `platform/public/` with a `_redirects` that matches the tree, and one other file;
  * - copies of the scripts the hook calls and every module they import (`COPIED_FILES`);
  * - a `node_modules` link to this checkout's packages, excluded through `.git/info/exclude`;
@@ -240,6 +241,8 @@ export function buildFixture(variant: FixtureVariant = 'en'): Fixture {
   write(repo, 'README.md', '# Fixture\n')
   if (variant === 'en') write(repo, 'range.json', '{"primaryLocale":"en"}\n')
   write(repo, `platform/${variant}/index.md`, HOME)
+  // A top-level folder of pages besides `challenge/`: with `zh-TW` primary it gives an old-address rule (D154).
+  write(repo, `platform/${variant}/guide/notes.md`, '# Notes\n')
 
   // test-chall has only the primary locale's brief; door has both.
   writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge', briefs: [variant] })

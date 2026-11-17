@@ -3340,6 +3340,155 @@ Reviewed on 2026-11-17 with the project `security-review` skill (`.claude/skills
   (the parent's recommendation), dropping the Cloudflare rule and relying on the not-found page's client-side strip
   (D28), or keeping R22 as written and letting S61 decide on the preview.
 
+### 2026-11-17 (parent, SR-1: the user chose the safe-by-construction old-address rules, in person)
+
+After stage 7's SR-1 and the parent's local reproduction were put to the user with three options, the user answered
+in chat on 2026-11-17: 「改成安全形式」. This is D118's choice, made by the user in person: the old-address rule
+`/zh-TW/*  /:splat  302` is replaced by the form that is safe by construction. The parent's design, to be written as a
+new D-number (D154) in traceability revision 2.5 and implemented test-first as orchestrator segment SR1:
+
+- When `P = zh-TW`, in place of the one splat rule, the old-address section holds, derived from the primary folder
+  `platform/zh-TW/` (the tree in full mode, the index in `--staged`), sorted by UTF-16 code unit:
+  `/zh-TW/  /`; one static rule `/zh-TW/<name>  /<name>` per top-level page `<name>.md` other than `index.md`; one
+  rule `/zh-TW/<dir>/*  /<dir>/:splat` per top-level directory that holds at least one page. When `P = en` the
+  section is absent, as before.
+- Every target starts with a fixed first segment taken from a directory or file name, never from request text.
+- An entry gets no rule (the not-found page's client-side strip, D28, still serves the old address) when its name is
+  outside `^[A-Za-z0-9][A-Za-z0-9._-]*$`, equals `c` (the short-link namespace), is the reserved `smoke-fixtures`
+  (D49), or is not a page folder under the page predicate (dot-prefixed, `node_modules`, `dist`).
+- The hook regenerates `_redirects` when a staged change adds or removes a top-level entry of the primary folder,
+  so the committed file stays equal to what the tree generates.
+- Changes that follow: D60, D118, S24, S60, S61 (still run at stage 8; it must now hold by construction), TB5, the
+  K5 header text, and the README sentences on old `/zh-TW/…` addresses and on files under `platform/public/zh-TW/`
+  (they are no longer redirected), in both spec languages and both READMEs.
+
+### 2026-11-17 (parent, decisions on segment SR1's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above, and following from the user's own
+choice of the safe-by-construction rules (「改成安全形式」). Scope: the four questions segment SR1's planner raised;
+nothing else. Each as the planner recommends.
+
+1. Rows the replacement makes untrue, beyond those the parent named, are rewritten in place and named in revision
+   2.5: K3 with D61 and S26, S-§4.1's example block, S27, S30, S31, S32, S41 and S78 (a), TB-S1, D138 and the spec's
+   double-prefix paragraph, the splat wording in D26, D28, D29, D58 and S59, D65, D126, S36 and S80 (the hook's
+   trigger set), AC-29, AC-30 and AC-58. Behaviour changes only under D154; the rest is wording brought in line.
+   K3 becomes: `The slug links take {F} dynamic rules, and old /zh-TW/ addresses take one more dynamic rule for each
+   top-level folder of pages and one static rule for each top-level page and for /zh-TW/ itself.`
+2. K5's text: `Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range's primary locale is
+   Traditional Chinese, so its pages are at the root: /zh-TW/ goes to /, each top-level page /zh-TW/<name> goes to
+   /<name>, and each top-level folder of pages /zh-TW/<folder>/<path> goes to /<folder>/<path>. Every target begins
+   with a fixed name, never with text from the request. The folder c is left out: /zh-TW/c/ belongs to the short links
+   above. An address no rule covers is handled by the not-found page.`
+3. The hook's trigger is wider than "a top-level entry changed": adding, deleting or changing the type of any `.md`
+   under a listed locale's folder regenerates `_redirects`; editing an existing page's content does not (O1). A page
+   added inside an existing folder, or any page added on an English-primary range, triggers a regeneration whose
+   result equals the committed file (exit 0, no diff). Reason: the hook's bash knows no locale and reads no
+   `range.json` (R23, D65); telling whether an entry changed would start Node once more on every commit.
+4. The section is sorted by the rule's source string in UTF-16 code units (`/zh-TW/` is always first); the reserved
+   name `smoke-fixtures` is written once more as a constant in `scripts/generate-redirects.ts`, because
+   `.vitepress/pageList.ts` cannot be loaded by `node --experimental-strip-types` (an extension-less import), and D49
+   gains a sentence saying so.
+
+### 2026-11-17 (segment SR1)
+
+Resumption of the interrupted segment: stage 7's SR-1 fix, the safe-by-construction old-address section (D154).
+The earlier implementer's uncommitted edits were checked, not redone. Not committed; the parent commits through
+the hook.
+
+**Rows, and who did what.**
+
+| Row | State at resumption | Done now | Red line recorded |
+|---|---|---|---|
+| SR1-1 rule set, both P | done (generator, `redirects-generated.test.ts`), unchecked | checked by three temporary mutations of `scripts/generate-redirects.ts`, each reverted by Edit; one blank line tidied in the test | mutation (i) `...oldAddressRows` replaced by `['/zh-TW/*','/:splat']`: `(a)` `expected [ '/zh-TW/* /:splat' ] to deeply equal [ '/zh-TW/ /', …(3) ]`, 25 cases red in all; (ii) `OLD_ADDRESS_RESERVED` check dropped: `(d) c.md gets no rule` `expected [ '/zh-TW/ /', '/zh-TW/c /c', …(1) ] to deeply equal [ '/zh-TW/ /', …(1) ]`, and `c/x.md`, `smoke-fixtures/x.md`; (iii) sort dropped: `(b) sorts by the rule source in UTF-16 code units` `expected [ '/c/:slug', … ] to deeply equal [ … ]`. Evidence for inherited rows is by mutation, since git cannot restore the first red |
+| SR1-2 no target begins with request text | done, unchecked | checked by mutation (i) | `expected '/zh-TW/*' not to be '/zh-TW/*'` |
+| SR1-3 S24 rewritten | done, unchecked | checked by mutation (i) and by a second mutation (`oldAddress = true`) | (i) `expected [ { from: '/zh-TW/*', …(2) } ] to deeply equal []`; second: `S24 … expected [ Array(1) ] to deeply equal []`, with `(e) P = en` and K5-absent red as well |
+| SR1-4 `--staged` from the index | done, unchecked | checked by mutation (the `--staged` branch passes no `pagePaths`) | `prints what the index generates …`: `expected [ …(18) ] to deeply equal [ …(16) ]`; `the hook writes the same section …` red on `_redirects` bytes |
+| SR1-5 hook trigger | add, delete, content edit (O1), both fixtures done; type change missing | case `i. a page changed to a symbolic link (type change) …` added; pre-commit.sh header reflowed (comment only) | `i` was RED on its first run for a real reason, not the filter: `expected [ …(14) ] to deeply equal [ …(15) ]` (the oracle's full-mode walk did not count a symbolic link `guide/notes.md`, while `--staged` counts the index entry, so the two modes disagreed). Fix: `primaryPagePaths` counts a `.md` symbolic link as a page entry, without following it (same as the index, whatever the mode). Green after. Non-vacuity of the filter: `ADT` to `AD` in both filters: `i` red (`expected +0 to be 1`); `ADT` to `X`: 7 of the 9 cases red (a, b, c, d: `_redirects` not regenerated; f, g, i: `expected +0 to be 1`); e and h stay green, as they must |
+| SR1-6a redirects.test.ts | not touched | rewritten, one cycle per plan item (1) to (9) | (1) was red in the tree: `shadows (S31) > the generated schema, P = zh-TW > has no shadowed pair…` `expected false to be true`, green after the rewrite; (2) `expected { from: '/zh-TW/*', …(2) } to deeply equal { from: '/zh-TW/', to: '/', …(1) }`, (3) `/zh-TW/* -> /:splat is none of the three shapes`, (6) `/zh-TW/* -> /:splat: no page under platform/zh-TW//`, (9) `expected [ { from: '/zh-TW/*', …(2) } ] to deeply equal [ …(4) ]`, each red against the still-committed `_redirects`; (4), (7), (8) are helper-only rewrites, green on first run (test text brought in line, no behaviour); (5) green on first run, it guards the regeneration (the old selection would count the 4 static old-address rules as numbered) |
+| SR1-6b real tree | red | `pnpm redirects:generate`; `git add platform/public/_redirects` | `redirects-generated.test.ts:854` byte-identical case was red (`+ /zh-TW/*  /:splat  302` against four rules); green after: 197 of 197 in the two files |
+| SR1-7 executed check | not started | done, below | |
+| SR1-8 specification record | not started | traceability revision 2.5 with D154 and the rows it names; spec.en.md and spec.zh-TW.md in step; `synced_from_sha` now `d51723062f6b6029a108c5fb46a0ba83da52c12c` (`git hash-object spec.en.md`) | not a test row |
+| SR1-9 READMEs | not started | README.md and README.en.md, both passages, in step | not a test row |
+| SR1-10 generator header | partly done | header paragraphs for the section and for `--staged` added | comment only |
+
+**SR1-7, the executed check.** Surface: the local Pages runtime, `wrangler pages dev` (workerd) over `pnpm build`'s
+`.vitepress/dist` (its `_redirects` is byte-identical to `platform/public/_redirects`), not Cloudflare's edge; S61 on the
+preview stays for stage 8. Commands: `pnpm build`; `node_modules/.bin/wrangler pages dev .vitepress/dist --port 8799
+--ip 127.0.0.1 --compatibility-date=2026-08-18` in the background; for each input `curl -s --path-as-is -D - -o /dev/null`,
+and `new URL(location, origin).origin === origin` with `node -e`; then `pkill -f 'wrangler pages dev'` (no process left).
+`.wrangler/` is gitignored.
+
+| Input | Status | Location | Same origin |
+|---|---|---|---|
+| `/zh-TW//evil.example`, `/zh-TW//evil.example/x`, `/zh-TW/%2F%2Fevil.example`, `/zh-TW/%2f%2fevil.example`, `/zh-TW/%2F/evil.example`, `/zh-TW/%252F%252Fevil.example`, `/zh-TW/%5Cevil.example`, `/zh-TW/%5C%5Cevil.example`, `/zh-TW/%5C/evil.example`, `/zh-TW/%09/evil.example`, `/zh-TW/%0A/evil.example`, `/zh-TW/%0D/evil.example`, `/zh-TW/\evil.example`, `/zh-TW/\/evil.example`, `/zh-TW///evil.example` (15) | 404 each | none | no redirect |
+| `/zh-TW/guide//evil.example` | 302 | `/guide//evil.example` | yes |
+| `/zh-TW/guide/%5Cevil.example` | 302 | `/guide/%5Cevil.example` | yes |
+| S60: `/zh-TW/` | 302 | `/` | yes |
+| `/zh-TW/challenges` | 302 | `/challenges` | yes |
+| `/zh-TW/guide/notes` | 302 | `/guide/notes` | yes |
+| `/zh-TW/challenge/door-is-open/` | 302 | `/challenge/door-is-open/` | yes |
+
+No input is off-origin. (My loop's `echo` showed the raw-backslash input as `/zh-TW/vil.example`; curl was given the
+literal backslash path.)
+
+**Decisions for the parent to read.**
+
+- The symbolic-link case above is a reading inside plan row SR1-4 ("an index entry counts whatever its mode"): the tree
+  walk now agrees with the index. Nothing else in the generator changed.
+- The hook's pre-filter glob `platform/*/**/*.md` also passes a page added under `platform/public/` or an unlisted
+  folder: Node starts once for `--challenge-trees` and the hook exits O1 (case h). This is inside decision 3.
+- Stage 8's S61 on the preview and S60's double-prefix and `platform/public/zh-TW/stage8.txt` observations are
+  unchanged work for stage 8; their expectations are edited in traceability (D138: not-found page; the static file
+  served; `platform/public/zh-TW/guide/…` still redirected by the folder's rule, as the READMEs say).
+
+**Added to git.** `git add platform/public/_redirects` (an existing tracked file, regenerated). No new file under
+`platform/` was created.
+
+**Changed factual claims, with their source lines.**
+
+| Claim | Source |
+|---|---|
+| The old-address section is `/zh-TW/  /`, `/zh-TW/challenge/*`, `/zh-TW/challenges`, `/zh-TW/guide/*` on upstream's tree | `platform/public/_redirects`, last four rules; `scripts/generate-redirects.ts` `oldAddressRules` |
+| K3 and K5 equal the parent's texts verbatim | `scripts/generate-redirects.ts` `redirectsHeader`, `OLD_ADDRESS_SECTION`; traceability K3, K5 |
+| Double prefixes end on the not-found page on both hosts | no rule matches `/zh-TW/en/x`; D28's strip counts only a primary entry (traceability D28, D138) |
+| `platform/public/zh-TW/` files are served, except one under a folder-of-pages name | `/zh-TW/guide/*` matches `/zh-TW/guide/…` (traceability S69; README.en.md) |
+| The hook triggers on an added, deleted or type-changed `.md` under a listed locale's folder | `scripts/pre-commit.sh` `PAGES`, `PAGES_OF_LOCALES`; `tests/pre-commit-sh.test.ts` cases a to i |
+
+**Commands.** First targeted run, before edits: `pnpm vitest run` on the three test files: 416 passed, 2 failed (the two
+carried reds). Last run: `pnpm vitest run tests/unit/site/redirects-generated.test.ts tests/unit/site/redirects.test.ts
+tests/pre-commit-sh.test.ts tests/unit/site/sentence-map.test.ts tests/unit/site/glossary.test.ts`: 5 files, 765 tests
+passed. `python3 scripts/verify-project.py`: PASS. `git grep` for `zh-TW/*  /:splat`, `takes 1 more`, `Last on purpose`
+in traceability and the two spec files returns only revision 2.5's and D60/D118/TB-S1's own "replaced" wording.
+
+### 2026-11-17 (segment SR1, fix round)
+
+Fix of finding SR1-P1 (the S31 count assertion was loosened and three `shadows` assertions were deleted). Only
+`tests/unit/site/redirects.test.ts` changed; no production code; nothing added to git; not committed.
+
+| Item | Change | Red line recorded |
+|---|---|---|
+| `shadows (S31)` splat case | the three deleted assertions restored after `shadows('/zh-TW/*', '/zh-TW/c/001')`: `/zh-TW/c/:slug` true, `/zh/c/001` false, `/c/001` false | green on first run: restoring existing assertions, the helper was already correct |
+| count case `counts one pair per later /zh-TW/ source …` | `const rest = parseRules()` (whole file; the file holds no `/zh-TW/*`, D154); synthetic `catchAll`, `later` and the `toHaveLength(later)` unchanged | green on first run, same reason (9 pairs = 9 later sources) |
+
+Non-vacuity, mutation not saved (the splat branch of `shadows` temporarily `return below.includes('/c/')`): 2 failed, 60
+passed: `expected false to be true` (the restored `/zh/c/001` false case) and `expected [ '/zh-TW/* shadows /c/001', …(19) ]
+to have a length of 9 but got 20`. The mutation was reverted by restoring a backup copy; rerun: 62 of 62 passed.
+
+Command: `pnpm vitest run tests/unit/site/redirects.test.ts`: 62 passed.
+
+**Deferred to stage 6 (P2, frozen rubric).**
+
+- `.proj.specs/0010-primary-locale-layout/traceability.md` (line 120): after D154, K1 and D61 overstate the capacity for P = zh-TW; the old-address section adds static rules (`/zh-TW/` and one per top-level page) that share Cloudflare's 2,000-static budget, yet K1 still states floor(2000/F) = 500 "for both primaries" (`scripts/generate-redirects.ts:178-181` does not count them). Spec inconsistency, not a P0; unreachable for a range of a few challenges.
+- `.proj.specs/0010-primary-locale-layout/traceability.md` (line 2240): S61's revision-2.5 note says the `///` input still reaches a splat rule, but no rule covers `/zh-TW///evil.example` any more (404, no redirect); only the two `/zh-TW/guide/` inputs do.
+- `README.en.md` (line 340): the exception for files under `platform/public/zh-TW/` names only paths beginning with a folder's name; a file whose path equals a top-level page's name (e.g. `challenges`) is also redirected by that page's static rule. README.md:331, S-O7 and S69 carry the same wording. Edge case.
+- `README.en.md` (line 253): the primary-locale bullet is not quite in step with README.md:244, which adds "one per top-level page and folder"; README.en.md only changes "rule" to "rules".
+- `tests/unit/site/redirects.test.ts` (line 383): the direct assertion `shadows('/zh-TW/*', '/zh-TW/c/:slug')` was removed and its negatives moved to `/zh-TW/guide/*`; still enforced indirectly by the synthetic count case. Approved S31 rewrite, P2.
+- `tests/pre-commit-sh.test.ts` (line 3123): the JSDoc of `runStaged` is stale; it says it takes `path` and `text`, but it takes a `change` callback.
+- `scripts/generate-redirects.ts` (line 31): the header's exclusion list omits D154's "not a page folder by the page predicate" case (dot-prefixed, `node_modules`, `dist`), and is awkwardly written as a comma-joined list. Comment only; tests (c) and (d) cover the behaviour.
+- `scripts/pre-commit.sh` (line 13): the header says it was reflowed, but this line is 128 characters while the other header lines stay within 100.
+
+**Full suite (suite step).** Full suite green: 7268 passed, 0 failed, 0 pending, 0 todo (7268 tests, 154 files, 908 suites, 0 failed suites, success=true). Report: `/private/tmp/claude-501/-Users-phoenix-dev-browserlab-wxl-platform/be8467cf-f0f1-4ec4-9cbb-85aa30f4095d/scratchpad/SR1-report.json`, mtime 2026-11-17 21:54:47 (epoch 1794923687), written after run start (epoch 1794923346; old file deleted first). HEAD sha 939ce5e unchanged before and after. The `keygen-*-probe` glob matched nothing before or after, so no probes existed to remove. The first attempt aborted on the zsh no-match error before running anything and was re-run under bash.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

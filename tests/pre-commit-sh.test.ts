@@ -180,7 +180,9 @@ const ZH_PARAMETERISED_RULES = [
   '/en/c/:slug /en/challenge/:slug/',
   '/zh/c/:slug /challenge/:slug/',
   '/zh-TW/c/:slug /challenge/:slug/',
-  '/zh-TW/* /:splat',
+  '/zh-TW/ /',
+  '/zh-TW/challenge/* /challenge/:splat',
+  '/zh-TW/guide/* /guide/:splat',
 ]
 const ZH_FIXTURE_RULES = [...ZH_TEST_CHALL_RULES, ...ZH_DOOR_RULES, ...ZH_PARAMETERISED_RULES]
 
@@ -1505,7 +1507,8 @@ describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', (
 
     expectO2(run, before, snapshot(repo), expected)
     expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
-    expect(rulesOf(expected)).not.toContain('/zh-TW/* /:splat')
+    // P = en: no old-address rule, whatever sits under platform/zh-TW/ (D154).
+    expect(rulesOf(expected).filter((r) => r.startsWith('/zh-TW/') && !r.startsWith('/zh-TW/c/'))).toEqual([])
     expect(readFileSync(join(repo.dir, 'range.json'))).toEqual(rangeBytes)
   }, TIMEOUT)
 
@@ -1546,7 +1549,8 @@ describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', (
     expectO2(run, before, snapshot(repo), expected)
     expect(run.stderr).not.toContain('not found; every challenge has a brief in the primary locale')
     expect(rulesOf(expected)).toContain('/c/004 /challenge/new-chall/')
-    expect(rulesOf(expected)).not.toContain('/zh-TW/* /:splat')
+    // P = en: no old-address rule, whatever sits under platform/zh-TW/ (D154).
+    expect(rulesOf(expected).filter((r) => r.startsWith('/zh-TW/') && !r.startsWith('/zh-TW/c/'))).toEqual([])
     expect(readFileSync(join(repo.dir, 'range.json'))).toEqual(rangeBytes)
   }, TIMEOUT)
 
@@ -1605,7 +1609,7 @@ describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', (
 })
 
 describe('pre-commit.sh: changing the primary locale (S41, S74, S77, S78, S79)', () => {
-  it('S41: range.json en → zh-TW, once every challenge has a zh-TW brief, regenerates the file for P = zh-TW and ends it with the old-address rule', () => {
+  it('S41: range.json en → zh-TW, once every challenge has a zh-TW brief, regenerates the file for P = zh-TW and ends it with the old-address section', () => {
     writeBrief(repo, 'zh-TW', 'test-chall')
     git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
     git(repo, ['commit', '-q', '--no-verify', '-m', 'test-chall’s zh-TW brief'])
@@ -1616,7 +1620,8 @@ describe('pre-commit.sh: changing the primary locale (S41, S74, S77, S78, S79)',
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/* /:splat')
+    // The fixture's platform/zh-TW/ holds only challenge/, so that folder's rule is the section's last.
+    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/challenge/* /challenge/:splat')
     expect(rulesOf(expected)).not.toEqual(FIXTURE_RULES)
   }, TIMEOUT)
 
@@ -1656,7 +1661,8 @@ describe('pre-commit.sh: changing the primary locale (S41, S74, S77, S78, S79)',
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/* /:splat')
+    // The fixture's platform/zh-TW/ holds only challenge/, so that folder's rule is the section's last.
+    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/challenge/* /challenge/:splat')
   }, TIMEOUT)
 
   it('S78 (b): git rm range.json while test-chall has no zh-TW brief is refused with W6a, once W6r, and nothing changes', () => {
@@ -3056,5 +3062,192 @@ describe.skipIf(!BASH_3)('pre-commit.sh: under macOS’s /bin/bash 3.2 (H45)', (
   it('H45: H34 through git commit with /bin first on PATH gives its outcome', () => {
     expectBinBash()
     expectH34(env())
+  }, TIMEOUT)
+})
+
+// ─── The old-address section is derived from the index (D154) ───────────────
+
+describe('generate-redirects --staged: the old-address section comes from the index (D154)', () => {
+  /** A staged page, an untracked folder of pages, and an ignored one (`tmp/`), under the primary folder. */
+  function stagePagesAndLeaveOthers(): void {
+    write(repo, 'platform/zh-TW/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    write(repo, 'platform/zh-TW/drafts/x.md', '# untracked\n')
+    write(repo, 'platform/zh-TW/tmp/x.md', '# ignored\n')
+  }
+
+  it('prints what the index generates: the staged top-level page has a rule, an untracked and an ignored folder have none', () => {
+    useFixture('zh-TW')
+    stagePagesAndLeaveOthers()
+    const expected = expectedRedirects(repo)
+
+    const run = spawnSync(
+      process.execPath,
+      ['--experimental-strip-types', 'scripts/generate-redirects.ts', '--staged', '--root', repo.dir],
+      { cwd: repo.dir, env: repo.env, encoding: 'utf8' },
+    )
+
+    expect(run.status, run.stderr).toBe(0)
+    const got = rulesOf(run.stdout)
+    expect(got).toEqual(rulesOf(expected))
+    expect(got).toContain('/zh-TW/about /about')
+    expect(got).not.toContain('/zh-TW/drafts/* /drafts/:splat')
+    expect(got).not.toContain('/zh-TW/tmp/* /tmp/:splat')
+  }, TIMEOUT)
+
+  it('the hook writes the same section: the ignored tmp/ stays on disk and gets no rule', () => {
+    useFixture('zh-TW')
+    stagePagesAndLeaveOthers()
+    // A staged challenge change is what makes the hook run (the trigger of D154 is SR1-5's).
+    stageDoorChange()
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toContain('/zh-TW/about /about')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(stagedRedirects(repo) ?? '')).not.toContain('/zh-TW/tmp/* /tmp/:splat')
+    expect(existsSync(join(repo.dir, 'platform/zh-TW/tmp/x.md'))).toBe(true)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: the primary folder’s top-level entries (D154)', () => {
+  const NOTES = 'platform/zh-TW/guide/notes.md'
+  const generatorLog = (): string => join(repo.base, 'generator.log')
+  const stagedCalls = (): number => readRecord(generatorLog()).filter((r) => r.argv.includes('--staged')).length
+  const head = (): string[] => rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
+  const added = (expected: string): string[] => rulesOf(expected).filter((r) => !head().includes(r))
+  const removed = (expected: string): string[] => head().filter((r) => !rulesOf(expected).includes(r))
+
+  /** Stage `path` with `text`, run the hook, and check an O2 whose `_redirects` is the oracle's. Returns it. */
+  function runStaged(change: () => void): { expected: string; run: Run } {
+    change()
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    const run = runHook(repo)
+    expectO2(run, before, snapshot(repo), expected)
+    return { expected, run }
+  }
+
+  it('a. a new top-level page regenerates, and the new rule line is the page’s', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => {
+      write(repo, 'platform/zh-TW/about.md', '# about\n')
+      git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    })
+    expect(added(expected)).toEqual(['/zh-TW/about /about'])
+    expect(removed(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('b. a new top-level folder of pages regenerates, and its rule is the folder’s', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => {
+      write(repo, 'platform/zh-TW/handbook/intro.md', '# intro\n')
+      git(repo, ['add', '--', 'platform/zh-TW/handbook/intro.md'])
+    })
+    expect(added(expected)).toEqual(['/zh-TW/handbook/* /handbook/:splat'])
+    expect(removed(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('c. deleting a folder’s last page regenerates, and the folder’s rule goes', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => git(repo, ['rm', '-q', '--', NOTES]))
+    expect(removed(expected)).toEqual(['/zh-TW/guide/* /guide/:splat'])
+    expect(added(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('d. deleting a committed top-level page regenerates, and its rule goes', () => {
+    useFixture('zh-TW')
+    write(repo, 'platform/zh-TW/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    write(repo, REDIRECTS, expectedRedirects(repo))
+    git(repo, ['add', '--', REDIRECTS])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'about'])
+    expect(head()).toContain('/zh-TW/about /about')
+
+    const { expected } = runStaged(() => git(repo, ['rm', '-q', '--', 'platform/zh-TW/about.md']))
+    expect(removed(expected)).toEqual(['/zh-TW/about /about'])
+    expect(added(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('e. editing an existing page’s content stays O1: the generator is not called', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, NOTES, '# Notes, edited\n')
+    git(repo, ['add', '--', NOTES])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expectNothingChanged(before, snapshot(repo))
+    expect(readRecord(generatorLog())).toEqual([])
+  }, TIMEOUT)
+
+  it('f. a new page in an existing folder triggers a regeneration that changes nothing (exit 0, no diff)', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, 'platform/zh-TW/guide/more.md', '# more\n')
+    git(repo, ['add', '--', 'platform/zh-TW/guide/more.md'])
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('g. P = en: a new page triggers a regeneration that changes nothing, the section being absent', () => {
+    useFixture('en')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, 'platform/en/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/en/about.md'])
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('i. a page changed to a symbolic link (type change) triggers a regeneration that changes nothing', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    unlinkSync(join(repo.dir, NOTES))
+    symlinkSync('../index.md', join(repo.dir, NOTES))
+    git(repo, ['add', '--', NOTES])
+    expect(git(repo, ['diff', '--cached', '--name-status', '--', NOTES])).toContain(`T\t${NOTES}`)
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('h. a page under a folder that is not on the list, or under platform/public/, stays O1: no regeneration', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    for (const path of ['platform/ja/about.md', 'platform/public/zh-TW/x.md']) {
+      write(repo, path, '# a page\n')
+      git(repo, ['add', '--', path])
+    }
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expectNothingChanged(before, snapshot(repo))
+    expect(stagedCalls()).toBe(0)
   }, TIMEOUT)
 })

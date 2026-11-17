@@ -241,7 +241,7 @@ npx --yes create-wxl@latest upgrade
 - 編輯 `range.json` 的 `primaryLocale` 並 commit；pre-commit hook 會重新產生 `platform/public/_redirects`，也可以自己執行 `pnpm redirects:generate`。
 - 重新啟動 `pnpm dev`，改動才會生效。
 - 網站根網址換成新主語系的語言，`/c/NNN` 開的也是新主語系的頁面。
-- 已經發出去、不帶語系代碼的連結，開的是新主語系的頁面；`/<舊主語系>/…` 開頭的連結，只靠舊網址規則（舊主語系是 `zh-TW` 時）或找不到頁面那一頁把前綴去掉，才會回到根。
+- 已經發出去、不帶語系代碼的連結，開的是新主語系的頁面；`/<舊主語系>/…` 開頭的連結，只靠舊網址規則（舊主語系是 `zh-TW` 時，每個頂層頁面與資料夾各一條）或找不到頁面那一頁把前綴去掉，才會回到根。
 - 每道題目必備的說明頁改成新主語系的那一份。某道題目缺這一份時，pre-commit hook 會擋下 commit，並印出一行指出是哪一題、缺的是哪一份說明頁，要先把它寫好。
 - 首頁的 hero 與 nav 連結自己會跟著走，不用改。
 - `challenge.yaml` 的修改在題目清單重新整理後就看得到，在題目頁要重新啟動 `pnpm dev` 才會更新。
@@ -328,7 +328,7 @@ const siteBase = process.env.SITE_BASE || '/'
 >
 > 主語系代碼的短連結與 `/c/NNN`，會跟著學習者的語系偏好走：選過翻譯語系的學習者，在這道題目有那個翻譯時會被帶到翻譯；沒有語系偏好的學習者，留在他打開的網址的語系，網站不替他換語系。翻譯代碼的短連結不跟著語系偏好走：這道題目有那個翻譯時，不論語系偏好為何都開那個翻譯；沒有時，開主語系那一頁。直接打開帶語系代碼的頁面（輸入、貼上、重新整理），會把學習者的語系偏好設成那個語系；帶主語系代碼的短連結開的是根目錄底下的頁面，不設定任何東西。
 >
-> 英文是主語系時，`/en/c/NNN` 開的是根目錄底下的英文頁，語系偏好是繁體中文的學習者可能被帶到繁體中文翻譯；繁體中文是主語系時，`/en/c/NNN` 開的是 `/en/challenge/<slug>/`，任何學習者都會看到英文。繁體中文是主語系的靶場，舊的 `/zh-TW/…` 網址會回到根：Cloudflare Pages 靠 `_redirects` 的規則，其他主機靠找不到頁面的那一頁；在 Cloudflare Pages 上，`platform/public/zh-TW/` 底下的檔案也會被同一條規則轉走。改了 `primaryLocale` 之後，要 commit `range.json`（pre-commit hook 會重新產生 `_redirects`）或執行 `pnpm redirects:generate`。還沒 commit 的 `range.json` 只改本機建置。從舊版升級到這一版的靶場，要重新產生 `_redirects` 才會有新的規則：CI 回報它過期時，執行 `pnpm redirects:generate` 再 commit 結果。
+> 英文是主語系時，`/en/c/NNN` 開的是根目錄底下的英文頁，語系偏好是繁體中文的學習者可能被帶到繁體中文翻譯；繁體中文是主語系時，`/en/c/NNN` 開的是 `/en/challenge/<slug>/`，任何學習者都會看到英文。繁體中文是主語系的靶場，舊的 `/zh-TW/…` 網址會回到根：Cloudflare Pages 靠 `_redirects` 的規則，`/zh-TW/` 本身一條、`platform/zh-TW/` 的每個頂層頁面各一條、每個放有頁面的頂層資料夾各一條；其他任何舊網址，以及其他主機上的每個舊網址，靠找不到頁面的那一頁。`platform/public/zh-TW/` 底下的檔案照它自己的網址提供，不再被轉走；例外是路徑以這類資料夾的名稱開頭的檔案（例如 `platform/public/zh-TW/guide/…`），那個資料夾的規則仍會轉走它。新增或移除頂層頁面或資料夾會改變這些規則；pre-commit hook 會重新產生 `_redirects`。改了 `primaryLocale` 之後，要 commit `range.json`（pre-commit hook 會重新產生 `_redirects`）或執行 `pnpm redirects:generate`。還沒 commit 的 `range.json` 只改本機建置。從舊版升級到這一版的靶場，要重新產生 `_redirects` 才會有新的規則：CI 回報它過期時，執行 `pnpm redirects:generate` 再 commit 結果。
 
 不帶 `--host` 時，這一行只依 `--base` 改寫；沒帶 `--base` 就維持原狀，可能還是上游原本那一行，也可能是前一次 `--base` 留下的字面值。`--base /<repo>/` 把這段路徑寫死進 `.vitepress/config.mts`；`--base none` 寫成字面值 `const siteBase = '/'`（不是清掉這一行）。**用 `--base` 的靶場，CI 的 site smoke 與 challenge 測試會失敗**——這兩種測試都從 `/` 出發操作頁面，寫死的子路徑會讓它們 404；改用 `--host github-pages` 把 base 交給部署當下決定，本機與 CI 的每一次建置都停在 `/`，就不會遇到這個問題。
 

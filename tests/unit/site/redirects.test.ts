@@ -154,8 +154,28 @@ const SLUG_RULES: Record<Primary, Rule[]> = {
   ],
 }
 
-/** The old-address rule, last and only when `P = zh-TW` (S-§4.1). */
-const OLD_ADDRESS_RULE: Rule = { from: '/zh-TW/*', to: '/:splat', status: 302 }
+/** A name that gets an old-address rule (D154): its target's first segment is a literal. */
+const OLD_ADDRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/**
+ * The old-address rules, a section last and only when `P = zh-TW` (S-§4.1, D154): `/zh-TW/` to `/`,
+ * `/zh-TW/<name>` to `/<name>`, `/zh-TW/<seg>/*` to `/<seg>/:splat`; `<seg>` is never `c` or
+ * `smoke-fixtures`, and the old `/zh-TW/*` rule (D60) is gone, so no target begins with request text.
+ */
+function isOldAddress(rule: Rule): boolean {
+  return rule.from.startsWith('/zh-TW/') && !NUMBERED_SOURCE.test(rule.from) && rule.from !== '/zh-TW/c/:slug'
+}
+
+/** Whether an old-address rule has one of the three shapes of D154, status 302. */
+function oldAddressShape(rule: Rule): boolean {
+  if (rule.status !== 302) return false
+  if (rule.from === '/zh-TW/') return rule.to === '/'
+  const seg = (name: string) => OLD_ADDRESS_NAME.test(name) && name !== 'c' && name !== 'smoke-fixtures'
+  const one = /^\/zh-TW\/([^/*:]+)$/.exec(rule.from)
+  if (one !== null) return seg(one[1]) && rule.to === `/${one[1]}`
+  const dir = /^\/zh-TW\/([^/*:]+)\/\*$/.exec(rule.from)
+  return dir !== null && seg(dir[1]) && rule.to === `/${dir[1]}/:splat`
+}
 
 /** The numbered source forms, in the order each challenge's rules appear (spec 0008, G5). */
 const FORMS = ['/c/', '/en/c/', '/zh/c/', '/zh-TW/c/']
@@ -199,9 +219,9 @@ function placeholders(path: string): string[] {
   return path.endsWith('*') ? [...named, 'splat'] : named
 }
 
-/** A slug rule or the old-address rule serves a set of pages; a numbered rule serves a single page. */
+/** A slug rule or a folder's old-address rule serves a set of pages; any other rule serves a single page. */
 function isParameterised(rule: Rule): boolean {
-  return rule.from.endsWith(':slug') || rule.from === OLD_ADDRESS_RULE.from
+  return rule.from.endsWith(':slug') || rule.from.endsWith('/*')
 }
 
 /**
@@ -286,12 +306,12 @@ function briefSlugsIn(docs: string, locale: Locale): string[] {
  * What is wrong with the slug rules' target directories under `docs` for primary locale `primary`:
  * a rule whose target is no challenge page address of this range, the primary locale's directory
  * missing or holding no slug folder with an `index.md`. Another locale's directory may be missing
- * or empty (G2). A rule whose target is the old-address rule's is not a directory target.
+ * or empty (G2). A rule whose target ends in `/:splat` is an old-address rule's, not a directory target.
  */
 function targetDirectoryFaults(rules: Rule[], docs: string = DOCS, primary: Locale = 'zh-TW'): string[] {
   const faults: string[] = []
   for (const rule of rules.filter(isParameterised)) {
-    if (rule.to === OLD_ADDRESS_RULE.to) continue
+    if (rule.to.endsWith('/:splat')) continue
     const locale = LOCALES.find((l) => challengePagePath(':slug', l, primary) === rule.to)
     if (locale === undefined) {
       faults.push(`${rule.from} -> ${rule.to} is not a challenge page address of this range`)
@@ -340,9 +360,9 @@ describe('_redirects rule syntax', () => {
   })
 
   it('pairs every placeholder across source and target, a trailing * with :splat (S30)', () => {
-    expect(placeholders('/zh-TW/*')).toEqual(['splat'])
-    expect(placeholders('/:splat')).toEqual(['splat'])
-    expect(placeholders(OLD_ADDRESS_RULE.from)).toEqual(placeholders(OLD_ADDRESS_RULE.to))
+    expect(placeholders('/zh-TW/guide/*')).toEqual(['splat'])
+    expect(placeholders('/guide/:splat')).toEqual(['splat'])
+    expect(placeholders('/zh-TW/guide/*')).toEqual(placeholders('/guide/:splat'))
     for (const rule of parseRules()) {
       const from = [...placeholders(rule.from)].sort()
       const to = [...placeholders(rule.to)].sort()
@@ -361,6 +381,12 @@ describe('_redirects rule syntax', () => {
 // S31: a splat rule swallows everything beneath its prefix; same-count placeholders still shadow.
 describe('shadows (S31)', () => {
   it('lets a splat rule shadow every source beneath its prefix, and nothing else', () => {
+    // The retired '/zh-TW/*' (D60) would shadow every /zh-TW/c/ rule: the generator no longer writes it (D154).
+    expect(shadows('/zh-TW/guide/*', '/zh-TW/guide/notes')).toBe(true)
+    expect(shadows('/zh-TW/guide/*', '/zh-TW/guide/a/b')).toBe(true)
+    expect(shadows('/zh-TW/guide/*', '/zh-TW/guides')).toBe(false)
+    expect(shadows('/zh-TW/guide/*', '/zh/c/001')).toBe(false)
+    expect(shadows('/zh-TW/guide/*', '/c/001')).toBe(false)
     expect(shadows('/zh-TW/*', '/zh-TW/c/001')).toBe(true)
     expect(shadows('/zh-TW/*', '/zh-TW/c/:slug')).toBe(true)
     expect(shadows('/zh-TW/*', '/zh/c/001')).toBe(false)
@@ -389,7 +415,9 @@ describe('shadows (S31)', () => {
       writeFileSync(join(root, 'range.json'), JSON.stringify({ primaryLocale: P }))
       const rules = parseRulesText(generateRedirects(root))
       expect(rules.some((r) => r.from.startsWith('/c/'))).toBe(true)
-      expect(rules.some((r) => r.from === '/zh-TW/*')).toBe(P === 'zh-TW')
+      // Neither P writes the retired catch-all (D154); the section's first rule is there for P = zh-TW only.
+      expect(rules.some((r) => r.from === '/zh-TW/*')).toBe(false)
+      expect(rules.some((r) => r.from === '/zh-TW/')).toBe(P === 'zh-TW')
       expect(shadowedPairs(rules)).toEqual([])
     })
   })
@@ -398,26 +426,33 @@ describe('shadows (S31)', () => {
     expect(shadowedPairs(parseRules())).toEqual([])
   })
 
-  it('counts one pair per later /zh-TW/ source once the old-address rule is first', () => {
-    const rules = parseRules()
-    const rest = rules.filter((r) => r.from !== OLD_ADDRESS_RULE.from)
+  it('counts one pair per later /zh-TW/ source once a /zh-TW/* rule is first', () => {
+    // A synthetic rule: the file itself no longer holds one (D154), which is why order matters no more.
+    const catchAll: Rule = { from: '/zh-TW/*', to: '/:splat', status: 302 }
+    const rest = parseRules()
     const later = rest.filter((r) => r.from.startsWith('/zh-TW/')).length
     expect(later).toBeGreaterThan(0)
-    expect(shadowedPairs([OLD_ADDRESS_RULE, ...rest])).toHaveLength(later)
+    expect(shadowedPairs([catchAll, ...rest])).toHaveLength(later)
   })
 })
 
 describe('_redirects rule set', () => {
   const P = indexPrimaryLocale() as Primary
 
-  it('ends with the four slug rules, then the old-address rule when P = zh-TW (G4, S30)', () => {
+  it('ends with the four slug rules, then the old-address section when P = zh-TW (G4, S30, D154)', () => {
     // Last, and in this order. Cloudflare takes the first match and `/c/:slug`
     // matches a number too, so a numbered rule below these would never run.
     const rules = parseRules()
     if (P === 'zh-TW') {
-      expect(rules.at(-1)).toEqual(OLD_ADDRESS_RULE)
-      expect(rules.filter((r) => r.from === OLD_ADDRESS_RULE.from)).toHaveLength(1)
-      expect(rules.slice(-5, -1)).toEqual(SLUG_RULES['zh-TW'])
+      const lastSlug = rules.map((r) => r.from).lastIndexOf('/zh-TW/c/:slug')
+      expect(rules.slice(lastSlug - 3, lastSlug + 1)).toEqual(SLUG_RULES['zh-TW'])
+      const section = rules.slice(lastSlug + 1)
+      expect(section.length).toBeGreaterThan(0)
+      expect(section.every(isOldAddress)).toBe(true)
+      expect(section[0]).toEqual({ from: '/zh-TW/', to: '/', status: 302 })
+      const sources = section.map((r) => r.from)
+      expect(sources).toEqual([...sources].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+      expect(rules.filter(isOldAddress)).toEqual(section)
     } else {
       expect(rules.slice(-4)).toEqual(SLUG_RULES.en)
     }
@@ -429,7 +464,7 @@ describe('_redirects rule set', () => {
     const slugs = indexSlugs(REPO_ROOT)
     const declared = slugs.get('declaration') ?? new Set<string>()
     expect(declared.size, 'no challenge declaration is tracked').toBeGreaterThan(0)
-    const numbered = parseRules().filter((r) => !isParameterised(r))
+    const numbered = parseRules().filter((r) => NUMBERED_SOURCE.test(r.from))
     const forms: Array<[string, Locale | null]> = [
       ['/c/', null],
       ['/en/c/', 'en'],
@@ -474,7 +509,19 @@ describe('_redirects rule set', () => {
     ])
   })
 
-  it('admits no rule that is neither a numbered short link, one of P’s slug rules, nor the old-address rule', () => {
+  // D124/D149: the real tree's own folders, so it holds on the upstream tree only.
+  it.skipIf(
+    upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+  )('gives the old-address section the rules the spec writes out (S-§4.1, D154)', () => {
+    expect(parseRules().filter(isOldAddress)).toEqual([
+      { from: '/zh-TW/', to: '/', status: 302 },
+      { from: '/zh-TW/challenge/*', to: '/challenge/:splat', status: 302 },
+      { from: '/zh-TW/challenges', to: '/challenges', status: 302 },
+      { from: '/zh-TW/guide/*', to: '/guide/:splat', status: 302 },
+    ])
+  })
+
+  it('admits no rule that is neither a numbered short link, one of P’s slug rules, nor an old-address rule of the three shapes', () => {
     // Containment on shape, which is what survives a rule set that grows with
     // the tree. An unreviewed rule of any other shape still fails here.
     const same = (a: Rule, b: Rule) => a.from === b.from && a.to === b.to && a.status === b.status
@@ -482,9 +529,14 @@ describe('_redirects rule set', () => {
       const shape =
         NUMBERED_SOURCE.test(rule.from) ||
         SLUG_RULES[P].some((r) => same(r, rule)) ||
-        (P === 'zh-TW' && same(OLD_ADDRESS_RULE, rule))
+        (P === 'zh-TW' && isOldAddress(rule) && oldAddressShape(rule))
       expect(shape, `${rule.from} -> ${rule.to} is none of the three shapes`).toBe(true)
-      if (P === 'en') expect(rule.from, 'P = en has no splat rule').not.toContain('*')
+      // SR-1 (D154): no catch-all, whose target would begin with request text.
+      expect(rule.from, 'the retired /zh-TW/* rule is back').not.toBe('/zh-TW/*')
+      if (P === 'en') {
+        expect(rule.from, 'P = en has no splat rule').not.toContain('*')
+        expect(isOldAddress(rule), `P = en has the old-address rule ${rule.from}`).toBe(false)
+      }
     }
   })
 
@@ -506,12 +558,28 @@ describe('_redirects target resolution', () => {
 
   it('resolves every literal target to a page', () => {
     // The numbered rules' targets, through the page-path correspondence (D127).
-    for (const rule of parseRules().filter((r) => !isParameterised(r))) {
+    for (const rule of parseRules().filter((r) => NUMBERED_SOURCE.test(r.from))) {
       const page = literalTargetPage(rule.to, DOCS, P)
       expect(
         page !== undefined && existsSync(page),
         `${rule.from} -> ${rule.to} has no page${page === undefined ? ' address in this range' : ` at ${page}`}`,
       ).toBe(true)
+    }
+  })
+
+  it('resolves every old-address target to a page of the primary folder, as git’s index holds it (D54, D154)', () => {
+    const tracked = execFileSync('git', ['ls-files', '-z', '--', `platform/${P}/`], { cwd: REPO_ROOT, encoding: 'utf8' })
+      .split('\0')
+      .filter((p) => p.endsWith('.md'))
+    for (const rule of parseRules().filter((r) => isOldAddress(r))) {
+      if (rule.from === '/zh-TW/') expect(tracked, rule.from).toContain(`platform/${P}/index.md`)
+      else if (rule.from.endsWith('/*')) {
+        const dir = rule.to.slice(1, -'/:splat'.length)
+        expect(
+          tracked.some((p) => p.startsWith(`platform/${P}/${dir}/`)),
+          `${rule.from} -> ${rule.to}: no page under platform/${P}/${dir}/`,
+        ).toBe(true)
+      } else expect(tracked, rule.from).toContain(`platform/${P}${rule.to}.md`)
     }
   })
 })
@@ -547,7 +615,16 @@ describe('brief faults on the real tree (S33)', () => {
 // translations, or never had any, gives (spec 0008, G2), and that the refusals hold (S34).
 describe.each(BOTH)('_redirects target checks on other ranges, P = %s', (P) => {
   const O: Primary = P === 'en' ? 'zh-TW' : 'en'
-  const rules = [...SLUG_RULES[P], ...(P === 'zh-TW' ? [OLD_ADDRESS_RULE] : [])]
+  // Sample old-address rules, one static and one dynamic (D154); the fault counts below do not change.
+  const rules: Rule[] = [
+    ...SLUG_RULES[P],
+    ...(P === 'zh-TW'
+      ? [
+          { from: '/zh-TW/', to: '/', status: 302 },
+          { from: '/zh-TW/guide/*', to: '/guide/:splat', status: 302 },
+        ]
+      : []),
+  ]
   let docs: string
 
   beforeEach(() => {

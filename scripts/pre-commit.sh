@@ -4,9 +4,13 @@
 # It triggers when the staged snapshot differs from HEAD at a watched path (added, copied,
 # modified, renamed, deleted or changed in type): the declaration tree platform/challenge/, the
 # challenge tree of every locale on the locale list (platform/<L>/challenge/), platform/public/
-# _redirects itself, and range.json (D65, D66, D126). The bash here knows no locale name. A glob
-# pre-filter starts no Node, so a commit that has nothing to do with challenges (README.md,
-# platform/public/other.txt) stays a plain git command. A commit that passes it gets the exact
+# _redirects itself, and range.json (D65, D66, D126), and a page (.md) added, deleted or changed in
+# type under a listed locale's folder platform/<L>/ (D154: the old-address rules follow the primary
+# folder's top-level entries, so the committed file must follow them). Editing an existing page's
+# content does not trigger. A page added in a folder that already holds pages, or on a range whose
+# primary locale is not zh-TW, regenerates a file equal to the committed one: exit 0, no diff. The
+# bash here knows no locale name. A glob pre-filter starts no Node, so a commit that has nothing
+# to do with challenges (README.md, platform/public/other.txt) stays a plain git command. A commit that passes it gets the exact
 # list from the generator (`--challenge-trees`, the locale list's own folders), and the trigger is
 # judged again over that list: platform/public/challenge/ or a folder off the list does not
 # trigger. Any other commit passes through untouched.
@@ -96,6 +100,10 @@ REDIRECTS=platform/public/_redirects
 # with nothing to do with challenges stays a plain git command: any folder's challenge tree, by
 # glob (D65, D66). The bash here knows no locale name; the locale list is Node's.
 PRESCREEN=(platform/challenge/ ':(glob)platform/*/challenge/**' "$REDIRECTS" range.json)
+# A page added, deleted or changed in type under any folder of platform/ also passes the pre-filter:
+# the old-address rules follow the primary folder's top-level pages and folders (D154). Editing a
+# page's content (M) does not, so an edit stays a plain git command.
+PAGES=(':(glob)platform/*/**/*.md')
 # Everything under platform/ except _redirects: what the hook stashes and restores.
 REST=(platform/ ":(exclude)$REDIRECTS")
 
@@ -103,7 +111,15 @@ REST=(platform/ ":(exclude)$REDIRECTS")
 changed=0
 git diff --cached --quiet --no-renames -- "${PRESCREEN[@]}" || changed=$?
 case $changed in
-  0) exit 0 ;;
+  0)
+    pages=0
+    git diff --cached --quiet --no-renames --diff-filter=ADT -- "${PAGES[@]}" || pages=$?
+    case $pages in
+      0) exit 0 ;;
+      1) ;;
+      *) exit "$pages" ;;
+    esac
+    ;;
   1) ;;
   *) exit "$changed" ;;
 esac
@@ -117,10 +133,29 @@ while IFS= read -r tree; do
   [ -z "$tree" ] || TREES+=("$tree")
 done <<< "$TREE_LIST"
 WATCHED=("${TREES[@]}" "$REDIRECTS" range.json)
+# Each locale's own folder, platform/<L>/, is its tree without the trailing challenge/; the bash
+# still knows no locale name. A page added, deleted or changed in type there triggers too (D154).
+PAGES_OF_LOCALES=()
+for tree in "${TREES[@]}"; do
+  case $tree in
+    platform/challenge/) ;;
+    */challenge/) PAGES_OF_LOCALES+=(":(glob)${tree%challenge/}**/*.md") ;;
+  esac
+done
 changed=0
 git diff --cached --quiet --no-renames -- "${WATCHED[@]}" || changed=$?
 case $changed in
-  0) exit 0 ;;
+  0)
+    pages=0
+    if [ "${#PAGES_OF_LOCALES[@]}" -gt 0 ]; then
+      git diff --cached --quiet --no-renames --diff-filter=ADT -- "${PAGES_OF_LOCALES[@]}" || pages=$?
+    fi
+    case $pages in
+      0) exit 0 ;;
+      1) ;;
+      *) exit "$pages" ;;
+    esac
+    ;;
   1) ;;
   *) exit "$changed" ;;
 esac
