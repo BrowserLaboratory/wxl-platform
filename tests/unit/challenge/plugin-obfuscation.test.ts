@@ -4,6 +4,7 @@ import { detectLegacyFields } from '../../../.vitepress/challenge/plugin'
 
 const BASE = {
   title: 'T',
+  layout: 'challenge',
   backend: 'flask' as const,
   app: 'app.py',
   fs: { '/flag.txt': 'FLAG{secret}', '/db': 'data' },

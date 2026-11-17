@@ -2383,6 +2383,73 @@ side item segment 4d's planner raised; nothing else. Each follows the planner's 
     - `tests/site-smoke/site-smoke.spec.ts:1036` (P2, confidence low): the pre-existing S08 case skips through `realUpstreamDecision` with its own reason string, not through `upstreamOnlySkipReason` (D124 helper); untouched by this segment (measured only, per the parent's decision 3), noted for whoever owns B93/D124; it passed (not skipped) in the re-run
   - Full suite (parallel run, JSON reporter): 804 suites, 6451 tests: 6330 passed, 9 failed, 112 skipped/pending; 8 failed suites (7 test files with failing tests plus `tests/pre-commit-sh.test.ts` failing at collection). All failures match allowed entries, so the non-parallel re-run was not needed and no flakes were observed. `tests/site-smoke` (Playwright) was not part of this vitest run.
 
+### 2026-11-17 (parent, decisions on segment 5a's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the two questions segment 5a's
+planner raised; nothing else. Both follow the planner's recommendation.
+
+1. Y23's validate half, Y19's validate clause ("no check message names them") and Y112's brief half (VM6 names `<<`;
+   a duplicated `title` gives VM15) join segment 5a. Approved. The approved test plan table already places all three in
+   `tests/challenge-validate.test.ts`, which 5a rewrites; neither wave 5's row list nor any segment's list named them,
+   so without this they would be left out. No row is added to the plan: these are approved rows getting an owner. This
+   also settles the earlier open note in these Comments about which wave claims Y112.
+2. `tests/unit/challenge/plugin.test.ts` (`BASE_FRONTMATTER`) and `plugin-obfuscation.test.ts` (`BASE`) gain
+   `layout: 'challenge'` in their fixtures; no assertion changes. Approved. Once `validateChallengeBrief` checks VM8
+   (layout must be `challenge`), those fixtures would throw for a reason their cases do not test. It follows the
+   parent's 2026-11-16 decision (b) (a brief fault must reach `processChallengeFrontmatter`); the alternative, keeping
+   VM7–VM9 out of `validateChallengeBrief`, contradicts that decision and empties Y74.
+- Noted from the plan, no decision needed: 5a declares two new inter-wave reds, `challenge-lint-staged.test.ts ›
+  passes when challenge is fully valid` (owner: 5b) and `challenge-verify-L1.test.ts › passes for a well-formed
+  challenge` (owner: 5f); both call `validateChallenge` with its old single-argument shape.
+
+### 2026-11-17 (segment 5a)
+
+Wave 5, `challenge:validate` (`scripts/challenge-validate.ts`, `tests/challenge-validate.test.ts`), under the user's standing
+authorization quoted in the parent entries above. Rows done: A (re-home) + Y30 + Y1 validate half, Y12, Y9, Y14, Y2, Y3, Y6, Y5,
+Y4, Y13, Y104, Y20, Y103, Y22, Y24, Y25, Y26 + the wave 1(f) E deferred items, Y27, Y28, Y29, Y31, Y37, Y32 (+ discoverChallenges call
+shape), Y111 validate clause, Y33, Y35, Y36, B38 validate half, Y34; added by the parent's decision: Y23 validate half, Y19 validate
+clause, Y112 brief half. Not done: none. Nothing under `platform/` changed, so no `git add`; nothing committed.
+
+Red lines (first failure, before the production change):
+- A / Y30 / Y1 (17 per-folder + Y30 + Y1 cases): `Error: EISDIR: illegal operation on a directory, read` (old `validateChallenge` read `root` as a file).
+- Y12: `TypeError: app.endsWith is not a function` (3 cases).
+- Y2, Y3, Y5, Y4: `declaration` message was the bare reason (`absent`, `not-a-mapping`, `multi-document`, `invalid-yaml`); Y2 `expected [ { label: 'declaration', …(2) } ] to deeply equal …`, Y4 `expected 'invalid-yaml' to match /^invalid YAML in challenge\.yaml: ./`. Y6 (4 cases) was red for the same reason until Y3's change (not first-green; one reason branch).
+- Y13 (absent only): message still said `frontmatter`. Y103 (2 cases): `expected undefined to deeply equal { label: 'structure', …(2) }` / `expected undefined to be true`.
+- Y22 (4): `expected undefined to be true`. Y24 (16 + 2 combined): `expected { label: 'brief (<L>)', … } to deeply equal …` (brief check only looked at existence). Y25 (4) was red for the same reason until Y24's change, then green.
+- Y26 validate (4) `expected { label: 'brief (zh-TW)', …(2) } to deeply equal …`; plugin missing-title `AssertionError: expected [Function] to throw an error`.
+- Y27 (3) / Y28 (2): same `deeply equal` failure; plugin `description: 42`: `expected [Function] to throw an error`. Y27's production change turned 7 existing cases red as predicted (plugin.test.ts 6, plugin-obfuscation 1: layout must be challenge); `layout: 'challenge'` added to `BASE_FRONTMATTER` and `BASE`, assertions unchanged (parent decision 2).
+- Y29 (a): `TypeError: Cannot read properties of null (reading 'fmRaw')`; (b) message lacked the `invalid YAML: ` prefix.
+- Y31 (4) `expected undefined to deeply equal { label: 'brief (<P>)', …}`; Y37 (4) was red for the same reason until Y31's change.
+- Y32 (3 + 2 re-shaped existing): `expected [] to include 'x'` / `expected [] to deeply equal [ 'alpha' ]`. Y111: `expected [ 's', 't', 'u' ] to deeply equal [ 's' ]`.
+- Y35 (a)(b)(c) + Y36 + Y34 + B38: `ERR_MODULE_NOT_FOUND: Cannot find module '…/.vitepress/layout-error' imported from …/.vitepress/challenge/declaration.ts` (fixed with `'../layout-error.ts'`; declaration.test.ts, plugin.test.ts, challenge-data-loaders.test.ts still pass). Y36 (6): stderr first line was `SiteLayoutError: PL-E0x: …` (class name from `main().catch(console.error)`). B38 case 1 / Y34 (6 runs): exit 0 with `✓` on stdout (no layout check).
+
+First-green (reason): Y9, Y14 (VM5 and `missing required field` already in `validateChallengeDeclaration`, wave 1(c)); Y5 contrast; Y13 four non-absent cells and Y104 (`isChallengeNumber` already `Number.isSafeInteger`, 4a); Y20 (validator does not warn; `fs` branch gone); Y23, Y19, Y112 (brief parsed with the D129 options); Y33 (only `LOCALES` iterated); Y35 (c), (d); Y34 fourth case; B38 case 2 (Y36 already reads range.json first).
+
+Mutations (all restored): Y9 validator call removed, 2 red; Y14 same, 4 red; Y104 `shortLink.ts` back to `Number.isInteger`, 2 red; Y20 `validateChallengeConfig` called after validation, `fs` and `all five` red (2); Y25 only declaration keys blocked, 4 red; Y37 hard-coded default, the `en` cell red (1); Y33 extra folder scanned, 1 red; Y34 `checkSourceLayout` call removed, 6 red (the 3 shapes x 2 runs; src/README.md case stays green); Y112: the plan's mutation (default `parseDocument` options) stays green, because `yaml` 2's defaults already do not merge `<<` and already reject a duplicate key; with `merge: true, uniqueKeys: false` both cases go red (2). Y20's first mutation attempt failed on a missing import (ReferenceError, 6 red), so it was redone with the import.
+
+Commands (all with `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform` unless noted): `npx vitest run tests/challenge-validate.test.ts tests/unit/challenge/plugin.test.ts plugin-obfuscation.test.ts config.test.ts declaration.test.ts tests/unit/site/challenge-data-loaders.test.ts` -> 6 files, 296 passed; `npx vitest run tests/challenge-validate.test.ts` without the variable -> 136 passed (the checkout is detected as upstream, so Y1 and Y22 run). `tests/challenge-lint-staged.test.ts` + `tests/unit/scripts/challenge-verify-L1.test.ts` -> 2 failed, 15 passed; the two reds are the expected new ones below.
+
+Notes for later segments:
+- Expected new reds: `challenge-lint-staged.test.ts > runLintStaged > passes when challenge is fully valid` (owner: 5b, Y88/Y89, D122) and `challenge-verify-L1.test.ts > L1 layer (task 4.2) > passes for a well-formed challenge…` (owner: 5f, Y86/Y87/Y109); both call `validateChallenge` with its old single argument. `tests/pre-commit-sh.test.ts` stays a carried failure (wave 6).
+- `validateChallengeBrief` now throws VM7-VM9 words without a path (`title must be a non-empty string`, `layout must be challenge`, `description must be a string`); validate prefixes `<path>: `. A bare `description:` (null) fails VM9 (the plan says "not undefined and not a string").
+- `validateChallengeConfig` is no longer imported by challenge-validate.ts; its body and config.test.ts cases stay until analyze/create (Y-q1).
+- The CLI's tree-wide numbering block (`collectChallengeNumbers(root)`) is unchanged and was not exercised without a slug on a fixture; it belongs to the numbering segment.
+- Tests read `scripts/` and `.vitepress/` into a temporary copy per run of the CLI describe (about a second); `platform/` and `range.json` are never copied.
+
+Deferred to stage 6 (P2, frozen rubric):
+- `scripts/challenge-validate.ts:166` (P2, confidence low): when challenge.yaml is present but rejected (VM2–VM5, VM12, the Y9 missing-field case), `validateChallenge` returns right after the declaration check, so no brief check (VM6–VM10) runs. A teacher sees brief faults only after fixing the declaration. D86 and Y24 do not pin the order, and HEAD also returned early; a wording gap or later improvement, not a regression.
+- `tests/challenge-validate.test.ts:1048` (P2, confidence medium): Y34's `src/README.md`-only case runs only with the slug argument; the run without a slug (which also exercises the tree-wide numbering block) is not tried. The row names no mode, so it is covered.
+- `tests/challenge-validate.test.ts:887` (P2, confidence low): the CLI cases set `NODE_NO_WARNINGS=1`, so the "first stderr line is the PL line" assertions (Y36, B38, Y34) do not check the real `pnpm challenge:validate` command; on Node 22 (in the CI matrix) an ExperimentalWarning may come first. Accurate on the local Node 24.13.
+- `scripts/challenge-validate.ts:59` (P2, confidence medium): `parseMd` matches only LF line endings, so a CRLF brief fails VM14 although VitePress builds it. Same regex at HEAD (line 47), not a regression; no row covers it, and it now applies to both locales.
+- `tests/challenge-validate.test.ts:462` (P2, confidence medium): the HEAD test "fails when the number is not an integer greater than zero" (string "007") was deleted but is not listed in traceability.md's Overridden-contracts row (line 1737). Coverage is kept, more strictly, by Y13's `"7"` cell (exact message). Bookkeeping gap for stage 6's "every changed test cites a row" check.
+- `tests/challenge-validate.test.ts:514` (P2, confidence high): Y20's `console.warn` filter `/fs/` is case-sensitive and would miss a warning naming `encryptedFs` or `flag_verifier`. The row's AC (spy never called with `fs`) is met; the message-side `mentions` regex covers all five keys.
+- `scripts/challenge-validate.ts:134` (P2, confidence medium): a brief whose frontmatter parses to a non-mapping scalar or sequence gets `<path>: invalid YAML: the frontmatter is not a mapping`, a VM15-shaped message whose text is not a parser message; no VM row or test defines the case. It stays a failure.
+- `scripts/challenge-validate.ts:352` (P2, confidence low): `discoverChallenges` treats a dot-prefixed directory under `platform/challenge/` (e.g. `.tmp/`) as a slug, which then fails VM1, while VM13 deliberately ignores dot-names. Upstream's tree has none; hardening idea only.
+- `tests/challenge-validate.test.ts:318` (P2, confidence high): Y22's cases sit inside the describe titled "Y1 (validate half)", so test output does not name Y22. Sharing the upstream-only skip through `upstreamOnlySkipReason` is correct (D124); naming only.
+
+Full-suite result (parallel run, JSON reporter, `CI=true`, `WXL_EXPECT_UPSTREAM=true`): 151 test files (5 failed: 4 with failing tests, plus `tests/pre-commit-sh.test.ts` failing at collection). 6561 tests: 6438 passed, 11 failed, 112 skipped, 0 todo. No-file-parallelism re-run not needed (no unexpected failures). No flakes observed. The first `rm` glob was a zsh no-match (nothing to remove); post-run cleanup done.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

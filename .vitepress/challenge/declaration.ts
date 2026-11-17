@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseDocument, parseAllDocuments, visit, isScalar, type Pair } from 'yaml'
-import { SiteLayoutError } from '../layout-error'
+import { SiteLayoutError } from '../layout-error.ts'
 
 // D145: a mapping key that is not a scalar (a flow or block collection, or an alias) fails the
 // parse before `toJS` is called, because `toJS` would otherwise stringify it and have `yaml` write
