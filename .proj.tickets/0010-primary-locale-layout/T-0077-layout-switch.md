@@ -2051,6 +2051,75 @@ Deferred to stage 6 (P2, frozen rubric):
 
 Full-suite result (suite step): vitest full run (parallel, JSON reporter): 6263 tests, 6257 passed, 6 failed, 0 pending/skipped; 771 suites (the runner's `numFailedTestSuites` reads 9, but only 6 test-level failures exist and no file failed at suite level). No flakes, so the no-file-parallelism re-run was not needed. `glossary.test.ts` passed. Playwright smoke specs are not in the vitest suite and were not run.
 
+### 2026-11-17 (parent, decision on segment 3c's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」).
+
+- Question (3c's planner): `tests/site-smoke/session-gate-clear-report.spec.ts` has two cases that are red under the
+  new layout (`goto('/challenge/door-is-open/')` is now the Traditional Chinese page, so the English assertions receive
+  Chinese). No approved row names this file. Change its two `goto` paths in 3c?
+- Decision: approved as the planner recommends. Scope of this approval: in that one file, the two `goto` paths become
+  `localePath('en', 'challenge/door-is-open/')` plus the one import; no assertion changes, nothing else in the file.
+- Why it is inside the authorization: it follows D54 (every site-smoke URL is derived from P through `localePath`)
+  and BC13/B82 (English assertions go to `/en/…`); without it wave 9's `pnpm test:smoke` cannot be green and no other
+  segment owns the file. It adds a file to 3c's scope, so it is listed to the user.
+- Also noted from the plan, no decision needed: 3c builds with `WXL_SMOKE_PAGES=1 pnpm docs:build`, not `pnpm build`
+  (which would run keygen, still failing until wave 5, and rewrite the live `_redirects` with the pre-wave-4
+  generator); the full `pnpm build` stays in wave 9. The page-mode copy-control cases in `site-smoke.spec.ts` stay red
+  until segment 4d (S54–S56).
+
+- 2026-11-17 (segment 3c): surface = the production bundle of `WXL_SMOKE_PAGES=1 pnpm docs:build`, served by
+  `vitepress preview`, driven by Playwright chromium. No `git add` (nothing under `platform/` changed). Files:
+  `tests/site-smoke/missing-translation.spec.ts`, `site-smoke.spec.ts`, `session-gate-clear-report.spec.ts`
+  (approved add-on: two `goto` paths and one import, assertions untouched), `playwright.site.config.ts` (comment only).
+  - Before any edit, `missing-translation.spec.ts`: 28 passed, 6 failed (switcher article B1; switcher challenge bar x3;
+    alias; "published /zh-TW/ page stores zh-TW": `Expected "zh-TW" Received "en"`). After the rewrite: 37 passed
+    (34 + A15 x2 + A3 x1).
+  - A8 alias, A5 translation-page cold load, A21 article and challenge bar (3 widths): red lines are the ones above
+    (e.g. `Expected pattern /\/zh-TW\/challenge\/selected-excerpts\/$/ Received ".../challenge/selected-excerpts/"`);
+    green first time after the rewrite (wave 2 routing already implemented).
+  - A5/A19/A25 failed load: the old test was a false green. Added `intercepted > 0` first: red
+    `expect(received).toBeGreaterThan(0) Expected: > 0 Received: 0` (chunk `zh-TW_challenges.md.*.js` no longer exists).
+    Then route pattern `${T}_challenges.md.*.js`, `.NotFound`, stored P, pathname kept: green.
+  - A17 (a)(b): green first time, because `/<T>/no-such-page` has no counterpart either. Non-vacuity: (a) pointed at
+    `X(ZH_ONLY)` goes red (`[data-missing-translation]` count Expected 0 Received 1); restored.
+  - A15 (new, stored none and T) and A3 (new): green first time (wave 2). Mutation build (`notFoundRedirect` always null,
+    `shouldPersistOnColdLoad` false, `redirectTargetForStoredLocale` null): 13 red incl. A15 x2, A3, A8, A5 cold load,
+    A21-adjacent fallbacks; sources restored from backup, `git diff --stat -- .vitepress` empty, test build redone.
+    A3 with stored PRIMARY goes red (`Expected "/en/guide/python?q=1#h" Received "/guide/python?q=1#h"`); restored.
+  - A1, A2, A4, A14, A20, A30: no change; the COLD_LOADS (4), FALLBACKS (6), Back-after-fallback cases are green on the
+    3c build (they are in the 37).
+  - B82 (3 cases) and B61: literal `/en/...` replaced by `localePath('en', ...)`; B61 loops `LOCALES`. Green first time
+    (under P=zh-TW `localePath('en', x)` is `/en/x`; P=en is observed at stage 8 V-B7). B61 non-vacuity: expecting
+    `localePath` of the other locale goes red (`Expected "/" Received "/en/"`); restored. B81's own `goto('/en/')`
+    (third occurrence) left as is: not in the row.
+  - D54: SITE_PAGES (4 paths), `pageUrlOf`, the S06 path builder now go through `localePath`; local `type Locale`
+    replaced by the import. Before: S06 English list `Expected "/challenge/selected-excerpts/" Received "/en/challenge/selected-excerpts/"`
+    (line 991). After: pathname assertion green, the case stops at the nav text (line 995,
+    `Expected "wxl.browserlab.online/en/challenge/..." Received ".../challenge/..."`), which is segment 4d's.
+  - `session-gate-clear-report.spec.ts`: both K4 cases green now (were 2 red of 15).
+  - `pnpm test:smoke`: 68 passed, 42 failed (full run, one worker). All 42 are the page-mode copy-control cases of
+    segment 4d (S54-S56, `challengePagePath`, `expectedUrlFor`): layout and HTML as served 20, mobile nav 4, desktop nav 4,
+    what is copied (S05, N07) 6, S09 4, S06 4. Wave 1(g) rows B48, B59, B61, B70, B81, B82, B79, Y39 and all of
+    code-panel-platform and session-gate-scope are green. S08 (zh-TW nav URL cut at 375, upstream-only) is green now; it may
+    stop truncating once wave 4 shortens the URL, so 4d must measure it.
+  - `tsc` reports TS5097 for `.ts` import suffixes in tests/site-smoke (also in 3a's `localePath.ts`); pre-existing
+    style, not touched. Rows not done: none.
+  - Full-suite result (suite step): vitest, parallel run (JSON reporter): 6263 tests total, 6257 passed, 6 failed, 0
+    pending/skipped; 771 suites. The no-file-parallelism re-run was not needed because all 6 failures match the allowed
+    list. Playwright is outside this suite and was not run.
+  - Deferred to stage 6 (P2, frozen rubric):
+    - `tests/site-smoke/missing-translation.spec.ts:400` (high): the A8 alias test is named "writes nothing" but stores T beforehand and expects T, so it cannot detect a write of T; the plan row says to store `en` explicitly and A8's acceptance criterion covers only the redirect target, so not a row coverage gap. Same point at line 389 (title claims more than the assertion checks).
+    - `tests/site-smoke/missing-translation.spec.ts:416` (high): the A15 cases install `recordNavigations` but never read `navigations()`; D29's "no second redirect" rests on one pathname sample after 500 ms; replace-vs-push is not checked in smoke. Still red for the plain D29 failure (mutation build).
+    - `tests/site-smoke/missing-translation.spec.ts:316` (medium): the B7 not-found switcher case was changed while green (stored value, option and expectation now from T and PRIMARY); recorded as A17 (b), but A17's row names only the "path with no counterpart" test. Justified by D54, same strength; the row citation is approximate.
+    - `playwright.site.config.ts:21` (medium): the rewritten pinned-locale comment still describes upstream with P = zh-TW ("Traditional Chinese is the primary locale", a goto with no locale segment "lands on /en/..."), false in a range with P = en. D54 only needs the "default visiting locale" wording gone, and it is.
+    - `tests/site-smoke/code-panel-platform.spec.ts:28` (medium): under P = zh-TW, this file (lines 28, 220, 268) and `session-gate-scope.spec.ts` (lines 26-59) still go to unprefixed primary pages and depend on the A3 cold-load redirect under the pinned `en`, while the rewritten config comment says English assertions avoid that redirect. Outside 3c's rows and D54's list; they pass on the 3c build. Consistency follow-up, not a defect.
+    - `tests/site-smoke/missing-translation.spec.ts:232` (low): the `/guide/python` gotos in the built-in-menu cases (lines 232, 245) are literals rather than `localePath(PRIMARY, ...)`. Correct under either P; pre-existing, belong to no 3c row, style only.
+    - `tests/site-smoke/code-panel-platform.spec.ts:90` (medium): "challenge application source is unreachable from the Code panel" is flaky on the 3c build: red in a full `pnpm test:smoke` run and alone with `-g` (Run button stuck on "Loading..." / "Waiting for runtime to initialize...", `toBeEnabled` timed out after 180000 ms), green in a whole-file run (9/9) and `--repeat-each=2`. `openCodePanel` goes to `/challenge/staff-only/`, now the primary (zh-TW) page; under the pinned `en` that cold load is replaced by `/en/challenge/staff-only/` while the runtime boots (a guess, not shown). 3c touched neither this file nor production code; the suite step should know it is flaky.
+    - `tests/site-smoke/missing-translation.spec.ts:403` (medium): "a cold load of a published translation page stores its locale" checks only the write, not the absence of a redirect and of the line (A5's other columns); those are still covered by the COLD_LOADS case `EN_ONLY` stored zh-TW.
+    - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:2101` (high): two statements in this entry are not quite accurate: "were 2 red of 15" (`session-gate-clear-report.spec.ts` has only 2 cases) and "all of code-panel-platform ... green" (one case fails some runs, 2 of 5 runs).
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

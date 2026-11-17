@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { localePath } from './localePath'
 
 /**
  * What the shared-machine choice reports after a site-wide clear that did not finish, in the
@@ -26,7 +27,7 @@ test.describe('the report after a site-wide clear that did not finish', () => {
   })
 
   test('says the database went and some other values did not, and offers only to retry or close', async ({ page }) => {
-    await page.goto('/challenge/door-is-open/')
+    await page.goto(localePath('en', 'challenge/door-is-open/'))
     await page.locator('[data-session-gate-clear]').click()
 
     // The run has settled on the sweep failure: the raw error is the injected one.
@@ -55,7 +56,7 @@ test.describe('the report after a site-wide clear that did not finish', () => {
   test('reports a later held delete as unconfirmed and offers only reload (K4)', async ({ page, context }) => {
     // Two page loads and the platform's real five-second bound on the delete.
     test.setTimeout(60_000)
-    await page.goto('/challenge/door-is-open/')
+    await page.goto(localePath('en', 'challenge/door-is-open/'))
     await page.locator('[data-session-gate-clear]').click()
     await expect(page.locator('[data-session-gate-raw-error]')).toHaveText('injected: removeItem refused')
 

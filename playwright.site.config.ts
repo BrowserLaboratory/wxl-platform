@@ -24,10 +24,9 @@ export default defineConfig({
     // redirects client-side to that translation's counterpart (D24); with the preference
     // pinned to `en` here, a `page.goto('/...')` with no locale segment therefore lands on
     // `/en/...` once that redirect runs — and most specs here assert English strings
-    // ('Challenges', 'Start Challenge', 'Browser Emulator'). B82's three cases `goto` an
-    // explicit `/en/` path rather than relying on that redirect, so their assertions do not
-    // depend on the redirect's own timing; the remaining English `SITE_PAGES` cases are
-    // moved to `/en/` paths in wave 3 (T-0077's Implementation waves, `pageUrlOf`).
+    // ('Challenges', 'Start Challenge', 'Browser Emulator'). English assertions therefore go to
+    // an explicit path derived from the primary locale through `tests/site-smoke/localePath.ts`
+    // (D54), not to a literal prefix and not to the redirect's own timing; the pinned `en` stays.
     //
     // What is tested here is the production bundle and the URL shape after client-side
     // routing, not which locale a fresh visitor gets — that has its own unit coverage in

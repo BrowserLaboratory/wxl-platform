@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
+import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
 import { SITE_ORIGIN } from '../../.vitepress/challenge/shortLink'
 import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, upstreamOnlySkipReason } from '../__helpers__/upstreamDecision'
 
@@ -67,7 +68,7 @@ test('homepage renders', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
 
-  await page.goto('/en/')
+  await page.goto(localePath('en'))
 
   // Hero action + a feature card prove the home layout and HomeContent mounted.
   await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
@@ -77,7 +78,7 @@ test('homepage renders', async ({ page }) => {
 })
 
 test('reference challenge page mounts', async ({ page }) => {
-  await page.goto('/en/challenge/door-is-open/')
+  await page.goto(localePath('en', 'challenge/door-is-open/'))
 
   // The ChallengeLayout shell renders the description panel and markdown body
   // immediately, independent of the WASM runtime boot (which is out of scope
@@ -104,7 +105,7 @@ test('reference challenge page mounts', async ({ page }) => {
 // the host serves the extensionless form is the host's behaviour, verified by
 // request against production, not by this file.
 test('client-side navigation leaves an extensionless URL in the address bar', async ({ page }) => {
-  await page.goto('/en/')
+  await page.goto(localePath('en'))
 
   // Wait for hydration before clicking. The URL correction lives in the client
   // router's `loadPage`, so it only runs when the click is intercepted as an SPA
@@ -136,7 +137,7 @@ test('client-side navigation leaves an extensionless URL in the address bar', as
     .poll(() => new URL(page.url()).pathname, {
       message: 'the client router never corrected the address bar',
     })
-    .toBe('/en/challenges')
+    .toBe(localePath('en', 'challenges'))
 
   const pathname = new URL(page.url()).pathname
   expect(pathname, `address bar kept an .html form: ${pathname}`).not.toMatch(/\.html$/)
@@ -181,8 +182,10 @@ test('<html lang> follows the page locale (B59, upstream-only)', () => {
 
 test('the nav title links to the page locale\'s home (B61)', () => {
   const navTitleHref = (html: string) => html.match(/<a class="title" href="([^"]*)"/)?.[1]
-  expect(navTitleHref(distFile('en/guide/notes.html'))).toBe('/en/')
-  expect(navTitleHref(distFile('guide/notes.html'))).toBe('/')
+  // D54: each locale's page and the home it links to both come from P through `localePath`.
+  for (const locale of LOCALES) {
+    expect(navTitleHref(distFile(`${localePath(locale, 'guide/notes').slice(1)}.html`))).toBe(localePath(locale))
+  }
 })
 
 test('upstream\'s home pages, smoke half (B70, upstream-only)', () => {
@@ -311,15 +314,14 @@ test.describe('translated challenges share one declaration (Y39)', () => {
 // the imported SITE_ORIGIN with plain string operations. Short mode in a built site is checked on
 // the Cloudflare preview at stage 8 (V01), the only surface whose build sets CF_PAGES.
 
-type Locale = 'en' | 'zh-TW'
 interface SitePage { name: string; path: string; locale: Locale; challenge: boolean }
 
 // "Each page" of traceability.md's built-site rows.
 const SITE_PAGES: SitePage[] = [
-  { name: 'English list', path: '/challenges', locale: 'en', challenge: false },
-  { name: 'Traditional Chinese list', path: '/zh-TW/challenges', locale: 'zh-TW', challenge: false },
-  { name: 'English selected-excerpts', path: '/challenge/selected-excerpts/', locale: 'en', challenge: true },
-  { name: 'Traditional Chinese selected-excerpts', path: '/zh-TW/challenge/selected-excerpts/', locale: 'zh-TW', challenge: true },
+  { name: 'English list', path: localePath('en', 'challenges'), locale: 'en', challenge: false },
+  { name: 'Traditional Chinese list', path: localePath('zh-TW', 'challenges'), locale: 'zh-TW', challenge: false },
+  { name: 'English selected-excerpts', path: localePath('en', 'challenge/selected-excerpts/'), locale: 'en', challenge: true },
+  { name: 'Traditional Chinese selected-excerpts', path: localePath('zh-TW', 'challenge/selected-excerpts/'), locale: 'zh-TW', challenge: true },
 ]
 const VIEWPORTS = [
   { width: 360, height: 740 },
@@ -331,7 +333,7 @@ const VIEWPORTS = [
 
 /** The page URL of a challenge: SITE_ORIGIN followed by the page's path, no base added. */
 function pageUrlOf(locale: Locale, slug: string): string {
-  return `${SITE_ORIGIN}${locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/${slug}/`
+  return `${SITE_ORIGIN}${localePath(locale, `challenge/${slug}/`)}`
 }
 const withoutScheme = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -987,7 +989,7 @@ test.describe('copy control in page mode: the rest of a list row opens the chall
 
         const pushesBefore = await pushStates(page)
         await row.locator('[data-row-title]').click()
-        const path = `${target.locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/selected-excerpts/`
+        const path = localePath(target.locale, 'challenge/selected-excerpts/')
         await expect.poll(() => new URL(page.url()).pathname).toBe(path)
         expect(await pushStates(page)).toBeGreaterThan(pushesBefore)
         await expect(page.locator('nav.merged-nav [data-short-link]:visible')).toHaveText(withoutScheme(pageUrlOf(target.locale, 'selected-excerpts')))
