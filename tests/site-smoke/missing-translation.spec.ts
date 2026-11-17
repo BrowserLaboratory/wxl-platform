@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { PRIMARY } from './localePath'
+import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../__helpers__/upstreamDecision'
 
 // Spec 0008 on the production bundle (`pnpm docs:build`, served by `vitepress preview`): a cold
 // load of a missing translation falls back to the page that exists, with the
@@ -41,7 +43,11 @@ test('the page list spelling matches the pages VitePress published', () => {
         if (top && (item.name === 'public' || item.name === 'shared')) continue
         walk(join(dir, item.name), false)
       } else if (item.name.endsWith('.md')) {
-        const rel = relative(join(ROOT, 'platform'), join(dir, item.name)).split(sep).join('/')
+        // The primary locale's folder is published at the output root (D9): drop its `<P>/` prefix,
+        // and nothing else. Written out here, not through the page-list module, so the two sides
+        // of the comparison stay independent.
+        const source = relative(join(ROOT, 'platform'), join(dir, item.name)).split(sep).join('/')
+        const rel = source.startsWith(`${PRIMARY}/`) ? source.slice(PRIMARY.length + 1) : source
         md.push(rel === 'index.md' ? '/' : rel.endsWith('/index.md') ? `/${rel.slice(0, -'index.md'.length)}` : `/${rel.slice(0, -'.md'.length)}`)
       }
     }
@@ -63,6 +69,20 @@ test('the page list spelling matches the pages VitePress published', () => {
   walkDist(dist)
 
   expect(new Set(html)).toEqual(new Set(md))
+})
+
+test('dist/index.html is the Traditional Chinese home and dist/en/index.html the English one (B44, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    process.env.GITHUB_REPOSITORY, readManifest(ROOT), isGitWorkTree(ROOT), hasRootRangeJson(ROOT),
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  const dist = (rel: string) => readFileSync(join(ROOT, '.vitepress/dist', rel), 'utf8')
+  const hero = (html: string) => html.match(/<h1[\s\S]*?<\/h1>/)?.[0] ?? ''
+  // The home page's hero text is the one string each language writes for itself.
+  expect(hero(dist('index.html'))).toContain('網站滲透實驗室')
+  expect(hero(dist('en/index.html'))).toContain('Web Exploitation Laboratory')
+  expect(hero(dist('index.html'))).not.toContain('Web Exploitation Laboratory')
+  expect(hero(dist('en/index.html'))).not.toContain('網站滲透實驗室')
 })
 
 for (const stored of [null, 'zh-TW', 'en'] as const) {

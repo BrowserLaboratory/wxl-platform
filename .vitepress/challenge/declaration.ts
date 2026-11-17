@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseDocument, parseAllDocuments, visit, isScalar, type Pair } from 'yaml'
+import { SiteLayoutError } from '../layout-error'
 
 // D145: a mapping key that is not a scalar (a flow or block collection, or an alias) fails the
 // parse before `toJS` is called, because `toJS` would otherwise stringify it and have `yaml` write
@@ -39,6 +40,25 @@ export type DeclarationReason = 'absent' | 'not-a-mapping' | 'invalid-yaml' | 'm
 export type DeclarationResult =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; reason: DeclarationReason; path: string }
+
+/**
+ * The error for a brief whose declaration could not be read (D56): PL-E13 when there is none,
+ * PL-E14 for any other reason. The one place the two texts are written, so the page build (plugin)
+ * and the list loader fail with the same words. `briefSourcePath` is the brief's path relative to
+ * the site's source directory, `<locale>/challenge/<slug>/index.md`.
+ */
+export function declarationReadError(briefSourcePath: string, slug: string, reason: DeclarationReason): SiteLayoutError {
+  if (reason === 'absent') {
+    return new SiteLayoutError(
+      'PL-E13',
+      `PL-E13: ${briefSourcePath}: no platform/challenge/${slug}/challenge.yaml for this brief`,
+    )
+  }
+  return new SiteLayoutError(
+    'PL-E14',
+    `PL-E14: platform/challenge/${slug}/challenge.yaml: not one YAML mapping (${reason})`,
+  )
+}
 
 export function readChallengeDeclaration(root: string, slug: string): DeclarationResult {
   const path = join(root, 'platform', 'challenge', slug, 'challenge.yaml')

@@ -46,7 +46,9 @@
     "view_mode_grid": "格線模式",
     "view_mode_list": "列表模式",
     "count_suffix": "道挑戰",
-    "empty_state": "找不到符合條件的題目，請調整搜尋或篩選條件。"
+    "empty_state": "找不到符合條件的題目，請調整搜尋或篩選條件。",
+    "default_title": "網站攻防挑戰",
+    "default_category": "綜合"
   },
   "challenge_progress": {
     "read_error": "目前無法讀取這台裝置的解題進度。",

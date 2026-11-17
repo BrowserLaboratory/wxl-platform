@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { useI18n } from 'vue-i18n'
-import type { ChallengeData } from '../../../platform/shared/challenges.data'
+import type { ChallengeData, ChallengeLists } from '../../../platform/shared/challenges.data'
 import ShortLinkShare from './ShortLinkShare.vue'
 import ChallengeDoneBadge from './ChallengeDoneBadge.vue'
 import { useChallengeProgress } from '../composables/useChallengeProgress'
@@ -57,8 +57,11 @@ const tp = (key: string, named?: Record<string, unknown>) =>
   named ? t(key, named, { locale: pageLocale.value }) : t(key, {}, { locale: pageLocale.value })
 
 const props = defineProps<{
-  challenges: ChallengeData[]
+  lists: ChallengeLists
 }>()
+
+/** This page's list: the list of the page's locale, from the one loader's per-locale lists (D40). */
+const challenges = computed<ChallengeData[]>(() => props.lists?.[pageLocale.value] ?? [])
 
 // ─── Reactive state ─────────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -136,7 +139,7 @@ function isCompleted(c: ChallengeData): boolean {
 /**
  * How many of the challenges on this page the learner has solved.
  *
- * Counted over `props.challenges`, not over `filteredChallenges`: the pair of numbers
+ * Counted over `challenges.value`, not over `filteredChallenges`: the pair of numbers
  * is about progress through the platform, and a total that moved while someone typed
  * in the search box would be reporting something else entirely.
  *
@@ -144,7 +147,7 @@ function isCompleted(c: ChallengeData): boolean {
  * a retired or renamed challenge leaves its progress behind, and counting those would
  * put the completed count above the total.
  */
-const completedCount = computed(() => props.challenges.filter(isCompleted).length)
+const completedCount = computed(() => challenges.value.filter(isCompleted).length)
 
 // ─── Inline debounce (300ms) ─────────────────────────────────────────────────
 let debounceTimer: ReturnType<typeof setTimeout>
@@ -155,13 +158,13 @@ watch(searchQuery, (val) => {
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 const categories = computed(() =>
-  [...new Set(props.challenges.map(c => c.category).filter(Boolean))] as string[]
+  [...new Set(challenges.value.map(c => c.category).filter(Boolean))] as string[]
 )
 
 const DIFFICULTY_ORDER = ['easy', 'medium', 'hard', 'mystery']
 
 const filteredChallenges = computed(() => {
-  let list = props.challenges
+  let list = challenges.value
 
   // Text search: title + description + tags
   const q = debouncedQuery.value.toLowerCase().trim()

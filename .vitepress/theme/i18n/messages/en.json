@@ -46,7 +46,9 @@
     "view_mode_grid": "Grid mode",
     "view_mode_list": "List mode",
     "count_suffix": "challenges",
-    "empty_state": "No challenges match your filters. Try adjusting your search or filters."
+    "empty_state": "No challenges match your filters. Try adjusting your search or filters.",
+    "default_title": "Web exploitation challenge",
+    "default_category": "General"
   },
   "challenge_progress": {
     "read_error": "Unable to read this device’s challenge progress.",
