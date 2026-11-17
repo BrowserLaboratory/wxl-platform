@@ -662,8 +662,11 @@ describe('ChallengeList server rendering', () => {
     expect(html).toContain('只有英文')
     expect(html).not.toContain('Traditional Chinese only')
     expect(html).toMatch(/lang="en"[^>]*>PHP Check</)
-    // A28's link half: the English-tree URL under this P, not the pre-switch `/challenge/...`.
-    expect(html).toContain('href="/en/challenge/v05-php-check/"')
+    // A28's link half, the row's real requirement, not a fixture echo: `pageLocale` (localeIndex
+    // 'root' + P = zh-TW) is 'zh-TW', so the copy control's short link (`shortLinkPath`, which is
+    // NOT the page-mode URL D68 still hard-codes) is `/zh-TW/c/005` — not the fixture's own
+    // `c.url`, which the anchor's `href` merely echoes and this case does not test.
+    expect(html).toContain(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
   })
 
   it('under P = zh-TW, ships the English list\'s mark in the page\'s locale with a Traditional Chinese runtime (A28, A32, 0008 E6)', async () => {
@@ -927,7 +930,11 @@ describe('ChallengeList with an untranslated entry', () => {
     expect(row.get('[data-locale-mark]').text()).toBe('只有英文')
     expect(row.get('[data-row-title]').attributes('lang')).toBe('en')
     expect(row.findAll('[lang="en"]').map((e) => e.text())).toContain('Checks a PHP form')
-    expect(row.attributes('href')).toBe('/en/challenge/v05-php-check/')
+    // A28's link half, the row's real requirement, not a fixture echo: same reasoning as the
+    // SSR mirror above — `pageLocale` is 'zh-TW' here (localeIndex 'root' + P = zh-TW), so the
+    // copy control's short link is `/zh-TW/c/005`, not the fixture's own `c.url` (which `href`
+    // only echoes and is not computed from `primaryLocale()` at all).
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
     await toGrid(wrapper)
     const card = cardOf(wrapper, 'PHP Check')
     expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
@@ -943,20 +950,23 @@ describe('ChallengeList with an untranslated entry', () => {
     expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
     expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
     expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
-    expect(row.find('[data-short-link]').exists()).toBe(false)
-    // The short link's text does not leak into the row even indirectly — same string as the
-    // original P = en case (881): the short link's prefix follows the LIST's own locale (the
-    // English list, here), not P, so the theoretical value is identical on both sides of the flip.
-    expect(row.text()).not.toContain('/en/c/007')
-    // The page-mode URL ("its page in page mode") is deliberately NOT asserted here: it goes
-    // through `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which
+    // B4-2 [decision]: the original P = en case's E3 assertions ("with no short link" /
+    // `not.toContain('/en/c/007')`) are deliberately NOT mirrored here. D48/S53 removes that
+    // 0008 E3 behaviour: wave 4's S53 adds the INVERSE for both P (a borrowed numbered zh-TW
+    // entry shows `/en/c/007` in short-link mode in the English list) — asserting the old E3
+    // shape here would assert behaviour the switch is scheduled to remove, not an unchanged
+    // property. See the ticket's Comments (2026-11-17, wave 2 part B4) for the record.
+    //
+    // The page-mode URL ("its page in page mode") is deliberately NOT asserted here either: it
+    // goes through `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which
     // still hard-codes "`zh-TW` locale → `/zh-TW` prefix" regardless of `primaryLocale()` — the
     // same generalisation this ticket's own Comments assign to area S (wave 4), confirmed by
     // running this case against the current code: it returns
     // `${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`, the pre-switch literal, not the P-aware
     // `${DISPLAY_ORIGIN}/challenge/zh-only/` this row would otherwise want. Not fixed here —
     // shortLink.ts is outside this wave's file list; the deferred assertion is taken over by
-    // traceability.md's S54 ("Page mode × entry, both P"), alongside S30 and S26, at wave 4.
+    // traceability.md's S54 ("Page mode × entry, both P"), seams `0010-S30`/`0010-S26`, rows
+    // S52–S56, at wave 4.
   })
 
   it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list\'s grid view too (A32, E3, E6)', async () => {
