@@ -2,7 +2,7 @@
 id: T-0077
 title: The layout switch
 epic: 0010-primary-locale-layout
-status: processing
+status: review
 blocked_by: [T-0076]
 ---
 
@@ -87,79 +87,80 @@ passes the same suites.
 ## Acceptance criteria
 
 Area B
-- [ ] B14–B16, B95: the shipped primary locale comes only from the root `range.json`; the dev server
+- [x] B14–B16, B95: the shipped primary locale comes only from the root `range.json`; the dev server
   takes an edit after a restart; the `SITE_BASE` error first; one quoting function equal to
   create-wxl's (AC-1; B1–B13 are T-0076's)
-- [ ] B18, B19: no other locale enumeration; a string table and a locales-config entry per listed
+- [x] B18, B19: no other locale enumeration; a string table and a locales-config entry per listed
   code (AC-2; B17 is T-0076's)
-- [ ] B20–B38, B91: the layout check, its rule order, where it runs, the tools that call it first
+- [x] B20–B38, B91: the layout check, its rule order, where it runs, the tools that call it first
   (AC-3)
-- [ ] B39–B49: `rewrites`, the page list, `__WXL_PRIMARY_LOCALE__`, output placement, the dev server
+- [x] B39–B49: `rewrites`, the page list, `__WXL_PRIMARY_LOCALE__`, output placement, the dev server
   (AC-4)
-- [ ] B50–B52: `transformPageData` by source path (AC-5)
-- [ ] B56–B61: the locales config, `<html lang>`, the site title line fork:init matches, the nav
+- [x] B50–B52: `transformPageData` by source path (AC-5)
+- [x] B56–B61: the locales config, `<html lang>`, the site title line fork:init matches, the nav
   title link (AC-6)
-- [ ] B62–B70, B92, B94: home-page links (AC-7)
-- [ ] B72–B77, B79: the primary-folder link rule, cross-folder links, `ignoreDeadLinks`, the list
+- [x] B62–B70, B92, B94: home-page links (AC-7)
+- [x] B72–B77, B79: the primary-folder link rule, cross-folder links, `ignoreDeadLinks`, the list
   and home data import (AC-8; B71 and B78 are T-0080's)
-- [ ] B80–B83: `Layout.vue` gone, upstream's root language, site-smoke and the exploit specs (AC-9)
-- [ ] B84–B87, B90 except U135's two sentences: the READMEs' move section, changing `P` later, the
+- [x] B80–B83: `Layout.vue` gone, upstream's root language, site-smoke and the exploit specs (AC-9)
+- [x] B84–B87, B90 except U135's two sentences: the READMEs' move section, changing `P` later, the
   setup record, ADR-0008's notes, the GLOSSARY edit (AC-10; B88 and B89 are the close-out's, with
   T-0081)
-- [ ] B93: the D124 rows are upstream-only through one helper (AC-61; V-B7 is T-0080's)
+- [x] B93: the D124 rows are upstream-only through one helper (AC-61; V-B7 is T-0080's)
 
 Area A
-- [ ] A1–A10, DT01–DT80: the cold-load decision table (AC-11)
-- [ ] A11–A13 (AC-12); A14–A20, A39: the not-found lookup (AC-13)
-- [ ] A21–A24, SW01–SW16: the switcher (AC-14)
-- [ ] A25 (AC-15); A26–A29 (AC-16); A30–A32: the line (AC-17); A33: the session gate (AC-18)
-- [ ] A34–A37: troubleshooting, README preference sentences, code comments, GLOSSARY 主語系 (AC-19)
+- [x] A1–A10, DT01–DT80: the cold-load decision table (AC-11)
+- [x] A11–A13 (AC-12); A14–A20, A39: the not-found lookup (AC-13)
+- [x] A21–A24, SW01–SW16: the switcher (AC-14)
+- [x] A25 (AC-15); A26–A29 (AC-16); A30–A32: the line (AC-17); A33: the session gate (AC-18)
+- [x] A34–A37: troubleshooting, README preference sentences, code comments, GLOSSARY 主語系 (AC-19)
 
 Area L
-- [ ] L1–L18: the merge, normalisation and defaults from the string tables (AC-20)
-- [ ] L19–L22: the loader's `watch`, one parser, the dev server, base-less URLs (AC-21)
-- [ ] L34–L39, L47: the smoke fixture pages, the CI switch, `missing-translation.spec.ts`'s
+- [x] L1–L18: the merge, normalisation and defaults from the string tables (AC-20)
+- [x] L19–L22: the loader's `watch`, one parser, the dev server, base-less URLs (AC-21)
+- [x] L34–L39, L47: the smoke fixture pages, the CI switch, `missing-translation.spec.ts`'s
   subjects, node-only modules (AC-23)
-- [ ] L43: the exploit specs, the template and the blind default (AC-25)
+- [x] L43: the exploit specs, the template and the blind default (AC-25)
 
 Area S
-- [ ] S1–S11 (AC-27); S12–S21, S75 (AC-28); S22–S27 (AC-29); S28–S35 (AC-30)
-- [ ] S36–S49, S73, S74, S76–S80: the hook (AC-31)
-- [ ] S51, T-0059's three criteria in the new layout: a slug outside
+- [x] S1–S11 (AC-27); S12–S21, S75 (AC-28); S22–S27 (AC-29); S28–S35 (AC-30)
+- [x] S36–S49, S73, S74, S76–S80: the hook (AC-31)
+- [x] S51, T-0059's three criteria in the new layout: a slug outside
   `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` in the declaration tree or any brief tree, and an all-digit slug
   equal to another challenge's padded number, stop `redirects:generate` (full and `--staged`) naming
   it, with a test each, on both `P`; a slug equal to its own padded number does not; the hook and CI
   report the same refusal (AC-32; S50 is T-0078's)
-- [ ] S52–S56: `challengePagePath` and the copy control (AC-33)
+- [x] S52–S56: `challengePagePath` and the copy control (AC-33)
 - [ ] S57–S63: end-to-end redirect rows on the previews (AC-58's matrix rows; V-S1–V-S7 are run here
   and claimed by T-0078, the last ticket of area S)
-- [ ] S64–S72: comments, README passages, GLOSSARY short link, skill sentences (AC-34)
+- [x] S64–S72: comments, README passages, GLOSSARY short link, skill sentences (AC-34)
 
 Area Y
-- [ ] Y1–Y6, Y9, Y12–Y14, Y19–Y21, Y104, Y112: the declaration through validate, assembly and
+- [x] Y1–Y6, Y9, Y12–Y14, Y19–Y21, Y104, Y112: the declaration through validate, assembly and
   keygen (AC-35; Y7, Y8, Y10, Y11, Y15–Y18 are T-0076's)
-- [ ] Y22–Y37, Y103 (AC-36); Y38–Y48, Y106, Y113 (AC-37); Y49–Y51 (AC-38)
-- [ ] Y52–Y61, Y107: keygen, its convergence measured first (Y-O5, D133) (AC-39)
-- [ ] Y62–Y69, Y108: retype and analyze (AC-40); Y70–Y85, Y105: `create:challenge` (AC-41)
-- [ ] Y86–Y93, Y109–Y111: the release gate, commit-time validation, the L4 package (AC-42)
-- [ ] Y94–Y101: the skills in both trees, READMEs, CONTRIBUTE, pipeline doc, AGENTS.md, guide pages,
+- [x] Y22–Y37, Y103 (AC-36); Y38–Y48, Y106, Y113 (AC-37); Y49–Y51 (AC-38)
+- [x] Y52–Y61, Y107, Y114: keygen, its convergence measured first (Y-O5, D133); a declaration keygen cannot use stops
+  it (D152, added at stage 6) (AC-39)
+- [x] Y62–Y69, Y108: retype and analyze (AC-40); Y70–Y85, Y105: `create:challenge` (AC-41)
+- [x] Y86–Y93, Y109–Y111: the release gate, commit-time validation, the L4 package (AC-42)
+- [x] Y94–Y101: the skills in both trees, READMEs, CONTRIBUTE, pipeline doc, AGENTS.md, guide pages,
   the dev-server limit (AC-43)
 
 Area U (the switch's part)
-- [ ] U112–U116, U145, U152: `ANCHOR_PATHS`, fork:init and create-wxl on the new home pages, the
+- [x] U112–U116, U145, U152: `ANCHOR_PATHS`, fork:init and create-wxl on the new home pages, the
   pristine check, the known A7 conflict (AC-51; U13, U110 and U111 are T-0081's)
-- [ ] U130–U134, U136, U139, U142, U147: upstream equality against the base tag, the tag check, the
+- [x] U130–U134, U136, U139, U142, U147: upstream equality against the base tag, the tag check, the
   locale-list copy, the shared page-predicate table, the skip in a range, T9's checkouts (AC-53)
 
 Stage 8 and the rest
 - [ ] VA1a–VA1m, VA2a–VA2l, VA3a–VA3e, VA4 (AC-56) and V-Y1–V-Y8 (AC-59), as below
-- [ ] "Overridden contracts" of areas B, A, L, S and Y, and area U's `ANCHOR_PATHS` and
+- [x] "Overridden contracts" of areas B, A, L, S and Y, and area U's `ANCHOR_PATHS` and
   `PLATFORM_HOME_RELS` rows, change only as the table states; area L's toolbar, dates and home-string
   rows, LW1 and LH1's list-title row are T-0079's; the D31 first step's list of flipped tests is in
   Comments before the first red test
-- [ ] LH1's difficulty-badge clause, LH2, LH3 and LH4 are written in this ticket's diff, in both
+- [x] LH1's difficulty-badge clause, LH2, LH3 and LH4 are written in this ticket's diff, in both
   languages where the passage has two (the row L44 is T-0079's, which confirms them at stage 6)
-- [ ] `platform/zh-TW/guide/notes.md` holds no `../../` link and names the export-format reference
+- [x] `platform/zh-TW/guide/notes.md` holds no `../../` link and names the export-format reference
   page as plain text; `docs:build` passes with `P = zh-TW` and with `P = en` (the interim text;
   B72, B74; T-0080 writes D16's link)
 - [ ] Green after landing, as T1 defines it (every `quality-gates.yml` job and the create-wxl tests on
@@ -3198,7 +3199,7 @@ Header per `docs/agents/workflow.md:115`. Commands: root `pnpm test --run` (154 
 | 0010-S10 (arrival; A1-A5, A7, A8, A13-A18, A21, A23, A25-A27, A31, A39, DT01-DT80, B45) | `tests/unit/i18n/initial-locale-redirect.test.ts` 376; `not-found-wiring.test.ts` 198; `arrival.test.ts` 344; `route-locale-sync.test.ts` 23; `localize-path.test.ts` 28; smoke halves in `missing-translation.spec.ts` (above) | not measured | AC-11, AC-12, AC-13, AC-15, AC-16, AC-17 | the browser halves VA1a-VA1m, VA2a-VA2l, VA3a-VA3e, VA4 are stage 8 |
 | 0010-S13 (session gate and cold load; A6, A9, A11, A19, A20, A24, A29, A33) | `tests/unit/i18n/theme-locale-wiring.test.ts` 59 | not measured | AC-11, AC-12, AC-13, AC-14, AC-16, AC-18 | stage 8 VA rows (above) |
 | 0010-S11, S14, S15 (`pageLocaleOf`, switcher, missing-translation line; A22, A28, A30, SW01-SW16) | `tests/unit/i18n/page-locale-of.test.ts` 4; `locale-switcher.test.ts` 43; `tests/unit/components/MergedNav.test.ts` 70; `MissingTranslationLine.test.ts` 7 | not measured | AC-14, AC-16, AC-17 | stage 8 VA rows (above) |
-| A10, A12, A32, 0010-S16 (comment and removal rows) | A12 and A32 through `messages-shape.test.ts` (24) and `theme-locale-wiring.test.ts` (59); A10 has no unit | not measured | AC-11, AC-12 | A10 and the VA rows are stage 8 |
+| A10, A12, A32, 0010-S16 (comment and removal rows) | A12 and A32 through `messages-shape.test.ts` (24) and `theme-locale-wiring.test.ts` (59); A10 has no unit | not measured | AC-11, AC-12, AC-17 (A32) | A10 and the VA rows are stage 8 |
 | A34-A37 (documents) | `tests/unit/site/glossary.test.ts` 324; `tests/unit/site/sentence-map.test.ts` 20 | not measured | AC-19 | the cross-line wording of troubleshooting, README and comment passages is a stage 6 reading (see "Deferred to stage 6" blocks in segment 6, 7, 8a and 8b entries, cited, not copied) |
 | D31 first step (0010-S12 client module) | `tests/unit/i18n/primary-locale-client.test.ts` 3 | not measured | D31, AC-11 | none |
 | 0010-S17 (merge and defaults; L1-L17) | `tests/unit/site/merge-challenges.test.ts` 89 | not measured | AC-20 | none |
@@ -3244,6 +3245,78 @@ Deferred to stage 6 (P2, frozen rubric):
 - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:3192` (P2, confidence low): the 0010-S9 row's Uncovered cell leaves out B37, and its wording about B74 can be read as claiming more than W9-2 shows. B37 is a stage 8 V-B1 observation (plan line 3280) and V-B1 is in the stage 8 list (line 3232), so it is accounted for there. B74's plan row (line 3313) expects a non-zero exit under zh-TW when a link escapes the locale folder; W9-2 exits 0 because the interim plain text removes that link, which supports the notes.md AC (docs:build passes on both locales; B72, B74), not B74's stage 8 observation, which is correctly listed under stage 8, so nothing is uncovered, but the cell's wording could mislead a reader.
 - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:3231` (P2, confidence medium): the coverage table's AC column names 44 of the ticket's 46 AC ids; AC-56 (VA1a-VA4) and AC-59 (V-Y1-V-Y8) appear only as row ids in the "Not covered" list, without their AC labels, and the executor says some AC mappings are presumed. The stage-8 rows are listed under "Not covered by this table's commands", so nothing is lost, but stage 6 has to reconcile the presumed AC mapping.
 - `tests/unit/scripts/upstream-guard.test.ts:1045` (P2, confidence medium): wave 9's suite skips the env-gated case "WXL_EXPECT_UPSTREAM, when set, matches the upstream decision" (runIf on WXL_EXPECT_UPSTREAM); the segment 8b run counted 6976 passed and 0 pending. The difference comes from the environment, not a regression, but this run did not exercise that case (vitest.json mtime 18:53, after commit e2ba837 at 18:50:13; test lines 1042-1044 say the skip is by design when the variable is unset; the segment did not change the test).
+
+## Stage 6 review
+
+Reviewed on 2026-11-17 with the project `code-review` skill. Full findings:
+`.proj.specs/0010-primary-locale-layout/review/code-review-T-0077.md`; one disposition per finding:
+`.proj.specs/0010-primary-locale-layout/review/code-review-T-0077-disposition.md`.
+
+**Surface.** Committed layer, base and merge-base `040a5ec`, HEAD `654a370`: 177 changed paths, one captured diff per
+path; this ticket file excluded as the record. Entry: `status: review`; 36 acceptance criteria checked from the
+coverage report, four left open (S57–S63's end-to-end rows, the stage 8 VA and V-Y rows, "green after landing",
+"T-0059's Comments name the merge").
+
+**Method.** `harness-reviewer`, read-only, one axis each. Because of the diff's size each axis was split by scope:
+Standards by file group (5 reviewers), Spec by requirement area B, A, L, S, Y, U (6 reviewers). The 162 findings
+stage 5 deferred as P2 were re-graded by the Spec reviewers. Every finding was then checked against HEAD by a triage
+pass and classed by one fixed rule (stated at the top of the disposition file). One fix round followed, in six batches
+of disjoint files, each read afterwards by a checker that looked only at the fixed items.
+
+**Counts.** 469 findings: Standards 212 (3 high, 35 medium, 174 low), Spec 257 (1 high, 21 medium, 235 low).
+Verdicts: 324 confirmed, 109 partly, 25 refuted, 11 already fixed. Dispositions: 144 fixed in this ticket (134 after
+merging duplicates), 40 decided (about 25 questions), 229 quality-only cleanup not taken in this ticket, 44 not a
+defect, 12 another ticket's or an earlier epic's.
+
+**The worst issue on each axis.** Standards and Spec both: tests of this branch that fail in a teacher's range
+(STD-G4-01/02, SPEC-B-01: B14's and B47's real-tree cases asserted `zh-TW` without the D124 helper, so a range whose
+`range.json` says `en` had 17 failing cases; STD-G4-05: Y38 required a brief in every locale, so a range failed as
+soon as `create:challenge` added a challenge). Fixed, with the range-collection test now covering `config-base`.
+
+**Production corrections** (rule (a)): PL-E11's `<page>` is the path relative to `platform/` (it was the absolute file
+path in a real build; the unit test had set a relative `realPath`); PL-E12's three reasons use the ASCII apostrophe the
+spec gives; PL-E13 names the brief as `platform/<locale>/challenge/<slug>/index.md`; a home link's locale-prefix check
+ignores a query or hash; a symbolic link inside a locale-named folder under a locale folder is reported as PL-E07; the
+hook's W4 candidates under `platform/challenge/` are folders only; the CLI reads `range.json` before it checks
+`platform/public`; analyze rejects what validate rejects (one parser, D79).
+
+**Decisions, under the user's standing authorization of 2026-11-17** (「授權：所有建議我都同意，權限都授權到兩個 epic
+完成…每一項核准仍要列給我看。」), each as the triage recommended unless stated, all recorded in traceability revision 2.4:
+
+- New D-numbers: **D151** (W6a/W6c say `an English brief`, `a Traditional Chinese brief`), **D152** (keygen stops on a
+  `challenge.yaml` the reader rejects: `[<slug>]` plus PL-E14's text, exit 1; new row Y114), **D153** (D124's
+  upstream-only list gains U136's root half, B95's comparison with create-wxl's copy, and B60's literal equality).
+- Kept as written, with a condition: the GLOSSARY 主語系 and 搬家 entries, ADR-0008's note and the READMEs' "Moving to
+  the locale folders" sentences describe what T-0080 and T-0081 deliver (B84, B87 and B90 give the text). **No `v*`
+  tag is pushed before T-0080 and T-0081 are on `main`.**
+- Row text brought in line with the code, no behaviour change: D80 (b)'s means and its cost (confirmed by the user in
+  person), Y54, Y60, Y82, Y96, L37, D49 and L35, D150 (`--staged` prints only the W6 lines when a brief fault comes
+  first), D64 (b)'s message source, Y2 and D86 (validate stops after a failed declaration check), D123 and B38 (Node's
+  own runtime warning lines are not counted), A34 and A37 (the landing of a not-found redirect is the exception), D30
+  and S71 ("always opens that translation" holds when the challenge has it; otherwise D58), D108 (how the exception
+  table's assertion changes after this epic).
+- Recorded: the test plan's open item S-q6 is closed (`--challenge-trees` is an internal mode of seam 0010-S28);
+  `redirectsHeader(primary, forms?)` and `Form` are approved exports (seam 0010-S24); the two annotations segment 5f's
+  executor added to "Overridden contracts" (verify L1/L2, the L4 package) are ratified, those two sentences only.
+- Differs from the triage's recommendation: for STD-G1-01 (a `challenge.yaml` that exists but cannot be read) and
+  SPEC-B-07 (PL-E12's `<page>` for a home page that is not a locale's `index.md`) the parent corrected only the comment
+  and deferred the behaviour to an open question, instead of adding a D-number and a seam parameter.
+- Open questions added: OQ-029 (unreadable `challenge.yaml`), OQ-030 (the run-time locale is detected from a path that
+  still carries the site base, so under a base such as `/repo/` a translation page shows the other language's
+  interface strings; present since epic 0008, confirmed by reading the code, observable on stage 8's F-3), OQ-031
+  (choosing a translation on a not-found page before the gate opens), OQ-032 (SPEC-B-07).
+
+**Not taken here.** The 229 cleanup findings stay in the review file for an optional quality pass. Of the 12 that belong
+elsewhere: T-0079 (date formatting by a binary locale test), T-0080 (the notes page's plain-text reference, D16), and
+items that predate epic 0010 (the hook fixture's git maintenance setting, CRLF briefs in validate's frontmatter
+parser, `guide/python` as the smoke subject, S08's own skip reason, 「挑戰」 in two strings, OQ-030 above).
+
+**Verification after the fix round** (vitest in Node unless stated; no deployed surface): 7231 passed, 0 failed,
+0 skipped in 154 files; create-wxl 890 passed, 1 skipped (Windows-only); `WXL_SMOKE_PAGES=1 pnpm build` succeeded and
+left `_redirects` and every `challenge.yaml` byte-identical; `pnpm test:smoke` (the built site under
+`vitepress preview`, Playwright chromium) 111 passed, 1 failed, and the failing file passed 27 of 27 on three repeats,
+so it is recorded as a flaky run (the runtime not ready within 180 s in one Code panel case); `pnpm test:challenges`
+4 passed; `python3 scripts/verify-project.py` passed.
 
 ## Test plan (stage 5)
 
