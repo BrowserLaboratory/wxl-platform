@@ -1,9 +1,11 @@
 /**
  * create-challenge.ts
  *
- * Scaffolds a new challenge directory structure, app skeleton, flag.txt,
- * and frontmatter stub, auto-runs challenge:keygen, then regenerates
- * platform/public/_redirects over the whole working tree.
+ * Scaffolds a new challenge: the primary locale's brief
+ * (platform/<P>/challenge/<slug>/index.md, `title` and `layout` only), the declaration
+ * (platform/challenge/<slug>/challenge.yaml), the app skeleton and flag.txt under src/.
+ * `P` comes from range.json (zh-TW when it says nothing). It then auto-runs
+ * challenge:keygen and regenerates platform/public/_redirects over the whole working tree.
  *
  * Usage:
  *   pnpm create:challenge --name <slug> [--title <title>] \
@@ -12,7 +14,8 @@
  *
  * Exit status:
  *   0  created, keygen ran, _redirects regenerated
- *   1  invalid argument or name collision; nothing was written
+ *   1  invalid argument, unusable range.json, legacy-layout tree or name collision;
+ *      nothing was written
  *   2  created and keygen ran, but _redirects was not regenerated (W1)
  *   3  the scaffold was written but keygen failed (W2)
  */
@@ -25,6 +28,11 @@ import { spawnSync } from 'node:child_process'
 import { stringify as yamlStringify } from 'yaml'
 import { nextChallengeNumber } from './challenge-numbers.ts'
 import { writeRedirects } from './generate-redirects.ts'
+import { SLUG_GRAMMAR } from '../.vitepress/challenge/shortLink.ts'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { SiteLayoutError } from '../.vitepress/layout-error.ts'
+import { checkSourceLayout } from '../.vitepress/source-layout.ts'
+import { LOCALES, type Locale } from '../.vitepress/locales.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
@@ -35,8 +43,6 @@ type Backend = (typeof VALID_BACKENDS)[number]
 
 const VALID_DIFFICULTIES = ['easy', 'medium', 'hard'] as const
 
-/** Slug validation: kebab-case, lowercase alphanumeric and hyphens only. */
-const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
 
 // ─── Exported types ────────────────────────────────────────────────────────
 
@@ -58,7 +64,10 @@ export interface ScaffoldOptions {
  * Everything the CLI arguments alone determine. The number is not among them —
  * it is read out of the challenge tree, so it joins in `run()`.
  */
-export type ScaffoldArgs = Omit<ScaffoldOptions, 'number'>
+export type ScaffoldArgs = Omit<ScaffoldOptions, 'number' | 'title'> & {
+  /** Unresolved: the default title depends on the primary locale, which `run()` reads after this. */
+  title: string | undefined
+}
 
 export interface RawArgs {
   name: string | undefined
@@ -66,6 +75,22 @@ export interface RawArgs {
   backend: string | undefined
   difficulty: string | undefined
   flag: string | undefined
+}
+
+/**
+ * The text a scaffold writes in a locale. Total over the locale list: `Record<Locale, …>`
+ * makes a locale added there without text here fail type-check (Y79).
+ */
+export const SCAFFOLD_TEXT: Record<Locale, { title(slug: string): string; body: string }> = {
+  en: {
+    title: (slug) =>
+      slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+    body: 'TODO: Write challenge description here.',
+  },
+  'zh-TW': {
+    title: (slug) => `未命名題目（${slug}）`,
+    body: 'TODO：在這裡寫說明頁內文。',
+  },
 }
 
 // ─── Pure helpers (exported for testing) ───────────────────────────────────
@@ -77,10 +102,10 @@ export function generateFlag(slug: string): string {
   return `FLAG{${slug}_${hex}}`
 }
 
-/** Convert a slug to Title Case, or return the provided title. */
-export function getTitle(slug: string, title?: string): string {
+/** The provided title, or the locale's default title for the slug. */
+export function getTitle(slug: string, title: string | undefined, locale: Locale): string {
   if (title) return title
-  return slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  return SCAFFOLD_TEXT[locale].title(slug)
 }
 
 /**
@@ -93,7 +118,7 @@ export function validateArgs(args: RawArgs): ScaffoldArgs {
   }
 
   const slug = args.name
-  if (!SLUG_RE.test(slug)) {
+  if (!SLUG_GRAMMAR.test(slug)) {
     throw new Error(
       `Invalid --name "${slug}". Must be kebab-case (lowercase alphanumeric and hyphens only).`,
     )
@@ -112,33 +137,36 @@ export function validateArgs(args: RawArgs): ScaffoldArgs {
       `Invalid --difficulty "${difficulty}". Must be one of: ${VALID_DIFFICULTIES.join(', ')}.`,
     )
   }
-  const title = getTitle(slug, args.title)
+  const title = args.title
   const flag = args.flag ?? generateFlag(slug)
 
   return { slug, title, backend, difficulty, flag }
 }
 
 /**
- * Detect naming collision. Throws if <slug>.md or <slug>/ already exists.
+ * Detect naming collision (CC1). Throws if the challenge directory
+ * `platform/challenge/<slug>/` or any locale's `platform/<L>/challenge/<slug>/` exists.
+ * A flat `platform/challenge/<slug>.md` is not checked here: the layout check refuses it.
  * @param slug - The challenge slug
- * @param challengesDir - Absolute path to the challenges directory
+ * @param root - The repository root
  * @param existsFn - Injected fs.existsSync (overridable for tests)
  */
 export function checkCollision(
   slug: string,
-  challengesDir: string,
+  root: string,
   existsFn: (p: string) => boolean = existsSync,
 ): void {
-  // New per-folder structure
-  const indexMdPath = resolve(challengesDir, slug, 'index.md')
-  // Legacy flat structure
-  const legacyMdPath = resolve(challengesDir, `${slug}.md`)
-
-  if (existsFn(indexMdPath)) {
-    throw new Error(`Challenge "${slug}" already exists: ${indexMdPath}`)
+  const dirRel = `platform/challenge/${slug}`
+  if (existsFn(resolve(root, dirRel))) {
+    throw new Error(`Challenge "${slug}" already exists: ${dirRel}/`)
   }
-  if (existsFn(legacyMdPath)) {
-    throw new Error(`Challenge "${slug}" already exists (legacy): ${legacyMdPath}`)
+  // Any locale's brief folder collides, the primary locale's or not (D84): a translation
+  // left behind would otherwise be adopted by the new challenge.
+  for (const locale of LOCALES) {
+    const briefRel = `platform/${locale}/challenge/${slug}`
+    if (existsFn(resolve(root, briefRel))) {
+      throw new Error(`Challenge "${slug}" already exists: ${briefRel}/`)
+    }
   }
 }
 
@@ -229,19 +257,17 @@ $flag = @file_get_contents('/flag.txt') ?: '(flag not found)';
 `
 }
 
-// ─── Frontmatter generator (exported for testing) ──────────────────────────
+// ─── Declaration generator (exported for testing) ──────────────────────────
 
-/** Generate the index.md file content with per-folder frontmatter. */
-export function generateMarkdown(opts: ScaffoldOptions): string {
-  const { title, backend, difficulty, number } = opts
+/** Generate the `challenge.yaml` content: the declaration keys only, no brief key. */
+export function generateDeclaration(opts: ScaffoldOptions): string {
+  const { backend, difficulty, number } = opts
   const appFile = backend === 'php' ? 'index.php' : 'app.py'
 
-  const fm: Record<string, unknown> = {
-    title,
+  const declaration: Record<string, unknown> = {
     // Written at creation, never afterwards. A challenge without it fails
     // validation, and a number derived later from any ordering would move.
     number,
-    layout: 'challenge',
     difficulty,
     category: 'web',
     backend,
@@ -251,8 +277,16 @@ export function generateMarkdown(opts: ScaffoldOptions): string {
     tags: [],
   }
 
-  const fmStr = yamlStringify(fm, { lineWidth: 0 }).trimEnd()
-  return `---\n${fmStr}\n---\n\n# ${title}\n\nTODO: Write challenge description here.\n`
+  // The trailing newline stays: keygen appends `wasmModule` after the last key.
+  return yamlStringify(declaration, { lineWidth: 0 })
+}
+
+// ─── Brief generator (exported for testing) ────────────────────────────────
+
+/** Generate the brief (`platform/<L>/challenge/<slug>/index.md`): `title` and `layout` only. */
+export function generateBrief(opts: ScaffoldOptions, locale: Locale): string {
+  const fmStr = yamlStringify({ title: opts.title, layout: 'challenge' }, { lineWidth: 0 }).trimEnd()
+  return `---\n${fmStr}\n---\n\n# ${opts.title}\n\n${SCAFFOLD_TEXT[locale].body}\n`
 }
 
 // ─── Entry (exported for testing) ──────────────────────────────────────────
@@ -289,7 +323,7 @@ export function run(argv: string[], deps: RunDeps): number {
   const challengesDir = resolve(root, 'platform', 'challenge')
 
   // ── 1. Validate CLI args ─────────────────────────────────────────────────
-  let opts: ScaffoldOptions
+  let args: ScaffoldArgs
   try {
     const { values } = parseArgs({
       args: argv,
@@ -301,29 +335,54 @@ export function run(argv: string[], deps: RunDeps): number {
         flag:       { type: 'string' },
       },
     })
-    // The number is assigned here, once, from the whole tree — live challenges
-    // and retired ones alike. It is never derived from an ordering and never
-    // changed afterwards; see scripts/challenge-numbers.ts.
-    opts = { ...validateArgs(values as RawArgs), number: nextChallengeNumber(root) }
+    args = validateArgs(values as RawArgs)
   } catch (e) {
     err(`Error: ${(e as Error).message}\n${USAGE}\n`)
     return 1
   }
 
-  const { slug, backend, flag } = opts
-
-  // ── 2. Collision detection ───────────────────────────────────────────────
+  // ── 2. The primary locale (D123), then the layout check (D19) ─────────────
+  // Order: arguments, primary locale, layout check, collision, number, write (D82).
+  let primary: Locale
   try {
-    checkCollision(slug, challengesDir)
+    primary = readPrimaryLocale(resolve(root, 'range.json'))
+    checkSourceLayout(resolve(root, 'platform'), primary)
+  } catch (e) {
+    // A range.json or layout fault: status 1, nothing written. The first line is the PL
+    // line, with no `Error:` prefix and no usage text (D123).
+    if (e instanceof SiteLayoutError) {
+      err(`${e.message}\n`)
+      return 1
+    }
+    throw e
+  }
+
+  const { slug, backend, flag } = args
+
+  // ── 3. Collision detection ───────────────────────────────────────────────
+  try {
+    checkCollision(slug, root)
   } catch (e) {
     err(`Error: ${(e as Error).message}\n`)
     return 1
   }
 
-  // ── 3. Create directory and write files (per-folder structure) ──────────
+  // The number is assigned here, once, from the whole tree — live challenges
+  // and retired ones alike. It is never derived from an ordering and never
+  // changed afterwards; see scripts/challenge-numbers.ts.
+  const opts: ScaffoldOptions = {
+    ...args,
+    title: getTitle(slug, args.title, primary),
+    number: nextChallengeNumber(root),
+  }
+
+  // ── 4. Create directories and write files ───────────────────────────────
   const slugDir = resolve(challengesDir, slug)
   const srcDir = resolve(slugDir, 'src')
+  const briefRel = `platform/${primary}/challenge/${slug}/index.md`
+  const briefPath = resolve(root, briefRel)
   mkdirSync(srcDir, { recursive: true })
+  mkdirSync(dirname(briefPath), { recursive: true })
 
   const appFile  = backend === 'php' ? 'index.php' : 'app.py'
   const skeleton =
@@ -331,18 +390,20 @@ export function run(argv: string[], deps: RunDeps): number {
     : backend === 'fastapi' ? fastApiSkeleton(slug)
     : phpSkeleton(slug)
 
-  writeFileSync(resolve(srcDir, appFile),    skeleton,                'utf-8')
-  writeFileSync(resolve(srcDir, 'flag.txt'), flag,                    'utf-8')
-  writeFileSync(resolve(slugDir, 'index.md'), generateMarkdown(opts), 'utf-8')
+  writeFileSync(resolve(srcDir, appFile),    skeleton,                       'utf-8')
+  writeFileSync(resolve(srcDir, 'flag.txt'), flag,                           'utf-8')
+  writeFileSync(resolve(slugDir, 'challenge.yaml'), generateDeclaration(opts), 'utf-8')
+  writeFileSync(briefPath, generateBrief(opts, primary), 'utf-8')
 
   out(
     `✓ Scaffold created:\n` +
-    `  platform/challenge/${slug}/index.md\n` +
+    `  ${briefRel}\n` +
+    `  platform/challenge/${slug}/challenge.yaml\n` +
     `  platform/challenge/${slug}/src/${appFile}\n` +
     `  platform/challenge/${slug}/src/flag.txt\n`,
   )
 
-  // ── 4. Auto-run keygen ───────────────────────────────────────────────────
+  // ── 5. Auto-run keygen ───────────────────────────────────────────────────
   out(`\nRunning challenge:keygen ${slug} …\n`)
   let keygen: KeygenResult
   try {
@@ -355,7 +416,8 @@ export function run(argv: string[], deps: RunDeps): number {
     // would collide with it (D13).
     err(
       `Error: keygen failed after the scaffold was written:\n${keygen.output.trimEnd()}\n\n` +
-      `The challenge was created at platform/challenge/${slug}/. ` +
+      `The challenge was created at platform/challenge/${slug}/ ` +
+      `with its brief at ${briefRel}. ` +
       `Fix the cause above, then run:\n` +
       `  pnpm challenge:keygen ${slug}\n` +
       `  pnpm redirects:generate\n` +
@@ -366,7 +428,7 @@ export function run(argv: string[], deps: RunDeps): number {
   out(keygen.output)
   out(`✓ Keygen complete.\n`)
 
-  // ── 5. Regenerate _redirects over the whole working tree ─────────────────
+  // ── 6. Regenerate _redirects over the whole working tree ─────────────────
   try {
     writeRedirects(root)
   } catch (e) {
@@ -375,7 +437,8 @@ export function run(argv: string[], deps: RunDeps): number {
     // written, so the file on disk is as it was.
     err(
       `Error: platform/public/_redirects was not regenerated:\n${(e as Error).message}\n\n` +
-      `The challenge was created at platform/challenge/${slug}/ and keygen ran. ` +
+      `The challenge was created at platform/challenge/${slug}/ ` +
+      `with its brief at ${briefRel}, and keygen ran. ` +
       `Fix the cause above; git commit of the challenge then regenerates ` +
       `platform/public/_redirects from what is staged, ` +
       `and pnpm redirects:generate rewrites it from the working tree.\n`,
