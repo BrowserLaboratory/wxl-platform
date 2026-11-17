@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { indexSlugs, writeRedirects } from '../../../scripts/generate-redirects'
+import { briefFaults, generateRedirects, indexSlugs, indexTrees, writeRedirects, type BriefFault } from '../../../scripts/generate-redirects'
 import { SiteLayoutError } from '../../../.vitepress/layout-error'
+import { hasRootRangeJson, isGitWorkTree, readManifest, upstreamOnlySkipReason } from '../../__helpers__/upstreamDecision'
+import { challengePagePath } from '../../../.vitepress/challenge/shortLink'
+import { LOCALES, type Locale } from '../../../.vitepress/locales'
+import { parsePrimaryLocale } from '../../../.vitepress/primary-locale'
 import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../../../scripts/challenge-numbers'
 
 // `platform/public/_redirects` carries the classroom short links. They are handed to
@@ -123,19 +128,30 @@ interface Rule {
   status: number
 }
 
+type Primary = 'en' | 'zh-TW'
+const BOTH: Primary[] = ['en', 'zh-TW']
+
 /**
- * The four parameterised rules, in the order they appear.
- *
- * These are the rules that do not derive from the challenge tree, so they are
- * the ones worth writing down twice. The numbered rules are checked by shape
- * below and byte-for-byte in `redirects-generated.test.ts`.
+ * The slug rules by `P`, written out: S-§4.2 for `en`, S-§4.1 for `zh-TW`. The part of the file that
+ * does not derive from the tree, so it is written down twice (here and in the generator).
  */
-const PARAMETERISED_RULES: Rule[] = [
-  { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
-  { from: '/en/c/:slug', to: '/challenge/:slug/', status: 302 },
-  { from: '/zh/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
-  { from: '/zh-TW/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
-]
+const SLUG_RULES: Record<Primary, Rule[]> = {
+  en: [
+    { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
+    { from: '/en/c/:slug', to: '/challenge/:slug/', status: 302 },
+    { from: '/zh/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
+    { from: '/zh-TW/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
+  ],
+  'zh-TW': [
+    { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
+    { from: '/en/c/:slug', to: '/en/challenge/:slug/', status: 302 },
+    { from: '/zh/c/:slug', to: '/challenge/:slug/', status: 302 },
+    { from: '/zh-TW/c/:slug', to: '/challenge/:slug/', status: 302 },
+  ],
+}
+
+/** The old-address rule, last and only when `P = zh-TW` (S-§4.1). */
+const OLD_ADDRESS_RULE: Rule = { from: '/zh-TW/*', to: '/:splat', status: 302 }
 
 /** The numbered source forms, in the order each challenge's rules appear (spec 0008, G5). */
 const FORMS = ['/c/', '/en/c/', '/zh/c/', '/zh-TW/c/']
@@ -151,7 +167,12 @@ const NUMBERED_SOURCE = /^\/(?:en\/|zh\/|zh-TW\/)?c\/[0-9]{3,}$/
  * expects rules and reports nonsense.
  */
 function parseRules(file: string = REDIRECTS): Rule[] {
-  return readFileSync(file, 'utf8')
+  return parseRulesText(readFileSync(file, 'utf8'))
+}
+
+/** The rules of a `_redirects` text; the text itself comes from a file or from the generator. */
+function parseRulesText(text: string): Rule[] {
+  return text
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('#'))
@@ -169,12 +190,14 @@ function parseRules(file: string = REDIRECTS): Rule[] {
 
 /** The `:name` placeholders in a path, in the order they appear. */
 function placeholders(path: string): string[] {
-  return [...path.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1])
+  const named = [...path.matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1])
+  // A trailing `*` is Cloudflare's splat: it pairs with `:splat` on the right.
+  return path.endsWith('*') ? [...named, 'splat'] : named
 }
 
-/** A rule whose target carries a placeholder serves a set of slugs; one without serves a single page. */
+/** A slug rule or the old-address rule serves a set of pages; a numbered rule serves a single page. */
 function isParameterised(rule: Rule): boolean {
-  return rule.to.includes(':')
+  return rule.from.endsWith(':slug') || rule.from === OLD_ADDRESS_RULE.from
 }
 
 /**
@@ -190,16 +213,6 @@ function isParameterised(rule: Rule): boolean {
 function staticPrefix(path: string): string {
   const cut = path.indexOf(':')
   return cut === -1 ? path : path.slice(0, cut)
-}
-
-/**
- * The source directory a parameterised target resolves against, relative to
- * `platform/`. `/challenge/:slug/` gives `platform/challenge`; `/zh-TW/challenge/:slug/`
- * gives `platform/zh-TW/challenge`.
- */
-function targetDir(to: string, docs: string = DOCS): string {
-  expect(to.indexOf(':'), `targetDir called on a literal target: ${to}`).toBeGreaterThan(-1)
-  return resolve(docs, staticPrefix(to).replace(/^\/+|\/+$/g, ''))
 }
 
 /** A path split into segments: `/zh/c/:slug` gives `['zh', 'c', ':slug']`. */
@@ -223,74 +236,85 @@ function segments(path: string): string[] {
  * one segment and `/zh/c/:slug` matches three, so no request can reach both.
  */
 function shadows(above: string, below: string): boolean {
+  // A trailing `*` captures everything beneath its prefix (S31), whatever the segment count.
+  if (above.endsWith('/*')) return below.startsWith(above.slice(0, -1))
   const a = segments(above)
   const b = segments(below)
   if (a.length !== b.length) return false
   return a.every((seg, i) => seg.startsWith(':') || seg === b[i])
 }
 
-/** The page a literal target resolves to: `/guide/setup/` gives `platform/guide/setup/index.md`. */
-function targetPage(to: string): string {
-  return resolve(DOCS, to.replace(/^\/+|\/+$/g, ''), 'index.md')
+/**
+ * The page a literal target resolves to under `docs`, by reversing `challengePagePath`: the primary
+ * locale's page has no locale segment (`/challenge/<slug>/` is `platform/<P>/challenge/<slug>/index.md`),
+ * another locale's has its own (`/<L>/challenge/<slug>/`, L not P). `undefined` when `to` is no
+ * challenge page address of this range.
+ */
+function literalTargetPage(to: string, docs: string, primary: Locale): string | undefined {
+  for (const locale of LOCALES) {
+    const template = challengePagePath(':slug', locale, primary)
+    const prefix = template.slice(0, template.indexOf(':slug'))
+    if (!to.startsWith(prefix) || !to.endsWith('/')) continue
+    const slug = to.slice(prefix.length, -1)
+    if (slug === '' || slug.includes('/')) continue
+    return resolve(docs, locale, 'challenge', slug, 'index.md')
+  }
+  return undefined
 }
 
-/** The slugs a rule serves, read out of that rule's own target directory; none when it is missing. */
-function slugsFor(rule: Rule, docs: string = DOCS): string[] {
-  const dir = targetDir(rule.to, docs)
+/** `P` of git's index: `range.json` in the index, or the default when it holds none (D67). */
+function indexPrimaryLocale(): Locale {
+  const listed = execFileSync('git', ['ls-files', '-s', '--', 'range.json'], { cwd: REPO_ROOT, encoding: 'utf8' })
+  if (listed.trim() === '') return parsePrimaryLocale(undefined)
+  return parsePrimaryLocale(execFileSync('git', ['show', ':range.json'], { cwd: REPO_ROOT, encoding: 'utf8' }))
+}
+
+/** The slugs under `docs/<locale>/challenge/`: the folders holding an `index.md` (D127). */
+function briefSlugsIn(docs: string, locale: Locale): string[] {
+  const dir = resolve(docs, locale, 'challenge')
   if (!existsSync(dir)) return []
   return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && existsSync(resolve(dir, entry.name, 'index.md')))
     .map((entry) => entry.name)
 }
 
 /**
- * What is wrong with the parameterised rules' target directories under `docs`: the English one
- * missing or holding no challenges, or a challenge directory without an `index.md`. A
- * Traditional Chinese one may be missing or empty (G2).
+ * What is wrong with the slug rules' target directories under `docs` for primary locale `primary`:
+ * a rule whose target is no challenge page address of this range, the primary locale's directory
+ * missing or holding no slug folder with an `index.md`. Another locale's directory may be missing
+ * or empty (G2). A rule whose target is the old-address rule's is not a directory target.
  */
-function targetDirectoryFaults(rules: Rule[], docs: string = DOCS): string[] {
+function targetDirectoryFaults(rules: Rule[], docs: string = DOCS, primary: Locale = 'zh-TW'): string[] {
   const faults: string[] = []
   for (const rule of rules.filter(isParameterised)) {
-    const dir = targetDir(rule.to, docs)
-    const optional = rule.to !== '/challenge/:slug/'
-    if (!existsSync(dir)) {
-      if (!optional) faults.push(`${rule.from} -> ${rule.to} targets missing directory ${dir}`)
+    if (rule.to === OLD_ADDRESS_RULE.to) continue
+    const locale = LOCALES.find((l) => challengePagePath(':slug', l, primary) === rule.to)
+    if (locale === undefined) {
+      faults.push(`${rule.from} -> ${rule.to} is not a challenge page address of this range`)
       continue
     }
-    const slugs = slugsFor(rule, docs)
-    // An empty prefix directory satisfies "every slug has a page" vacuously while every path
-    // the rule can produce is a 404, so it is a fault of its own.
-    if (slugs.length === 0 && !optional) {
+    if (locale !== primary) continue
+    const dir = resolve(docs, locale, 'challenge')
+    if (!existsSync(dir)) {
+      faults.push(`${rule.from} -> ${rule.to} targets missing directory ${dir}`)
+    } else if (briefSlugsIn(docs, locale).length === 0) {
+      // An empty directory satisfies "every slug has a page" vacuously while every path the rule
+      // can produce is a 404, so it is a fault of its own.
       faults.push(`${rule.from} -> ${rule.to} has no slugs under ${dir}; every path it produces is a 404`)
     }
-    for (const slug of slugs) {
-      const page = resolve(dir, slug, 'index.md')
-      if (!existsSync(page)) faults.push(`${rule.from} has no page for slug "${slug}" at ${page}`)
-    }
   }
   return faults
 }
 
-/** Translated slugs under `docs` with no root-locale challenge behind them (an orphan brief). */
-function orphanFaults(rules: Rule[], docs: string = DOCS): string[] {
-  const parameterised = rules.filter(isParameterised)
-  const root = rootRule(parameterised)
-  const rootSlugs = new Set(slugsFor(root, docs))
-  const faults: string[] = []
-  for (const rule of parameterised) {
-    if (rule.to === root.to) continue
-    for (const slug of slugsFor(rule, docs)) {
-      if (!rootSlugs.has(slug)) faults.push(`${rule.from} serves "${slug}" but ${root.from} has no such challenge`)
+/** Every pair `above shadows below` in `rules`, in file order, as `above shadows below` lines. */
+function shadowedPairs(rules: Rule[]): string[] {
+  const pairs: string[] = []
+  for (let i = 0; i < rules.length; i++) {
+    for (let j = i + 1; j < rules.length; j++) {
+      if (shadows(rules[i].from, rules[j].from)) pairs.push(`${rules[i].from} shadows ${rules[j].from}`)
     }
   }
-  return faults
-}
-
-/** The rule serving the root locale — the one whose target has no locale segment. */
-function rootRule(rules: Rule[]): Rule {
-  const root = rules.find((rule) => rule.to === '/challenge/:slug/')
-  expect(root, 'no rule targets the root-locale challenge directory').toBeDefined()
-  return root as Rule
+  return pairs
 }
 
 describe('_redirects rule syntax', () => {
@@ -311,7 +335,10 @@ describe('_redirects rule syntax', () => {
     }
   })
 
-  it('pairs every placeholder across source and target', () => {
+  it('pairs every placeholder across source and target, a trailing * with :splat (S30)', () => {
+    expect(placeholders('/zh-TW/*')).toEqual(['splat'])
+    expect(placeholders('/:splat')).toEqual(['splat'])
+    expect(placeholders(OLD_ADDRESS_RULE.from)).toEqual(placeholders(OLD_ADDRESS_RULE.to))
     for (const rule of parseRules()) {
       const from = [...placeholders(rule.from)].sort()
       const to = [...placeholders(rule.to)].sort()
@@ -323,68 +350,137 @@ describe('_redirects rule syntax', () => {
     // First match wins. A rule whose source prefix contains another rule's
     // source prefix would shadow it if ordered first, so no source may be a
     // path-boundary prefix of a source below it.
-    const rules = parseRules()
-    for (let i = 0; i < rules.length; i++) {
-      for (let j = i + 1; j < rules.length; j++) {
-        expect(
-          shadows(rules[i].from, rules[j].from),
-          `${rules[i].from} shadows ${rules[j].from}`,
-        ).toBe(false)
+    expect(shadowedPairs(parseRules())).toEqual([])
+  })
+})
+
+// S31: a splat rule swallows everything beneath its prefix; same-count placeholders still shadow.
+describe('shadows (S31)', () => {
+  it('lets a splat rule shadow every source beneath its prefix, and nothing else', () => {
+    expect(shadows('/zh-TW/*', '/zh-TW/c/001')).toBe(true)
+    expect(shadows('/zh-TW/*', '/zh-TW/c/:slug')).toBe(true)
+    expect(shadows('/zh-TW/*', '/zh/c/001')).toBe(false)
+    expect(shadows('/zh-TW/*', '/c/001')).toBe(false)
+    // The same-count comparison is unchanged.
+    expect(shadows('/c/:slug', '/c/001')).toBe(true)
+    expect(shadows('/:slug', '/zh/c/:slug')).toBe(false)
+  })
+
+  describe.each(BOTH)('the generated schema, P = %s', (P) => {
+    let root: string
+    beforeEach(() => {
+      root = mkdtempSync(join(tmpdir(), 'redirects-shadow-'))
+    })
+    afterEach(() => {
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it('has no shadowed pair, for a challenge translated both ways', () => {
+      mkdirSync(join(root, 'platform', 'challenge', 'x'), { recursive: true })
+      writeFileSync(join(root, 'platform', 'challenge', 'x', 'challenge.yaml'), 'title: x\nnumber: 1\n')
+      for (const locale of BOTH) {
+        mkdirSync(join(root, 'platform', locale, 'challenge', 'x'), { recursive: true })
+        writeFileSync(join(root, 'platform', locale, 'challenge', 'x', 'index.md'), '# x\n')
       }
-    }
+      writeFileSync(join(root, 'range.json'), JSON.stringify({ primaryLocale: P }))
+      const rules = parseRulesText(generateRedirects(root))
+      expect(rules.some((r) => r.from.startsWith('/c/'))).toBe(true)
+      expect(rules.some((r) => r.from === '/zh-TW/*')).toBe(P === 'zh-TW')
+      expect(shadowedPairs(rules)).toEqual([])
+    })
+  })
+
+  it('has no shadowed pair in the committed file', () => {
+    expect(shadowedPairs(parseRules())).toEqual([])
+  })
+
+  it('counts one pair per later /zh-TW/ source once the old-address rule is first', () => {
+    const rules = parseRules()
+    const rest = rules.filter((r) => r.from !== OLD_ADDRESS_RULE.from)
+    const later = rest.filter((r) => r.from.startsWith('/zh-TW/')).length
+    expect(later).toBeGreaterThan(0)
+    expect(shadowedPairs([OLD_ADDRESS_RULE, ...rest])).toHaveLength(later)
   })
 })
 
 describe('_redirects rule set', () => {
-  it('ends with the four parameterised classroom rules (G4)', () => {
+  const P = indexPrimaryLocale() as Primary
+
+  it('ends with the four slug rules, then the old-address rule when P = zh-TW (G4, S30)', () => {
     // Last, and in this order. Cloudflare takes the first match and `/c/:slug`
     // matches a number too, so a numbered rule below these would never run.
-    expect(parseRules().slice(-4)).toEqual(PARAMETERISED_RULES)
+    const rules = parseRules()
+    if (P === 'zh-TW') {
+      expect(rules.at(-1)).toEqual(OLD_ADDRESS_RULE)
+      expect(rules.filter((r) => r.from === OLD_ADDRESS_RULE.from)).toHaveLength(1)
+      expect(rules.slice(-5, -1)).toEqual(SLUG_RULES['zh-TW'])
+    } else {
+      expect(rules.slice(-4)).toEqual(SLUG_RULES.en)
+    }
   })
 
-  it('gives every challenge in git’s index its four rules in form order, the Traditional Chinese ones at the page its tree tracks (G1–G3, G5, G8)', () => {
+  it('gives every challenge in git’s index its four rules in form order, each at the page D58 names (S29)', () => {
     // From git's per-tree index, not a directory listing: other test files scaffold
     // throwaway challenges into the real tree while this one runs.
     const slugs = indexSlugs(REPO_ROOT)
-    const english = slugs.get('root') ?? new Set<string>()
-    const chinese = slugs.get('zh-TW') ?? new Set<string>()
-    expect(english.size, 'no challenge is tracked').toBeGreaterThan(0)
+    const declared = slugs.get('declaration') ?? new Set<string>()
+    expect(declared.size, 'no challenge declaration is tracked').toBeGreaterThan(0)
     const numbered = parseRules().filter((r) => !isParameterised(r))
+    const forms: Array<[string, Locale | null]> = [
+      ['/c/', null],
+      ['/en/c/', 'en'],
+      ['/zh/c/', 'zh-TW'],
+      ['/zh-TW/c/', 'zh-TW'],
+    ]
 
-    for (const slug of english) {
-      const n = readChallengeNumber(resolve(DOCS, 'challenge', slug, 'index.md'))
+    let included = 0
+    for (const slug of declared) {
+      const n = readChallengeNumber(resolve(DOCS, 'challenge', slug, 'challenge.yaml'))
       expect(isChallengeNumber(n), `${slug} has no number`).toBe(true)
       const padded = padChallengeNumber(n as number)
-      const page = { en: `/challenge/${slug}/`, zh: chinese.has(slug) ? `/zh-TW/challenge/${slug}/` : `/challenge/${slug}/` }
-      expect(numbered.filter((r) => r.from.endsWith(`/c/${padded}`)), slug).toEqual([
-        { from: `/c/${padded}`, to: page.en, status: 302 },
-        { from: `/en/c/${padded}`, to: page.en, status: 302 },
-        { from: `/zh/c/${padded}`, to: page.zh, status: 302 },
-        { from: `/zh-TW/c/${padded}`, to: page.zh, status: 302 },
-      ])
+      const has = (locale: Locale) => slugs.get(locale)?.has(slug) ?? false
+      const mine = numbered.filter((r) => r.from.endsWith(`/c/${padded}`))
+      const fallback = has(P) ? P : LOCALES.find(has)
+      if (fallback === undefined) {
+        expect(mine, `${slug} has no brief, so no rule`).toEqual([])
+        continue
+      }
+      included++
+      expect(mine, slug).toEqual(
+        forms.map(([prefix, locale]) => ({
+          from: `${prefix}${padded}`,
+          to: challengePagePath(slug, has(locale ?? P) ? (locale ?? P) : fallback, P),
+          status: 302,
+        })),
+      )
     }
-    // Nothing else: every numbered rule belongs to one of those challenges (CI refuses an
-    // orphan brief, so G9's two rules never reach the committed file).
-    expect(numbered).toHaveLength(4 * english.size)
+    // Nothing else: every numbered rule belongs to one of those challenges.
+    expect(numbered).toHaveLength(4 * included)
   })
 
-  it('gives challenge 001, door-is-open, the four rules the spec writes out', () => {
+  // D124/D149: the real tree's own challenge, so it holds on the upstream tree only.
+  it.skipIf(
+    upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+  )('gives challenge 001, door-is-open, the four rules the spec writes out (S-§4.1)', () => {
     expect(parseRules().filter((r) => r.from.endsWith('/c/001'))).toEqual([
       { from: '/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/en/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/zh/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
-      { from: '/zh-TW/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
+      { from: '/en/c/001', to: '/en/challenge/door-is-open/', status: 302 },
+      { from: '/zh/c/001', to: '/challenge/door-is-open/', status: 302 },
+      { from: '/zh-TW/c/001', to: '/challenge/door-is-open/', status: 302 },
     ])
   })
 
-  it('admits no rule that is neither parameterised nor a numbered short link', () => {
+  it('admits no rule that is neither a numbered short link, one of P’s slug rules, nor the old-address rule', () => {
     // Containment on shape, which is what survives a rule set that grows with
     // the tree. An unreviewed rule of any other shape still fails here.
-    for (const rule of parseRules().filter((r) => !isParameterised(r))) {
-      expect(
-        NUMBERED_SOURCE.test(rule.from),
-        `${rule.from} is neither parameterised nor a numbered short link`,
-      ).toBe(true)
+    const same = (a: Rule, b: Rule) => a.from === b.from && a.to === b.to && a.status === b.status
+    for (const rule of parseRules()) {
+      const shape =
+        NUMBERED_SOURCE.test(rule.from) ||
+        SLUG_RULES[P].some((r) => same(r, rule)) ||
+        (P === 'zh-TW' && same(OLD_ADDRESS_RULE, rule))
+      expect(shape, `${rule.from} -> ${rule.to} is none of the three shapes`).toBe(true)
+      if (P === 'en') expect(rule.from, 'P = en has no splat rule').not.toContain('*')
     }
   })
 
@@ -397,31 +493,52 @@ describe('_redirects rule set', () => {
 })
 
 describe('_redirects target resolution', () => {
+  const P = indexPrimaryLocale()
+
   it('resolves every parameterised target prefix to a directory of challenges, each with an index.md', () => {
-    // Missing directory, empty directory and a slug without a page are each reported by name.
-    expect(targetDirectoryFaults(parseRules())).toEqual([])
+    // A target that is no challenge page address, a missing directory and an empty one are each reported by name.
+    expect(targetDirectoryFaults(parseRules(), DOCS, P)).toEqual([])
   })
 
   it('resolves every literal target to a page', () => {
-    // No rule is literal today. The branch exists so that adding one gets the
-    // same guarantee instead of silently skipping every resolution check.
+    // The numbered rules' targets, through the page-path correspondence (D127).
     for (const rule of parseRules().filter((r) => !isParameterised(r))) {
-      const page = targetPage(rule.to)
-      expect(existsSync(page), `${rule.from} -> ${rule.to} has no page at ${page}`).toBe(true)
+      const page = literalTargetPage(rule.to, DOCS, P)
+      expect(
+        page !== undefined && existsSync(page),
+        `${rule.from} -> ${rule.to} has no page${page === undefined ? ' address in this range' : ` at ${page}`}`,
+      ).toBe(true)
     }
-  })
-
-  it('backs every translated slug with a root-locale challenge', () => {
-    // The one cross-rule claim. Subset, not equality: an untranslated challenge
-    // is expected and must not fail, but a translation with nothing behind it
-    // leaves `/c/<slug>` a 404 while `/zh/c/<slug>` resolves.
-    expect(orphanFaults(parseRules())).toEqual([])
   })
 })
 
-// The same checks on throwaway ranges, with the repository's own rule set: what a range that
-// dropped its translations, or never had any, gives (spec 0008, G2), and that the refusals hold.
-describe('_redirects target checks on other ranges', () => {
+describe('brief faults on the real tree (S33)', () => {
+  const P = indexPrimaryLocale()
+  const indexPaths = () =>
+    execFileSync('git', ['ls-files', '-z', '--', 'platform/'], { cwd: REPO_ROOT, encoding: 'utf8' })
+      .split('\0')
+      .filter((p) => p !== '')
+
+  it('holds no brief fault in git’s index (S33)', () => {
+    // Every tracked challenge has a declaration and the primary locale's brief; no page lies
+    // outside the locale folders under platform/challenge/.
+    expect(briefFaults(indexTrees(indexPaths()), P)).toEqual([])
+  })
+
+  it('would report a missing primary brief, in memory (the check is not vacuous)', () => {
+    const without = `platform/${P}/challenge/door-is-open/index.md`
+    const paths = indexPaths()
+    expect(paths).toContain(without)
+    const faults = briefFaults(indexTrees(paths.filter((p) => p !== without)), P)
+    expect(faults.map((f) => `${f.kind}:${f.slug}`)).toEqual(['missing-primary:door-is-open'])
+  })
+})
+
+// The same checks on throwaway ranges, with each `P`'s own slug rules: what a range that dropped its
+// translations, or never had any, gives (spec 0008, G2), and that the refusals hold (S34).
+describe.each(BOTH)('_redirects target checks on other ranges, P = %s', (P) => {
+  const O: Primary = P === 'en' ? 'zh-TW' : 'en'
+  const rules = [...SLUG_RULES[P], ...(P === 'zh-TW' ? [OLD_ADDRESS_RULE] : [])]
   let docs: string
 
   beforeEach(() => {
@@ -432,38 +549,46 @@ describe('_redirects target checks on other ranges', () => {
     rmSync(resolve(docs, '..'), { recursive: true, force: true })
   })
 
-  function page(dir: string, slug: string): void {
-    mkdirSync(join(docs, dir, slug), { recursive: true })
-    writeFileSync(join(docs, dir, slug, 'index.md'), '---\nnumber: 1\n---\n')
+  function page(locale: string, slug: string): void {
+    mkdirSync(join(docs, locale, 'challenge', slug), { recursive: true })
+    writeFileSync(join(docs, locale, 'challenge', slug, 'index.md'), '---\ntitle: x\n---\n')
   }
 
-  it('accepts a range with no Traditional Chinese challenge directory', () => {
-    page('challenge', 'door-is-open')
-    expect(targetDirectoryFaults(parseRules(), docs)).toEqual([])
-    expect(orphanFaults(parseRules(), docs)).toEqual([])
+  const sources = (faults: string[]) => faults.map((f) => f.split(' -> ')[0])
+
+  it(`accepts a range with no ${O} challenge directory`, () => {
+    page(P, 'door-is-open')
+    expect(targetDirectoryFaults(rules, docs, P)).toEqual([])
   })
 
-  it('accepts a range whose Traditional Chinese challenge directory is empty', () => {
-    page('challenge', 'door-is-open')
-    mkdirSync(join(docs, 'zh-TW', 'challenge'), { recursive: true })
-    expect(targetDirectoryFaults(parseRules(), docs)).toEqual([])
+  it(`accepts a range whose ${O} challenge directory is empty`, () => {
+    page(P, 'door-is-open')
+    mkdirSync(join(docs, O, 'challenge'), { recursive: true })
+    expect(targetDirectoryFaults(rules, docs, P)).toEqual([])
   })
 
-  it('refuses a range with no English challenge directory', () => {
-    page('zh-TW/challenge', 'door-is-open')
-    // Once per English rule: `/c/:slug` and `/en/c/:slug`.
-    const faults = targetDirectoryFaults(parseRules(), docs)
-    expect(faults).toHaveLength(2)
-    for (const fault of faults) expect(fault).toMatch(/^\/(?:en\/)?c\/:slug -> \/challenge\/:slug\/ targets missing directory /)
+  it('ignores a folder with no index.md: it is no slug (D127)', () => {
+    page(P, 'door-is-open')
+    mkdirSync(join(docs, P, 'challenge', 'u'), { recursive: true })
+    writeFileSync(join(docs, P, 'challenge', 'u', 'notes.md'), 'x\n')
+    expect(targetDirectoryFaults(rules, docs, P)).toEqual([])
   })
 
-  it('refuses a translated slug with no root-locale challenge (G6)', () => {
-    page('challenge', 'door-is-open')
-    page('zh-TW/challenge', 'orphan')
-    // Once per Traditional Chinese rule: `/zh/c/:slug` and `/zh-TW/c/:slug`.
-    const faults = orphanFaults(parseRules(), docs)
-    expect(faults).toHaveLength(2)
-    for (const fault of faults) expect(fault).toContain('"orphan"')
+  it(`counts a ${P} directory holding only a folder with no index.md as empty (D127)`, () => {
+    mkdirSync(join(docs, P, 'challenge', 'u'), { recursive: true })
+    writeFileSync(join(docs, P, 'challenge', 'u', 'notes.md'), 'x\n')
+    const faults = targetDirectoryFaults(rules, docs, P)
+    expect(faults).toHaveLength(P === 'en' ? 2 : 3)
+    for (const fault of faults) expect(fault).toContain('has no slugs under')
+  })
+
+  it(`refuses a range with no ${P} challenge directory, once per rule that targets it`, () => {
+    page(O, 'door-is-open')
+    const faults = targetDirectoryFaults(rules, docs, P)
+    const expected = P === 'en' ? ['/c/:slug', '/en/c/:slug'] : ['/c/:slug', '/zh/c/:slug', '/zh-TW/c/:slug']
+    expect(faults).toHaveLength(expected.length)
+    expect(sources(faults)).toEqual(expected)
+    for (const fault of faults) expect(fault).toContain('targets missing directory')
   })
 })
 
@@ -535,5 +660,123 @@ describe('redirects:generate on an old-layout tree (B38)', () => {
     const target = writeRedirects(root)
     expect(existsSync(target)).toBe(true)
     expect(readFileSync(target, 'utf8')).toContain('/c/001')
+  })
+})
+
+// S-§4.7: the index's paths, sorted into the trees the brief check reads (0010-S24, D149).
+describe('indexTrees (S-§4.7)', () => {
+  it('builds the declaration and locale slug sets and the sorted legacy paths from git ls-files paths', () => {
+    const trees = indexTrees([
+      'platform/en/challenge/door/index.md',
+      'platform/zh-TW/challenge/door/index.md',
+      'platform/en/challenge/gate/index.md',
+      'platform/challenge/gate/challenge.yaml',
+      'platform/challenge/x/index.md',
+      'platform/challenge/s.md',
+      'platform/challenge/x/src/readme.md',
+      'platform/zh-TW/challenge/t/diagram.png',
+      'platform/fr/challenge/x/index.md',
+      'platform/public/challenge/x/notes.md',
+    ])
+    expect(Object.fromEntries([...trees.slugs].map(([k, v]) => [k, [...v].sort()]))).toEqual({
+      declaration: ['gate'],
+      en: ['door', 'gate'],
+      'zh-TW': ['door'],
+    })
+    expect(trees.legacyPaths).toEqual(['platform/challenge/s.md', 'platform/challenge/x/index.md'])
+  })
+})
+
+// S35: the brief check's kinds by P (D64, D127).
+describe.each(BOTH)('briefFaults (S35), P = %s', (P) => {
+  const O = P === 'en' ? 'zh-TW' : 'en'
+  const brief = (l: string, slug = 's') => `platform/${l}/challenge/${slug}/index.md`
+  const decl = (slug = 's') => `platform/challenge/${slug}/challenge.yaml`
+  const faultsOf = (paths: string[]): BriefFault[] => briefFaults(indexTrees(paths), P)
+  const missingPrimary = (present: string): BriefFault =>
+    ({ kind: 'missing-primary', slug: 's', present, missing: brief(P) })
+  const missingDeclaration = (present: string): BriefFault =>
+    ({ kind: 'missing-declaration', slug: 's', present, missing: decl() })
+
+  const cases: Array<[string, () => string[], () => BriefFault[]]> = [
+    ['(i) a translated brief, no primary brief, a declaration', () => [brief(O), decl()], () => [missingPrimary(brief(O))]],
+    ['(ii) only a declaration', () => [decl()], () => [missingPrimary(decl())]],
+    ['(iii) the primary brief, no declaration', () => [brief(P)], () => [missingDeclaration(brief(P))]],
+    [
+      '(iii) both briefs, no declaration',
+      () => [brief(O), brief(P)],
+      () => [brief('en'), brief('zh-TW')].map(missingDeclaration),
+    ],
+    [
+      '(iv) only a translated brief, no declaration',
+      () => [brief(O)],
+      () => [missingPrimary(brief(O)), missingDeclaration(brief(O))],
+    ],
+    [
+      '(v) a legacy folder page',
+      () => ['platform/challenge/s/index.md'],
+      () => [{ kind: 'old-layout', slug: 's', present: 'platform/challenge/s/index.md', missing: null }],
+    ],
+    [
+      '(v) a legacy single-file page',
+      () => ['platform/challenge/s.md'],
+      () => [{ kind: 'old-layout', slug: 's', present: 'platform/challenge/s.md', missing: null }],
+    ],
+    ['(vi) the primary brief and a declaration', () => [brief(P), decl()], () => []],
+    ['(vi) both briefs and a declaration', () => [brief(P), brief(O), decl()], () => []],
+    ['a folder with no index.md is no brief (D127)', () => [`platform/${P}/challenge/t/diagram.png`, `platform/${O}/challenge/t/diagram.png`], () => []],
+  ]
+  it.each(cases)('%s', (_name, paths, expected) => {
+    expect(faultsOf(paths())).toEqual(expected())
+  })
+
+  it(`ignores a folder off the locale list (P = ${P})`, () => {
+    const off = 'platform/fr/challenge/x/index.md'
+    const clean = [brief(P), decl()]
+    const faulty = [brief(O), decl('t')]
+    for (const paths of [clean, faulty]) {
+      expect(faultsOf([...paths, off])).toEqual(faultsOf(paths))
+      expect(faultsOf([off, ...paths])).toEqual(faultsOf(paths))
+      expect(indexTrees([...paths, off]).slugs.has('fr' as never)).toBe(false)
+    }
+    expect(faultsOf(faulty).length).toBeGreaterThan(0)
+  })
+})
+
+describe('briefFaults order (S35, S-§4.7)', () => {
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  it('returns the S-§4.7 example verbatim, in D64 order (P = zh-TW)', () => {
+    const paths = [
+      'platform/challenge/x/index.md',
+      'platform/challenge/gate/challenge.yaml',
+      'platform/en/challenge/gate/index.md',
+      'platform/zh-TW/challenge/door/index.md',
+      'platform/en/challenge/door/index.md',
+    ]
+    expect(briefFaults(indexTrees(paths), 'zh-TW')).toEqual([
+      { kind: 'missing-declaration', slug: 'door', present: 'platform/en/challenge/door/index.md', missing: 'platform/challenge/door/challenge.yaml' },
+      { kind: 'missing-declaration', slug: 'door', present: 'platform/zh-TW/challenge/door/index.md', missing: 'platform/challenge/door/challenge.yaml' },
+      { kind: 'missing-primary', slug: 'gate', present: 'platform/en/challenge/gate/index.md', missing: 'platform/zh-TW/challenge/gate/index.md' },
+      { kind: 'old-layout', slug: 'x', present: 'platform/challenge/x/index.md', missing: null },
+    ])
+  })
+
+  it('orders by slug (UTF-16), then kind (W6a, W6b, W6c, W6d), then present', () => {
+    // Slug 'B' sorts before 'a' by code unit (localeCompare would put 'a' first). Slug 'a' has a
+    // missing-primary (W6a) and a missing-declaration (W6c); 'B' has a legacy page (W6d) too.
+    const paths = [
+      'platform/challenge/B/index.md',
+      'platform/en/challenge/a/index.md',
+      'platform/challenge/B/challenge.yaml',
+      'platform/en/challenge/B/index.md',
+    ]
+    const faults = briefFaults(indexTrees(paths), 'zh-TW')
+    expect(faults.map((f) => `${f.slug}:${f.kind}`)).toEqual([
+      'B:missing-primary',
+      'B:old-layout',
+      'a:missing-primary',
+      'a:missing-declaration',
+    ])
+    expect(faults.map((f) => f.slug)).toEqual([...faults.map((f) => f.slug)].sort(cmp))
   })
 })

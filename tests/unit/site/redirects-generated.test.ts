@@ -1,7 +1,9 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { LOCALES } from '../../../.vitepress/locales'
 import {
   generateRedirects,
   writeRedirects,
@@ -596,10 +598,15 @@ describe('generateRedirects', () => {
 
 describe('the committed _redirects', () => {
   const REPO_ROOT = resolve(__dirname, '../../..')
+  const materialised: string[] = []
+
+  afterEach(() => {
+    for (const dir of materialised.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
 
   /**
-   * The challenge slugs git knows about, per locale tree: a page counts only where its own tree's
-   * `<slug>/index.md` is in the index, as in the pre-commit hook (`indexSlugs`), so an untracked
+   * The challenge slugs git knows about, per tree (`declaration` and each locale): a file counts
+   * only where git's index lists it, as in the pre-commit hook (`indexSlugs`), so an untracked
    * Traditional Chinese brief beside a tracked English page re-points its rules here as it does
    * there.
    *
@@ -614,6 +621,37 @@ describe('the committed _redirects', () => {
     return indexSlugs(REPO_ROOT)
   }
 
+  /**
+   * The index's `range.json`, declarations and briefs, written to a temporary directory: the
+   * generator reads files, and the working tree can differ from the index (the hook's oracle does
+   * the same). Only the index is read and only the temporary directory is written; a `range.json`
+   * that is a link in the index is written as one, so the generator refuses it (PL-E01).
+   */
+  function materialiseIndex(): string {
+    const listed = execFileSync('git', ['ls-files', '-z', '--', 'range.json', 'platform/'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    })
+    const briefs = LOCALES.map((l) => new RegExp(`^platform/${l}/challenge/[^/]+/index\\.md$`))
+    const keep = listed
+      .split('\0')
+      .filter(
+        (path) =>
+          path === 'range.json' ||
+          /^platform\/challenge\/[^/]+\/challenge\.yaml$/.test(path) ||
+          briefs.some((re) => re.test(path)),
+      )
+    const tmp = mkdtempSync(join(tmpdir(), 'redirects-index-'))
+    materialised.push(tmp)
+    if (keep.length > 0) {
+      execFileSync('git', ['checkout-index', '-z', '--stdin', `--prefix=${tmp}/`], {
+        cwd: REPO_ROOT,
+        input: keep.join('\0') + '\0',
+      })
+    }
+    return tmp
+  }
+
   it('is byte-identical to what the challenge tree generates', () => {
     // The one assertion that ties the file to the tree. It fails on a rule
     // hand-edited into the file, on a rule silently dropped from it, and on a
@@ -621,11 +659,12 @@ describe('the committed _redirects', () => {
     // checks the rules' shape and each challenge's four rules; this one checks
     // every byte, the header and the order included.
     const tracked = trackedSlugs()
-    expect(tracked.get('root')?.size ?? 0, 'no challenges are tracked; the slug filter is wrong').toBeGreaterThan(0)
+    expect(tracked.get('declaration')?.size ?? 0, 'no challenges are tracked; the slug filter is wrong').toBeGreaterThan(0)
 
+    const tmp = materialiseIndex()
     const committed = readFileSync(resolve(REPO_ROOT, 'platform/public/_redirects'), 'utf8')
-    expect(committed).toBe(generateRedirects(REPO_ROOT, {
-      includeSlug: (slug, locale) => tracked.get(locale)?.has(slug) ?? false,
+    expect(committed).toBe(generateRedirects(tmp, {
+      includeSlug: (slug, tree) => tracked.get(tree)?.has(slug) ?? false,
     }))
   })
 })

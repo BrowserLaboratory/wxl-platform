@@ -2232,6 +2232,69 @@ P0 findings are handled; nothing else.
   - Self-check summary is in the segment report. The 4a-declared reds outside this segment (create-challenge-run, the
     hook tests) were not run and are unchanged in kind.
 
+### 2026-11-17 (segment 4c)
+
+- Rows done, each with the red line seen before its production change (or the reason it was green first):
+  - 4c-0 (`indexTrees`, S24/S25, D149): `TypeError: indexTrees is not a function`. Then `indexTrees(paths)` and
+    `indexSlugs(root)` (`git ls-files -z -- platform/`) in `scripts/generate-redirects.ts`; `CHALLENGE_TREES` removed
+    from both files (no other user); the two "rewritten by segment 4c" sentences removed.
+  - S35 (kinds x P, both P): (i) `TypeError: briefFaults is not a function`; (ii) `expected [] to deeply equal [ {
+    kind: 'missing-primary', ... } ]`; (iii) `expected [] to deeply equal [ { ... } ]` (one brief) and `[ { ... }, { ... } ]`
+    (both briefs); (v) `expected [] to deeply equal [ { kind: 'old-layout', ... } ]` (folder page and single-file page).
+    Green first, reasons: (iv) is (i)+(iii) combined; (vi) and the D127 row produce no fault path. Mutation: no
+    `missing-declaration` branch reds (iii) and (iv).
+  - S35 verbatim and order: `expected [ …(4) ] to deeply equal [ { …(4) }, { …(4) }, { …(4) }, …(1) ]` and the
+    UTF-16 case `expected [ 'B:missing-primary', …(3) ] to deeply equal [ 'B:missing-primary', …(3) ]`. Mutations: no
+    sort reds both; `localeCompare` for the slug reds the 'B' / 'a' case.
+  - S21 (briefFaults half), both P: green first, as the plan predicted (`indexTrees` only knows `LOCALES`; the path is
+    not under `platform/challenge/`). Mutation: `indexTrees` accepting any first folder reds the S-§4.7 `indexTrees`
+    test and both S21 cases.
+  - S34 (other ranges x P): `expected [ …(2) ] to deeply equal []` (P = en, no zh-TW directory, old function),
+    `expected [ …(4) ] to deeply equal []`, and for the zh-TW missing-directory case `expected [ …(4) ] to have a length
+    of 3 but got 4`. Then `targetDirectoryFaults(rules, docs, primary)` (reverse lookup through `challengePagePath`,
+    only `primary`'s directory required, a slug = a folder holding `index.md`), `parseRulesText`, `SLUG_RULES`,
+    `OLD_ADDRESS_RULE`; `targetDir`, `slugsFor`, `orphanFaults`, `rootRule`, `PARAMETERISED_RULES` deleted.
+  - S32: (a) green first (D127 already in S34's rewrite); mutation: counting a folder with no `index.md` as a slug reds
+    both P. (b) red against the old file: `expected [ …(2) ] to deeply equal []`; (c) red: `/zh/c/001 -> /zh-TW/challenge/
+    door-is-open/ has no page address in this range: expected false to be true`. Both green after S28's regeneration.
+  - S31: `expected false to be true` (splat unit); `expected [] to have a length of 5 but got +0` (counterfactual, old
+    `shadows`); (2) the committed file and the two generated schemas were green first (no pair exists; (3) is the
+    non-vacuity control).
+  - S30: (a) `expected [] to deeply equal [ 'splat' ]`; (b) `/en/c/:slug -> /challenge/:slug/ is none of the three
+    shapes: expected false to be true`; (c) `expected { from: '/zh-TW/c/:slug', … } to deeply equal { from: '/zh-TW/*', … }`.
+    (b)(c) went green with S28's regeneration.
+  - S29: `door-is-open: expected [ { from: '/c/001', … }, … ] to deeply equal [ … ]`; green after S28.
+  - D149/S-q3: `expected [ { from: '/c/001', … }, … ] to deeply equal [ … ]` (the 001 case, now `it.skipIf(upstreamOnly…)`
+    with S-§4.1's four literal rules); green after S28.
+  - S28: `expected '# Cloudflare Pages redirect rules. Th…' to be '# Cloudflare Pages redirect rules. Th…'` (diff: header,
+    K4, `/en/c/001 -> /en/challenge/door-is-open/`, trailing `/zh-TW/*`). The test materialises the index into
+    `os.tmpdir()` with `git checkout-index -z --stdin --prefix=`. `pnpm redirects:generate` rewrote
+    `platform/public/_redirects` (P = zh-TW, no `range.json`; 001, 002, 008, 010 four rules each, four slug rules, the
+    old-address rule last = S-§4.1); `git add platform/public/_redirects` (the only `git add`; no new file was created
+    by this segment). Putting HEAD's old file back turns 7 tests red (S28, S29, S30 b/c, S32 b/c, D149); restored.
+  - S33: green first (4c-0 and S35 already give `[]`; the index has declarations and both briefs for all four
+    challenges). Non-vacuity: an in-memory index without `platform/zh-TW/challenge/door-is-open/index.md` gives
+    `missing-primary:door-is-open`.
+- Readings and deviations, for the parent: (1) S28's pathspec `'platform/*/challenge'` lists only the directory level,
+  not the briefs beneath it (measured: no `platform/en/challenge/…` line), so the test lists `range.json platform/` and
+  keeps the three wanted shapes by regex; the written set is the same as the plan's. (2) S32 (a)'s "only `u` gives 1
+  fault" is asserted as one fault per rule that targets the primary directory (2 for en, 3 for zh-TW), the same
+  per-rule count S34 states for a missing directory; the message is "has no slugs under …". (3) The cycles for S34's
+  three case kinds were observed red together against the old function before one rewrite of `targetDirectoryFaults`,
+  which is a single helper. (4) `isParameterised` now classifies by source (`*:slug` or the old-address source).
+  (5) In the S30 (a) cycle the production-side `placeholders` change was first written with the test; I reverted it,
+  saw the red line above, and restored it.
+- Not done: nothing in the segment's rows. Hook, `--staged` behaviour and `expectW6` stay wave 6's.
+- pre-commit-sh comparison (plan's one-time check): `tests/pre-commit-sh.test.ts` fails as a suite before any test runs
+  (`beforeAll` -> `buildFixture` -> `generateRedirects`: `door (platform/zh-TW/challenge/door/index.md) has no
+  declaration platform/challenge/door/challenge.yaml`, an old-layout fixture, tests/__helpers__/preCommitRepo.ts:216),
+  so 0 of 112 tests ran (112 skipped) and no failure-title set exists to compare with the 48 titles. The cause is the
+  4b generator against the old fixture, not 4c; it is wave 6's. Compared only, nothing fixed.
+- Commands: `pnpm vitest run tests/unit/site/redirects.test.ts tests/unit/site/redirects-generated.test.ts` gives 2
+  files passed, 165 tests passed (before: 4 carried reds). `pnpm vitest run tests/pre-commit-sh.test.ts` gives 1 file
+  failed (suite error), 112 skipped. The four carried failures are green.
+- git add by this segment: `platform/public/_redirects` only.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
@@ -2968,3 +3031,17 @@ as T1 defines green.
     - `tests/unit/site/redirects-generated.test.ts:167` (P2, confidence low): in the S4 case the plan row's fixture says 'no range.json' but the test sets {"primaryLocale":"zh-TW"}; S10 covers the absent file separately
     - `scripts/generate-redirects.ts:392` (P2, confidence low): the CLI full mode checks `platform/public` exists before reading range.json, so with both faults it reports 'platform/public not found' instead of the PL-E01 to PL-E06 line D123 calls for first (edge case)
   - Full suite (parallel run only; not re-run with `--no-file-parallelism`, since no unexpected failures): 6381 tests in total, 6256 passed, 13 failed, 112 skipped/todo; 786 test files/suites, 13 failed suites (includes tests/pre-commit-sh.test.ts, which failed at collection with 0 tests run). No flakes observed. The 11 fixture generateRedirects cases (segment 4b) now pass.
+
+- 2026-11-17 (segment 4c, fix round): F1, the one defect behind both P0 findings. `scripts/generate-redirects.ts` spelled three repository-relative paths as template literals containing `/challenge/${`, which turned shortLink.test.ts's S52 / S-q4 / AC-33 source check red.
+  - Red before the change: `npx vitest run tests/unit/challenge/shortLink.test.ts` gave 1 failed | 29 passed; `AssertionError: expected '\n\nimport { writeFileSync, existsSyn...' not to match /\/challenge\/(\$\{|:slug)/`. No test added or edited (the existing case is the failing test).
+  - Change: `briefPath` now joins an array, new `declarationPath(slug)` does the same for `platform/challenge/<slug>/challenge.yaml`, and the two remaining template literals (the `present` fallback and `missing`) use it. Output strings are byte-identical.
+  - After: shortLink.test.ts, redirects.test.ts and redirects-generated.test.ts all green (3 files, 195 passed). No file added to the index; no commit.
+
+  - Deferred to stage 6 (P2, frozen rubric), segment 4c final review:
+    - `tests/unit/site/redirects.test.ts:764` (P2, confidence medium): two parts of the D64 sort survive mutation: missing-declaration versus old-layout within one slug, and the `present` tiebreak (briefs come out in LOCALES order and legacyPaths are pre-sorted, so dropping `cmp(a.present, b.present)` stays green). The row's AC (S-§4.7 example verbatim) is met.
+    - `scripts/generate-redirects.ts:23` (P2, confidence medium): the deleted sentence "Segments 4c and wave 6 rewrite this mode on the split layout" leaves the `--staged` description reading as finished, but wave 6 still owes `--staged` with the index's range.json (the `--staged` branch still reads the working tree's range.json, D67).
+    - `tests/unit/site/redirects.test.ts:438` (P2, confidence medium): S29 takes slugs from git's index but reads each number from the working-tree challenge.yaml; harmless while the unstaged diff under platform/ is empty, but S28 materialises the index for exactly this reason.
+    - `tests/unit/site/redirects.test.ts:29` (P2, confidence high): the RT header comment is stale (root-locale wording, orphan-subset reasoning, "Introducing a rewrites mapping…", `platform/<prefix>/<slug>/` resolution, spec 0008 G1–G3); this is S64–S68's stage-6 comment row, outside 4c's scope.
+    - `tests/unit/site/redirects.test.ts:473` (P2, confidence medium): S33's non-vacuity case hard-codes upstream's slug `door-is-open` without `upstreamOnlySkipReason`, so it fails in a range or fork that removed that demonstration challenge (D124/D54: derive from P and the tree).
+    - `tests/unit/site/redirects.test.ts:318` (P2, confidence low): `indexPrimaryLocale()` runs at describe-collection time in three describes, so a malformed index `range.json` fails the whole file at collection instead of one test.
+  - Full suite (parallel, one pass): 6418 tests in total, 6297 passed, 9 failed, 112 skipped, 0 todo; 795 suites, 8 failed suites (1 whole-file collection failure: tests/pre-commit-sh.test.ts). No flake check needed since every failure matched an allowed entry. The first command attempt aborted on a zsh no-match glob in rm, so the suite was re-run correctly. The 4 redirects tests (redirects-generated.test.ts and the 3 in redirects.test.ts) now pass.

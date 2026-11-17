@@ -24,16 +24,6 @@ import {
 // needs them too and cannot import anything that touches `node:fs`.
 export { NUMBER_PAD_WIDTH, isChallengeNumber, padChallengeNumber }
 
-/**
- * The locale trees a live challenge can appear in, keyed by the locale segment.
- * Kept only for `scripts/generate-redirects.ts`, which still imports it; the number
- * walk below no longer reads a locale tree (segment 4b removes this with the generator).
- */
-export const CHALLENGE_TREES: ReadonlyArray<{ locale: string; segments: string[] }> = [
-  { locale: 'root', segments: ['platform', 'challenge'] },
-  { locale: 'zh-TW', segments: ['platform', 'zh-TW', 'challenge'] },
-]
-
 /** Where a live challenge's declaration lives: `platform/challenge/<slug>/challenge.yaml`. */
 const LIVE_TREE: string[] = ['platform', 'challenge']
 
