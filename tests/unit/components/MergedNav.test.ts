@@ -422,6 +422,55 @@ describe('MergedNav', () => {
     expect(internal.filter(h => !h.startsWith('/my-base/'))).toEqual([])
   })
 
+  // S1-8 (A28/A32): the two main P = en groups above (nav links, nav labels), mirrored for both
+  // localeIndex values under P = zh-TW, mounted directly (not through mountOpened/mountIn, which
+  // hard-code P = en).
+  async function mountOpenedAt(P: 'en' | 'zh-TW', pageLocale: 'root' | 'en' | 'zh-TW') {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = pageLocale
+    const runtimeLocale: 'en' | 'zh-TW' = pageLocale === 'en' ? 'en' : pageLocale === 'zh-TW' ? 'zh-TW' : P
+    const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n(runtimeLocale)] } })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    expect(wrapper.find('[data-hamburger-menu]').exists()).toBe(true)
+    return wrapper
+  }
+
+  it.each([
+    ['root', '/challenges/', '/', '/guide/'],
+    ['en', '/en/challenges/', '/en/', '/en/guide/'],
+  ] as const)('under P = zh-TW, with localeIndex %s, nav links stay inside that locale tree (A28)', async (localeIndex, challenges, home, guide) => {
+    const wrapper = await mountOpenedAt('zh-TW', localeIndex)
+    for (const href of [challenges, home, guide]) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
+    }
+  })
+
+  it.each([
+    ['root', [['/challenges/', '← 題目列表'], ['/', '首頁'], ['/guide/', '文件']]],
+    ['en', [['/en/challenges/', '← Challenges'], ['/en/', 'Home'], ['/en/guide/', 'Docs']]],
+  ] as const)('under P = zh-TW, with localeIndex %s, each nav label sits on its own href (A28)', async (localeIndex, pairs) => {
+    const wrapper = await mountOpenedAt('zh-TW', localeIndex)
+    for (const [href, label] of pairs) {
+      expect(labelOf(wrapper, href)).toBe(label)
+    }
+  })
+
+  it.each([
+    ['en', 'zh-TW', [['/en/challenges/', '← Challenges'], ['/en/', 'Home'], ['/en/guide/', 'Docs']]],
+    ['root', 'en', [['/challenges/', '← 題目列表'], ['/', '首頁'], ['/guide/', '文件']]],
+  ] as const)('under P = zh-TW, on a %s page, labels ignore the runtime locale %s (A28)', async (localeIndex, runtimeLocale, pairs) => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = localeIndex
+    const wrapper = mount(MergedNav, {
+      props: defaultProps,
+      global: { plugins: [makeI18n(runtimeLocale)] },
+    })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    for (const [href, label] of pairs) {
+      expect(labelOf(wrapper, href)).toBe(label)
+    }
+  })
+
   it('renders challenge title', () => {
     const wrapper = mount(MergedNav, { props: defaultProps })
     expect(wrapper.text()).toContain('SQL Injection Demo')

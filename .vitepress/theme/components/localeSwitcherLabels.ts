@@ -1,4 +1,4 @@
-import { LOCALES, type Locale } from '../../locales'
+import { type Locale } from '../../locales'
 
 /**
  * A22, D34: one i18n message key per member of `LOCALES`, not a two-branch ternary. Growing
@@ -17,9 +17,4 @@ export function localeSwitcherLabelKey(locale: Locale): string {
     throw new Error(`LocaleSwitcher: LOCALES carries "${locale}" with no label key in LOCALE_SWITCHER_LABEL_KEYS`)
   }
   return key
-}
-
-/** Every member of `LOCALES` has a label key here — the guard a third locale would trip. */
-export function assertEveryLocaleHasALabel(): void {
-  for (const code of LOCALES) localeSwitcherLabelKey(code)
 }

@@ -153,6 +153,13 @@ describe('message files on disk (B19)', () => {
 // each naming "the other" by construction, rather than parameterised over the list. This guard
 // names the message that would have to be revisited (GD1's exact text) if the list ever grows,
 // so growing it is a decision, not a silent mismatch.
+//
+// S2-m: this is a build-health/shape check, test-only — no production module enforces a
+// "two-locale" runtime guard the way this function does. Production's own two-locale assumption
+// is `otherLocale`'s hard-coded two-branch ternary (`.vitepress/theme/i18n/index.ts`), which has
+// no throw of its own: it would just compute the wrong "other" locale once a third is ever
+// added, silently. This test proves the message that a human would then have to write, not that
+// production already guards against the case.
 function assertTwoLocaleGuard(locales: readonly string[]): void {
   if (locales.length !== 2) {
     throw new Error(

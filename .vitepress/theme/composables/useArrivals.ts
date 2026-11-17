@@ -11,7 +11,16 @@ import {
 } from '../i18n'
 import { primaryLocale } from '../i18n/primaryLocale'
 import { publishedPages } from '../i18n/publishedPages'
-import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, switcherDecision, targetPath } from '../i18n/arrival'
+import {
+  classifyArrival,
+  createCarry,
+  isArrival,
+  lineLocale,
+  notFoundRedirect,
+  requestedLocaleForPageArrival,
+  switcherDecision,
+  targetPath,
+} from '../i18n/arrival'
 import type { ChoiceOutcome } from '../i18n/missingTranslation'
 
 /**
@@ -76,9 +85,10 @@ export function useArrivals(deps: {
       base: base(),
     }, pages)
 
-  // Records an arrival: its page and the locale it asked for — the locale a redirect carried
-  // to it, else, on a cold load of a prefixed page, that prefix, else the stored preference or
-  // the default (the requested-locale table).
+  // Records an arrival: its page and the locale it asked for — the locale a redirect carried to
+  // it, else, on a cold load of a prefixed page, that prefix, else the stored preference, else
+  // the page's own locale, or T when the page is a cold-load-prefixed page
+  // (`requestedLocaleForPageArrival`, A-§4.1's Requested column).
   const record = (coldLoad: boolean) => {
     lineAtOnce.value = false
     const arrival = current()
@@ -90,8 +100,10 @@ export function useArrivals(deps: {
     }
     entry.value = arrival.entry
     const prefixed = detectLocaleFromPath(arrival.entry, P) === otherLocale(P)
-    requested.value = carry.take(arrival.entry)
-      ?? (coldLoad && prefixed ? otherLocale(P) : readStoredLocale() ?? (prefixed ? otherLocale(P) : P))
+    requested.value = requestedLocaleForPageArrival(
+      { coldLoad, prefixed, stored: readStoredLocale(), carried: carry.take(arrival.entry) },
+      P,
+    )
     return arrival
   }
 

@@ -40,6 +40,21 @@ export function targetUrl(entry: string, base: string, location: { search?: stri
 }
 
 /**
+ * Steps 2–5 of `pathCandidates` below, taking a path that is ALREADY decoded. Exported so a
+ * caller that has its own already-decoded path (`lookup.ts`'s D28 branch, after stripping the
+ * primary-code segment) can get the same candidates without decoding a second time — a doubly
+ * percent-encoded slash decodes to a real one only on the second pass, which would reveal a page
+ * the URL never actually named (TA1).
+ */
+export function candidatesFromDecodedPath(path: string): string[] {
+  if (!path.startsWith('/') || path.includes('//') || path.includes('\\')) return []
+  if (path.split('/').includes('..')) return []
+  path = path.replace(/\.html$/, '').replace(/\/index$/, '/')
+  const bare = path.length > 1 ? path.replace(/\/$/, '') : path
+  return bare === '/' ? ['/'] : [bare, `${bare}/`]
+}
+
+/**
  * The page-list spellings a pathname could be, for a path the router could not render
  * (spec 0008, "Schema: page list", the lookup algorithm). Nothing here throws:
  *
@@ -62,11 +77,7 @@ export function pathCandidates(pathname: string, base: string): string[] {
   } catch {
     return []
   }
-  if (!path.startsWith('/') || path.includes('//') || path.includes('\\')) return []
-  if (path.split('/').includes('..')) return []
-  path = path.replace(/\.html$/, '').replace(/\/index$/, '/')
-  const bare = path.length > 1 ? path.replace(/\/$/, '') : path
-  return bare === '/' ? ['/'] : [bare, `${bare}/`]
+  return candidatesFromDecodedPath(path)
 }
 
 /** The first of the spellings that is a list entry, or null. */

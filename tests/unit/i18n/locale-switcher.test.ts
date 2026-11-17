@@ -22,7 +22,8 @@ const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
 vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 import LocaleSwitcher from '../../../.vitepress/theme/components/LocaleSwitcher.vue'
-import { assertEveryLocaleHasALabel, localeSwitcherLabelKey } from '../../../.vitepress/theme/components/localeSwitcherLabels'
+import { LOCALE_SWITCHER_LABEL_KEYS, localeSwitcherLabelKey } from '../../../.vitepress/theme/components/localeSwitcherLabels'
+import { LOCALES } from '../../../.vitepress/locales'
 import {
   detectInitialLocale,
   persistLocale,
@@ -444,15 +445,56 @@ describe('LocaleSwitcher without the Layout\'s provider', () => {
   })
 })
 
+// S2-n: `assertEveryLocaleHasALabel` has no production caller — only `localeSwitcherLabelKey`
+// does (`LocaleSwitcher.vue`) — so it lives here, test-only, rather than in
+// `localeSwitcherLabels.ts`.
+//
+// S2-e/A22/D34: the guard also checks the two string tables, not only the code-keyed
+// `LOCALE_SWITCHER_LABEL_KEYS` table — a key present there but missing from `en.json` or
+// `zh-TW.json` is the same silent gap the component would hit at render time.
+function hasPath(obj: unknown, path: string): boolean {
+  let cur = obj
+  for (const part of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null || !(part in cur)) return false
+    cur = (cur as Record<string, unknown>)[part]
+  }
+  return true
+}
+
+function assertLabelsPresent(locales: readonly string[], labelKeys: Record<string, string>, tables: Record<string, unknown>): void {
+  for (const code of locales) {
+    const key = labelKeys[code]
+    if (!key) throw new Error(`LocaleSwitcher: LOCALES carries "${code}" with no label key in LOCALE_SWITCHER_LABEL_KEYS`)
+    for (const [tableName, table] of Object.entries(tables)) {
+      if (!hasPath(table, key)) {
+        throw new Error(`LocaleSwitcher: "${code}"'s label key "${key}" is missing from ${tableName}`)
+      }
+    }
+  }
+}
+
+function assertEveryLocaleHasALabel(): void {
+  assertLabelsPresent(LOCALES, LOCALE_SWITCHER_LABEL_KEYS, { 'messages/en.json': en, 'messages/zh-TW.json': zhTW })
+}
+
 // A22, D34: labels and options are derived from LOCALES, so a locale added to the list without
 // a label key is a loud failure, not a silent two-branch fallback.
 describe('LocaleSwitcher labels (A22, D34)', () => {
-  it('has a label key for every member of LOCALES', () => {
+  it('has a label key for every member of LOCALES, present in both string tables', () => {
     expect(() => assertEveryLocaleHasALabel()).not.toThrow()
   })
 
   it('throws naming the locale when a LOCALES member has no label key', () => {
     expect(() => localeSwitcherLabelKey('ja' as unknown as Parameters<typeof localeSwitcherLabelKey>[0]))
       .toThrowError('LocaleSwitcher: LOCALES carries "ja" with no label key in LOCALE_SWITCHER_LABEL_KEYS')
+  })
+
+  // S2-e: a synthetic third entry (temporary, not committed — the real LOCALES stays at two),
+  // the same way A31 demonstrates GD1: a label key that exists in the code-keyed table but is
+  // absent from both string tables.
+  it('throws naming the table when a label key is missing from a string table', () => {
+    const labelKeys = { ...LOCALE_SWITCHER_LABEL_KEYS, ja: 'locale_switcher.ja_label' }
+    expect(() => assertLabelsPresent([...LOCALES, 'ja'], labelKeys, { 'messages/en.json': en, 'messages/zh-TW.json': zhTW }))
+      .toThrowError('LocaleSwitcher: "ja"\'s label key "locale_switcher.ja_label" is missing from messages/en.json')
   })
 })

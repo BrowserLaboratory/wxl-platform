@@ -69,20 +69,49 @@ describe('notFoundRedirect', () => {
     },
   )
 
-  // A18, under both P: the same crafted/malformed inputs, each reshaped with the running P's
-  // and T's own codes instead of the literal 'zh-TW', neither throws nor finds a counterpart.
+  // A18: the row's exact 5 crafted/malformed inputs, each under both P and both prefixes
+  // (/<P>/ and /<T>/) — 20 cases. None of these ever throws or finds a counterpart.
   for (const P of ['en', 'zh-TW'] as const) {
     const T = P === 'en' ? 'zh-TW' : 'en'
-    it.each([
-      `/${P}/no-such-page`,
-      `/${T}//evil.example/challenges`,
-      `/${P}/%2F%2Fevil.example`,
-      `/${T}/%E0%A4%A`,
-    ])(`P=${P}: gives nothing for the crafted input %s (A18)`, (path) => {
-      expect(() => notFoundRedirect(loc(path), '/', PAGES, P)).not.toThrow()
-      expect(notFoundRedirect(loc(path), '/', PAGES, P)).toBeNull()
-    })
+    for (const prefixCode of [P, T]) {
+      it.each([
+        '//evil.example/x',
+        '/%2F%2Fevil.example',
+        '/\\evil.example',
+        '/%E0%A4%A',
+        '/../x',
+      ])(`P=${P}, prefix /${prefixCode}/: gives nothing for %s (A18)`, (input) => {
+        const path = `/${prefixCode}${input}`
+        expect(() => notFoundRedirect(loc(path), '/', PAGES, P)).not.toThrow()
+        expect(notFoundRedirect(loc(path), '/', PAGES, P)).toBeNull()
+      })
+    }
   }
+
+  // A18: the general property every A14–A16/A39 redirect target already holds — it starts with
+  // the base, and its base-less path is itself a list entry — which the crafted inputs above
+  // must never satisfy.
+  it('every redirect target starts with the base and its base-less path is a list entry (A14-A16, A39, A18)', () => {
+    for (const row of DT_NOT_FOUND) {
+      if (row.redirect === 'none') continue
+      for (const x of X_INSTANCES) {
+        for (const b of BASES) {
+          const T = row.T
+          let local: string
+          if (row.arrival === 'NT') local = localizePath(x.entry, T, row.P)
+          else if (row.arrival === 'NP') local = `/${row.P}${x.entry}`
+          else local = x.entry
+          const wantEntry = row.redirect === 'to-T' ? localizePath(x.entry, T, row.P) : x.entry
+          const pages = [wantEntry]
+          const result = notFoundRedirect({ pathname: b.prefix + local }, b.base, pages, row.P)
+          expect(result).not.toBeNull()
+          expect(result!.target.startsWith(b.prefix)).toBe(true)
+          const baseless = result!.target.slice(b.prefix.length)
+          expect(pages.includes(baseless)).toBe(true)
+        }
+      }
+    }
+  })
 
   // D28: a not-found path whose first segment is P's own code (R22's old `/<P>/…` URLs, never a
   // real prefix) is looked up with that segment stripped, and the result counts only when the
@@ -99,15 +128,19 @@ describe('notFoundRedirect', () => {
 
   // A15: the primary-code strip (D28) must also resolve the alias forms a not-found path can
   // carry — a bare code, a code with a trailing slash, and `.html`/`/index.html` — the same way
-  // the ordinary (non-D28) path does.
-  it.each([
-    ['/en', '/'],
-    ['/en/', '/'],
-    ['/en/index.html', '/'],
-    ['/en/guide/python.html', '/guide/python'],
-  ] as const)('resolves the alias %s to the primary entry %s (A15, D28)', (path, entry) => {
-    expect(notFoundRedirect(loc(path), '/', PAGES, 'en')).toEqual({ target: entry, entry, requested: 'en' })
-  })
+  // the ordinary (non-D28) path does. Both P and both bases.
+  for (const P of ['en', 'zh-TW'] as const) {
+    for (const b of BASES) {
+      it.each([
+        [`/${P}`, '/'],
+        [`/${P}/`, '/'],
+        [`/${P}/index.html`, '/'],
+        [`/${P}/guide/python.html`, '/guide/python'],
+      ] as const)(`P=${P}, base ${b.label}: resolves the alias %s to the primary entry %s (A15, D28)`, (path, entry) => {
+        expect(notFoundRedirect(loc(b.prefix + path), b.base, PAGES, P)).toEqual({ target: b.prefix + entry, entry, requested: P })
+      })
+    }
+  }
 
   // TA1: the D28 strip must run on the DECODED path, not the raw one — a percent-encoded
   // primary-code prefix is still `P`'s own code once decoded.
@@ -121,6 +154,21 @@ describe('notFoundRedirect', () => {
   it('reads `requested` from the decoded path (TA1)', () => {
     expect(notFoundRedirect(loc('/zh%2DTW/reference/attack-log-export-format'), '/', PAGES, 'en'))
       .toEqual({ target: '/reference/attack-log-export-format', entry: '/reference/attack-log-export-format', requested: 'zh-TW' })
+  })
+
+  // TA1: the D28 branch must decode the path exactly ONCE. `stripped` (the primary-code segment
+  // already removed) is already decoded — looking it up through `pathCandidates`, which decodes
+  // its input again, turns a doubly-encoded slash into a real one and reveals a page the URL
+  // never actually named. An encoded slash must end at the not-found page, same as the ordinary
+  // (non-D28) branch below.
+  it('does not decode the D28 remainder a second time (TA1, D28)', () => {
+    expect(notFoundRedirect(loc('/en/challenges%252F'), '/', [...PAGES, '/challenges'], 'en')).toBeNull()
+  })
+
+  // TA1: the ordinary (non-D28) branch already decodes once only — the NT/NP branches must
+  // agree on this.
+  it('does not decode a doubly-encoded slash on the ordinary (non-D28) branch either (TA1)', () => {
+    expect(notFoundRedirect(loc('/zh-TW/challenges%252F'), '/', [...PAGES, '/challenges'], 'en')).toBeNull()
   })
 
   // D28's fall-through to D27/A39: after the strip, /X is unlisted but /<T>/X is — one
@@ -138,20 +186,28 @@ describe('notFoundRedirect', () => {
     }
   }
 
-  // A17: not-found with no counterpart, and double/malformed prefixes, under both P — none of
-  // these ever finds a counterpart or throws.
+  // A17: not-found with no counterpart, and double/malformed prefixes, under both P. Per the
+  // parent's decision under the standing authorization of 2026-11-16 (ticket Comments): each
+  // input's page list holds every entry the input could wrongly reach EXCEPT its own legitimate
+  // counterpart — e.g. for `/<T>/<P>/x` it holds `/x` and `/<T>/x` but not `/<P>/x` — so the
+  // "gives nothing" assertion can genuinely fail, instead of passing vacuously against an empty
+  // or irrelevant list. No contrast case is added.
   for (const P of ['en', 'zh-TW'] as const) {
     const T = P === 'en' ? 'zh-TW' : 'en'
-    it.each([
-      `/${P}/${P}/x`,
-      `/${P}/${T}/x`,
-      `/${T}/${T}/x`,
-      `/${T}/${P}/x`,
-      `/${P}foo`,
-    ])(`P=${P}: gives nothing for %s (A17)`, (path) => {
-      expect(() => notFoundRedirect(loc(path), '/', PAGES, P)).not.toThrow()
-      expect(notFoundRedirect(loc(path), '/', PAGES, P)).toBeNull()
-    })
+    const FILLER: Record<string, string[]> = {
+      [`/${P}/${P}/x`]: ['/x', `/${T}/x`], // excludes /<P>/x, the last segment's own entry
+      [`/${P}/${T}/x`]: ['/x', `/${P}/x`], // excludes /<T>/x
+      [`/${T}/${T}/x`]: ['/x', `/${P}/x`], // excludes /<T>/x
+      [`/${T}/${P}/x`]: ['/x', `/${T}/x`], // excludes /<P>/x (the row's own example)
+      [`/${P}foo`]: [], // not a nested prefix at all; nothing plausible to include
+    }
+    for (const path of Object.keys(FILLER)) {
+      it(`P=${P}: gives nothing for ${path} (A17)`, () => {
+        const pages = FILLER[path]
+        expect(() => notFoundRedirect(loc(path), '/', pages, P)).not.toThrow()
+        expect(notFoundRedirect(loc(path), '/', pages, P)).toBeNull()
+      })
+    }
   }
 })
 
@@ -314,9 +370,11 @@ describe('switcherDecision', () => {
 
   /**
    * The switcher table (A-§4.3, SW01–SW16), both primaries, both `X` instances and both bases.
-   * `switcherDecision`'s decision and target, per row (wave 2's "SW01-16 pure" row). The line
-   * (shown at once, 0008 D17) is not this function's output — it belongs to the "SW01-16 real
-   * Layout" row (`not-found-wiring.test.ts`), which drives it through `useArrivals`.
+   * `switcherDecision`'s decision and target, per row (wave 2's "SW01-16 pure" row), plus the
+   * line (shown at once, 0008 D17) read directly through `lineLocale` for the page branch
+   * (P2-3) — `switcherDecision` itself does not return it. The "SW01-16 real Layout" row
+   * (`not-found-wiring.test.ts`) still drives the same table end to end, through a mounted
+   * Layout and `useArrivals`, which this pure-function table does not exercise.
    */
   for (const row of SW) {
     for (const x of X_INSTANCES) {
@@ -326,13 +384,17 @@ describe('switcherDecision', () => {
           if (row.page === 'not-found') {
             // SW13–16: the not-found page or a failed load; the lookup drives the decision, not
             // the arrival's own entry (there is none). Reuses an NT-shaped not-found path so the
-            // lookup's counterpart is simply `x.entry` (chosen does not matter here, 'either').
+            // lookup's counterpart is simply `x.entry`. `chosen` is 'either' here (switcherDecision
+            // never reads it for a not-found/failed-load arrival), so both P and T are run and must
+            // give the same decision (P2-3/S2-j: coverage, not a behaviour change).
             const pathname = localizePath(x.entry, T, row.P)
             const pages = row.counterpart === 'listed' ? [x.entry] : []
-            const decision = switcherDecision({
-              chosen: row.P, arrival: { kind: 'not-found' }, location: at(b.prefix + pathname), base: b.base, pages, P: row.P,
-            })
-            expect(decision).toEqual(row.decision === 'stay' ? { kind: 'stay' } : { kind: 'navigate', target: b.prefix + x.entry })
+            for (const chosen of [row.P, row.T]) {
+              const decision = switcherDecision({
+                chosen, arrival: { kind: 'not-found' }, location: at(b.prefix + pathname), base: b.base, pages, P: row.P,
+              })
+              expect(decision).toEqual(row.decision === 'stay' ? { kind: 'stay' } : { kind: 'navigate', target: b.prefix + x.entry })
+            }
             return
           }
           const own = row.page === 'primary' ? row.P : T

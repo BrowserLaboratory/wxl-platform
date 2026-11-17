@@ -9,7 +9,7 @@ import {
   localizePath,
 } from '../../../.vitepress/theme/i18n'
 import { DT_PAGE, X_INSTANCES, BASES } from '../../__helpers__/localeTables'
-import { lineLocale } from '../../../.vitepress/theme/i18n/arrival'
+import { lineLocale, requestedLocaleForPageArrival } from '../../../.vitepress/theme/i18n/arrival'
 
 /**
  * The stored locale preference is expressed as a NAVIGATION, not as an override
@@ -195,6 +195,17 @@ describe('redirectTargetForStoredLocale with the page list (spec 0008)', () => {
     expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES_ZH, rendered(entry), 'zh-TW')).toBe(expected)
   })
 
+  // A8 under P = zh-TW, with no stored preference: A1/DT41/42's "no preference → null" rule
+  // applies regardless of which `P` is running, so each of the same alias shapes gives null too.
+  it.each([
+    ['/challenges.html', '/challenges'],
+    ['/challenges/', '/challenges'],
+    ['/guide/index.html', '/guide/'],
+    ['/no/relation/to/the/page', '/challenge/door-is-open/'],
+  ] as const)('under P = zh-TW, with no preference, the alias cases give null for both (%s)', (pathname, entry) => {
+    expect(redirectTargetForStoredLocale(loc(pathname), '/', PAGES_ZH, rendered(entry), 'zh-TW')).toBeNull()
+  })
+
   // The whole decision table: every stored value it names × challenge and article × base `/`
   // and `/repo/`, with a query and a hash. Unknown and unreadable values act as none.
   const STORED = {
@@ -298,6 +309,12 @@ describe('the cold-load decision table (DT01–16, DT41–56): page arrivals', (
               }
               expect(shouldPersistOnColdLoad(rendered(entry), row.P)).toBe(row.written !== null)
               expect(lineLocale({ requested: row.requested!, entry, pages, released: true, P: row.P })).toBe(row.line)
+              // S2-i: the Requested column asserted as an OUTPUT, through the function that
+              // computes it, not only used as an input to `lineLocale` above.
+              expect(requestedLocaleForPageArrival(
+                { coldLoad: true, prefixed: row.arrival === 'TP', stored: readStoredLocale(), carried: null },
+                row.P,
+              )).toBe(row.requested)
             } finally {
               spy?.mockRestore()
             }

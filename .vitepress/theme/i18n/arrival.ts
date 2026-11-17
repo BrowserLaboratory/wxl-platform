@@ -1,6 +1,6 @@
 import { entryForRelativePath, isPublishedPath, targetUrl, withoutBase } from './pages'
 import { lookupNotFound } from './lookup'
-import { detectLocaleFromPath, localizePath, type Locale } from './index'
+import { detectLocaleFromPath, localizePath, otherLocale, type Locale } from './index'
 
 /**
  * Arrivals and the decisions taken on them (spec 0008, seam S1). An arrival is one page shown
@@ -41,6 +41,21 @@ export function classifyArrival(result: RouterResult, pages: readonly string[]):
 }
 
 /**
+ * The requested locale for a page arrival (A-§4.1's Requested column): the locale a redirect
+ * carried to it, else, on a cold load of a prefixed (T-coded) entry, that prefix, else the
+ * stored preference, else — on a prefixed entry with no stored preference — T, else P.
+ */
+export function requestedLocaleForPageArrival(
+  input: { coldLoad: boolean; prefixed: boolean; stored: Locale | null; carried: Locale | null },
+  P: Locale,
+): Locale {
+  const { coldLoad, prefixed, stored, carried } = input
+  if (carried !== null) return carried
+  if (coldLoad && prefixed) return otherLocale(P)
+  return stored ?? (prefixed ? otherLocale(P) : P)
+}
+
+/**
  * Where a not-found arrival goes (rows C1–C3): the counterpart's list entry, and the target to
  * navigate to — that entry with the base put back and the query and hash kept. Null when the
  * path has no counterpart in the list. The requested locale is the one the not-found path
@@ -61,14 +76,11 @@ export function notFoundRedirect(
   // locale the path already named, so inferring it from the landing would wrongly say T.
   const withoutBasePath = withoutBase(location.pathname, base) ?? location.pathname
   // TA1: decoded, like the lookup itself — a percent-encoded locale prefix in the not-found
-  // URL is still that locale's own code once decoded. A path that fails to decode is used as
-  // written (this is only read to name `requested`, never compared against the page list).
-  let local: string
-  try {
-    local = decodeURIComponent(withoutBasePath)
-  } catch {
-    local = withoutBasePath
-  }
+  // URL is still that locale's own code once decoded. No try/catch here: `entry` is non-null
+  // only when `lookupNotFound` itself decoded this exact same string successfully (its own
+  // decode, or its ordinary branch's `pathCandidates`, would have returned null/failed and made
+  // `entry` null above otherwise), so a decode failure here can never happen.
+  const local = decodeURIComponent(withoutBasePath)
   return {
     target: targetUrl(entry, base, location),
     entry,
