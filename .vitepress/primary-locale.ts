@@ -2,6 +2,7 @@
 // file's text or its absence; `readPrimaryLocale` adds the file system.
 
 import { readFileSync, lstatSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { DEFAULT_PRIMARY_LOCALE, LOCALES, isKnownLocale, type Locale } from './locales.ts'
 import { SiteLayoutError, jsonStringifyEscaped } from './layout-error.ts'
 
@@ -62,6 +63,27 @@ export function readPrimaryLocale(path: string): Locale {
     text = readFileSync(path, 'utf8')
   } catch (err) {
     throw pl02(err)
+  }
+  return parsePrimaryLocale(text)
+}
+
+/**
+ * The primary locale as the git index holds it (D114, D122): the hook validates the staged
+ * snapshot, so `range.json` is read from the index and never from the working tree. git runs in
+ * `root` with the caller's environment, so a hook's `GIT_INDEX_FILE` is honoured. No index entry
+ * means the default, whatever an untracked working-tree file says.
+ */
+export function readIndexPrimaryLocale(root: string): Locale {
+  const entry = execFileSync('git', ['ls-files', '-s', '--', 'range.json'], { cwd: root, encoding: 'utf8' })
+  if (entry.trim() === '') return parsePrimaryLocale(undefined)
+  // A symbolic link (120000) or a gitlink (160000) is no regular file, as in the working tree (PL-E01).
+  const mode = entry.split(' ')[0]
+  if (mode !== '100644' && mode !== '100755') throw new SiteLayoutError('PL-E01', PL_E01)
+  let text: string
+  try {
+    text = execFileSync('git', ['show', ':range.json'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch {
+    throw pl02(undefined)
   }
   return parsePrimaryLocale(text)
 }

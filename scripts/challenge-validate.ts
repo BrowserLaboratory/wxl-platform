@@ -28,7 +28,7 @@ import {
   type BackendType,
 } from '../.vitepress/challenge/config.ts'
 import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
-import { LOCALES } from '../.vitepress/locales.ts'
+import { LOCALES, type Locale } from '../.vitepress/locales.ts'
 import { checkSourceLayout } from '../.vitepress/source-layout.ts'
 import { SiteLayoutError } from '../.vitepress/layout-error.ts'
 import { parseFsIgnore } from './fsignore.ts'
@@ -155,9 +155,11 @@ function checkBrief(briefPath: string, locale: string, slug: string): CheckResul
  *
  * @param root  The repository root (the directory holding `platform/`)
  * @param slug  The challenge's slug
+ * @param primaryLocale  The primary locale P, when the caller has already read it (the hook reads it
+ *                      from the index, D122); omitted, it is read from `range.json` in `root`
  * @returns     Validation result with individual check outcomes
  */
-export function validateChallenge(root: string, slug: string): ValidationResult {
+export function validateChallenge(root: string, slug: string, primaryLocale?: Locale): ValidationResult {
   const baseDir = join(root, 'platform', 'challenge', slug)
   const checks: CheckResult[] = []
 
@@ -330,7 +332,7 @@ export function validateChallenge(root: string, slug: string): ValidationResult 
   }
 
   // ── Check 9: the briefs, primary locale first ───────────────────────────
-  const primary = readPrimaryLocale(join(root, 'range.json'))
+  const primary = primaryLocale ?? readPrimaryLocale(join(root, 'range.json'))
   for (const locale of [primary, ...LOCALES.filter((l) => l !== primary)]) {
     const briefPath = join(root, 'platform', locale, 'challenge', slug, 'index.md')
     if (existsSync(briefPath)) {
