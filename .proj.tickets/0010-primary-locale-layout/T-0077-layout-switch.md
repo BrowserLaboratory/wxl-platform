@@ -2119,6 +2119,66 @@ Under the user's standing authorization quoted in the 2026-11-17 parent entry ab
     - `tests/site-smoke/code-panel-platform.spec.ts:90` (medium): "challenge application source is unreachable from the Code panel" is flaky on the 3c build: red in a full `pnpm test:smoke` run and alone with `-g` (Run button stuck on "Loading..." / "Waiting for runtime to initialize...", `toBeEnabled` timed out after 180000 ms), green in a whole-file run (9/9) and `--repeat-each=2`. `openCodePanel` goes to `/challenge/staff-only/`, now the primary (zh-TW) page; under the pinned `en` that cold load is replaced by `/en/challenge/staff-only/` while the runtime boots (a guess, not shown). 3c touched neither this file nor production code; the suite step should know it is flaky.
     - `tests/site-smoke/missing-translation.spec.ts:403` (medium): "a cold load of a published translation page stores its locale" checks only the write, not the absence of a redirect and of the line (A5's other columns); those are still covered by the COLD_LOADS case `EN_ONLY` stored zh-TW.
     - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:2101` (high): two statements in this entry are not quite accurate: "were 2 red of 15" (`session-gate-clear-report.spec.ts` has only 2 cases) and "all of code-panel-platform ... green" (one case fails some runs, 2 of 5 runs).
+- 2026-11-17 (segment 4a): surface = vitest unit tests on temporary trees under os.tmpdir(); no browser. Files:
+  `.vitepress/challenge/shortLink.ts`, `scripts/challenge-numbers.ts`, `tests/unit/challenge/shortLink.test.ts`,
+  `tests/unit/scripts/challenge-numbers.test.ts`. No `git add` (nothing new, nothing under `platform/`).
+  - S52 (+ B18 command 2, slug grammar exported once): red `TypeError: challengePagePath is not a function` x6, and
+    locales.test.ts B18 command 2 red (`ShortLinkLocale` union in shortLink.ts). Green: `challengePagePath`,
+    `import type { Locale }`, `ShortLinkLocale = Locale`, `export const SLUG_GRAMMAR`. `challengeLink` page branch untouched (4d).
+  - S75 (CN half) / Y104 shared `isChallengeNumber`: red only on `1e21` and `2 ** 53` (`expected true to be false`); the other
+    eight cells green first time (old "integer and > 0" gives the same answer for them). Green: `Number.isSafeInteger(value) && value >= 1`.
+  - S19: fixture helpers rewritten (`writeDeclaration`, `writeBrief`); red before production: new case got the old-layout
+    entry (`expected [ { slug: 'x', ...}, ...] to deeply equal [ ...(2) ]`) and the existing cases red (`expected 1 to be 6`,
+    `expected [] to not deeply equal []`). Green: `readChallengeNumber(yamlPath)` parses the whole YAML,
+    `collectChallengeNumbers` reads only `platform/challenge/<slug>/challenge.yaml`, entry `{slug, value, path}` (no `locale`),
+    `slugsUnder(dir, file)`, private `readLegacyRetiredNumber`. `CHALLENGE_TREES` kept (generate-redirects.ts still imports it; 4b removes it).
+  - S20 + Y85 number half: one it.each of seven rows. Red: row 3 `expected 3 to be 10`, row 7 `expected 7 to be 12`. Rows 1, 2, 4, 6
+    green first time (live now from declarations, legacy reading kept, a brief is outside the walk); row 5 green first time
+    (legacy 14 is the maximum). Green: retired set = `challenge.yaml` union legacy `index.md`.
+  - S17 (CN half): replaced the "differently in the two locale trees" case. Red only on the label assertion
+    (`expected [ 'number', 'number-locales', ... ] to not include 'number-locales'`); value 4 and "no failed result" green first
+    time (brief no longer read after S19). Green: the agreement block of `checkChallengeNumbers` deleted. Also reworded comments
+    and two messages ("in its declaration", "declaration(s) carry an integer number"); no test or other file asserts them.
+  - Reading chosen: `number: "007"` in a declaration is a YAML string, so the "quoted string" case still fails the number check.
+  - Self-check: reverting both production files to HEAD turns 22 tests red (6 S52, B18 command 2, 7 old-validation cases that
+    now read declarations, S19, S17, S20 rows 2/3/6/7 and the two isChallengeNumber cells); restored. Under P: these tests do
+    not read P (`challengePagePath` takes primary as an argument, rows cover both).
+  - Commands: `vitest run` challenge-numbers + shortLink + locales.test.ts: 3 files, 67 passed; with `tests/unit/challenge`,
+    ChallengeList, MergedNav, ShortLinkShare (name filters): 11 files, 402 passed. `tests/unit/site/redirects*.test.ts`: 15 failed (baseline before 4a: 4): the 11
+    new reds are the expected `redirects-generated` fixture cases owned by 4b; the other 4 are carried
+    (3 in redirects.test.ts, byte-identical `_redirects`).
+  - Not done: none. Later segments: 4b removes `CHALLENGE_TREES` with the generator; 4d changes `challengeLink`'s page
+    branch (hard-coded zh-TW at the `${origin}...` line) to use `challengePagePath` and needs `SLUG_GRAMMAR`; wave 5 owns
+    create-challenge-run / Y85 write half and Y104's own cases; wave 6 owns the 48 pre-commit-sh reds.
+
+### 2026-11-17 (parent, segment 4a: two P0 left after the fix round, accepted as planned inter-wave reds; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: how segment 4a's two remaining
+P0 findings are handled; nothing else.
+
+- What the checkers found: 4a's approved row S19 (`collectChallengeNumbers` reads only `challenge.yaml`,
+  `ChallengeNumberEntry` loses `locale`) turned 64 tests red that were green before it. The parent re-measured on
+  the live tree (vitest, `tests/pre-commit-sh.test.ts`, `create-challenge-run.test.ts`, `redirects-generated.test.ts`,
+  `redirects.test.ts`): 163 tests, 95 passed, 68 failed = 64 new + the 4 carried redirects failures.
+  - `redirects-generated.test.ts`: 11 new (owner: segment 4b, the generator rewrite S1–S27).
+  - `create-challenge-run.test.ts`: 5 new (owner: wave 5, segment 5e, Y70–Y85 and DEFAULT_TREE).
+  - `tests/pre-commit-sh.test.ts`: 48 new (owner: wave 6, S36–S49, S73–S80, `preCommitRepo`).
+- Decision: accepted as planned inter-wave reds, not fixed in 4a. Reasons: this plan's Implementation-waves preamble
+  says "The branch may be red between waves"; the only way to keep them green inside 4a is either to drop the approved
+  row S19 or to add a temporary old-layout reader that 4b deletes in the next segment; no spec row is violated by 4a's
+  production code. The 64 titles are saved in `.proj.handoffs/orchestrator/t0077-4a-planned-reds.json` and join the
+  orchestrator's carried list with the owners above, so a later segment's suite step still reports any other failure.
+- Known hazard until 4b lands (the checker's point, recorded): `scripts/generate-redirects.ts` still reads the removed
+  `locale` field, so `pnpm redirects:generate` and `pnpm build` would write a wrong `_redirects` without an error. Nobody
+  runs them before 4b; 4c regenerates the file; wave 9 runs the full `pnpm build`.
+- The fix-round executor staged this ticket file by mistake (`git add .proj.tickets`). No unstage is needed: 4a's
+  commit step commits the file by pathspec, after which the index and HEAD agree. Its Comments line "No file added to
+  the index in this fix" is wrong and is corrected by this entry.
+- Orchestrator change that follows from this: from segment 4b on, the checkers are given the carried list and the
+  reds the segment's plan declared in advance, and told that those are not P0; an undeclared newly red test still is.
+  This restates the rule the user fixed on 2026-11-17 (only wrong production behaviour or an uncovered approved row
+  is P0/P1); it does not lower the bar for real defects.
 
 ## Test plan (stage 5)
 
@@ -2801,3 +2861,39 @@ as T1 defines green.
   `.proj.research/2026-11-16-t0077-decisions-zh-TW.md`). The plan's open items are settled by
   traceability revision 2.3 (D148–D150 and the closing paragraph). Status set to `processing`.
 
+- 2026-11-17 (segment 4a, fix round): surface = vitest unit tests; no browser. Correction and addition to
+  the segment 4a entry above (that entry is not rewritten).
+  - S-q4 (S52 second half) settled as a static import assertion per traceability S52. New test in
+    `tests/unit/challenge/shortLink.test.ts` ('scripts/generate-redirects.ts takes its page paths from
+    challengePagePath (S-q4, AC-33)'). Red first: `AssertionError: expected '/**\n *
+    generate-redirects.ts\n *\n *…' to match /import\s*\{[^}]*\bchallengePagePath…/`. Minimal change in
+    `scripts/generate-redirects.ts` only, behaviour-preserving: import of `challengePagePath`, a
+    `PRIMARY = 'en'` constant (segment 4b replaces it with the tree's P), and the three hand-built page
+    paths replaced by `challengePagePath(...)`. Lines using `e.locale` and `CHALLENGE_TREES` untouched
+    (4b). Result: shortLink.test.ts 30 passed; `tests/unit/site/redirects*.test.ts` 15 failed / 17 passed,
+    the same 15 as before this fix. No file added to the index in this fix.
+  - Correction to the 4a "Commands" baseline, which omitted 53 newly red tests (S19 removed `locale`
+    from ChallengeNumberEntry). (a) Over the 11-file set: 5 failed / 313 passed before 4a, 68 failed /
+    204 passed after; B18 command 2 is now green. (b) The 64 newly red, by owner: redirects-generated 11
+    -> segment 4b (S1-S27); create-challenge-run 5 ('regenerates _redirects over the whole tree...',
+    'replaces a stale file...', C04, C06, C07) -> wave 5 (Y70-Y85, Y84, DEFAULT_TREE rewrite);
+    pre-commit-sh 48 -> wave 6 (S36-S49, PC); (the 48 is from the two checkers, not re-measured).
+    (c) Cause: `scripts/generate-redirects.ts` reads the removed `locale` field (`e.locale` in the
+    include filter and `challenge.locales.add(entry.locale)`; TS2339, unreported because scripts/ is
+    outside the tsconfig include); 4b's rewrite fixes it, and its first generator cycle must remove both
+    `e.locale` reads and `CHALLENGE_TREES`. (d) Hazard until 4b lands: `pnpm redirects:generate` and
+    `pnpm build` on the live tree now silently write a `_redirects` holding only /zh/c and /zh-TW/c
+    numeric rules instead of refusing; do not run either before 4b. (e) The carried-failure list for
+    later suite runs gains these 53 until waves 5 and 6. Rejected alternative: a temporary old-layout
+    walker in generate-redirects.ts (would be deleted by 4b, 53 red again, changes no outcome); reverting
+    S19 would drop an approved row.
+
+  - Deferred to stage 6 (P2, frozen rubric):
+    - `scripts/create-challenge.ts:39` (P2, confidence low): the slug grammar still exists twice; `shortLink.ts` now exports `SLUG_GRAMMAR`, but `create-challenge.ts` keeps its own identical `SLUG_RE` literal. Switching consumers over is a later segment's job (4b generator, wave 5 create:challenge), not a row gap for 4a.
+    - `tests/unit/scripts/challenge-numbers.test.ts:189` (P2, confidence medium): S20 row 5 (one retired folder with yaml 3 and legacy 14 gives 15) also passes for an implementation that reads only legacy `index.md`; only the combination with row 3 rules that out. A cell with yaml as the larger value in a shared folder would pin D63's "either or both; both count" by itself.
+    - `tests/unit/scripts/challenge-numbers.test.ts:42` (P2, confidence high): the docstring of `writeRetired` still says "same shape, under the archive tree", but the helper it referred to (`writeChallenge`) is gone; it now writes the legacy `index.md` shape, not the declaration shape.
+    - `scripts/challenge-numbers.ts:127` (P2, confidence medium): after S19 there is one entry per declaration directory, so the slug can never repeat; the `bySlug` grouping in `checkChallengeNumbers` is dead weight and its comment ("however many entries name it") describes a case that can no longer happen.
+    - `scripts/challenge-numbers.ts:27` (P2, confidence medium): production comments name pipeline segments ("segment 4b removes this with the generator") and say the retired walk is "kept until ... rewritten"; that is process wording in shipped code.
+    - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:2846` (P2, confidence high): the fix-round comment says "No file added to the index in this fix", but the executor staged the whole ticket file (its own report says so); the comment is factually wrong.
+    - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:1` (P2, confidence high): the ticket file is outside `platform/` and not new, but it was staged, which the working-tree rules allow only for new files and files under `platform/`. Resolved by this segment's commit using pathspec form, which commits the ticket file with segment 4a instead of the wave-6 move commit.
+  - Full suite (parallel run, JSON reporter): 6285 tests in total, 6216 passed, 69 failed, 0 skipped or todo; 773 suites, 25 failed; 5 test files failed. Not re-run with `--no-file-parallelism`, because every failure is on the allowed list. No flake seen. Both probe-directory cleanups ran; the globs matched nothing, so nothing was removed.

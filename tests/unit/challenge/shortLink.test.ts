@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { challengeLink } from '../../../.vitepress/challenge/shortLink'
+import { challengeLink, challengePagePath } from '../../../.vitepress/challenge/shortLink'
 
 // Seam 0007-S8: the link helper, with the origin as an argument. Every expected value is a
 // literal from traceability.md's link forms (X1–X6), never recomputed the way the helper does.
@@ -106,5 +108,32 @@ describe('challengeLink returns none', () => {
   it.each([undefined, 0, -1, 1.5])('in both modes for the number %j (L20)', (n) => {
     expect(challengeLink('short', n, 'door-is-open', 'en', WXL)).toBeNull()
     expect(challengeLink('page', n, 'door-is-open', 'en', WXL)).toBeNull()
+  })
+})
+
+// S52 (0010-S26, D68): the page path of a challenge in a locale, given the primary locale. The
+// primary locale's pages have no segment; every other locale's carry theirs. Literals throughout.
+describe('challengePagePath (S52, 0010-S26, D68)', () => {
+  it.each([
+    ['s', 'en', 'en', '/challenge/s/'],
+    ['s', 'zh-TW', 'en', '/zh-TW/challenge/s/'],
+    ['s', 'zh-TW', 'zh-TW', '/challenge/s/'],
+    ['s', 'en', 'zh-TW', '/en/challenge/s/'],
+    [':slug', 'zh-TW', 'en', '/zh-TW/challenge/:slug/'],
+    [':slug', 'en', 'en', '/challenge/:slug/'],
+  ] as const)('(%s, %s, primary %s) is %s', (slug, locale, primary, expected) => {
+    expect(challengePagePath(slug, locale, primary)).toBe(expected)
+  })
+
+  // S-q4 (traceability S52, AC-33): the generator's page-path targets come from this helper.
+  it('scripts/generate-redirects.ts takes its page paths from challengePagePath (S-q4, AC-33)', () => {
+    const repoRoot = resolve(__dirname, '../../..')
+    const src = readFileSync(resolve(repoRoot, 'scripts/generate-redirects.ts'), 'utf8')
+    expect(src).toMatch(
+      /import\s*\{[^}]*\bchallengePagePath\b[^}]*\}\s*from\s*'\.\.\/\.vitepress\/challenge\/shortLink\.ts'/,
+    )
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(code).toMatch(/\bchallengePagePath\(/)
+    expect(code).not.toMatch(/\/challenge\/(\$\{|:slug)/)
   })
 })
