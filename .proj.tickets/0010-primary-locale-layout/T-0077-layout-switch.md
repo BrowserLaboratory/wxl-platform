@@ -3031,6 +3031,31 @@ Deferred to stage 6 (P2, frozen rubric):
 
 Full-suite result (suite step, HEAD ad01564, run 18:23:24 to 18:27:00): 6942 tests: 6942 passed, 0 failed, 0 pending/todo; 154 test files, 885 suites, 0 failed suites. No parallel-only flakes; no `--no-file-parallelism` re-run needed. Report: `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/run/report7.json`.
 
+### 2026-11-17 (segment 8a)
+
+Wave 8, GLOSSARY. Surface: vitest unit tests and document reading; no browser. Only `GLOSSARY.md` changed (outside platform/, so no `git add`; no new files, no git adds).
+
+Rows done:
+
+- B90 cycle 1 (blob `a2ac5b6:GLOSSARY.md`, b3073350, written by shell redirect). Red line: `create-wxl/test/upstream-config.test.mjs > U10` failed at `expect(setupRecordEntry).toContain('建立靶場的指令與升級都會寫入它')` (line 415; 1 failed, 16 passed, 9 skipped). glossary.test.ts and sentence-map.test.ts were green on first run (350 passed): guard test, the coined terms have 0 corpus hits.
+- B90 minus U135 + D148 cycle 2: 設定紀錄 and 搬家 edited as planned; U10 turned green (26 passed). 搬家 still says 「升級時看到舊版面就先替老師搬家再合併」 and the 升級報告 【易混】 line, which describe T-0081 before it lands (stage 6 observation).
+- B90 cycle 3 (語系偏好, 翻譯, 舊版面, 語系清單), A37 (主語系), S71 (短連結), LH3 (語系標記): document rows, green on first run with the reason that the new sentences carry no digit, backtick or path, and `epic 0010` stays only in `_Avoid_` lines. Pre-change grep listed 語系清單 line 409 (不能有清單以外的語系資料夾), 主語系 line 401 (每一頁都一定有它的版本) and 405, 短連結 line 103, 語系偏好 line 434, 舊版面 line 444; after the change the same grep (plus `看到的就是主語系`, `各帶一份題目宣告`) is empty.
+
+Commands: `pnpm vitest run tests/unit/site/glossary.test.ts tests/unit/site/sentence-map.test.ts` = 2 files, 350 passed; `pnpm --dir create-wxl exec vitest run test/upstream-config.test.mjs` = 1 file, 26 passed.
+
+Note for later wave 8 segments: the seven `_新造詞_` lines (語系資料夾, 題目宣告, 主語系, 語系清單, 舊版面, 搬家, 委託書) must be dropped by the first document edit that uses the term (K-1).
+
+Deferred to stage 6 (P2, frozen rubric):
+
+- `GLOSSARY.md:451` (P2, medium): the 搬家 entry still says 「升級時看到舊版面就先替老師搬家再合併」 and the adjacent 【易混】 line mentions paths moved in the upgrade report; both describe T-0081 behaviour that lands before T-0081 (B90 excludes only the two U135 sentences about upgrade recording en; the executor logged it as a stage 6 observation). The user decides whether to defer these two sentences to T4.
+- `GLOSSARY.md:409` (P2, high): the locale list sentence reads 「清單以外的資料夾裡也不能有頁面」, B90 specifies 「清單以外的資料夾裡不能有頁面」 (one extra 「也」; same meaning, no test matches the substring).
+- `GLOSSARY.md:98` (P2, low): the new short-link sentence 「帶翻譯語系代碼的短連結一律開那個翻譯」 reads as conflicting with the preceding fallback rule (locale without the page opens the primary locale page); 「唯一存在的那一頁」 is narrower than D58's 「first locale of the list whose brief is included」. Wording follows S71 and K-11, so not a spec deviation.
+- `GLOSSARY.md:401` (P2, high): the primary locale definition says 「上游的每一頁在每個語系都有版本」, not yet true on this branch or on `main` after T-0077: `platform/en/reference/attack-log-export-format.md` has no zh-TW page until T-0080 (D51, todo, blocked_by T-0077). B90 requires the sentence in T1 and only for epic end, so the executor followed the plan; K-9's rule (main must not describe behaviour it lacks) excluded U135 for this reason but not this sentence. Spec issue for the user at stage 6.
+- `GLOSSARY.md:448` (P2, high): duplicate of the 451 item (搬家 entry and the 升級報告 【易混】 `_Avoid_` line describe T-0081 behaviour); recorded again so stage 6 handles them together.
+- `GLOSSARY.md:98` (P2, low): duplicate of the short-link item; 「一律」 read unconditionally conflicts with the fallback sentence. S71 required 「a translation-coded form always opens that translation (D30)」; 「那個翻譯存在時一律開它」 would be harder to misread. Wording only.
+
+Full-suite result (suite step, HEAD fe8b230, report `/private/tmp/claude-501/scratch8a/report-8a.json`, mtime Nov 17 18:34:58 2026, epoch 1794911698, run started 1794911482): 154 files, 885 suites, 6982 tests: 6982 passed, 0 failed, 0 skipped/todo. Single parallel run, no re-run needed. Probe dirs removed before and after (none existed).
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
