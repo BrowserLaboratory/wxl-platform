@@ -8,7 +8,6 @@ import ChallengeDoneBadge from './ChallengeDoneBadge.vue'
 import { useChallengeProgress } from '../composables/useChallengeProgress'
 import { useProgressBlockReason } from '../composables/useSessionGate'
 import type { ShortLinkLocale } from '../../challenge/shortLink'
-import { linkMode } from '../linkMode'
 import { pageLocaleOf } from '../i18n'
 import { primaryLocale } from '../i18n/primaryLocale'
 
@@ -110,13 +109,13 @@ const isBorrowed = (c: ChallengeData) => c.locale !== pageLocale.value
 const langOf = (c: ChallengeData) => (isBorrowed(c) ? c.locale : undefined)
 
 /**
- * The copy control's link (F3, F6): in short mode the list's locale, `/<list locale>/c/NNN`, which
- * the redirect rules send to the page that exists; in page mode the entry's own page. The English
- * list has no short link for a challenge with only a Traditional Chinese brief: no `/en/c/NNN`
- * rule exists for it (E3, G9). Its page URL, in page mode, opens.
+ * The copy control's link (F3, F6, D48): every row gives one, numbered or not decided by the
+ * control itself, which renders nothing for a challenge without a number (E10). In short mode it is
+ * the list's locale, `/<list locale>/c/NNN` (`/en/c/007` for a Traditional Chinese-only entry in
+ * the English list, as for a translated one: the redirect rules send it to the page that exists);
+ * in page mode the entry's own page, which carries a locale segment unless the entry is in the
+ * range's primary locale (D68).
  */
-const mode = linkMode()
-const hasCopyControl = (c: ChallengeData) => !(mode === 'short' && pageLocale.value === 'en' && c.locale === 'zh-TW')
 
 /**
  * The key a challenge's progress is stored under, recovered from its URL.
@@ -230,7 +229,7 @@ const categoryBadge: Record<string, string> = {
 /**
  * The number shown on the row, `#001`.
  *
- * Prefers the frontmatter number so the badge and a short link below it, on a
+ * Prefers the declared (`challenge.yaml`) number so the badge and a short link below it, on a
  * Cloudflare Pages build, are the same number; on any other build the link is the
  * challenge page's URL, built from the slug. `id` remains the fallback for a
  * challenge that has not been numbered yet; that one shows a badge and no link.
@@ -468,7 +467,7 @@ function toggleSortDir(): void {
           on this line, which wraps so the failure message can take a line below when it needs one.
         -->
         <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
-          <ShortLinkShare v-if="hasCopyControl(c)" :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="c.locale" />
+          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="c.locale" />
         </div>
       </a>
     </div>

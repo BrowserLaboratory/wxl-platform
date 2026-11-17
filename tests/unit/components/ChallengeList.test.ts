@@ -311,7 +311,7 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
     })
   })
 
-  async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' = 'root') {
+  async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' | 'en' = 'root') {
     mockLocaleIndex.value = locale
     const wrapper = mount(ChallengeList, { props: { lists: listsOf(challenges) } })
     const row = wrapper.findAll('a.ch-list-row')[0]
@@ -335,6 +335,26 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
     )
     expect(copied).toBe(`${SITE_ORIGIN}/zh-TW/challenge/selected-excerpts/`)
     expect(href).toBe('/my-range/zh-TW/challenge/selected-excerpts/')
+  })
+
+  // S54: the page URL follows P (D68): the primary locale's pages have no segment, the other
+  // locale's carry theirs. (P, list's localeIndex, entry locale, entry url, copied path)
+  it.each([
+    ['en', 'root', 'zh-TW', '/zh-TW/challenge/zh-only/', '/zh-TW/challenge/zh-only/'],
+    ['en', 'zh-TW', 'en', '/challenge/sqli-demo/', '/challenge/sqli-demo/'],
+    ['zh-TW', 'en', 'zh-TW', '/challenge/zh-only/', '/challenge/zh-only/'],
+    ['zh-TW', 'en', 'en', '/en/challenge/sqli-demo/', '/en/challenge/sqli-demo/'],
+    ['zh-TW', 'root', 'zh-TW', '/challenge/zh-only/', '/challenge/zh-only/'],
+    ['zh-TW', 'root', 'en', '/en/challenge/sqli-demo/', '/en/challenge/sqli-demo/'],
+  ] as const)('P = %s, list %s, a %s entry: copies, shows and links %s (S54, D68)', async (P, index, entryLocale, url, path) => {
+    mockPrimaryLocale.value = P
+    const { copied, href, shown } = await copiedFrom(
+      [{ id: 7, number: 7, title: 'Entry', url, locale: entryLocale, difficulty: 'easy', category: 'web' }],
+      index,
+    )
+    expect(copied).toBe(`${SITE_ORIGIN}${path}`)
+    expect(shown).toBe(`${DISPLAY_ORIGIN}${path}`)
+    expect(href).toBe(`/my-range${url}`)
   })
 })
 
@@ -371,6 +391,66 @@ describe.each(['en', 'zh-TW'] as const)('ChallengeList hrefs under P = %s (L22)'
     expect(wrapper.findAll('a.ch-list-row').map((a) => a.attributes('href'))).toEqual(expected)
     await wrapper.find('button[title="格線模式"]').trigger('click')
     expect(wrapper.findAll('[data-challenge-card]').map((a) => a.attributes('href'))).toEqual(expected)
+  })
+})
+
+// S53 (D48, A28): in short mode every numbered row has exactly one control, in the LIST's locale,
+// whether its entry is translated or borrowed; an unnumbered row has none (0008 E10). The list's
+// localeIndex is 'root' for the primary locale's list and the locale's own code for the other.
+describe.each(['en', 'zh-TW'] as const)('ChallengeList short-mode controls by list locale and entry, P = %s (S53, A28)', (P) => {
+  const entry = (locale: 'en' | 'zh-TW', n: number | undefined, slug: string, title: string): ChallengeData => ({
+    id: n ?? 9, number: n, title, url: locale === P ? `/challenge/${slug}/` : `/${locale}/challenge/${slug}/`,
+    locale, difficulty: 'easy', category: 'web',
+  })
+
+  describe.each(['en', 'zh-TW'] as const)('the %s list', (L) => {
+    const other = L === 'en' ? 'zh-TW' : 'en'
+    const list = [
+      entry(L, 1, 'translated', 'Translated'),
+      entry(other, 7, 'borrowed', 'Borrowed'),
+      entry(L, undefined, 'plain', 'Plain'),
+    ]
+    const index = L === P ? 'root' : L
+
+    beforeEach(() => {
+      mockPrimaryLocale.value = P
+      mockLocaleIndex.value = index
+      mockMode.value = 'short'
+    })
+
+    it('renders one control per numbered row, in the list\'s locale, and none on the unnumbered row (mount)', async () => {
+      const writeText = vi.fn(() => Promise.resolve())
+      Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+      const wrapper = mount(ChallengeList, { props: { lists: listsOf(list) } })
+      const rows = wrapper.findAll('a.ch-list-row')
+      const rowOf = (title: string) => rows.find((r) => r.text().includes(title))!
+      for (const [title, n] of [['Translated', '001'], ['Borrowed', '007']]) {
+        const row = rowOf(title)
+        expect(row.findAll('[data-short-link]')).toHaveLength(1)
+        expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/${L}/c/${n}`)
+        await row.get('[data-copy-link]').trigger('click')
+        await flushPromises()
+        expect(writeText).toHaveBeenLastCalledWith(`${SITE_ORIGIN}/${L}/c/${n}`)
+      }
+      expect(rowOf('Plain').find('[data-short-link]').exists()).toBe(false)
+      expect(rowOf('Plain').find('[data-copy-link]').exists()).toBe(false)
+      expect(wrapper.findAll('[data-short-link]')).toHaveLength(2)
+    })
+
+    it('ships the same controls in the server-rendered HTML (renderToString)', async () => {
+      const { createSSRApp, h } = await import('vue')
+      const { renderToString } = await import('@vue/server-renderer')
+      const app = createSSRApp({ render: () => h(ChallengeList, { lists: listsOf(list) }) })
+      app.use(createI18n({
+        legacy: false, locale: other, fallbackLocale: 'en', globalInjection: true,
+        messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false,
+      }))
+      const html = await renderToString(app)
+      expect(html).toContain(`${DISPLAY_ORIGIN}/${L}/c/001`)
+      expect(html).toContain(`${DISPLAY_ORIGIN}/${L}/c/007`)
+      expect(html).not.toContain(`/${other}/c/`)
+      expect(html.match(/data-short-link/g)).toHaveLength(2)
+    })
   })
 })
 
@@ -938,14 +1018,19 @@ describe('ChallengeList with an untranslated entry', () => {
     mockMode.value = 'short'
   })
 
-  it('marks a Traditional Chinese-only entry in the English list, with no short link, and its page in page mode (E3)', () => {
+  it('marks a Traditional Chinese-only entry in the English list, gives it /en/c/007 in short mode, and its page in page mode (E3, S53, D48)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
     mockMode.value = 'short'
     const row = rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文')
     expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
     expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
     expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
-    expect(row.find('[data-short-link]').exists()).toBe(false)
-    expect(row.text()).not.toContain('/en/c/007')
+    expect(row.findAll('[data-short-link]')).toHaveLength(1)
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/007`)
+    await row.get('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/007`)
     mockMode.value = 'page'
     expect(rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文').get('[data-short-link]').text())
       .toBe(`${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`)
@@ -981,7 +1066,9 @@ describe('ChallengeList with an untranslated entry', () => {
     expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
   })
 
-  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list, with no short link (A32, E3)', () => {
+  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list, gives it /en/c/007 in short mode, and its page in page mode (A32, E3, S53, S54, D48)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
     mockMode.value = 'short'
     mockPrimaryLocale.value = 'zh-TW'
     // The "English list" under this P is localeIndex 'en', not 'root' (which is zh-TW, the
@@ -990,23 +1077,16 @@ describe('ChallengeList with an untranslated entry', () => {
     expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
     expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
     expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
-    // B4-2 [decision]: the original P = en case's E3 assertions ("with no short link" /
-    // `not.toContain('/en/c/007')`) are deliberately NOT mirrored here. D48/S53 removes that
-    // 0008 E3 behaviour: wave 4's S53 adds the INVERSE for both P (a borrowed numbered zh-TW
-    // entry shows `/en/c/007` in short-link mode in the English list) — asserting the old E3
-    // shape here would assert behaviour the switch is scheduled to remove, not an unchanged
-    // property. See the ticket's Comments (2026-11-17, wave 2 part B4) for the record.
-    //
-    // The page-mode URL ("its page in page mode") is deliberately NOT asserted here either: it
-    // goes through `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which
-    // still hard-codes "`zh-TW` locale → `/zh-TW` prefix" regardless of `primaryLocale()` — the
-    // same generalisation this ticket's own Comments assign to area S (wave 4), confirmed by
-    // running this case against the current code: it returns
-    // `${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`, the pre-switch literal, not the P-aware
-    // `${DISPLAY_ORIGIN}/challenge/zh-only/` this row would otherwise want. Not fixed here —
-    // shortLink.ts is outside this wave's file list; the deferred assertion is taken over by
-    // traceability.md's S54 ("Page mode × entry, both P"), seams `0010-S30`/`0010-S26`, rows
-    // S52–S56, at wave 4.
+    expect(row.findAll('[data-short-link]')).toHaveLength(1)
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/007`)
+    await row.get('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/007`)
+    // Page mode: the entry is zh-TW's, the primary locale's, so its page has no locale segment (D68).
+    mockMode.value = 'page'
+    expect(rowOf(mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW'), '只有中文').get('[data-short-link]').text())
+      .toBe(`${DISPLAY_ORIGIN}/challenge/zh-only/`)
+    mockMode.value = 'short'
   })
 
   it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list\'s grid view too (A32, E3, E6)', async () => {

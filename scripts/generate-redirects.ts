@@ -177,8 +177,9 @@ export interface GenerateOptions {
    *   directory that exists for a few hundred milliseconds and belongs to nobody. Bounding it
    *   to what git tracks removes that race without weakening the assertion.
    * - The pre-commit hook (`--staged`) passes the index slugs: a file counts only when it is
-   *   in the index. A brief left out this way re-points its locale's rules at the primary
-   *   locale's page (D58). On a clean checkout, as in CI, both give the same file.
+   *   in the index, and the primary locale comes from the index's `range.json` (D67). A brief left
+   *   out this way re-points its locale's rules at the primary locale's page (D58). On a clean
+   *   checkout, as in CI, both give the same file.
    */
   includeSlug?: (slug: string, tree: string) => boolean
 }
@@ -385,7 +386,8 @@ export function indexTrees(paths: readonly string[]): IndexTrees {
 }
 
 /**
- * The index slugs of `root`'s repository, per tree (`declaration` and each locale). git is run in
+ * The index slugs of `root`'s repository, per tree (`declaration` and each locale), the input of
+ * the brief-fault check (D64) and of the `--staged` mode's `includeSlug` (D67). git is run in
  * `root` with the caller's environment, so inside a hook it reads the index git handed it.
  */
 export function indexSlugs(root: string): Map<'declaration' | Locale, Set<Slug>> {

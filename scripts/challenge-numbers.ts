@@ -7,7 +7,7 @@
  * The number is the identifier a printed handout names. A slug is what a
  * challenge is *called* and follows a rename; the number is what it *is* and
  * does not. Everything here exists to keep that promise: the number is written
- * down in frontmatter, never derived from an ordering, and never reused.
+ * down in the challenge's declaration, `challenge.yaml` (D62), never derived from an ordering, and never reused.
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -27,7 +27,10 @@ export { NUMBER_PAD_WIDTH, isChallengeNumber, padChallengeNumber }
 /** Where a live challenge's declaration lives: `platform/challenge/<slug>/challenge.yaml`. */
 const LIVE_TREE: string[] = ['platform', 'challenge']
 
-/** Retired challenges. They are not validated, but their numbers stay reserved. */
+/**
+ * Retired challenges. They are not validated, but their numbers stay reserved (D63): a retired
+ * folder holds a declaration, a legacy `index.md` page from before the split layout, or both.
+ */
 export const RETIRED_TREE: string[] = ['.archive', 'challenge']
 
 export interface ChallengeNumberEntry {
@@ -57,7 +60,11 @@ export function readChallengeNumber(yamlPath: string): unknown {
   return (doc as Record<string, unknown>).number
 }
 
-/** The `number` frontmatter value of an old-layout retired page; kept until the retired walk is rewritten. */
+/**
+ * The `number` frontmatter value of an old-layout retired page, the legacy read of D63: the move
+ * to the split layout does not touch `.archive/`, so a page there still carries its number in
+ * frontmatter. Kept until the retired walk is rewritten.
+ */
 function readLegacyRetiredNumber(mdPath: string): unknown {
   const raw = readFileSync(mdPath, 'utf-8')
   const m = raw.match(/^---\n([\s\S]*?)\n---/)
@@ -150,7 +157,8 @@ export function checkChallengeNumbers(entries: ChallengeNumberEntry[]): NumberCh
  * The number to assign to the next challenge: one greater than every number
  * ever assigned, retired challenges included.
  *
- * Retired numbers stay in range on purpose. Reissuing one would send a link
+ * Retired numbers stay in range on purpose (D63: a retired folder's declaration and its legacy
+ * page both count). Reissuing one would send a link
  * already printed on a handout to a different challenge — the exact failure
  * numbering exists to prevent.
  */

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
 import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
-import { SITE_ORIGIN } from '../../.vitepress/challenge/shortLink'
+import { SITE_ORIGIN, challengePagePath } from '../../.vitepress/challenge/shortLink'
 import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, upstreamOnlySkipReason } from '../__helpers__/upstreamDecision'
 
 /** `.vitepress/dist/<relPath>`, read as text. Used by the output-layout rows (B48, B59, B61, B70
@@ -331,9 +331,13 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ]
 
-/** The page URL of a challenge: SITE_ORIGIN followed by the page's path, no base added. */
+/**
+ * The page URL of a challenge: SITE_ORIGIN followed by the page's path, no base added. The path is
+ * `challengePagePath`'s, the rule the control itself follows (D68, S56): the primary locale's
+ * pages have no locale segment, every other locale's carry theirs.
+ */
 function pageUrlOf(locale: Locale, slug: string): string {
-  return `${SITE_ORIGIN}${localePath(locale, `challenge/${slug}/`)}`
+  return `${SITE_ORIGIN}${challengePagePath(slug, locale, PRIMARY)}`
 }
 const withoutScheme = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -426,13 +430,16 @@ async function shownUrlTexts(page: Page) {
 /**
  * The copied URL a shown URL text has to carry: the row's challenge in a list, else this page's.
  * A row's page is in the locale its own link names, which for an untranslated challenge is not the
- * list's (spec 0008, F6), so the locale is read from the link, not from the list.
+ * list's (spec 0008, F6), so the locale is read from the link, not from the list: the translation
+ * locale whose `/<code>/` segment starts the link, else the primary locale, whose pages have none
+ * (D54, D68).
  */
 function expectedUrlFor(target: SitePage, rowHref: string | null): string {
   if (!target.challenge && rowHref) {
     const path = rowHref.replace(/\.html$/, '').replace(/\/+$/, '')
     const slug = path.split('/').pop() ?? ''
-    return pageUrlOf(path.includes('/zh-TW/') ? 'zh-TW' : 'en', slug)
+    const entryLocale = TRANSLATIONS.find((code) => path.startsWith(`/${code}/`)) ?? PRIMARY
+    return pageUrlOf(entryLocale, slug)
   }
   return pageUrlOf(target.locale, 'selected-excerpts')
 }
@@ -978,6 +985,30 @@ test.describe('copy control in page mode: the desktop nav with the brief collaps
 
 // S06: a click elsewhere in a list row still opens that challenge. The plain click on the URL text
 // first is the control for S03: the same observation that sees no navigation there sees this one.
+// S56: a list shows one control per numbered challenge, whichever locale the row's entry is in:
+// the count is the number of declarations that carry a `number`, read from the tree, and each
+// row's text is its own entry's page URL without the scheme.
+test.describe('copy control in page mode: one control per numbered challenge (S56)', () => {
+  const NUMBERED = readdirSync(platformDir('challenge'), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(platformDir('challenge', d.name, 'challenge.yaml')))
+    .filter((d) => {
+      const declaration = parseYaml(readFileSync(platformDir('challenge', d.name, 'challenge.yaml'), 'utf8')) as Record<string, unknown> | null
+      return typeof declaration?.number === 'number'
+    }).length
+
+  for (const target of SITE_PAGES.filter((p) => !p.challenge)) {
+    test(`${target.name}: each row shows its own page URL (S56)`, async ({ page }) => {
+      expect(NUMBERED, 'the tree has numbered challenges').toBeGreaterThan(0)
+      await openSitePage(page, target)
+      const rows = await page.locator('a.ch-list-row').count()
+      const texts = await shownUrlTexts(page)
+      expect(rows, `${target.name}: rows`).toBe(NUMBERED)
+      expect(texts.length, `${target.name}: shown controls`).toBe(NUMBERED)
+      for (const t of texts) expect(t.text).toBe(withoutScheme(expectedUrlFor(target, t.rowHref)))
+    })
+  }
+})
+
 test.describe('copy control in page mode: the rest of a list row opens the challenge (S06)', () => {
   for (const target of SITE_PAGES.filter((p) => !p.challenge)) {
     for (const viewport of [{ width: 375, height: 812 }, { width: 1280, height: 800 }]) {
