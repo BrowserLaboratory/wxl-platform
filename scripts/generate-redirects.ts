@@ -23,12 +23,20 @@
  * its declaration `platform/challenge/<slug>/challenge.yaml` and its briefs
  * `platform/<locale>/challenge/<slug>/index.md`.
  *
+ * When `P = zh-TW` the file ends with the old-address section (D154), derived from the top-level
+ * pages and folders of pages of `platform/zh-TW/`: `/zh-TW/` to `/`, one static rule per page
+ * `<name>.md` other than `index.md`, and one `/zh-TW/<dir>/*` rule per folder that holds a page,
+ * sorted by the rule's source in UTF-16 code units. Every target begins with a literal name, never
+ * with text from the request, so the section is safe by construction (SR-1). A name outside
+ * `^[A-Za-z0-9][A-Za-z0-9._-]*$`, `c` and `smoke-fixtures` get no rule. When `P = en` it is absent.
+ *
  * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every commit that carries a
  * change at a watched path. It decides what exists from the index alone: `git ls-files` for the
  * paths (`indexTrees`) and the index's `range.json` for `P` (`readIndexPrimaryLocale`, D67, D114).
  * The working tree, in which the hook has put the staged snapshot under `platform/`, supplies only
  * the declaration contents; ignored directories stay on disk, so a file counts only when git's index
- * lists it. The briefs the index holds are checked first (`briefFaults`, D64): a fault prints one
+ * lists it. The old-address section's entries are the index's paths under `platform/zh-TW/`, never
+ * the tree's. The briefs the index holds are checked first (`briefFaults`, D64): a fault prints one
  * `[pre-commit] ✗ …` line each (W6a-W6d) and the remedy once (W6r) to stderr, exits 1 and writes
  * nothing to stdout. Otherwise the file goes to stdout; the hook writes and stages it only once
  * generation succeeded.
@@ -83,8 +91,65 @@ const STATUS = '302'
 /** Cloudflare Pages' limit on static redirect rules (K1). */
 const STATIC_RULE_LIMIT = 2000
 
-/** The old-address rule, written last and only when `P = zh-TW` (D60). */
-const OLD_ADDRESS_RULE: [string, string] = ['/zh-TW/*', '/:splat']
+/** The old-address section's first rule: `/zh-TW/` goes to the root (D60, D154). */
+const OLD_ADDRESS_HOME: [string, string] = ['/zh-TW/', '/']
+
+/**
+ * A top-level name that gets an old-address rule: inside this grammar, so the target's first
+ * segment is a literal that cannot carry `:`, `*`, `/` or `\\` (D154).
+ */
+const OLD_ADDRESS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/**
+ * Names that never get one: `c` is the short-link namespace (`/zh-TW/c/` belongs to the rules above
+ * it), and `smoke-fixtures` is the reserved folder of the smoke fixtures (D49). `.vitepress/pageList.ts`
+ * spells the second too, but cannot be loaded here: it imports `./theme/i18n/pages` without an
+ * extension, which `node --experimental-strip-types` does not resolve.
+ */
+const OLD_ADDRESS_RESERVED: ReadonlySet<string> = new Set(['c', 'smoke-fixtures'])
+
+/** UTF-16 code unit order (D154). */
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+/**
+ * The old-address rules of a primary-locale folder `platform/zh-TW/` (D154), sorted by the rule's
+ * source string in UTF-16 code units. `pagePaths` are the folder's `.md` paths relative to it.
+ */
+function oldAddressRules(pagePaths: readonly string[]): Array<[string, string]> {
+  const rules = new Map<string, string>([OLD_ADDRESS_HOME])
+  for (const path of pagePaths) {
+    // A page is what the layout check calls a page of a locale folder (D116).
+    if (classifySourcePath(`zh-TW/${path}`, 'zh-TW') !== 'locale-page') continue
+    const parts = path.split('/')
+    const name = parts.length === 1 ? parts[0].replace(/\.md$/, '') : parts[0]
+    if (!OLD_ADDRESS_NAME.test(name) || OLD_ADDRESS_RESERVED.has(name)) continue
+    if (parts.length === 1) {
+      if (parts[0] === 'index.md') continue
+      rules.set(`/zh-TW/${name}`, `/${name}`)
+    } else {
+      rules.set(`/zh-TW/${name}/*`, `/${name}/:splat`)
+    }
+  }
+  return [...rules].sort(([a], [b]) => byCodeUnit(a, b))
+}
+
+/**
+ * Every `.md` path under `platform/zh-TW/`, relative to it. A symbolic link is not followed, but one
+ * named `.md` counts as a page, as the same path does in git's index, whatever its mode (D154).
+ */
+function primaryPagePaths(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, rel: string): void => {
+    if (!existsSync(dir)) return
+    for (const item of readdirSync(dir, { withFileTypes: true })) {
+      const childRel = rel === '' ? item.name : `${rel}/${item.name}`
+      if (item.isDirectory()) walk(join(dir, item.name), childRel)
+      else if ((item.isFile() || item.isSymbolicLink()) && item.name.endsWith('.md')) out.push(childRel)
+    }
+  }
+  walk(join(root, 'platform', 'zh-TW'), '')
+  return out
+}
 
 /** Wrap prose into `# ` comment lines that read back, joined by one space, as the same text. */
 function commentLines(text: string, width = 78): string[] {
@@ -104,15 +169,16 @@ function commentLines(text: string, width = 78): string[] {
 
 /**
  * The file's header. The capacity sentences are computed from the form list (D61; K1–K3): F forms
- * take F static rules per numbered challenge and F dynamic slug rules, and the old-address rule
- * of `P = zh-TW` is one more dynamic rule.
+ * take F static rules per numbered challenge and F dynamic slug rules; the old-address rules of
+ * `P = zh-TW` add one dynamic rule per top-level folder of pages and one static rule per top-level
+ * page and for `/zh-TW/` itself (D154). That count follows the tree, so K3 says so without a number.
  */
 export function redirectsHeader(primary: Locale, forms: ReadonlyArray<Form> = FORMS): string {
   const f = forms.length
   const n = Math.floor(STATIC_RULE_LIMIT / f)
   const k1 = `Cloudflare Pages allows 2,000 static and 100 dynamic rules. Every numbered challenge takes one static rule per short-link form, ${f} in all, so a range holds at most ${n} numbered challenges.`
   const k2 = primary === 'zh-TW'
-    ? `The slug links take ${f} dynamic rules, and the rule for old /zh-TW/ addresses takes 1 more.`
+    ? `The slug links take ${f} dynamic rules, and old /zh-TW/ addresses take one more dynamic rule for each top-level folder of pages and one static rule for each top-level page and for /zh-TW/ itself.`
     : `The slug links take ${f} dynamic rules.`
   const syntax = [
     '# Cloudflare Pages redirect rules. This file is copied verbatim to the site root',
@@ -160,9 +226,9 @@ const PARAMETERISED_SECTION = `# Slug short links for classroom use — students
 # /c/<slug> and /zh/c/<slug> keep working. Parameterised, so they follow a
 # rename; the numbered rules above are what survives one.`
 
-/** K5: the old-address section, written only when `P = zh-TW`. */
+/** K5: the old-address section's comment, written only when `P = zh-TW`; it says what the rules are (D154). */
 const OLD_ADDRESS_SECTION = commentLines(
-  "Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range's primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/<path> goes to /<path>. Last on purpose: every /zh-TW/c/ rule above must match first.",
+  "Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range's primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/ goes to /, each top-level page /zh-TW/<name> goes to /<name>, and each top-level folder of pages /zh-TW/<folder>/<path> goes to /<folder>/<path>. Every target begins with a fixed name, never with text from the request. The folder c is left out: /zh-TW/c/ belongs to the short links above. An address no rule covers is handled by the not-found page.",
 ).join('\n')
 
 interface NumericRule {
@@ -322,7 +388,12 @@ export function generateRedirects(root: string, options: GenerateOptions = {}): 
  * working tree's `range.json`, `--staged` from the index's (D67, D114). Internal, so the exported
  * signature carries no seam parameter.
  */
-function generateFor(root: string, primary: Locale, options: GenerateOptions): string {
+function generateFor(
+  root: string,
+  primary: Locale,
+  options: GenerateOptions,
+  pagePaths?: readonly string[],
+): string {
   const numeric = numericRules(root, primary, options)
   // Slug rules: one per form, after every numbered rule, at the form locale's page (D59). A slug
   // rule cannot know whether the page exists; the site's not-found handling takes a missing one.
@@ -331,10 +402,11 @@ function generateFor(root: string, primary: Locale, options: GenerateOptions): s
     challengePagePath(':slug', form.locale ?? primary, primary),
   ])
   const oldAddress = primary === 'zh-TW'
+  const oldAddressRows = oldAddress ? oldAddressRules(pagePaths ?? primaryPagePaths(root)) : []
   const rows: Array<[string, string]> = [
     ...numeric.map((r) => [r.from, r.to] as [string, string]),
     ...parameterised,
-    ...(oldAddress ? [OLD_ADDRESS_RULE] : []),
+    ...oldAddressRows,
   ]
   const lines = formatRules(rows)
   const numericLines = lines.slice(0, numeric.length)
@@ -561,15 +633,20 @@ if (isDirectRun) {
       for (const line of untrackedLines(dirs, readIndexPrimaryLocale(root))) console.error(`[pre-commit] ${line}`)
     } else if (values.staged) {
       const primary = readIndexPrimaryLocale(root)
-      const trees = indexTrees(indexPaths(root))
+      const paths = indexPaths(root)
+      const trees = indexTrees(paths)
       const faults = briefFaults(trees, primary)
       if (faults.length > 0) {
         for (const fault of faults) console.error(`[pre-commit] ${briefFaultLine(fault, primary)}`)
         for (const line of BRIEF_FAULT_REMEDY) console.error(`[pre-commit] ${line}`)
         process.exit(1)
       }
+      // The old-address section's entries are the index's too (D154): `platform/zh-TW/`'s paths in
+      // git's index, never the tree, where an untracked or ignored folder may sit.
+      const prefix = 'platform/zh-TW/'
+      const pagePaths = paths.filter((p) => p.startsWith(prefix)).map((p) => p.slice(prefix.length))
       process.stdout.write(
-        generateFor(root, primary, { includeSlug: (slug, locale) => trees.slugs.get(locale)?.has(slug) ?? false }),
+        generateFor(root, primary, { includeSlug: (slug, locale) => trees.slugs.get(locale)?.has(slug) ?? false }, pagePaths),
       )
     } else {
       // The primary locale is read first (D123): a range.json fault is the first stderr line.

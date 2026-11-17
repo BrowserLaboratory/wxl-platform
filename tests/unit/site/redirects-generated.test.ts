@@ -99,6 +99,41 @@ function commentText(lines: string[]): string {
     .join(' ')
 }
 
+/** Write a page (or any file) at `platform/<folder>/<rel>`; an empty `rel` ending in `/` makes a directory. */
+function writeFile(root: string, folder: string, rel: string, text = '# x\n'): void {
+  const target = join(root, 'platform', folder, rel)
+  if (rel.endsWith('/')) {
+    mkdirSync(target, { recursive: true })
+    return
+  }
+  mkdirSync(join(target, '..'), { recursive: true })
+  writeFileSync(target, text, 'utf-8')
+}
+
+/** D154: a `/zh-TW/` rule that is neither a numbered short link nor `/zh-TW/c/:slug`. */
+function oldAddress(content: string): Rule[] {
+  return rules(content).filter(
+    (r) => r.from.startsWith('/zh-TW/') && !PAT5.test(r.from) && r.from !== '/zh-TW/c/:slug',
+  )
+}
+
+const pairs = (rs: Rule[]): string[] => rs.map((r) => `${r.from} ${r.to}`)
+
+/** The page tree of `platform/zh-TW/` that the old-address cases build (a challenge brief carries its declaration). */
+const BASE_FILES = ['index.md', 'challenges.md', 'guide/notes.md']
+/** A name that must get no old-address rule, each with a file that would otherwise give one. */
+const EXCLUDED_FILES = [
+  'c.md', 'c/x.md', 'smoke-fixtures/x.md', 'a b.md', 'has space/x.md', '-x.md', '名.md', '.hidden.md',
+  '.hidden/x.md', 'node_modules/x.md', 'dist/x.md', 'x:y.md', 'x*.md',
+]
+/** Trees the old-address cases and the SR-1 property share. */
+const OLD_ADDRESS_TREES: string[][] = [
+  BASE_FILES,
+  [...BASE_FILES, 'docs/a/b.md', 'about.md'],
+  ['index.md', 'a.md', 'a/x.md', 'a-b.md', 'B.md'],
+  [...BASE_FILES, ...EXCLUDED_FILES],
+]
+
 describe('generateRedirects', () => {
   let root: string
 
@@ -461,8 +496,9 @@ describe('generateRedirects', () => {
   it('S23 the slug rules of P = zh-TW point at the primary page and /en/ (D59)', () => {
     challenge(root, 'first', 1, ['zh-TW'])
 
-    const all = rules(generateRedirects(root))
-    expect(all.slice(-5, -1)).toEqual([
+    // The old-address section (D154) follows the slug rules, so they are picked by their source.
+    const all = rules(generateRedirects(root)).filter((r) => r.from.endsWith(':slug'))
+    expect(all).toEqual([
       { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
       { from: '/en/c/:slug', to: '/en/challenge/:slug/', status: 302 },
       { from: '/zh/c/:slug', to: '/challenge/:slug/', status: 302 },
@@ -470,15 +506,145 @@ describe('generateRedirects', () => {
     ])
   })
 
-  it('S24 the old-address rule is last, once, and only when P = zh-TW (D60)', () => {
+  it('S24 the old-address section is last and only when P = zh-TW; P = en has no rule containing * and no /zh-TW/ old-address rule (D60, D154)', () => {
+    // An old-address rule: a /zh-TW/ source that is not one of the /zh-TW/c/ short links.
+    const isOld = (r: Rule) => r.from.startsWith('/zh-TW/') && !r.from.startsWith('/zh-TW/c/')
+
+    writeHome(root, 'zh-TW')
     challenge(root, 'first', 1, ['zh-TW'])
     const zh = rules(generateRedirects(root))
-    expect(zh[zh.length - 1]).toEqual({ from: '/zh-TW/*', to: '/:splat', status: 302 })
-    expect(zh.filter((r) => r.from === '/zh-TW/*')).toHaveLength(1)
+    expect(zh.filter((r) => r.from === '/zh-TW/*')).toEqual([])
+    const lastC = zh.reduce((acc, r, i) => (r.from.startsWith('/zh-TW/c/') ? i : acc), -1)
+    const firstOld = zh.findIndex(isOld)
+    expect(lastC).toBeGreaterThan(-1)
+    expect(firstOld).toBeGreaterThan(lastC)
+    expect(zh.slice(firstOld).every(isOld)).toBe(true)
+    expect(zh[firstOld]).toEqual({ from: '/zh-TW/', to: '/', status: 302 })
 
     setPrimary(root, 'en')
     writeBrief(root, 'en', 'first')
-    expect(rules(generateRedirects(root)).filter((r) => r.from.includes('*') || r.to.includes('*'))).toEqual([])
+    const en = rules(generateRedirects(root))
+    expect(en.filter((r) => r.from.includes('*') || r.to.includes('*'))).toEqual([])
+    expect(en.filter(isOld)).toEqual([])
+  })
+
+  describe('the old-address section (D154)', () => {
+    /** A zh-TW-primary tree: `files` under `platform/zh-TW/`, and the challenge `first` with its brief. */
+    function zhTree(files: string[]): void {
+      setPrimary(root, 'zh-TW')
+      challenge(root, 'first', 1, ['zh-TW'])
+      for (const f of files) writeFile(root, 'zh-TW', f)
+    }
+
+    it('(a) is /zh-TW/, one dynamic rule per folder of pages and one static rule per top-level page, all 302', () => {
+      zhTree(BASE_FILES)
+      const got = oldAddress(generateRedirects(root))
+      expect(pairs(got)).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+      expect(got.every((r) => r.status === 302)).toBe(true)
+    })
+
+    it('(b) an extra top-level folder (a deep page) and an extra top-level page each add one rule', () => {
+      zhTree([...BASE_FILES, 'docs/a/b.md', 'about.md'])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/about /about',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/docs/* /docs/:splat',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+    })
+
+    it('(b) sorts by the rule source in UTF-16 code units', () => {
+      setPrimary(root, 'zh-TW')
+      for (const f of ['index.md', 'a.md', 'a/x.md', 'a-b.md', 'B.md']) writeFile(root, 'zh-TW', f)
+      expect(rules(generateRedirects(root)).map((r) => r.from)).toEqual([
+        '/c/:slug', '/en/c/:slug', '/zh/c/:slug', '/zh-TW/c/:slug',
+        '/zh-TW/', '/zh-TW/B', '/zh-TW/a', '/zh-TW/a-b', '/zh-TW/a/*',
+      ])
+    })
+
+    it.each([
+      ['a folder with no page (only a picture)', ['assets/diagram.png']],
+      ['a folder with only a dot-prefixed folder', ['.hidden/x.md']],
+      ['a folder with only node_modules', ['node_modules/x.md']],
+      ['a folder with only dist', ['dist/x.md']],
+      ['an empty folder', ['empty/']],
+    ])('(c) %s gets no rule', (_name, files) => {
+      zhTree([...BASE_FILES, ...files])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+    })
+
+    it.each(EXCLUDED_FILES)('(d) %s gets no rule', (file) => {
+      zhTree([file])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+      ])
+    })
+
+    it('(e) P = en: the section is absent, with the same files in both folders', () => {
+      setPrimary(root, 'en')
+      challenge(root, 'first', 1, ['en', 'zh-TW'])
+      for (const folder of ['en', 'zh-TW']) for (const f of [...BASE_FILES, 'docs/a/b.md', 'about.md']) writeFile(root, folder, f)
+      const out = generateRedirects(root)
+      expect(oldAddress(out)).toEqual([])
+      expect(out).not.toContain('Addresses under /zh-TW/ from when Traditional Chinese was a translation.')
+    })
+
+    it('(f) a top-level .md other than index.md is a page, named by its file name minus .md', () => {
+      zhTree(['README.md'])
+      expect(pairs(oldAddress(generateRedirects(root)))).toContain('/zh-TW/README /README')
+    })
+  })
+
+  it('SR-1 (D154): every old-address rule’s target begins with a literal equal to the source’s segment after /zh-TW/', () => {
+    let dirRules = 0
+    let pageRules = 0
+    for (const files of OLD_ADDRESS_TREES) {
+      const tree = mkdtempSync(join(tmpdir(), 'generate-redirects-'))
+      try {
+        setPrimary(tree, 'zh-TW')
+        challenge(tree, 'first', 1, ['zh-TW'])
+        for (const f of files) writeFile(tree, 'zh-TW', f)
+        const got = oldAddress(generateRedirects(tree))
+        for (const r of got) {
+          expect(r.from).not.toBe('/zh-TW/*')
+          if (r.from === '/zh-TW/') {
+            expect(r.to).toBe('/')
+            continue
+          }
+          const seg = r.from.slice('/zh-TW/'.length).split('/')[0]
+          expect(seg).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
+          expect(seg).not.toBe('c')
+          if (r.from === `/zh-TW/${seg}/*`) {
+            expect(r.to).toBe(`/${seg}/:splat`)
+            dirRules++
+          } else {
+            expect(r.from).toBe(`/zh-TW/${seg}`)
+            expect(r.to).toBe(`/${seg}`)
+            pageRules++
+          }
+          expect(r.to.startsWith('//')).toBe(false)
+          expect(r.to.split('/')[1]).not.toMatch(/[:*]/)
+        }
+      } finally {
+        rmSync(tree, { recursive: true, force: true })
+      }
+    }
+    // An empty set would pass the loop above for the wrong reason.
+    expect(dirRules).toBeGreaterThan(0)
+    expect(pageRules).toBeGreaterThan(0)
   })
 
   it.each(BOTH)('S25 places every numeric rule before every slug and old-address rule, P = %s', (primary) => {
@@ -497,7 +663,7 @@ describe('generateRedirects', () => {
   describe('the header (S26)', () => {
     const K1 = 'Cloudflare Pages allows 2,000 static and 100 dynamic rules. Every numbered challenge takes one static rule per short-link form, 4 in all, so a range holds at most 500 numbered challenges.'
     const K2 = 'The slug links take 4 dynamic rules.'
-    const K3 = 'The slug links take 4 dynamic rules, and the rule for old /zh-TW/ addresses takes 1 more.'
+    const K3 = 'The slug links take 4 dynamic rules, and old /zh-TW/ addresses take one more dynamic rule for each top-level folder of pages and one static rule for each top-level page and for /zh-TW/ itself.'
 
     it.each([['en', K2], ['zh-TW', K3]] as Array<[Primary, string]>)('P = %s states K1 and its own sentence, and the 500-challenge limit (G8)', (primary, specific) => {
       setPrimary(root, primary)
@@ -533,12 +699,12 @@ describe('generateRedirects', () => {
       expect(commentText(block.split('\n'))).toBe(`${k4(name)} ${THESE}`)
     })
 
-    const K5 = 'Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range\'s primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/<path> goes to /<path>. Last on purpose: every /zh-TW/c/ rule above must match first.'
+    const K5 = 'Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range\'s primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/ goes to /, each top-level page /zh-TW/<name> goes to /<name>, and each top-level folder of pages /zh-TW/<folder>/<path> goes to /<folder>/<path>. Every target begins with a fixed name, never with text from the request. The folder c is left out: /zh-TW/c/ belongs to the short links above. An address no rule covers is handled by the not-found page.'
 
-    it('K5 sits directly above the old-address rule when P = zh-TW, and is absent when P = en', () => {
+    it('K5 sits directly above the first old-address rule (/zh-TW/) when P = zh-TW, and is absent when P = en', () => {
       challenge(root, 'first', 1, ['zh-TW'])
       const lines = generateRedirects(root).split('\n')
-      const at = lines.findIndex((l) => l.startsWith('/zh-TW/*'))
+      const at = lines.findIndex((l) => /^\/zh-TW\/\s/.test(l))
       expect(at).toBeGreaterThan(0)
       const above: string[] = []
       for (let i = at - 1; i >= 0 && lines[i].startsWith('#'); i--) above.unshift(lines[i])
@@ -651,7 +817,9 @@ describe('the committed _redirects', () => {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     })
-    const briefs = LOCALES.map((l) => new RegExp(`^platform/${l}/challenge/[^/]+/index\\.md$`))
+    // Every page of a locale folder: the briefs, and the primary folder's top-level entries that give
+    // the old-address rules (D154).
+    const briefs = LOCALES.map((l) => new RegExp(`^platform/${l}/.+\\.md$`))
     const keep = listed
       .split('\0')
       .filter(
