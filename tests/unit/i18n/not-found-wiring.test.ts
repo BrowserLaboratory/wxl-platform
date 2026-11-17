@@ -1168,6 +1168,39 @@ describe.each(
       expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(scenario.chosen)
     },
   )
+
+  // Segment 2z (wave 2 item 1b): SW03/06/09/12 "stay; removes a shown line". Each row's own page
+  // starts with NO line, so the line is first SHOWN on the page a seed row (SW02/05/08/11, same
+  // page kind, counterpart not listed) uses, then the page's own locale is chosen.
+  const SEED_ROW: Record<string, string> = { SW03: 'SW02', SW06: 'SW05', SW09: 'SW08', SW12: 'SW11' }
+  it.each(SW.filter((row) => row.P === P && row.chosen === 'own'))(
+    '$id (page=$page, chosen=own): stay; removes a shown line',
+    async (row) => {
+      mockPrimaryLocale.value = P
+      mockBase.value = base
+      const seed = SW_SCENARIOS[SEED_ROW[row.id]]
+      const seedRow = SW.find((r) => r.id === SEED_ROW[row.id])!
+      const own = row.page === 'translation' ? row.T : row.P
+      expect(row.decision).toBe('stay')
+      expect(row.line).toBeNull()
+      arrive(`${prefix}${seed.path}`, seed.page)
+      const layout = mountLayout()
+      await flushPromises()
+      expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+      expect(switcher.choose!(seed.chosen)).toBe('stay')
+      await flushPromises()
+      expect(layout.get('[data-missing-translation]').attributes('lang')).toBe(seedRow.line)
+      const setSpy = vi.spyOn(window.localStorage, 'setItem')
+      const outcome = switcher.choose!(own)
+      await flushPromises()
+      expect(outcome).toBe(row.decision)
+      expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+      expect(setSpy).toHaveBeenCalledWith(LOCALE_STORAGE_KEY, own)
+      setSpy.mockRestore()
+      expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(own)
+      expect(mockGo).not.toHaveBeenCalled()
+    },
+  )
 })
 
 // B4-1f: SW13–16's boundary conditions name "page kinds primary/translation/not-found/failed

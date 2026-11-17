@@ -1852,6 +1852,35 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
   - No file under `platform/` was created, moved or edited by this part; `git status --short` before and after this run shows the same `platform/` adds/renames/modifications already staged, nothing added, removed or re-staged; `git stash list` is empty.
   - **Row 1b left undone** (see item 1 above) — reported as a conflict between the approved row's premise and the current production code/fixtures, not guessed around. **Every other row in the confirmed plan (1a, 1c–1g, 2–8) is done.** wave 2 closed; remaining P2s go to stage 6.
 
+### 2026-11-17 (parent, new session; standing authorization renewed)
+
+- The user, in chat on 2026-11-17, quoted: 「授權：所有建議我都同意，權限都授權到兩個 epic 完成，範圍照
+  .proj.handoffs/2026-11-15-0034-primary-locale-epics.md 的「已核准的決定與授權」。每一項核准仍要列給我看。
+  executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」
+- Scope: the remaining orchestrator segments of this ticket's approved test plan (2z, 5c-pre, 3a–9), stages 6–9, and
+  the decisions an executor would otherwise refer to the user inside them, provided the decision follows the approved
+  test plan, spec revision 2.3 and the agent's recommendation, and is listed to the user.
+- Not in scope, still stopped for the user in person (the user's words, same message): creating or deleting a GitHub
+  repository, including stage 8's F-3 temporary range; pushing the stage 8 fixture branches (`stage8/T-0077`,
+  `stage8/T-0077-en`) and deleting them afterwards; any release (`v*` tag); RP2; RP5; any step that needs the user's
+  npm login.
+- Resumed from `.proj.handoffs/2026-11-17-1205-t0077-orchestrator-resume.md`: HEAD `e11a295`, not pushed; D108's move
+  staged (23 files), not committed; segment 2z's edits in the working tree, unchecked. No mismatch with the handoff.
+
+### 2026-11-17 (segment 2z)
+
+- Done: wave 2 item 1b, SW03/SW06/SW09/SW12 "stay; removes a shown line", real Layout, both P x both bases (8 cases), as a second `it.each` inside the existing SW describe.each in `tests/unit/i18n/not-found-wiring.test.ts` (SEED_ROW = SW03:SW02, SW06:SW05, SW09:SW08, SW12:SW11; seed line asserted against the seed row's own Line column, then own locale chosen: line gone, setItem(KEY, own) called, final storage = own, `go` never called).
+- First run green (198/198; 8 new): existing production behaviour (useArrivals.ts stay branch sets `requested`; own-locale line is null).
+- Non-vacuity: temporary mutation of `choose()` (`arrival.kind === 'page' && detectLocaleFromPath(arrival.entry, P) !== locale`) gave 10 failed | 188 passed: the 8 new cases plus 2 hand-written cases, all at `AssertionError: expected true to be false` (line still present). Seed, return-value and write assertions did not fail. Reverted by Edit; `git diff --stat -- .vitepress/theme/composables/useArrivals.ts` empty.
+- Not done: none.
+- Commands: `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` -> 198 passed (198) after revert. No git add needed (test file is outside platform/ and already tracked).
+- Re-verified by the resumed session (2026-11-17): the four checks held (filter yields SW03+SW06 for P=en and SW09+SW12 for P=zh-TW, times 2 bases = 8 cases; seed line asserted against the seed row's Line column; `own` = row.T for a translation page, else row.P; no line before the seed choose, line shown after). Mutation repeated on `useArrivals.ts` line 180 as above: 10 failed | 188 passed, the 8 new cases failing at `not-found-wiring.test.ts:1197` (`expected true to be false`, the line-gone assertion after the own-locale choose), the 2 hand-written cases at lines 855 and 868. Reverted by restoring the file; `git diff --stat -- .vitepress/theme/composables/useArrivals.ts` empty; file back to 198 passed (198). No test or production edit was needed.
+- Deferred to stage 6 (P2, frozen rubric):
+  - `tests/unit/i18n/not-found-wiring.test.ts:1175` (P2, low): SEED_ROW 是手寫對照表，測試沒有斷言種子列與被測列的頁型和 P 相同（`seedRow.page === row.page`、`seedRow.P === row.P`），日後改錯對照不會被測試抓到；目前 SW02/03、SW05/06、SW08/09、SW11/12 的頁型與 P 都正確，屬額外補強，不是缺陷。
+  - `tests/unit/i18n/not-found-wiring.test.ts:1175` (P2, medium): `own` 由目標列推導，但測試在 seed 頁上執行選擇，所以依賴「seed 列與目標列頁型、P 相同」這個前提；現有資料成立，但 SEED_ROW 日後改錯時沒有防護（主區塊的 B4-1g 斷言擋同類漂移，這個新區塊沒有對應斷言）。
+  - `tests/unit/i18n/not-found-wiring.test.ts:1192` (P2, low): `setItem` spy 只在成功路徑 restore；`mockRestore` 之前的斷言失敗時 spy 會殘留到下一個測試（vitest.config.ts 未設 restoreMocks）。SW06/SW12 的既有區塊（約 1145–1150 行）寫法相同，非新問題，只在測試已失敗時才有影響。
+- Full suite (run with `--reporter=json` to a scratch file; exit code 1): 6127 tests total: 6121 passed, 6 failed, 0 skipped/pending, 0 todo. Test files: 754 total, 745 passed, 9 failed (the 9 failed counts come from the JSON reporter's `numFailedTestSuites`, which counts describe-level suites, not files). No suite-level (non-assertion) failures.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
