@@ -1913,6 +1913,105 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
   `wasmPath` becoming per-test values from `copyRepoForKeygen()` plus the copy's removal; no assertion removed.
   The independent checkers still review this segment under the frozen rubric.
 
+### 2026-11-17 (segment 3a: the loader and the lists, rows L1–L20, L22, B79, B44, Y113 loader half, Y39)
+
+- Authorization: the parent's go-ahead under the user's standing authorization quoted above; this segment has no
+  decision of its own to ask.
+- Done, with the red line seen before the change (first line of the failure; "green first" = green on first run, reason given):
+  - L18 messages half (`messages-shape.test.ts`, 2 cases): `expected undefined to be 'Web exploitation challenge'`,
+    `expected undefined to be 'General'`. PAT3 `git grep -nE "Web exploitation challenge|網站攻防挑戰" -- platform/shared`
+    printed the two DEFAULTS lines before, prints nothing now (exit 1).
+  - L1: `TypeError: briefs is not iterable`. L2: `expected [ { id: 1, number: 1, …(8) } ] to deeply equal [ … ]` (the first
+    implementation copied the primary brief into every list). L3: green first, because L2's fix already fell back to the
+    primary brief; non-vacuity: removing the fallback gives `TypeError: Cannot read properties of undefined (reading 'frontmatter')`.
+  - L4, L5: green first (listing looks only at the primary brief from L1 on); non-vacuity: listing every slug turns 6 cases red.
+  - L9: `expected [ [ 'staff-only', 1 ], … ] to deeply equal [ [ 'door-is-open', 1 ], … ]`.
+  - L10: green first (Map keys are exact, L9's sort is the default one); non-vacuity: `localeCompare` gives
+    `expected [ [ 'apple', 1 ], [ 'door', 2 ], … ] to deeply equal [ [ 'Zed', 1 ], … ]`.
+  - L11: `expected 2048 to be 'Web exploitation challenge'`. L12: `expected '7' to be undefined`. L13: `expected 3 to be 'mystery'`.
+    L14: `expected 1 to be 'General'`. L15: `expected 'not a date' to be null`. L16: `expected [ 'a', 3, null, 'b' ] to deeply equal [ 'a', 'b' ]`.
+    (L12–L16 were written together, run once to see each red, then implemented in one edit.)
+  - L17: green first (each field reads only its own source); non-vacuity: `...declaration` spread fails.
+  - L7 (three locales, 6 cases) and L8 merge half (2 cases): green first (the lists are built from the `locales` argument,
+    defaults are read lazily); L8 loader half (2 cases) green first for the same reason.
+  - L19: module load error `content loader invoked without an active vitepress process, or before vitepress config is resolved.`
+  - L20: `TypeError: loadChallengeLists is not a function`. L6 (4 reasons × 2 P + the unlisted case): `promise resolved "{ en: [ … ], … }" instead of rejecting`.
+  - Y113 loader half: green first (entries are built field by field); non-vacuity: `Object.assign({}, declaration, {…})`
+    gives `expected { polluted: 1 } to be { …(12) }`.
+  - B79 grep half: `expected '---\nlayout: home\n…' to contain 'from \'../shared/challenges.data.ts\''` (4 pages + the deleted loader name).
+  - L22 ChallengeList (4 cases): `TypeError: Cannot read properties of undefined (reading 'map')`; the 33 mount/ssr calls then moved to
+    `lists: listsOf(…)` with no assertion changed. L22 HomeContent (4 cases): `TypeError: Cannot read properties of undefined (reading 'length')`.
+  - B79 smoke half: `docs:build` exit 0 before the change (the import fix was enough); then Playwright `-g B79`:
+    `Expected: 4  Received: 0`; after `:lists="data"` on the four pages: passes.
+  - B44: the set clause failed with 13 spelling differences before the `<P>/` prefix was dropped, passes now; the home clause
+    (new) is green first because wave 1(f) already did the rewrites.
+  - Y39 (4 slugs + one guard case): green first (the build already assembles one declaration for both briefs; its earlier red was
+    the missing build). Non-vacuity: negating the `source_visible` expectation turns 4 cases red.
+- Source change beyond the plan's listing: `declarationReadError(briefSourcePath, slug, reason)` in `.vitepress/challenge/declaration.ts`
+  (L6's planned extraction; `plugin.ts` calls it, texts unchanged, `plugin.test.ts` green); `ChallengeData` now follows L-§4.3.
+- Not done: none of the listed rows. Not touched (other segments): SITE_PAGES / `pageUrlOf` / L37–L39 and the fixture pages (3b),
+  `expectedUrlFor` (S56, wave 4), LW1 warning and L32/L45 (T-0079).
+- Index: `git add` of `platform/shared/challenges.data.ts`, `platform/shared/mergeChallenges.ts`, the four list/home pages
+  (`platform/en/index.md`, `platform/en/challenges.md`, `platform/zh-TW/index.md`, `platform/zh-TW/challenges.md`); `git rm` of
+  `platform/shared/challenges.zh-TW.data.ts`. Untracked and NOT added: `tests/site-smoke/localePath.ts` (outside platform/).
+- Commands: `pnpm docs:build` exit 0 (twice, before and after the `:lists` change). Targeted `pnpm exec vitest run` of merge-challenges (83),
+  challenge-data-loaders (24 in total with the P-split cases), messages-shape, ChallengeList (81), HomeContent (17), plugin.test.ts, locales.test.ts:
+  7 files, 266 tests, 265 passed, 1 failed (`locales.test.ts` B18 command 2, carried: only `.vitepress/challenge/shortLink.ts:61` is left, wave 4).
+  Wider run `tests/unit/{site,challenge,i18n,components}`: 2770 tests, 5 failed = that one plus `redirects-generated` (1) and `redirects` (3),
+  all carried from the earlier waves (wave 4, area S). Playwright `-g "B79|Y39|translated challenges"`: 6 passed; `-g "page list spelling|B44"`: 2 passed.
+
+### 2026-11-17 (parent, decisions on segment 3a's needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the three items segment 3a's
+executor raised; nothing else.
+
+1. Y39's "number". Approved as implemented, with its limit recorded. The parent checked the built page
+   (`.vitepress/dist/challenge/door-is-open/index.html`): the challenge page shows no bare number; the only
+   number-derived element is the copy control `[data-short-link]`, and in page mode (this build has no `CF_PAGES`) its
+   text is the page address, not `/c/NNN`. So the smoke test's `numberControl` proves both pages have the control (it
+   renders only for a valid number) but cannot tell two different valid numbers apart. The number itself being the same
+   in both lists is covered at unit level by L2 (number equals the primary list's in every list) and by wave 1(f)'s
+   assembly rows (one declaration feeds every brief). Recorded for stage 6 as a spec wording item: Y39 says "the same
+   ... number", which a page-mode page cannot show. The independent checkers still grade this row under the frozen
+   rubric; a P1 from them goes to the single fix round.
+2. `tests/site-smoke/localePath.ts` (new, outside `platform/`): committed with this segment by the commit step.
+3. Smoke cases owned by later segments (SITE_PAGES / pageUrlOf, REFERENCE, L37's beforeAll: 3b and 3c; expectedUrlFor,
+   S56: 4d; L32/L45 warnings: T-0079): noted, no decision needed. They are Playwright cases, outside the vitest suite
+   the orchestrator compares.
+
+### 2026-11-17 (segment 3a, fix round)
+
+- Authorization: the parent's go-ahead for segment 3a's single fix round, under the user's standing authorization quoted above;
+  no decision of its own. Test-only; no production file changed; nothing added to the index.
+- L8 merge half, three-locale boundary (finding 1): two `it` cases added inside the `three locales, P = %s` block of
+  `tests/unit/site/merge-challenges.test.ts` (after L7), 6 cases with the three values of P. Green first, reason: the lists are
+  built by looping over the `locales` argument and `listed` filters on `has(primary)`; no code path depends on the two-member
+  LOCALES. Run: 89 passed (83 + 6).
+- Y39 number (findings 2 and 3): `declaredView` in `tests/site-smoke/site-smoke.spec.ts` reads the hydrated page's
+  `$frontmatter.number` through `#app.__vue_app__` (reachable in the built bundle, so no fallback) and returns it as `number`;
+  the Y39 test pins `primaryView.number` to `declaration.number`. Green first, reason: both pages assemble `number` from the one
+  declaration. Can-fail proof (scratch spec, deleted): rewriting `"number":N` to 999 in the zh-TW page's chunk gives
+  `Expected: 1 / Received: 999`. Playwright `-g "translated challenges"`: 5 passed.
+- Full suite (suite step): 6236 tests in total: 6230 passed, 6 failed, 0 skipped or pending (4 failed test files). All 6
+  failures match allowed entries, so the `--no-file-parallelism` re-run was not run. The first attempt did not run because zsh
+  failed on the `rm` glob; the `rm` was re-run through bash and the suite then ran once.
+- Deferred to stage 6 (P2, frozen rubric):
+  - `tests/unit/site/challenge-data-loaders.test.ts:87`: L6 uses `rejects.toThrow(string)` (substring check) where the row says "equals" the 0010-S32 formatter's text; extra trailing text would still pass. Production is correct today.
+  - `tests/unit/site/challenge-data-loaders.test.ts:87`: L6 用 `rejects.toThrow(string)` 斷言錯誤訊息，這是子字串比對，不是 AC 寫的「equals」；改成 `rejects.toMatchObject({ message })` 或完整錨定的正規式才是完全相等。目前 production 行為正確。
+  - `.vitepress/theme/index.ts:245`: stale comment still describes the removed `challenges` prop and the old pages (`platform/challenges.md`); the prop is now `lists: ChallengeLists` (D40), line 250 still says HomeContent is used in `platform/index.md`.
+  - `tests/site-smoke/site-smoke.spec.ts:291`: Y39 hard-codes the locale codes in its regex (line 271) and never closes its browser contexts.
+  - `tests/site-smoke/site-smoke.spec.ts:291`: Y39 每個 slug、每個翻譯語系開兩個 `browser.newContext()` 從不關閉（8 個 context 留到 worker 結束），沒有對應的 `context.close()`。
+  - `tests/unit/components/HomeContent.test.ts:209`: the L22 HomeContent case resets `mockWithBase.prefix` only when it passes; no `afterEach` or file-level `beforeEach` resets it.
+  - `tests/unit/components/HomeContent.test.ts:209`: L22 HomeContent 只在測試成功時把 `mockWithBase.prefix` 重設成 `''`，檔案層級沒有 `beforeEach` 負責重設（今天它是檔案最後一個 describe，不影響其他案例）。
+  - `tests/unit/site/merge-challenges.test.ts:214`: L17 fixture has `number`/`difficulty` on both sides, so an implementation that falls back to the brief's value when the declaration omits it still passes; L12/L13 absent cases use a brief with only `title`. A hardening suggestion beyond the row's AC.
+  - `tests/unit/site/merge-challenges.test.ts:225`: L8 merge half is tested with two locales only for "locale without a brief borrows everything" and "P without a brief gives `[]`"; L7 covers key order and the ja borrow with three locales.
+  - `platform/shared/challenges.data.ts:49`: `frontmatterOf` returns `{}` silently on a YAML parse error, so the list falls back to the default title with no message. Low impact; hardening suggestion, not a row's behavior.
+  - `tests/unit/site/merge-challenges.test.ts:160`: /tdd deviation recorded by the executor: L12-L16 were written together and run red once, then implemented in one edit, not one cycle per row. Every red was seen and no row was dropped.
+  - `tests/site-smoke/site-smoke.spec.ts:270`: `numberControl` strips the locale segment with a literal `/\/(en|zh-TW)\//` and `declaredView` types its `locale` as `'en' | 'zh-TW'`; neither is derived from LOCALES / `localePath` (D54). Left over from the earlier finding 3.
+  - `tests/site-smoke/site-smoke.spec.ts:272`: `number` is read through the internal `#app.__vue_app__` and VitePress's `$frontmatter`; neither is public API. If they stop being readable the test fails (null), it does not pass by mistake.
+  - `tests/site-smoke/site-smoke.spec.ts:293`: this Playwright run used the existing `.vitepress/dist` without a rebuild (`webServer` runs only `pnpm docs:preview`), so there is no evidence that `dist` matches the current sources (`plugin.ts`, `declaration.ts` have uncommitted changes). Affects freshness of the verification only.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

@@ -91,6 +91,22 @@ describe('editor settings namespace', () => {
   })
 })
 
+// T-0077 L18 (D42): the list's default title and category moved out of mergeChallenges.ts into the
+// string tables, so a list reads them for its own locale and a locale added later supplies its own.
+describe('challenge list defaults (L18)', () => {
+  const DEFAULTS: Record<'en' | 'zh-TW', Record<string, string>> = {
+    en: { default_title: 'Web exploitation challenge', default_category: 'General' },
+    'zh-TW': { default_title: '網站攻防挑戰', default_category: '綜合' },
+  }
+
+  it.each(['default_title', 'default_category'])('defines challenge_list.%s in both locales', (key) => {
+    const enFlat = flatten(en as MessageNode)
+    const zhFlat = flatten(zhTW as MessageNode)
+    expect(enFlat[`challenge_list.${key}`]).toBe(DEFAULTS.en[key])
+    expect(zhFlat[`challenge_list.${key}`]).toBe(DEFAULTS['zh-TW'][key])
+  })
+})
+
 describe('every message compiles', () => {
   // The shape tests above read the JSON as data and never ask vue-i18n to compile it.
   // A leaf containing a literal `{` is valid JSON, is a valid string, and renders as

@@ -1,5 +1,5 @@
 import { validateChallengeBrief, validateChallengeDeclaration, LEGACY_FIELDS, BRIEF_KEYS } from './config'
-import type { DeclarationResult } from './declaration'
+import { declarationReadError, type DeclarationResult } from './declaration'
 import { SiteLayoutError } from '../layout-error'
 
 /**
@@ -139,16 +139,7 @@ export function assembleChallengeFrontmatter(
 
   const declResult = readDeclaration(slug)
   if (!declResult.ok) {
-    if (declResult.reason === 'absent') {
-      throw new SiteLayoutError(
-        'PL-E13',
-        `PL-E13: ${sourcePath}: no platform/challenge/${slug}/challenge.yaml for this brief`,
-      )
-    }
-    throw new SiteLayoutError(
-      'PL-E14',
-      `PL-E14: platform/challenge/${slug}/challenge.yaml: not one YAML mapping (${declResult.reason})`,
-    )
+    throw declarationReadError(sourcePath, slug, declResult.reason)
   }
 
   const briefKeys = Object.keys(frontmatter)

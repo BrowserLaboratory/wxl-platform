@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import type { ChallengeData } from '../../../platform/shared/challenges.data'
+import type { ChallengeData, ChallengeLists } from '../../../platform/shared/challenges.data'
+import { mergeLocaleChallenges } from '../../../platform/shared/mergeChallenges'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
@@ -101,6 +102,9 @@ const CHINESE_ONLY_ZH: ChallengeData[] = [
   { id: 7, number: 7, title: '只有中文', url: '/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
 ]
 
+/** A list as the loader's output: the same array under every locale, so whichever locale the page is in gets it. */
+const listsOf = (list: ChallengeData[]): ChallengeLists => ({ en: list, 'zh-TW': list })
+
 let ChallengeList: typeof import('../../../.vitepress/theme/components/ChallengeList.vue').default
 
 beforeEach(async () => {
@@ -123,7 +127,7 @@ beforeEach(async () => {
 
 describe('ChallengeList', () => {
   it('renders a card for each challenge', async () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     // Switch to grid view (default is now list)
     await wrapper.find('button[title="格線模式"]').trigger('click')
     const cards = wrapper.findAll('[data-challenge-card]')
@@ -131,19 +135,19 @@ describe('ChallengeList', () => {
   })
 
   it('renders challenge title in each card', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('SQL Injection Demo')
     expect(wrapper.text()).toContain('PHP File Inclusion Demo')
   })
 
   it('renders difficulty and category badges', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('easy')
     expect(wrapper.text()).toContain('web')
   })
 
   it('each card contains a link to the challenge page', async () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     // Switch to grid view (default is now list)
     await wrapper.find('button[title="格線模式"]').trigger('click')
     const links = wrapper.findAll('a[data-challenge-link]')
@@ -154,14 +158,14 @@ describe('ChallengeList', () => {
   })
 
   it('renders zero-padded id number for each card', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('#001')
     expect(wrapper.text()).toContain('#002')
     expect(wrapper.text()).toContain('#003')
   })
 
   it('applies semantic difficulty badge class for hard difficulty', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const hardBadge = wrapper.findAll('.ch-badge-hard')
     expect(hardBadge.length).toBeGreaterThan(0)
   })
@@ -172,7 +176,7 @@ describe('ChallengeList', () => {
 // copyable — and copying must not take them off the page they were copying from.
 describe('ChallengeList short links', () => {
   it('shows each row its own short link', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const links = wrapper.findAll('[data-short-link]').map((el) => el.text())
     expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/001`)
     expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/003`)
@@ -181,7 +185,7 @@ describe('ChallengeList short links', () => {
   it('gives the Traditional Chinese list its own locale-coded links, whatever the runtime locale (0008 F2, F9)', () => {
     mockLocaleIndex.value = 'zh-TW'
     const wrapper = mount(ChallengeList, {
-      props: { challenges: mockChallenges },
+      props: { lists: listsOf(mockChallenges) },
       // The runtime locale is English, so only the page's locale can explain a zh-TW link.
       global: { plugins: [runtimeI18n('en')] },
     })
@@ -199,7 +203,7 @@ describe('ChallengeList short links', () => {
       writable: true,
     })
 
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const row = wrapper.findAll('a').find((a) => a.find('[data-copy-link]').exists())
     expect(row).toBeDefined()
 
@@ -236,7 +240,7 @@ describe.each(['short', 'page'] as const)('ChallengeList URL text clicks in %s m
     mockLocaleIndex.value = localeIndex
     const writeText = vi.fn(() => Promise.resolve())
     Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges }, attachTo: document.body })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) }, attachTo: document.body })
     mounted.push(wrapper)
     const row = wrapper.findAll('a.ch-list-row')[0]
     const seen: boolean[] = []
@@ -282,7 +286,7 @@ describe('ChallengeList copy controls', () => {
   ] as const)('pass number, row slug and page locale with localeIndex %s (N01, N02)', async (localeIndex, locale) => {
     mockLocaleIndex.value = localeIndex
     const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const controls = wrapper.findAllComponents(ShortLinkShare)
 
     expect(controls.map((c) => c.props())).toEqual([
@@ -309,7 +313,7 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
 
   async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' = 'root') {
     mockLocaleIndex.value = locale
-    const wrapper = mount(ChallengeList, { props: { challenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(challenges) } })
     const row = wrapper.findAll('a.ch-list-row')[0]
     await row.find('[data-copy-link]').trigger('click')
     await flushPromises()
@@ -334,6 +338,42 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
   })
 })
 
+// L22 (D7): an entry's `url` is base-less, and the component adds the site base exactly once, in
+// the row of the list view and in the card of the grid view. The lists are the merge's own output
+// (0010-S17), for either primary locale and either page.
+describe.each(['en', 'zh-TW'] as const)('ChallengeList hrefs under P = %s (L22)', (P) => {
+  const T = P === 'en' ? 'zh-TW' : 'en'
+  const lists = mergeLocaleChallenges({
+    briefs: ['door-is-open', 'staff-only'].flatMap((slug) =>
+      ([P, T] as const).map((locale) => ({
+        locale, slug, url: locale === P ? `/challenge/${slug}/` : `/${locale}/challenge/${slug}/`,
+        frontmatter: { title: `${slug} in ${locale}`, description: 'd' },
+      })),
+    ),
+    declarations: new Map([
+      ['door-is-open', { ok: true, value: { number: 1, category: 'web' } }],
+      ['staff-only', { ok: true, value: { number: 4, category: 'web' } }],
+    ]),
+    locales: ['en', 'zh-TW'],
+    primary: P,
+  })
+
+  beforeEach(() => {
+    mockWithBase.prefix = '/repo'
+    mockPrimaryLocale.value = P
+  })
+
+  it.each([['the primary page', P], ['the translation page', T]] as const)('every row and card href on %s carries the base once', async (_name, page) => {
+    mockLocaleIndex.value = page === P ? 'root' : page
+    const wrapper = mount(ChallengeList, { props: { lists } })
+    const expected = lists[page].map((entry) => `/repo${entry.url}`)
+    expect(expected).toHaveLength(2)
+    expect(wrapper.findAll('a.ch-list-row').map((a) => a.attributes('href'))).toEqual(expected)
+    await wrapper.find('button[title="格線模式"]').trigger('click')
+    expect(wrapper.findAll('[data-challenge-card]').map((a) => a.attributes('href'))).toEqual(expected)
+  })
+})
+
 // N05, N06: the #NNN badge and the grid view do not change with the mode.
 describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mode', (m) => {
   beforeEach(() => {
@@ -341,14 +381,14 @@ describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mo
   })
 
   it('keeps the #NNN badge on every row (N05)', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const badges = wrapper.findAll('a.ch-list-row').map((row) => row.find('span.font-mono').text())
     expect(badges).toEqual(['#001', '#002', '#003'])
   })
 
   it('renders no copy control in grid view (N06)', async () => {
     const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await wrapper.find('button[title="格線模式"]').trigger('click')
     expect(wrapper.findAll('[data-challenge-card]')).toHaveLength(3)
     expect(wrapper.find('[data-short-link]').exists()).toBe(false)
@@ -364,7 +404,7 @@ describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mo
 describe('ChallengeList completion markers', () => {
   async function mounted(records: any[] = [], props: Record<string, unknown> = {}) {
     mockListAllProgress.mockResolvedValue(records)
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges, ...props } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges), ...props } })
     await flushPromises()
     return wrapper
   }
@@ -479,7 +519,7 @@ describe('ChallengeList completion markers', () => {
   // renders one challenge and so cannot tell the two apart.
   it('reads the progress store once, not once per challenge', async () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
-    mount(ChallengeList, { props: { challenges: mockChallenges } })
+    mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     expect(mockChallenges.length).toBeGreaterThan(1)
     expect(mockListAllProgress).toHaveBeenCalledTimes(1)
@@ -487,14 +527,14 @@ describe('ChallengeList completion markers', () => {
 
   it('shows no marker before progress has been read', () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.findAll('[data-challenge-done]')).toHaveLength(0)
   })
 
   // Progress decorates the entries the search, filter and sort state already chose. It
   // is not allowed to add one, remove one, or move one.
   it('does not change which challenges are rendered or their order', async () => {
-    const before = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const before = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     const orderWithout = before.findAll('a.ch-list-row').map(a => a.attributes('href'))
 
@@ -506,7 +546,7 @@ describe('ChallengeList completion markers', () => {
 describe('ChallengeList progress summary', () => {
   async function summaryOf(records: any[], challenges = mockChallenges) {
     mockListAllProgress.mockResolvedValue(records)
-    const wrapper = mount(ChallengeList, { props: { challenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(challenges) } })
     await flushPromises()
     return { wrapper, text: wrapper.get('[data-progress-summary]').text() }
   }
@@ -527,13 +567,13 @@ describe('ChallengeList progress summary', () => {
   // stated as a number.
   it('shows no summary at all until a read has come back', () => {
     mockListAllProgress.mockReturnValue(new Promise(() => {}))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.find('[data-progress-summary]').exists()).toBe(false)
   })
 
   it('shows a read error instead of a summary after failure', async () => {
     mockListAllProgress.mockRejectedValue(new Error('blocked'))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     expect(wrapper.find('[data-progress-summary]').exists()).toBe(false)
     expect(wrapper.get('[data-progress-error]').text()).toContain('Unable to read')
@@ -580,7 +620,7 @@ describe('ChallengeList progress summary', () => {
 describe('ChallengeList when progress cannot be read', () => {
   async function afterRejection() {
     mockListAllProgress.mockRejectedValue(new Error('challenge-tools is blocked by another tab'))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     return wrapper
   }
@@ -599,7 +639,7 @@ describe('ChallengeList when progress cannot be read', () => {
 
   it('distinguishes unreadable progress from a successful empty read', async () => {
     mockListAllProgress.mockResolvedValue([])
-    const ok = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const ok = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     const failed = await afterRejection()
@@ -628,7 +668,7 @@ describe('ChallengeList server rendering', () => {
   async function ssr(challenges: ChallengeData[] = mockChallenges, runtime: 'en' | 'zh-TW' = 'zh-TW') {
     const { createSSRApp, h } = await import('vue')
     const { renderToString } = await import('@vue/server-renderer')
-    const app = createSSRApp({ render: () => h(ChallengeList, { challenges }) })
+    const app = createSSRApp({ render: () => h(ChallengeList, { lists: listsOf(challenges) }) })
     app.use(createI18n({
       legacy: false, locale: runtime, fallbackLocale: 'en', globalInjection: true,
       messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false,
@@ -721,10 +761,10 @@ describe('ChallengeList progress keys', () => {
     mockListAllProgress.mockResolvedValue([progress('door-is-open', 1756000000000)])
     const wrapper = mount(ChallengeList, {
       props: {
-        challenges: [
+        lists: listsOf([
           { id: 1, number: 1, title: 'The Door Is Open', url: '/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
           { id: 2, number: 2, title: 'Staff Only', url: '/challenge/staff-only/', locale: 'en', difficulty: 'easy', category: 'web' },
-        ] as ChallengeData[],
+        ] as ChallengeData[]),
       },
     })
     await flushPromises()
@@ -738,7 +778,7 @@ describe('ChallengeList progress keys', () => {
 
 it('retries progress after a failure and renders the recovered completion count', async () => {
   mockListAllProgress.mockRejectedValueOnce(new Error('blocked'))
-  const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+  const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
   await flushPromises()
   mockListAllProgress.mockResolvedValue([{ challengeSlug: 'sqli-demo', firstCompletedAt: 1 }])
   await wrapper.get('[data-progress-retry]').trigger('click')
@@ -775,7 +815,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     const gate = await import('../../../.vitepress/theme/composables/useSessionGate')
     if (answered) await gate.useSessionGate().evaluate()
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     return wrapper
   }
@@ -810,7 +850,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     await g.evaluate()
     await g.keepExistingData()
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     expect(wrapper.find('[data-progress-blocked]').exists()).toBe(false)
@@ -826,7 +866,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     sessionStorage.setItem('wxl-session-gate', 'decided')
     mockListAllProgress.mockRejectedValue(new Error('challenge-tools is blocked by another tab'))
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     expect(wrapper.get('[data-progress-error]').exists()).toBe(true)
@@ -850,7 +890,7 @@ describe('ChallengeList with an untranslated entry', () => {
   }
   const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW' | 'en', runtime: 'en' | 'zh-TW') => {
     mockLocaleIndex.value = page
-    return mount(ChallengeList, { props: { challenges }, global: { plugins: [runtimeI18n(runtime)] } })
+    return mount(ChallengeList, { props: { lists: listsOf(challenges) }, global: { plugins: [runtimeI18n(runtime)] } })
   }
 
   it('marks a borrowed entry 只有英文 in list and grid view, with lang="en", and opens the English page (E2, E6)', async () => {

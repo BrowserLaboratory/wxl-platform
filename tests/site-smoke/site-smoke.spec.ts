@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { parse as parseYaml } from 'yaml'
+import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
 import { SITE_ORIGIN } from '../../.vitepress/challenge/shortLink'
 import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, upstreamOnlySkipReason } from '../__helpers__/upstreamDecision'
 
@@ -231,6 +233,75 @@ test('upstream\'s /en/ shows Start Challenge with en stored (B81, upstream-only)
   await page.addInitScript(() => window.localStorage.setItem('wxl-locale', 'en'))
   await page.goto('/en/')
   await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
+})
+
+test('the English list renders the four challenges (B79, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  await page.goto(localePath('en', 'challenges'))
+  await expect(page.locator('a.ch-list-row')).toHaveCount(4)
+})
+
+// Y39 (D37, D38): a challenge with a brief in two locale folders shares ONE declaration, so its page
+// in the primary locale and its page in a translation show the same difficulty, category and number
+// control, the same tool tabs, a Source tab exactly when `source_visible: true`, and each loads its
+// runtime. The slugs and URLs come from the tree and from `P`, never from a literal list.
+const platformDir = (...parts: string[]) => join(process.cwd(), 'platform', ...parts)
+const briefSlugs = (locale: string) =>
+  existsSync(platformDir(locale, 'challenge'))
+    ? readdirSync(platformDir(locale, 'challenge'), { withFileTypes: true })
+        .filter((d) => d.isDirectory() && existsSync(platformDir(locale, 'challenge', d.name, 'index.md')))
+        .map((d) => d.name)
+    : []
+const TRANSLATED_SLUGS = briefSlugs(PRIMARY).filter((slug) => TRANSLATIONS.some((code) => briefSlugs(code).includes(slug)))
+
+/** What a challenge page shows that the shared declaration decides (Y39). */
+async function declaredView(page: Page, locale: 'en' | 'zh-TW', slug: string) {
+  await page.addInitScript((code) => window.localStorage.setItem('wxl-locale', code), locale)
+  const wasm = page.waitForResponse((response) => response.url().includes(`/challenge/${slug}/runtime.wasm`))
+  await page.goto(localePath(locale, `challenge/${slug}/`))
+  const wasmStatus = (await wasm).status()
+  await expect(page.locator('[data-panel="browser"] input').first()).toBeEnabled({ timeout: 30_000 })
+  const text = async (selector: string) => (await page.locator(selector).first().textContent())?.trim() ?? null
+  const tabs = await page.locator('[data-tab]').evaluateAll((els) => els.map((el) => el.getAttribute('data-tab')))
+  // The number control's text without the locale segment of its address, which differs by design.
+  const numberControl = (await text('[data-short-link]'))?.replace(/\/(en|zh-TW)\//, '/') ?? null
+  // The hydrated page's own frontmatter number: both pages must assemble it from the one declaration.
+  const number = await page.evaluate(
+    () => (document.querySelector('#app') as any)?.__vue_app__?.config.globalProperties.$frontmatter?.number ?? null,
+  )
+  return {
+    wasmStatus,
+    number,
+    difficulty: await text('[data-badge="difficulty"]'),
+    category: await text('[data-badge="category"]'),
+    numberControl,
+    tools: tabs.filter((id) => id !== 'source').sort(),
+    hasSource: tabs.includes('source'),
+  }
+}
+
+test.describe('translated challenges share one declaration (Y39)', () => {
+  test('there is at least one challenge with a brief in two locale folders', () => {
+    expect(TRANSLATED_SLUGS.length).toBeGreaterThan(0)
+  })
+
+  for (const slug of TRANSLATED_SLUGS) {
+    test(`${slug}: the primary page and the translation page agree (Y39)`, async ({ browser }) => {
+      const declaration = parseYaml(readFileSync(platformDir('challenge', slug, 'challenge.yaml'), 'utf8')) as Record<string, unknown>
+      for (const translation of TRANSLATIONS.filter((code) => briefSlugs(code).includes(slug))) {
+        const primaryView = await declaredView(await (await browser.newContext()).newPage(), PRIMARY, slug)
+        const translatedView = await declaredView(await (await browser.newContext()).newPage(), translation, slug)
+        expect(translatedView, `${slug}: ${translation} page differs from the ${PRIMARY} page`).toEqual(primaryView)
+        expect(primaryView.number, `${slug}: the page's number is the declaration's`).toBe(declaration.number)
+        expect(primaryView.wasmStatus).toBe(200)
+        expect(primaryView.hasSource, `${slug}: Source tab iff source_visible: true`).toBe(declaration.source_visible === true)
+      }
+    })
+  }
 })
 
 // ─── The copy control in page mode (spec 0007, seam 0007-S3) ──────────────────────────────────
