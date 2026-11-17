@@ -58,7 +58,13 @@ vi.mock('../../../.vitepress/theme/components/LocaleSwitcher.vue', async () => {
   }
 })
 vi.mock('../../../.vitepress/theme/i18n/publishedPages', () => ({
-  publishedPages: () => ['/', '/challenge/v05-php-check/', '/challenges', '/guide/english-only', '/guide/python', '/reference/attack-log-export-format', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/python', '/zh-TW/guide/zh-only'],
+  // Both trees: the P = zh-TW cases below (S1-1 through S1-8) need the `/en/...` entries,
+  // beyond the `/zh-TW/...` entries the P = en cases already used.
+  publishedPages: () => [
+    '/', '/challenge/v05-php-check/', '/challenges', '/guide/english-only', '/guide/python', '/reference/attack-log-export-format',
+    '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/python', '/zh-TW/guide/zh-only',
+    '/en/', '/en/challenges', '/en/guide/python', '/en/only-in-english',
+  ],
 }))
 
 // `P` (D31): defaults to 'en', today's build, so every existing case below (which treats the
@@ -155,6 +161,36 @@ describe('the real Layout: a not-found arrival', () => {
     expect(mockGo).toHaveBeenCalledTimes(1)
     expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
   })
+
+  // S1-1 (A14), under P = zh-TW (T = en): the mirrored page and fixture, same property.
+  it('under P = zh-TW, replaces a missing translation with the page that exists, once', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
+  })
+
+  // A19/D29: an NP not-found redirect (an old `/<P>/X` URL, R22) always lands requesting `P`,
+  // never `T`, whatever is stored — and that landing is a later arrival, not the original cold
+  // load, so it never triggers a SECOND, ordinary cold-load redirect to the stored T preference
+  // on top of the not-found one.
+  it('a stored T preference does not cause a second cold-load redirect after an NP landing (A19, D29)', async () => {
+    // `/en/challenge/v05-php-check/` is NOT itself a published page (unlike `/en/guide/python`,
+    // which is, for the DT table above) — it is a crafted R22-style `/<P>/X` URL, the genuine NP
+    // shape (D28): a not-found arrival whose primary-code strip finds the real entry.
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    arrive('/en/challenge/v05-php-check/', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo).toHaveBeenCalledWith('/challenge/v05-php-check/', { replace: true })
+    mockGo.mockReset()
+    arrive('/challenge/v05-php-check/', { isNotFound: false, relativePath: 'challenge/v05-php-check/index.md' })
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
 })
 
 describe('the real Layout: around the not-found redirect', () => {
@@ -174,6 +210,16 @@ describe('the real Layout: around the not-found redirect', () => {
 
   it('does nothing on a failed load: the not-found page for a path that is a page', async () => {
     arrive('/guide/python', NOT_FOUND)
+    const layout = mountLayout()
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+  })
+
+  // S1-A19a, under P = zh-TW (T = en): the same property, mirrored for the translation tree.
+  it('under P = zh-TW, does nothing on a failed load: the not-found page for a path that is a page', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/en/guide/python', NOT_FOUND)
     const layout = mountLayout()
     await flushPromises()
     expect(mockGo).not.toHaveBeenCalled()
@@ -204,6 +250,20 @@ describe('the real Layout: around the not-found redirect', () => {
     expect(i18n.global.locale.value).toBe('en')
   })
 
+  // S1-A19b, under P = zh-TW (T = en): the same property, entries re-spelled for the /en/ tree.
+  it('under P = zh-TW, writes no preference on the way through, whatever was stored', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    i18n.global.locale.value = 'en'
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    arrive('/reference/attack-log-export-format', REFERENCE)
+    await flushPromises()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+    expect(i18n.global.locale.value).toBe('zh-TW')
+  })
+
   it('does the same for a client-side navigation to a missing translation', async () => {
     arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
@@ -211,6 +271,20 @@ describe('the real Layout: around the not-found redirect', () => {
     await flushPromises()
     mockGo.mockReset()
     arrive('/zh-TW/reference/attack-log-export-format', NOT_FOUND)
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
+  })
+
+  // S1-A20, under P = zh-TW (T = en): the same property, entries re-spelled for the /en/ tree.
+  it('under P = zh-TW, does the same for a client-side navigation to a missing translation', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    mountLayout()
+    await flushPromises()
+    mockGo.mockReset()
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
     await flushPromises()
     expect(mockGo).toHaveBeenCalledTimes(1)
     expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
@@ -251,6 +325,57 @@ describe('the real Layout: around the not-found redirect', () => {
     await flushPromises()
     // Stored `en` now decides: the page is in English, so there is nothing to say.
     expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+  })
+
+  // S1-1, under P = zh-TW (T = en): the mirrored cases for the four properties above whose
+  // assertion names a locale literal.
+  it('under P = zh-TW, waits for the gate on a page that puts the choice on screen, then redirects', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateClearStarted.value = true
+    gateDecision.value = 'undecided'
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+    gateDecision.value = 'kept'
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
+  })
+
+  it('under P = zh-TW, shows the line in the locale the path named on the page it lands on, in the doc layout slot', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
+    const layout = mountLayout()
+    await flushPromises()
+    arrive('/reference/attack-log-export-format', REFERENCE)
+    await flushPromises()
+    const line = layout.get('[data-slot="doc-before"] [data-missing-translation]')
+    expect(line.attributes('lang')).toBe('en')
+    expect(layout.get('[data-slot="page-top"] [data-missing-translation]').attributes('lang')).toBe('en')
+    expect(layout.get('[data-slot="home-hero-before"] [data-missing-translation]').attributes('lang')).toBe('en')
+  })
+
+  it('under P = zh-TW, shows the not-found page, with no line, for a path with no counterpart', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/en/no-such-page', { isNotFound: true, relativePath: 'en/no-such-page.md' })
+    const layout = mountLayout()
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+  })
+
+  // A11, D25, under P = zh-TW (T = en).
+  it('under P = zh-TW, shows no line on a later navigation to a translation-only page with no stored preference (A11, D25)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
+    const layout = mountLayout()
+    await flushPromises()
+    arrive('/en/guide/zh-only', { isNotFound: false, relativePath: 'en/guide/zh-only.md' })
+    await flushPromises()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+    expect(mockGo).not.toHaveBeenCalled()
   })
 })
 
@@ -318,6 +443,23 @@ describe('the real Layout: a not-found page while a challenge page is still aski
     expect(mockGo).not.toHaveBeenCalled()
     mockFrontmatter.value = {}
     arrive('/zh-TW/reference/attack-log-export-format', NOT_FOUND)
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
+  })
+
+  // S1-1, under P = zh-TW (T = en): the mirrored page and fixture, same property.
+  it('under P = zh-TW, replaces a missing translation reached by a link, since the not-found page does not ask', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    arrive('/challenge/v05-php-check/', { isNotFound: false, relativePath: 'challenge/v05-php-check/index.md' })
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+    mockFrontmatter.value = {}
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
     await flushPromises()
     expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format', { replace: true })
   })
@@ -462,6 +604,35 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
     expect(mockGo).not.toHaveBeenCalled()
   })
 
+  // S1-4 (A11): the same property, both P and both page kinds (article, challenge) — a stored
+  // T shows the line in T on a primary page lacking T, whichever page kind it is.
+  it.each([
+    ['en', 'article', '/guide/english-only', { isNotFound: false, relativePath: 'guide/english-only.md' }],
+    ['en', 'challenge', '/challenge/v05-php-check/', { isNotFound: false, relativePath: 'challenge/v05-php-check/index.md' }],
+    ['zh-TW', 'article', '/guide/only-in-chinese', { isNotFound: false, relativePath: 'guide/only-in-chinese.md' }],
+    ['zh-TW', 'challenge', '/challenge/v05-php-check/', { isNotFound: false, relativePath: 'challenge/v05-php-check/index.md' }],
+  ] as const)('under P = %s, re-evaluates the %s line on later navigation with the stored locale (A11, L5)', async (P, kind, orphanPath, orphanPage) => {
+    mockPrimaryLocale.value = P
+    const T = P === 'en' ? 'zh-TW' : 'en'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, T)
+    arrive('/reference/attack-log-export-format', REFERENCE)
+    const layout = mountLayout()
+    await flushPromises()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(true)
+    arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
+    await flushPromises()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+    if (kind === 'challenge') mockFrontmatter.value = { layout: 'challenge' }
+    arrive(orphanPath, orphanPage)
+    await flushPromises()
+    if (kind === 'article') {
+      expect(layout.get('[data-slot="doc-before"] [data-missing-translation]').attributes('lang')).toBe(T)
+    } else {
+      expect(layout.get('[data-challenge-layout]').attributes('data-line')).toBe(T)
+    }
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
   // L6 on an A1 landing: the landing is in the requested locale, so the carried value changes
   // nothing visible there. What can be seen is that the carry ends at the landing.
   // Flipped by D31/wave 2: the first redirect here needs an explicit stored preference now
@@ -490,13 +661,19 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
     // actually happens) is true, not vacuous (DT01's flip left "no preference" with nothing
     // to redirect).
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    // S2-b: a spy spanning both the redirect itself and the navigation after it, so "writes no
+    // preference" is checked as a write (never called), not only through the final read.
+    const setSpy = vi.spyOn(window.localStorage, 'setItem')
     arrive('/challenges', { isNotFound: false, relativePath: 'challenges.md' })
     mountLayout()
     await flushPromises()
     expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
+    expect(setSpy).not.toHaveBeenCalled()
     arrive('/zh-TW/challenges', { isNotFound: false, relativePath: 'zh-TW/challenges.md' })
     await flushPromises()
+    expect(setSpy).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+    setSpy.mockRestore()
   })
 })
 
@@ -504,55 +681,79 @@ describe('the real Layout: a cold load of an unprefixed page', () => {
 // bases — the redirect, the line and the write, as the row states. The expected results are the
 // table's own, written out per row: what a learner with `en` stored gets, and what everyone else
 // (none, `zh-TW`, an unknown value, unreadable storage) gets.
-describe('the real Layout: the decision table A1–A5, A7, every column', () => {
-  const ROWS = [
-    // row, base-less path, rendered source, challenge page?, expected for not-`en`, expected for `en`
+// S1-2: ROWS, for both P (T = the other locale). Each row's shape mirrors the P = en table
+// one-for-one against DT_PAGE's own rows (DT05/06 or DT43/46 for the redirect/line pair, DT09 or
+// DT49 for a translation page's always-write), rather than the hand-typed single-P literal this
+// replaced — a path under P = zh-TW needs its own fixture pages, since the same URL now names a
+// different locale's content.
+const ROWS_BY_P = {
+  en: [
+    // row, base-less path, rendered source, challenge page?, expected for not-T, expected for P
     { row: 'A1 article', path: '/guide/python', source: 'guide/python.md', challenge: false,
-      others: { go: '/zh-TW/guide/python', line: null, writes: false }, en: { go: null, line: null, writes: false } },
+      others: { go: '/zh-TW/guide/python', line: null, writes: false }, own: { go: null, line: null, writes: false } },
     { row: 'A2 challenge', path: '/challenge/v05-php-check/', source: 'challenge/v05-php-check/index.md', challenge: true,
-      others: { go: null, line: 'zh-TW', writes: false }, en: { go: null, line: null, writes: false } },
+      others: { go: null, line: 'zh-TW', writes: false }, own: { go: null, line: null, writes: false } },
     { row: 'A3 article', path: '/reference/attack-log-export-format', source: 'reference/attack-log-export-format.md', challenge: false,
-      others: { go: null, line: 'zh-TW', writes: false }, en: { go: null, line: null, writes: false } },
+      others: { go: null, line: 'zh-TW', writes: false }, own: { go: null, line: null, writes: false } },
     { row: 'A5 article, counterpart in the list', path: '/zh-TW/guide/python', source: 'zh-TW/guide/python.md', challenge: false,
-      others: { go: null, line: null, writes: true }, en: { go: null, line: null, writes: true } },
+      others: { go: null, line: null, writes: true }, own: { go: null, line: null, writes: true } },
     { row: 'A5 article, no counterpart', path: '/zh-TW/guide/zh-only', source: 'zh-TW/guide/zh-only.md', challenge: false,
-      others: { go: null, line: null, writes: true }, en: { go: null, line: null, writes: true } },
-  ] as const
-  const STORED = ['none', 'zh-TW', 'unknown', 'unreadable', 'en'] as const
-  const INITIAL: Record<(typeof STORED)[number], string | null> = { none: null, 'zh-TW': 'zh-TW', unknown: 'fr', unreadable: null, en: 'en' }
-  const CASES = ROWS.flatMap((r) => STORED.flatMap((stored) => ['/', '/repo/'].map((base) => [r.row, stored, base, r] as const)))
+      others: { go: null, line: null, writes: true }, own: { go: null, line: null, writes: true } },
+  ] as const,
+  'zh-TW': [
+    { row: 'A1 article', path: '/guide/python', source: 'guide/python.md', challenge: false,
+      others: { go: '/en/guide/python', line: null, writes: false }, own: { go: null, line: null, writes: false } },
+    { row: 'A2 challenge', path: '/challenge/v05-php-check/', source: 'challenge/v05-php-check/index.md', challenge: true,
+      others: { go: null, line: 'en', writes: false }, own: { go: null, line: null, writes: false } },
+    { row: 'A3 article', path: '/reference/attack-log-export-format', source: 'reference/attack-log-export-format.md', challenge: false,
+      others: { go: null, line: 'en', writes: false }, own: { go: null, line: null, writes: false } },
+    { row: 'A5 article, counterpart in the list', path: '/en/guide/python', source: 'en/guide/python.md', challenge: false,
+      others: { go: null, line: null, writes: true }, own: { go: null, line: null, writes: true } },
+    { row: 'A5 article, no counterpart', path: '/en/only-in-english', source: 'en/only-in-english.md', challenge: false,
+      others: { go: null, line: null, writes: true }, own: { go: null, line: null, writes: true } },
+  ] as const,
+}
 
-  it.each(CASES)('%s, stored %s, base %s', async (_row, stored, base, r) => {
-    mockBase.value = base
-    const prefix = base.slice(0, -1)
-    if (INITIAL[stored] !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, INITIAL[stored]!)
-    const spy = stored === 'unreadable'
-      ? vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
-        throw new DOMException('blocked', 'SecurityError')
-      })
-      : null
-    try {
-      if (r.challenge) mockFrontmatter.value = { layout: 'challenge' }
-      arrive(prefix + r.path, { isNotFound: false, relativePath: r.source })
-      const layout = mountLayout()
-      await flushPromises()
-      // Flipped by D31/wave 2 (A1/A2/A3, DT01/02/07/08): "no preference" (none, unknown,
-      // unreadable) no longer defaults to zh-TW — it falls back to `P` ('en' here), the same
-      // outcome as an explicit `en` preference. Only an explicit `zh-TW` preference still gets
-      // `r.others`.
-      const want = stored === 'zh-TW' ? r.others : r.en
-      if (want.go === null) expect(mockGo).not.toHaveBeenCalled()
-      else expect(mockGo).toHaveBeenCalledWith(prefix + want.go, { replace: true })
-      const line = r.challenge
-        ? layout.get('[data-challenge-layout]').attributes('data-line')
-        : layout.element.querySelector('[data-slot="doc-before"] [data-missing-translation]')?.getAttribute('lang') ?? 'none'
-      expect(line).toBe(want.line ?? 'none')
-    } finally {
-      spy?.mockRestore()
-    }
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(r.en.writes ? 'zh-TW' : INITIAL[stored])
+for (const P of ['en', 'zh-TW'] as const) {
+  const T = P === 'en' ? 'zh-TW' : 'en'
+  describe(`the real Layout: the decision table A1–A5, A7, every column (P = ${P})`, () => {
+    const ROWS = ROWS_BY_P[P]
+    const STORED = ['none', T, 'unknown', 'unreadable', P] as const
+    const INITIAL = { none: null, [T]: T, unknown: 'fr', unreadable: null, [P]: P } as Record<(typeof STORED)[number], string | null>
+    const CASES = ROWS.flatMap((r) => STORED.flatMap((stored) => ['/', '/repo/'].map((base) => [r.row, stored, base, r] as const)))
+
+    it.each(CASES)('%s, stored %s, base %s', async (_row, stored, base, r) => {
+      mockPrimaryLocale.value = P
+      mockBase.value = base
+      const prefix = base.slice(0, -1)
+      if (INITIAL[stored] !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, INITIAL[stored]!)
+      const spy = stored === 'unreadable'
+        ? vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+          throw new DOMException('blocked', 'SecurityError')
+        })
+        : null
+      try {
+        if (r.challenge) mockFrontmatter.value = { layout: 'challenge' }
+        arrive(prefix + r.path, { isNotFound: false, relativePath: r.source })
+        const layout = mountLayout()
+        await flushPromises()
+        // Flipped by D31/wave 2 (A1/A2/A3, DT01/02/07/08): "no preference" (none, unknown,
+        // unreadable) no longer defaults to T — it falls back to `P`, the same outcome as an
+        // explicit stored `P`. Only an explicit stored `T` still gets `r.others`.
+        const want = stored === T ? r.others : r.own
+        if (want.go === null) expect(mockGo).not.toHaveBeenCalled()
+        else expect(mockGo).toHaveBeenCalledWith(prefix + want.go, { replace: true })
+        const line = r.challenge
+          ? layout.get('[data-challenge-layout]').attributes('data-line')
+          : layout.element.querySelector('[data-slot="doc-before"] [data-missing-translation]')?.getAttribute('lang') ?? 'none'
+        expect(line).toBe(want.line ?? 'none')
+      } finally {
+        spy?.mockRestore()
+      }
+      expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(r.own.writes ? T : INITIAL[stored])
+    })
   })
-})
+}
 
 // Spec 0008, B1–B3, B5–B7, L1, L5, L8, W1, D17: a locale switcher choice, through the real
 // Layout. A choice is an arrival: it is written, and either navigates to a published counterpart
@@ -730,6 +931,68 @@ describe('the real Layout: a locale switcher choice', () => {
       arrive('/guide/english-only', { isNotFound: false, relativePath: 'guide/english-only.md' })
       await flushPromises()
       expect(layout.get('[data-missing-translation]').attributes('lang')).toBe('zh-TW')
+      expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+    } finally {
+      set.mockRestore()
+    }
+  })
+
+  // S1-3, under P = zh-TW (T = en): representative mirrors of A21 (SW), A23 (not-found
+  // switcher) and A24 (storage-refusing write kept for the tab).
+  it('under P = zh-TW, navigates to a published counterpart, as a push (B1, A21)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    arrive('/guide/python', GUIDE)
+    mountLayout()
+    await flushPromises()
+    expect(choose('en')).toBe('navigate')
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo).toHaveBeenCalledWith('/en/guide/python')
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+  })
+
+  it('under P = zh-TW, goes to the counterpart from a not-found page the gate is holding, as a push (B7, A23)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateClearStarted.value = true
+    gateDecision.value = 'undecided'
+    arrive('/en/reference/attack-log-export-format', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+    expect(choose('zh-TW')).toBe('navigate')
+    expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format')
+  })
+
+  it('under P = zh-TW, writes the choice on the not-found page and shows no line (B7, A23)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    arrive('/en/no-such-page', { isNotFound: true, relativePath: 'en/no-such-page.md' })
+    const layout = mountLayout()
+    await flushPromises()
+    expect(choose('zh-TW')).toBe('stay')
+    await flushPromises()
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+  })
+
+  it('under P = zh-TW, keeps the choice for the tab when storage refuses it, and a later arrival uses it (B6, W6, A24)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    arrive('/guide/python', GUIDE)
+    const layout = mountLayout()
+    await flushPromises()
+    window.localStorage.clear()
+    const set = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    try {
+      arrive('/reference/attack-log-export-format', REFERENCE)
+      await flushPromises()
+      expect(() => choose('en')).not.toThrow()
+      expect(readStoredLocale()).toBe('en')
+      // A later arrival on a Traditional-Chinese-only article asks with the kept `en`.
+      arrive('/guide/only-in-chinese', { isNotFound: false, relativePath: 'guide/only-in-chinese.md' })
+      await flushPromises()
+      expect(layout.get('[data-missing-translation]').attributes('lang')).toBe('en')
       expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
     } finally {
       set.mockRestore()

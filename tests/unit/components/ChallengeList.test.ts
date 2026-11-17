@@ -19,7 +19,7 @@ const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 // Mutable so a test can put the component on a zh-TW page while the vue-i18n runtime
 // instance says something else — which is the only way to see which of the two the
 // rendered strings actually follow.
-const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
+const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' | 'en' }
 // Identity by default. The N04 cases make it prefix a non-root base, so a base wrongly added to
 // the copied URL shows up there while every other case keeps today's hrefs.
 const mockWithBase = vi.hoisted(() => ({ prefix: '' }))
@@ -86,6 +86,19 @@ const BORROWED: ChallengeData[] = [
 const CHINESE_ONLY: ChallengeData[] = [
   { id: 1, number: 1, title: 'Need to Know', url: '/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
   { id: 7, number: 7, title: '只有中文', url: '/zh-TW/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
+]
+
+// S1-8/A32, under P = zh-TW (T = en): the same two fixtures, with URLs re-spelled for the
+// flipped primary — an `en`-locale entry's URL now carries the `/en/` prefix (it is the
+// translation tree), and a `zh-TW`-locale entry's URL has none (it is the primary tree).
+const BORROWED_ZH: ChallengeData[] = [
+  { id: 1, number: 1, title: '知的必要', url: '/challenge/door-is-open/', locale: 'zh-TW', difficulty: 'easy', category: 'web', description: '繁中摘要' },
+  { id: 5, number: 5, title: 'PHP Check', url: '/en/challenge/v05-php-check/', locale: 'en', difficulty: 'hard', category: '綜合', description: 'Checks a PHP form', tags: ['php'] },
+  { id: 6, title: 'Unnumbered', url: '/en/challenge/unnumbered/', locale: 'en', difficulty: 'easy', category: '綜合' },
+]
+const CHINESE_ONLY_ZH: ChallengeData[] = [
+  { id: 1, number: 1, title: 'Need to Know', url: '/en/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
+  { id: 7, number: 7, title: '只有中文', url: '/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
 ]
 
 let ChallengeList: typeof import('../../../.vitepress/theme/components/ChallengeList.vue').default
@@ -808,7 +821,7 @@ describe('ChallengeList with an untranslated entry', () => {
     const titles = [en.challenge_list.view_mode_grid, zhTW.challenge_list.view_mode_grid]
     await wrapper.findAll('button').find((b) => titles.includes(b.attributes('title') ?? ''))!.trigger('click')
   }
-  const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW', runtime: 'en' | 'zh-TW') => {
+  const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW' | 'en', runtime: 'en' | 'zh-TW') => {
     mockLocaleIndex.value = page
     return mount(ChallengeList, { props: { challenges }, global: { plugins: [runtimeI18n(runtime)] } })
   }
@@ -874,6 +887,52 @@ describe('ChallengeList with an untranslated entry', () => {
 
   it('marks a Traditional Chinese-only entry in the English list\'s grid view too (E3, E6)', async () => {
     const wrapper = mountList(CHINESE_ONLY, 'root', 'zh-TW')
+    await toGrid(wrapper)
+    expect(cardOf(wrapper, '只有中文').get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+  })
+
+  // S1-8/A32, under P = zh-TW (T = en): representative mirrors of the two marking properties
+  // above, both P × localeIndex {'root', T's code}.
+  it('under P = zh-TW, marks a borrowed entry 只有英文 in list and grid view, with lang="en", and opens the English page (A32, E2, E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "Chinese list" under this P is localeIndex 'root' (the primary tree, zh-TW's own),
+    // not 'en' — mounting at 'en' would put the entry's own locale on its own list page,
+    // where it is native, not borrowed.
+    const wrapper = mountList(BORROWED_ZH, 'root', 'en')
+    const row = rowOf(wrapper, 'PHP Check')
+    expect(row.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('en')
+    expect(row.findAll('[lang="en"]').map((e) => e.text())).toContain('Checks a PHP form')
+    expect(row.attributes('href')).toBe('/en/challenge/v05-php-check/')
+    await toGrid(wrapper)
+    const card = cardOf(wrapper, 'PHP Check')
+    expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
+  })
+
+  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list, with no short link (A32, E3)', () => {
+    mockMode.value = 'short'
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "English list" under this P is localeIndex 'en', not 'root' (which is zh-TW, the
+    // primary, here).
+    const row = rowOf(mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW'), '只有中文')
+    expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
+    expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
+    expect(row.find('[data-short-link]').exists()).toBe(false)
+    // The page-mode URL ("its page in page mode") is deliberately NOT asserted here: it goes
+    // through `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which
+    // still hard-codes "`zh-TW` locale → `/zh-TW` prefix" regardless of `primaryLocale()` — the
+    // same generalisation this ticket's own Comments assign to area S (wave 4), confirmed by
+    // running this case against the current code: it returns
+    // `${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`, the pre-switch literal, not the P-aware
+    // `${DISPLAY_ORIGIN}/challenge/zh-only/` this row would otherwise want. Not fixed here —
+    // shortLink.ts is outside this wave's file list.
+  })
+
+  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list\'s grid view too (A32, E3, E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    const wrapper = mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW')
     await toGrid(wrapper)
     expect(cardOf(wrapper, '只有中文').get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
   })

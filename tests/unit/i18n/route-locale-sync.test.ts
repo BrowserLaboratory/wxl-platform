@@ -49,6 +49,15 @@ describe('detectLocaleFromPath', () => {
   it.each(mirroredCases)('under P = zh-TW, path %s → locale %s (A26)', (mirrored, expected) => {
     expect(detectLocaleFromPath(mirrored, 'zh-TW')).toBe(expected)
   })
+
+  // A26: the mirrored table above cannot produce a case discriminating a case mismatch on T's
+  // own code (`en`, under P = zh-TW): the one existing case mismatch row (`/zh-tw/x` → `en`,
+  // under P = en) mirrors to `/zh-tw/x` unchanged (the mirror helper's `replaceAll` is itself
+  // case-sensitive, so it never touches a lower-cased `zh-TW`), which is unrelated to `en`'s own
+  // code and so does not exercise this. This is a dedicated case for the gap.
+  it('under P = zh-TW, a case mismatch on T\'s own code is not the prefix either (A26)', () => {
+    expect(detectLocaleFromPath('/EN/x', 'zh-TW')).toBe('zh-TW')
+  })
 })
 
 // ─── Route watcher integration ──────────────────────────────────────────────

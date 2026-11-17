@@ -1,5 +1,5 @@
 import { detectLocaleFromPath, localizePath, otherLocale, type Locale } from './index'
-import { firstListedEntry, pathCandidates, withoutBase } from './pages'
+import { candidatesFromDecodedPath, firstListedEntry, pathCandidates, withoutBase } from './pages'
 
 /**
  * `local` with one leading `/<P>` segment removed, or null when `local` does not start with one
@@ -44,7 +44,9 @@ export function lookupNotFound(pathname: string, base: string, pages: readonly s
   if (local !== null) {
     const stripped = stripPrimaryCodeSegment(local, P)
     if (stripped !== null && detectLocaleFromPath(stripped, P) === P && stripPrimaryCodeSegment(stripped, P) === null) {
-      const strippedCandidates = pathCandidates(stripped, '/')
+      // `stripped` is already decoded (it is derived from `local` above) — candidates are built
+      // directly from it, not through `pathCandidates`, which would decode it a second time (TA1).
+      const strippedCandidates = candidatesFromDecodedPath(stripped)
       const direct = firstListedEntry(strippedCandidates, pages)
       if (direct !== null) return direct
       const viaT = strippedCandidates.map((p) => localizePath(p, T, P))

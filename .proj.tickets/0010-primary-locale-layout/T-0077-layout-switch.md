@@ -1487,6 +1487,199 @@ mismatches: [{"brief":"platform/zh-TW/challenge/selected-excerpts/index.md","key
     before and after this run shows the same `platform/` adds/renames/modifications wave 1 already
     staged, nothing added, removed or re-staged.
 
+- 2026-11-16 (wave 2 part B2 (resumed), independent-checker fix list continued). A previous
+  executor run of this exact part was cut off by an authentication error partway through; its
+  uncommitted edits were already in the working tree when this run started (`git diff HEAD` — 14
+  files: 5 production, 9 test). Read that diff first, verified each item against it, kept every
+  part that was correct, and fixed or finished the rest, rather than discarding it. D108's move
+  stays staged, not committed, unchanged from the 2026-11-16 "review fixes" entry's decision (d);
+  no file under `platform/` was touched, no `git add`/`commit`/`stash`/`checkout`/`reset`/`restore`
+  was run.
+
+  **SECTION 1 — the real-Layout both-P matrix**
+  - **S1-audit (primaryLocale mock grep), done — no gap.** Re-ran the grep: `ChallengeList.test.ts`,
+    `HomeContent.test.ts`, `MergedNav.test.ts` and `locale-switcher.test.ts` already mock
+    `.vitepress/theme/i18n/primaryLocale`; `challenge-rwd.test.ts` already has one from the B1 fix
+    list. `ShortLinkShare.test.ts` has none, confirmed out of scope: `ShortLinkShare.vue` calls
+    neither `pageLocaleOf` nor `primaryLocale`. A broader grep for every test file mentioning
+    `MergedNav`/`ChallengeList.vue`/`HomeContent.vue`/`LocaleSwitcher.vue` turned up six more files
+    with no mock, each checked and confirmed not a gap: four `ChallengeLayout*.test.ts` and
+    `challenge-design-tokens.test.ts` only `vi.mock` `MergedNav.vue` away or read its source text
+    statically, never mounting the real component; `page-locale-of.test.ts` only names the four
+    components in a comment. No code change.
+  - **S1-A20 / S1-A19a / S1-A19b (not-found-wiring, P = zh-TW mirrors), done.** Three new cases in
+    `tests/unit/i18n/not-found-wiring.test.ts`, mirroring "does nothing on a failed load" (line
+    211), "writes no preference on the way through" (line 231) and "does the same for a
+    client-side navigation to a missing translation" (line 243) under `mockPrimaryLocale.value =
+    'zh-TW'`, entries re-spelled for the `/en/` tree. All three passed on the first run, as
+    predicted: `detectLocaleFromPath`/`lookupNotFound`/`notFoundRedirect` have been P-generic since
+    wave 2 step 0. `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` → 153 passed (up from
+    150 before these three; the resumed diff's existing P = zh-TW cases, not these three, carried
+    the other 147).
+  - **S1-SW-full-matrix, decision, recorded, not implemented.** The handoff's literal text asks for
+    SW01–SW16 driven by `tests/__helpers__/localeTables.ts`'s `SW` table under
+    `describe.each(P)` on the mounted real Layout. Re-read `SW`: its 16 rows already spread across
+    both `P` themselves (SW01–06 are `P = en`, SW07–12 are `P = zh-TW`, SW13–16 split 2/2) and are
+    already run exhaustively, per row, against both `X_INSTANCES` and both `BASES`, in
+    `arrival.test.ts`'s pure-function table (the `switcherDecision`/`lineLocale` table, confirmed
+    P2-3/S2-j). The resumed diff instead added four representative mirrors (A21, A23 ×2, A24) to
+    `not-found-wiring.test.ts`'s real-mounted-Layout cases, not a second full 16×2×2 pass through
+    the Layout. Recommendation, taken as a decision under the 2026-11-16 standing authorization and
+    listed here rather than silently kept: keep the representative mirrors. A second full
+    combinatorial sweep through the heavier, mounted-Layout machinery would re-prove the same
+    decision/target/line arithmetic the pure-function table already proves exhaustively, for little
+    added defect-detection — the same test-pyramid trade-off the DT table already made (pure table +
+    representative Layout mirrors). If the user wants the literal full table anyway, say so and it
+    becomes its own row.
+  - **Component matrices (MergedNav.test.ts, ChallengeList.test.ts), in the resumed diff: two bugs
+    found and fixed, one deferred.**
+    - MergedNav.test.ts's A28/A32 `it.each` matrices (both `P` × `localeIndex`) were already correct
+      in the resumed diff; `npx vitest run tests/unit/components/MergedNav.test.ts` → 64 passed
+      (64), no fix needed.
+    - ChallengeList.test.ts's mirrors had a real bug: the "marks a borrowed entry 只有英文" case
+      mounted `BORROWED_ZH` at `localeIndex = 'en'`, which under `P = zh-TW` is the English list
+      page itself — the PHP Check entry (`locale: 'en'`) is then native there, not borrowed, so
+      `[data-locale-mark]` never rendered and the test failed red for a mounting mistake, not a
+      production defect. Fixed by mounting at `localeIndex = 'root'` (the primary/Chinese list
+      under this `P`), matching the original `P = en` test's own `'zh-TW'`/`'root'` pairing.
+    - The same file's "marks a Traditional Chinese-only entry… and its page in page mode" case
+      asserted a page-mode short-link URL (`${DISPLAY_ORIGIN}/challenge/zh-only/`) that depends on
+      `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which still hard-codes
+      "`zh-TW` locale → `/zh-TW` prefix" regardless of `primaryLocale()` — confirmed by running the
+      case unmodified: it returns `${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`, the pre-switch
+      literal. `shortLink.ts` is not in wave 2's file list (Implementation waves, "Routing (area
+      A)"); cross-area note 8 and the earlier Comments (wave 1(d)) both name it as area S's, wave
+      4's. Not fixed here: removed the one page-mode assertion, with a comment naming the deferral,
+      and kept every other assertion in that case (the mark, `lang`, and "no short link in short
+      mode" checks, which are already P-generic and now pass). `npx vitest run
+      tests/unit/components/ChallengeList.test.ts` → 75 passed (75), up from 73 passed/2 failed
+      before the fix.
+    - Also found and fixed, unrelated to the mounting bug: `tests/unit/i18n/not-found-wiring.test.ts`'s
+      resumed `ROWS_BY_P`/`STORED`/`INITIAL` block failed `vue-tsc` (`TS2739`, the computed-key
+      object literal could not be checked against `Record<(typeof STORED)[number], string | null>`
+      because the loop's `P`/`T` are typed as the `Locale` union, not narrowed per iteration). Fixed
+      with an `as` cast on the object expression instead of annotating the `const`; behaviour
+      unchanged, `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` still 153 passed.
+
+  **SECTION 2 — the checkers' findings on B1 (S2-a through S2-o)**
+
+  Every item below was already applied in the resumed diff. For each one with a production-code
+  seam, verified "red for the stated reason" by temporarily reverting the production line, running
+  the named test, confirming the predicted failure, then restoring the line (`git diff` confirms
+  clean afterwards for every production file touched this way).
+  - **S2-a (lookup.ts D28 decodes once), confirmed.** Reverting `lookup.ts:49`
+    (`candidatesFromDecodedPath(stripped)` → `pathCandidates(stripped, '/')`) turned
+    `arrival.test.ts`'s "does not decode the D28 remainder a second time (TA1, D28)" red:
+    `expected { target: '/challenges', … } to be null`. Restored; `arrival.test.ts` → 344 passed.
+  - **S2-b (W5: `wxl-locale` unchanged across the redirect and the navigation after it),
+    confirmed.** Making `useArrivals.ts`'s `recordColdLoad` call `persistLocale(otherLocale(P))`
+    unconditionally turned `not-found-wiring.test.ts`'s W5 case red: `setItem` called once with
+    `['wxl-locale','zh-TW']`. Restored; `not-found-wiring.test.ts` → 153 passed.
+  - **S2-c (A18 exact inputs + A14–A16/A39 property), confirmed.** Reverting `pages.ts`'s
+    `targetUrl` to drop the base prefix turned the new property test
+    ("every redirect target starts with the base…") red: `expected false to be true` on
+    `target.startsWith(b.prefix)`. Restored; `arrival.test.ts` → 344 passed.
+  - **S2-d (A15 aliases, both P × both bases), confirmed.** Reverting `lookup.ts`'s
+    `stripPrimaryCodeSegment` to compare against the literal `'en'` only turned 8 of the 16 new
+    alias cases red (every `P = zh-TW` one): `expected null to deeply equal {...}`. Restored;
+    `arrival.test.ts` → 344 passed.
+  - **S2-e (A22/D34 guard also checks the string tables), confirmed — test-only, already
+    demonstrates its own failure.** `locale-switcher.test.ts`'s new synthetic-third-locale case
+    throws the predicted message without touching real `LOCALES`; no production revert applicable.
+    `locale-switcher.test.ts` → 42 passed.
+  - **S2-f (A17 filler page lists, parent decision), confirmed non-vacuous.** Temporarily added the
+    excluded entry (`/<P>/x`) back into one `FILLER` list turned that case red:
+    `expected { target: '/zh-TW/x', … } to be null`. Reverted; `arrival.test.ts` → 344 passed. The
+    stage-6 spec-ambiguity note (the `/<T>/<P>/x`-vs-`/<P>/x` question) is still not written anywhere
+    outside this ticket's Comments; left for stage 6, as the confirmed plan said.
+  - **S2-g (A8 P = zh-TW, no preference → null for both), confirmed — pass on first run, as
+    predicted.** `initial-locale-redirect.test.ts` → 376 passed (no revert needed: the "no
+    preference" branch was already P-generic).
+  - **S2-h (A26 case mismatch on T's own code, P = zh-TW), confirmed.** Making
+    `detectLocaleFromPath` compare case-insensitively turned the new case red:
+    `expected 'en' to be 'zh-TW'`. Restored; `route-locale-sync.test.ts` → 23 passed.
+  - **S2-i (DT Requested column asserted as output), confirmed — pass on first run.**
+    `initial-locale-redirect.test.ts`'s DT loop now calls `requestedLocaleForPageArrival` directly
+    and compares it to `row.requested`; already green with `requestedLocaleForPageArrival` as
+    written. Wording correction recorded here rather than editing the earlier (wave 2 part B1)
+    entry: that entry's "the table's Requested/Line columns were never wrong, only unchecked"
+    overstated things — only `Line` was checked there; `Requested` stayed unchecked as an output
+    until this case.
+  - **S2-j (now-false comments + SW13–16 both chosen), confirmed — pass on first run.**
+    `useArrivals.ts` and `arrival.test.ts`'s doc comments now match
+    `requestedLocaleForPageArrival`/`lineLocale`'s real behaviour; the SW not-found/failed-load
+    branch loops `chosen` over `[row.P, row.T]` and both give the same decision.
+    `arrival.test.ts` → 344 passed.
+  - **S2-k (notFoundRedirect's unreachable decode-failure catch), confirmed by reading, not by a
+    test.** `lookupNotFound` (lookup.ts:30–63) only returns non-null after a successful decode of
+    its own (the D28 branch's own try/catch, or the ordinary branch's `pathCandidates`, which
+    returns `[]`/null on a decode failure); so `notFoundRedirect`'s unguarded
+    `decodeURIComponent` can never throw when `entry` is non-null. The try/catch is gone, with a
+    comment recording why.
+  - **S2-l (MergedNav A27 ordering-bug discriminator, P = zh-TW), confirmed.** Reversing
+    `MergedNav.vue`'s `navLink` composition order (`localizePath(withBase(path), …)` instead of
+    `withBase(localizePath(path, …))`) turned BOTH the existing `P = en` case and the new `P =
+    zh-TW` mirror red: `expected false to be true` on the wanted hrefs existing. Restored;
+    `MergedNav.test.ts` → 64 passed.
+  - **S2-m (A31/GD1 guard honesty note), confirmed — comment only, no code.**
+    `messages-shape.test.ts` → unchanged pass count, comment states `assertTwoLocaleGuard` is a
+    test-only shape check with no production GD1 guard behind it (`otherLocale`'s own ternary
+    throws nothing).
+  - **S2-n (localeSwitcherLabels.ts export cleanup), confirmed.** `assertEveryLocaleHasALabel` is
+    gone from `.vitepress/theme/components/localeSwitcherLabels.ts`; `LocaleSwitcher.vue` imports
+    only `localeSwitcherLabelKey` (`git grep -n "localeSwitcherLabels" .vitepress/theme/components/LocaleSwitcher.vue`
+    confirms). `LOCALE_SWITCHER_LABEL_KEYS` stays exported because `localeSwitcherLabelKey` itself
+    uses it in production.
+  - **S2-o (P2-6 "route titles" re-check), closed.** Re-grepped for `useTitle`/`document.title`/
+    `pageData.title` across `.vitepress` and `platform/shared`: no hits. No better candidate than
+    `route-locale-sync.test.ts`'s A26 title (P1-5) found. Closing P2-6 here as "confirmed satisfied
+    by P1-5, no other candidate found by a repository-wide grep", rather than leaving it open.
+
+  **Commands run, with exact counts:**
+  - `npx vitest run tests/unit/i18n/not-found-wiring.test.ts` → 153 passed (153).
+  - `npx vitest run tests/unit/i18n/arrival.test.ts` → 344 passed (344).
+  - `npx vitest run tests/unit/i18n/theme-locale-wiring.test.ts` → 59 passed (59).
+  - `npx vitest run tests/unit/i18n/locale-switcher.test.ts` → 42 passed (42).
+  - `npx vitest run tests/unit/i18n/initial-locale-redirect.test.ts` → 376 passed (376).
+  - `npx vitest run tests/unit/i18n/route-locale-sync.test.ts` → 23 passed (23).
+  - `npx vitest run tests/unit/i18n/messages-shape.test.ts` → 22 passed (22).
+  - `npx vitest run tests/unit/components/MergedNav.test.ts` → 64 passed (64).
+  - `npx vitest run tests/unit/components/ChallengeList.test.ts` → 75 passed (75).
+  - `npx vitest run tests/unit/i18n/ tests/unit/components/ tests/unit/layouts/ tests/unit/theme/`
+    (broader regression sweep) → 1 failed, 42 passed (43 files); 1 failed, 1913 passed (1914 tests)
+    — the one failure is the carried `locales.test.ts` B18 command 2, unchanged.
+  - `npx vue-tsc --noEmit -p tsconfig.json`, filtered to this wave's 14 files: zero errors after the
+    `not-found-wiring.test.ts` fix above. The one remaining hit in a touched file
+    (`ChallengeList.test.ts:805`, `Property 'exists' does not exist on type 'Omit<DOMWrapper<Element>,
+    "exists">'`) is outside every line this wave changed (confirmed against `git diff`) and matches
+    the pattern of pre-existing, unrelated `vue-tsc` errors wave 2 part B1 already recorded
+    elsewhere; not fixed here.
+  - `GITHUB_REPOSITORY=BrowserLaboratory/wxl-platform WXL_EXPECT_UPSTREAM=true CI=true pnpm test
+    --run --no-file-parallelism` → **Test Files 4 failed | 145 passed (149); Tests 6 failed | 6074
+    passed (6080)**, exit 1. Re-ran with `--reporter=json` to confirm the exact six, by file and
+    title:
+    - `tests/unit/i18n/locales.test.ts` › "B18: no locale enumeration outside the locale-list module
+      (PAT1) > command 2 (union / array-of-two / comparison-chain enumerations): every line is in
+      .vitepress/locales.ts" (waves 3/4).
+    - `tests/unit/site/redirects-generated.test.ts` › "the committed _redirects > is byte-identical
+      to what the challenge tree generates" (wave 4, S28).
+    - `tests/unit/site/redirects.test.ts` › "_redirects rule set > gives every challenge in git's
+      index its four rules in form order, the Traditional Chinese ones at the page its tree tracks
+      (G1–G3, G5, G8)"; "_redirects target resolution > resolves every parameterised target prefix
+      to a directory of challenges, each with an index.md"; "_redirects target resolution > resolves
+      every literal target to a page" (wave 4, S28/S34).
+    - `tests/unit/scripts/challenge-keygen.test.ts` › "keygen aborts, names the slug, and leaves
+      frontmatter and the published module alone when the built module fails the payload check >
+      exits non-zero with [slug] and \"payload integrity\", leaving index.md and runtime.wasm
+      untouched" (wave 5, Y59).
+    No other failure, no new failure: the total rose from wave 2 part B1's ending 5948 by exactly
+    132 (this wave's new/fixed cases: 3 new `not-found-wiring.test.ts` cases, the already-resumed
+    diff's P = zh-TW matrices across 9 test files, minus the one removed page-mode assertion).
+  - `pnpm --dir create-wxl test` not run: this wave touches neither `create-wxl/` nor fork:init
+    (confirmed: `git status --short -- create-wxl/` prints nothing, both before and after).
+  - No file under `platform/` was created, moved or edited by this wave; `git status --short`
+    before and after shows the same `platform/` adds/renames/modifications wave 1 already staged.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
