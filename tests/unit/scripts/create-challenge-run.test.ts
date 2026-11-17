@@ -26,7 +26,6 @@ import { validateChallenge } from '../../../scripts/challenge-validate'
 import { nextChallengeNumber } from '../../../scripts/challenge-numbers'
 import { parse as parseYaml } from 'yaml'
 import { checkSourceLayout } from '../../../.vitepress/source-layout'
-import { challengePagePath } from '../../../.vitepress/challenge/shortLink'
 import type { Locale } from '../../../.vitepress/locales'
 
 const REPO_ROOT = resolve(__dirname, '..', '..', '..')
@@ -171,6 +170,14 @@ const SCAFFOLD = (P: Locale): string[] => [
 /** Bytes that differ from any generated content, so a rewrite would show. */
 const SENTINEL = '# sentinel bytes, not the generated content\n'
 
+/** The scaffold's four lines are all on stdout, the brief's first and the rest in scaffold order. */
+function expectScaffoldBlockInOrder(out: string, P: Locale): void {
+  const lines = SCAFFOLD_FILES(P).map((f) => `  ${f}\n`)
+  const positions = lines.map((l) => out.indexOf(l))
+  for (const [i, pos] of positions.entries()) expect(pos, lines[i]).toBeGreaterThanOrEqual(0)
+  expect([...positions].sort((x, y) => x - y)).toEqual(positions)
+}
+
 function expectScaffold(root: string, P: Locale): void {
   for (const f of SCAFFOLD_FILES(P)) expect(existsSync(join(root, f))).toBe(true)
 }
@@ -205,8 +212,6 @@ afterAll(() => {
 
 // ─── C01, C02 ───────────────────────────────────────────────────────────────
 
-const escapeRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
-
 describe('run: a successful run', () => {
   it('Y70 (no range.json): writes the zh-TW brief, challenge.yaml and src/, names the four on stdout, brief first', () => {
     const root = makeRoot()
@@ -225,21 +230,17 @@ describe('run: a successful run', () => {
     expect(changedPaths(before, snapshot(root))).toEqual(
       [...SCAFFOLD('zh-TW'), 'platform/public/_redirects'].sort(),
     )
-    const lines = SCAFFOLD_FILES('zh-TW').map((f) => `  ${f}\n`)
     expect(SCAFFOLD_FILES('zh-TW')).toEqual([
       'platform/zh-TW/challenge/new-chall/index.md',
       'platform/challenge/new-chall/challenge.yaml',
       'platform/challenge/new-chall/src/index.php',
       'platform/challenge/new-chall/src/flag.txt',
     ])
-    const positions = lines.map((l) => h.out().indexOf(l))
-    for (const [i, pos] of positions.entries()) expect(pos, lines[i]).toBeGreaterThanOrEqual(0)
-    expect([...positions].sort((x, y) => x - y)).toEqual(positions)
+    expectScaffoldBlockInOrder(h.out(), 'zh-TW')
     const content = readRedirects(root)
     expect(content).toBe(generateRedirects(root))
-    const page = (slug: string): string => challengePagePath(slug, 'zh-TW', 'zh-TW')
-    expect(content).toMatch(new RegExp(`^/c/003\\s+${escapeRe(page('new-chall'))}\\s+302$`, 'm'))
-    expect(content).toMatch(new RegExp(`^/zh/c/001\\s+${escapeRe(page('door-is-open'))}\\s+302$`, 'm'))
+    expect(content).toMatch(/^\/c\/003\s+\/challenge\/new-chall\/\s+302$/m)
+    expect(content).toMatch(/^\/zh\/c\/001\s+\/challenge\/door-is-open\/\s+302$/m)
     expect(h.out()).toContain('platform/public/_redirects')
     expect(h.calls).toEqual([['new-chall', root]])
     expect(h.err()).not.toContain('pnpm challenge:keygen')
@@ -274,6 +275,7 @@ describe('run: the primary locale (Y71, Y72)', () => {
     )
     const lines = SCAFFOLD_FILES('zh-TW').map((f) => `  ${f}\n`)
     for (const l of lines) expect(h.out()).toContain(l)
+    expectScaffoldBlockInOrder(h.out(), 'zh-TW')
   })
 })
 
@@ -319,6 +321,7 @@ describe('run: an unusable range.json (Y73, R19)', () => {
     () => {
       const root = makeRoot({ seed: SENTINEL })
       writeFileSync(join(root, 'range.json'), '{}')
+      const before = snapshot(root)
       chmodSync(join(root, 'range.json'), 0o000)
       const h = harness(root)
       let status: number
@@ -329,6 +332,7 @@ describe('run: an unusable range.json (Y73, R19)', () => {
       }
       const after = snapshot(root)
       expect(status).toBe(1)
+      expect(after).toEqual(before)
       expect(h.err().split('\n')[0]).toBe('PL-E02: range.json could not be read (EACCES).')
       expect(after.get('range.json')).toBe(Buffer.from('{}').toString('base64'))
       expect([...after.keys()].filter((k) => k.includes('new-chall'))).toEqual([])
@@ -451,6 +455,14 @@ describe('run: the generator refuses the tree after keygen, P = en (Y84)', () =>
     const h = harness(root)
 
     expect(run(ARGV, h.deps)).toBe(2)
+    let refusal = ''
+    try {
+      generateRedirects(root)
+    } catch (e) {
+      refusal = (e as Error).message
+    }
+    expect(refusal).not.toBe('')
+    expect(h.err()).toContain(refusal)
     expectW1(h.err(), 'en')
     expect(h.err()).not.toContain(briefRel('zh-TW'))
     expect(readRedirects(root)).toBe(SENTINEL)

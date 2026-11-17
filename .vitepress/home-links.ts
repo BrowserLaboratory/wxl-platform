@@ -1,7 +1,7 @@
 // Home-page links (seam 0010-S7; D13, D141, B62–B70, B92, B94). `localizeHomeLinks` reads exactly
-// `hero.actions[*].link` and `features[*].link` of a `layout: home` page's frontmatter. This
-// function runs only on a locale's home page, whose source path is always `<pageLocale>/index.md`
-// — that is PL-E12's `<page>`.
+// `hero.actions[*].link` and `features[*].link` of a `layout: home` page's frontmatter. PL-E12's
+// `<page>` is written as `<pageLocale>/index.md`, whichever file the page is actually read from;
+// the function does not receive the page's own source path.
 
 import { LOCALES, type Locale } from './locales.ts'
 import { SiteLayoutError, jsonStringifyEscaped } from './layout-error.ts'
@@ -18,7 +18,7 @@ function firstSegment(path: string): string | undefined {
 }
 
 function hasListedPrefix(path: string): boolean {
-  const segment = firstSegment(path)
+  const segment = firstSegment(path.replace(/[?#].*$/, ''))
   return segment !== undefined && (LOCALES as readonly string[]).includes(segment)
 }
 
@@ -41,16 +41,16 @@ function localizeLink(
     throw pl12(page, field, link, 'is not a string')
   }
   if (link.startsWith('//')) {
-    throw pl12(page, field, link, 'is a protocol-relative link; write a site link from the locale’s home page, or an external link with its scheme')
+    throw pl12(page, field, link, "is a protocol-relative link; write a site link from the locale's home page, or an external link with its scheme")
   }
   if (SCHEME_RE.test(link) || link.startsWith('#')) {
     return link
   }
   if (!link.startsWith('/')) {
-    throw pl12(page, field, link, 'is a relative link; write it from the locale’s home page, such as "/guide/"')
+    throw pl12(page, field, link, 'is a relative link; write it from the locale\'s home page, such as "/guide/"')
   }
   if (hasListedPrefix(link)) {
-    throw pl12(page, field, link, 'already carries a locale prefix; write it from the locale’s home page, the build adds the prefix')
+    throw pl12(page, field, link, "already carries a locale prefix; write it from the locale's home page, the build adds the prefix")
   }
   const localized = pageLocale === primary ? link : withPrefix(link, pageLocale)
   const forLookup = localized.replace(/[?#].*$/, '')

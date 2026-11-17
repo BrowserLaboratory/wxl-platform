@@ -1,14 +1,15 @@
 /**
  * challenge-lint-staged.ts
  *
- * Called by lint-staged with a list of staged file paths. Those under platform/challenge/
+ * Called by scripts/pre-commit.sh with the staged paths under the challenge trees that its ACMRD
+ * filter selects. Those under platform/challenge/
  * (the declaration tree) and platform/<L>/challenge/<slug>/index.md for each listed locale L
  * (the briefs) name a challenge. Derives the affected slugs, runs the full validator
  * (challenge-validate.ts) and analyzer (challenge-analyze.ts) on each, and exits with code 1
  * if any issues are found (blocking the commit). The primary locale is read from the index's
  * range.json, not the working tree (D122); an unusable one ends the run with its PL line.
  *
- * Usage (via lint-staged), from the repository root:
+ * Usage (from scripts/pre-commit.sh), from the repository root:
  *   node --experimental-strip-types scripts/challenge-lint-staged.ts <file1> <file2> ...
  */
 

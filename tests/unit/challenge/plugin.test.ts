@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { processChallengeFrontmatter, assembleChallengeFrontmatter } from '../../../.vitepress/challenge/plugin'
 import { readChallengeDeclaration } from '../../../.vitepress/challenge/declaration'
+import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 import { LOCALES as REAL_LOCALES } from '../../../.vitepress/locales'
 
 const BASE_FRONTMATTER = {
@@ -81,11 +82,11 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
     ).toBeNull()
   })
 
-  it.each(['en', 'zh-TW'])('Y44 (P %s): a brief path without layout: challenge throws PL-E17', (locale) => {
+  it.each(['en', 'zh-TW'])('Y44 (locale folder %s; this seam takes no P): a brief path without layout: challenge throws PL-E17', (locale) => {
     const sourcePath = `${locale}/challenge/door-is-open/index.md`
     expect(() =>
       assembleChallengeFrontmatter(sourcePath, { title: 'Door Is Open' }, '---\n---\nbody', noReadDeclaration, LOCALES),
-    ).toThrowError(`PL-E17: ${sourcePath}: a brief must set layout: challenge`)
+    ).toThrowError(`PL-E17: platform/${sourcePath}: a brief must set layout: challenge`)
   })
 
   it.each([
@@ -97,7 +98,7 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
     expect(() =>
       assembleChallengeFrontmatter(sourcePath, frontmatter, '---\n---\nbody', noReadDeclaration, LOCALES),
     ).toThrowError(
-      'PL-E18: ' + sourcePath + ': layout: challenge is only for platform/<locale>/challenge/<slug>/index.md',
+      'PL-E18: platform/' + sourcePath + ': layout: challenge is only for platform/<locale>/challenge/<slug>/index.md',
     )
   })
 
@@ -106,7 +107,7 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
     const readDeclaration = () => ({ ok: false as const, reason: 'absent' as const, path: 'platform/challenge/door-is-open/challenge.yaml' })
     expect(() =>
       assembleChallengeFrontmatter(sourcePath, { layout: 'challenge', title: 'Door Is Open' }, '---\n---\nbody', readDeclaration, LOCALES),
-    ).toThrowError(`PL-E13: ${sourcePath}: no platform/challenge/door-is-open/challenge.yaml for this brief`)
+    ).toThrowError(`PL-E13: platform/${sourcePath}: no platform/challenge/door-is-open/challenge.yaml for this brief`)
   })
 
   it.each(['multi-document', 'not-a-mapping', 'invalid-yaml'] as const)(
@@ -131,7 +132,7 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
         readDeclaration,
         LOCALES,
       ),
-    ).toThrowError(`PL-E15: ${sourcePath}: a brief may carry only title, description and layout, found number`)
+    ).toThrowError(`PL-E15: platform/${sourcePath}: a brief may carry only title, description and layout, found number`)
   })
 
   it('Y43: challenge.yaml with a brief key throws PL-E16 listing the keys', () => {
@@ -208,21 +209,22 @@ describe('assembleChallengeFrontmatter (0010-S33)', () => {
   })
 })
 
-// Y38 (0010-S33): every slug × every listed locale's brief on the real tree. Not upstream-only
-// (AC-61): slugs and the expectation are both derived from the tree, so this holds in a range too.
-describe('Y38: every slug × every listed locale\'s brief on the real tree', () => {
+// Y38 (0010-S33): every slug × every locale's brief on the real tree. Not upstream-only
+// (AC-61): the slugs come from the tree, the primary locale's brief must exist for each, and the
+// other locales' briefs are checked where the tree has them (a translation may be missing), so
+// this holds in a range too.
+describe('Y38: every slug × every brief the real tree holds (the primary locale\'s is required)', () => {
   const REPO_ROOT = resolve(__dirname, '../../..')
   const CHALLENGE_ROOT = resolve(REPO_ROOT, 'platform', 'challenge')
+  const PRIMARY = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
 
   function extractFrontmatter(raw: string): Record<string, unknown> {
     const m = raw.match(/^---\n([\s\S]*?)\n---/)
     return m ? (parseYaml(m[1]) as Record<string, unknown>) : {}
   }
 
-  // Only a directory that actually carries a challenge.yaml is a declared slug (D78); a legacy
-  // test fixture elsewhere under platform/challenge/ (old-layout index.md, no challenge.yaml,
-  // such as challenge-keygen.test.ts's transient real-tree probes) is not one, by this same
-  // definition — independent of whichever test happens to be running concurrently.
+  // Only a directory that actually carries a challenge.yaml is a declared slug (D78); any other
+  // folder under platform/challenge/ (no challenge.yaml) is not one, by this same definition.
   const slugs = readdirSync(CHALLENGE_ROOT, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && existsSync(resolve(CHALLENGE_ROOT, entry.name, 'challenge.yaml')))
     .map((entry) => entry.name)
@@ -239,9 +241,10 @@ describe('Y38: every slug × every listed locale\'s brief on the real tree', () 
     const declKeys = Object.keys(declResult.value)
     const projections: Record<string, unknown>[] = []
 
-    for (const locale of REAL_LOCALES) {
-      const briefPath = resolve(REPO_ROOT, 'platform', locale, 'challenge', slug, 'index.md')
-      expect(existsSync(briefPath)).toBe(true)
+    const briefPathOf = (locale: string) => resolve(REPO_ROOT, 'platform', locale, 'challenge', slug, 'index.md')
+    expect(existsSync(briefPathOf(PRIMARY))).toBe(true)
+    for (const locale of REAL_LOCALES.filter((l) => existsSync(briefPathOf(l)))) {
+      const briefPath = briefPathOf(locale)
       const raw = readFileSync(briefPath, 'utf8')
       const frontmatter = extractFrontmatter(raw)
       const sourcePath = `${locale}/challenge/${slug}/index.md`

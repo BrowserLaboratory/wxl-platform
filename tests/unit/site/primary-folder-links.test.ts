@@ -16,9 +16,13 @@ async function rendererFor(primary: 'en' | 'zh-TW') {
   return md
 }
 
-async function renderLink(primary: 'en' | 'zh-TW', relativePath: string, realPath: string, href: string) {
+// VitePress sets `path` to the page's file (named by its URL-space `relativePath`) and `realPath` to
+// the actual source file, both absolute; `source` is the path relative to `platform/`.
+const SRC_DIR = '/tmp/site/platform'
+
+async function renderLink(primary: 'en' | 'zh-TW', relativePath: string, source: string, href: string) {
   const md = await rendererFor(primary)
-  const env = { relativePath, realPath, cleanUrls: true }
+  const env = { path: `${SRC_DIR}/${relativePath}`, relativePath, realPath: `${SRC_DIR}/${source}`, cleanUrls: true }
   return md.renderAsync(`[x](${href})`, env)
 }
 
@@ -40,12 +44,20 @@ describe('primaryFolderLinks (0010-S6)', () => {
       expect(error.message).toContain(JSON.stringify('zh-TW/guide/notes.md'))
       expect(error.message).toContain(JSON.stringify('../../en/reference/x.md'))
       expect(error.message).toContain("primary locale's folder (en/)")
+      expect(error.message).toBe(
+        'PL-E11: "zh-TW/guide/notes.md" links to "../../en/reference/x.md", which names the primary locale\'s folder (en/); the primary locale\'s pages are served without it.',
+      )
+      expect(error.message).not.toContain(SRC_DIR)
     })
 
     it('../../zh-TW/guide/x.md from en/guide/a.md (P=zh-TW)', async () => {
       const error = await errorOf(renderLink('zh-TW', 'en/guide/a.md', 'en/guide/a.md', '../../zh-TW/guide/x.md'))
       expect(error.code).toBe('PL-E11')
       expect(error.message).toContain("primary locale's folder (zh-TW/)")
+      expect(error.message).toBe(
+        'PL-E11: "en/guide/a.md" links to "../../zh-TW/guide/x.md", which names the primary locale\'s folder (zh-TW/); the primary locale\'s pages are served without it.',
+      )
+      expect(error.message).not.toContain(SRC_DIR)
     })
 
     it('/en/guide/ (P=en), from a primary-folder page where relativePath differs from the source', async () => {
@@ -54,11 +66,19 @@ describe('primaryFolderLinks (0010-S6)', () => {
       const error = await errorOf(renderLink('en', 'foo.md', 'en/foo.md', '/en/guide/'))
       expect(error.code).toBe('PL-E11')
       expect(error.message).toContain(JSON.stringify('en/foo.md'))
+      expect(error.message).toBe(
+        'PL-E11: "en/foo.md" links to "/en/guide/", which names the primary locale\'s folder (en/); the primary locale\'s pages are served without it.',
+      )
+      expect(error.message).not.toContain(SRC_DIR)
     })
 
     it('/zh-TW (P=zh-TW)', async () => {
       const error = await errorOf(renderLink('zh-TW', 'foo.md', 'zh-TW/foo.md', '/zh-TW'))
       expect(error.code).toBe('PL-E11')
+      expect(error.message).toBe(
+        'PL-E11: "zh-TW/foo.md" links to "/zh-TW", which names the primary locale\'s folder (zh-TW/); the primary locale\'s pages are served without it.',
+      )
+      expect(error.message).not.toContain(SRC_DIR)
     })
   })
 
@@ -96,6 +116,23 @@ describe('primaryFolderLinks (0010-S6)', () => {
     it.each(['en', 'zh-TW'] as const)('/guide/python gives no error (primary %s)', async (primary) => {
       const html = await renderLink(primary, 'foo.md', `${primary}/foo.md`, '/guide/python')
       expect(html).toContain('/guide/python')
+    })
+  })
+
+  // B95: no control character reaches PL-E11's first line, from the page or from the link.
+  describe('B95: control characters are escaped in PL-E11', () => {
+    it.each([
+      ['page', 'zh-TW/a\u001b.md', '/en/x'],
+      ['page', 'zh-TW/a\u009b.md', '/en/x'],
+      ['link', 'zh-TW/a.md', '/en/\u009b'],
+    ])('a control character in the %s (%j, %j)', async (_where, source, href) => {
+      const error = await errorOf(renderLink('en', source, source, href))
+      expect(error.code).toBe('PL-E11')
+      for (const ch of error.message) {
+        const cp = ch.codePointAt(0)!
+        expect(cp).toBeGreaterThanOrEqual(0x20)
+        expect(cp >= 0x7f && cp <= 0x9f).toBe(false)
+      }
     })
   })
 })

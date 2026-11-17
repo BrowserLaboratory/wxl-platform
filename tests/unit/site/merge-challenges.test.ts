@@ -222,6 +222,25 @@ describe.each(PRIMARIES)('mergeLocaleChallenges, P = %s', (P) => {
     }
   })
 
+  it('L17: a declaration key in the brief never reaches the entry when the declaration omits it (D37)', () => {
+    const lists = run(
+      P,
+      [brief(P, P, 'x', { title: 'From brief', number: 99, difficulty: 'hard', category: 'pwn', date: '2026-01-01', tags: ['t'] })],
+      [declared('x', { title: 'From declaration', description: 'Declared', id: 42 })],
+    )
+    for (const locale of LOCALES) {
+      const entry = lists[locale][0]
+      expect(entry.number).toBeUndefined()
+      expect(entry.difficulty).toBe('mystery')
+      expect(entry.category).toBe(TABLES[locale].challenge_list.default_category)
+      expect(entry.date).toBeNull()
+      expect(entry.tags).toEqual([])
+      expect(entry.title).toBe('From brief')
+      expect(entry.description).toBe('')
+      expect(entry.id).toBe(1)
+    }
+  })
+
   it('L8: the lists have exactly the keys of `locales`, in order; a locale with no brief borrows every one', () => {
     const lists = run(P, [brief(P, P, 'x', { title: 'X' })], [declared('x', {})])
     expect(Object.keys(lists)).toEqual([...LOCALES])

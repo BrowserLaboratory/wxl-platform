@@ -113,7 +113,7 @@ jobs:
       - name: Generate challenge keys
         run: pnpm challenge:keygen
 
-      - name: Validate challenge frontmatter
+      - name: Validate challenge declarations and briefs
         run: pnpm challenge:validate
 
       - name: Build VitePress site

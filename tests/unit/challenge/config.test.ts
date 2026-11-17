@@ -127,6 +127,14 @@ describe('ChallengeDeclaration validation', () => {
     // These fields should NOT be required — they are embedded in per-challenge WASM
     expect(() => validateChallengeDeclaration(minimal)).not.toThrow()
   })
+
+  it('D75, D76: the returned declaration carries no fs and no description key', () => {
+    for (const input of [minimal, { ...minimal, fs: { '/a': 'b' } }]) {
+      const keys = Object.keys(validateChallengeDeclaration(input as never))
+      expect(keys).not.toContain('fs')
+      expect(keys).not.toContain('description')
+    }
+  })
 })
 
 describe('ChallengeDeclaration packages field', () => {

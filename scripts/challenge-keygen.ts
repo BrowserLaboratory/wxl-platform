@@ -33,7 +33,7 @@ import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
 import { checkSourceLayout } from '../.vitepress/source-layout.ts'
 import { SiteLayoutError } from '../.vitepress/layout-error.ts'
 import { LEGACY_FIELDS } from '../.vitepress/challenge/config.ts'
-import { readChallengeDeclaration } from '../.vitepress/challenge/declaration.ts'
+import { readChallengeDeclaration, declarationReadError } from '../.vitepress/challenge/declaration.ts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -597,7 +597,16 @@ export function keygenSlugs(root: string, target?: string): string[] {
 
 async function processChallenge(root: string, slug: string, templateWasmPath: string, force: boolean): Promise<void> {
   const declaration = readChallengeDeclaration(root, slug)
-  if (!declaration.ok) { console.warn(`[skip] ${slug}: declaration unreadable (${declaration.reason})`); return }
+  if (!declaration.ok) {
+    if (declaration.reason === 'absent') {
+      console.warn(`[skip] ${slug}: declaration unreadable (${declaration.reason})`)
+      return
+    }
+    // D152: a declaration the reader rejects stops the run, with PL-E14's text for the reason; the
+    // challenges before it are done, none after it is touched.
+    console.error(`[${slug}] ${declarationReadError('', slug, declaration.reason).message}`)
+    process.exit(1)
+  }
   const declarationPath = resolve(root, 'platform', 'challenge', slug, 'challenge.yaml')
   const fm = declaration.value
   const raw = readFileSync(declarationPath, 'utf-8')

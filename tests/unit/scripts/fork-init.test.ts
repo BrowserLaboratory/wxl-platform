@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { parse as parseYaml } from 'yaml'
 import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest'
+import { realUpstreamDecision } from '../../__helpers__/upstreamDecision'
 import {
   parseForkInitArgs,
   runForkInit,
@@ -3506,9 +3507,9 @@ describe('runForkInit — anchor mode: untouched files', () => {
       ['export default {', '  title: siteTitle,', '  themeConfig: {},', '}', ''].join('\n'),
     )
     // A7: two candidate `  name: ...` lines inside the hero frontmatter.
-    mkdirSync(join(root, 'platform'), { recursive: true })
+    mkdirSync(join(root, 'platform/en'), { recursive: true })
     writeFileSync(
-      join(root, 'platform/index.md'),
+      join(root, 'platform/en/index.md'),
       ['---', 'hero:', '  name: |', '  name: WXL', '---', ''].join('\n'),
     )
     // platform/zh-TW/index.md (A7) and the short-link module (A8) are left absent entirely.
@@ -3517,11 +3518,11 @@ describe('runForkInit — anchor mode: untouched files', () => {
     rmSync(join(root, 'platform/zh-TW/index.md'), { force: true })
     rmSync(join(root, '.vitepress/challenge/shortLink.ts'), { force: true })
     const cfgBefore = readFileSync(join(root, '.vitepress/config.mts'), 'utf8')
-    const heroBefore = readFileSync(join(root, 'platform/index.md'), 'utf8')
+    const heroBefore = readFileSync(join(root, 'platform/en/index.md'), 'utf8')
     const res = runForkInit(parseForkInitArgs(['--author', 'me', '--repo', 'me/myfork']), { projectRoot: root })
     expect(res.exitCode).toBe(0)
     expect(readFileSync(join(root, '.vitepress/config.mts'), 'utf8')).toBe(cfgBefore)
-    expect(readFileSync(join(root, 'platform/index.md'), 'utf8')).toBe(heroBefore)
+    expect(readFileSync(join(root, 'platform/en/index.md'), 'utf8')).toBe(heroBefore)
     expect(existsSync(join(root, 'platform/zh-TW/index.md'))).toBe(false)
     expect(existsSync(join(root, '.vitepress/challenge/shortLink.ts'))).toBe(false)
   })
@@ -3537,7 +3538,7 @@ describe('runForkInit — anchor mode: T5 dedicated fixture (home pages, short-l
     writeFileSync(join(root, '.vitepress/config.mts'), cfgBody)
     mkdirSync(join(root, 'platform/zh-TW'), { recursive: true })
     const hero = ['---', 'hero:', '  name: WXL', '---', '', '# Home', ''].join('\n')
-    writeFileSync(join(root, 'platform/index.md'), hero)
+    writeFileSync(join(root, 'platform/en/index.md'), hero)
     writeFileSync(join(root, 'platform/zh-TW/index.md'), hero)
     mkdirSync(join(root, '.vitepress/challenge'), { recursive: true })
     writeFileSync(join(root, '.vitepress/challenge/shortLink.ts'), "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\n")
@@ -3589,7 +3590,7 @@ describe('runForkInit — anchor mode: T5 dedicated fixture (home pages, short-l
     expect(res.exitCode).toBe(0)
     const untouchedRels = [
       '.vitepress/config.mts',
-      'platform/index.md',
+      'platform/en/index.md',
       'platform/zh-TW/index.md',
       '.vitepress/challenge/shortLink.ts',
     ]
@@ -4262,7 +4263,14 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     const releaseYmlBefore = readFileSync(join(repoRoot, '.github/workflows/release.yml'), 'utf8')
     const qualityGatesYmlBefore = readFileSync(join(repoRoot, '.github/workflows/quality-gates.yml'), 'utf8')
     const publishNpmYmlBefore = readFileSync(join(repoRoot, '.github/workflows/publish-npm.yml'), 'utf8')
-    const createWxlPkgBefore = readFileSync(join(repoRoot, 'create-wxl/package.json'), 'utf8')
+    // create-wxl/ is upstream's own package: upstream reads the real file (and fails if it is
+    // gone); a range, which has no such folder, takes the root manifest's repository.url (D54).
+    const createWxlPkgPath = join(repoRoot, 'create-wxl/package.json')
+    const rootUrlBefore = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository.url
+    const createWxlPkgBefore =
+      realUpstreamDecision(repoRoot) || existsSync(createWxlPkgPath)
+        ? readFileSync(createWxlPkgPath, 'utf8')
+        : JSON.stringify({ name: 'create-wxl', repository: { type: 'git', url: rootUrlBefore } }, null, 2) + '\n'
     const guardTestBefore = readFileSync(join(repoRoot, 'tests/unit/scripts/upstream-guard.test.ts'), 'utf8')
     const engineFileBefore = readFileSync(join(repoRoot, 'scripts/fork-init.ts'), 'utf8')
 
@@ -4293,7 +4301,6 @@ describe('runForkInit — B mode (rebrand: sensitive keys + honest inventory)', 
     const importBefore = guardTestBefore.match(UPSTREAM_SLUG_IMPORT_RE)?.[0]
     expect(ifLinesBefore.length).toBe(3) // positive control: all three files actually hold the line
     expect([...publishNpmYmlBefore.matchAll(IF_LINE_RE)]).toHaveLength(1) // ... publish-npm.yml's included
-    const rootUrlBefore = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).repository.url
     expect(rootUrlBefore).toContain(UPSTREAM_SLUG) // W11 starts from the upstream URL
     expect(JSON.parse(createWxlPkgBefore).repository.url).toBe(rootUrlBefore) // W11's starting point
     expect(expectUpstreamLinesBefore.length).toBe(3) // release.yml: release; quality-gates.yml: test and the cross-OS job

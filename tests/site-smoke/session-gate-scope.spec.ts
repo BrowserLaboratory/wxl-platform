@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { localePath } from './localePath'
 
 /**
  * Where the shared-machine choice is put on screen, in the built site.
@@ -23,7 +24,7 @@ test.describe('the shared-machine choice is asked on challenge pages only', () =
   })
 
   test('the home page does not ask', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(localePath('en'))
     await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
 
     // The evidence really is there — without this the assertion below would pass on a
@@ -35,7 +36,7 @@ test.describe('the shared-machine choice is asked on challenge pages only', () =
   })
 
   test('the challenge list does not ask either', async ({ page }) => {
-    await page.goto('/challenges/')
+    await page.goto(localePath('en', 'challenges/'))
     await expect(page.locator('[data-session-gate]')).toHaveCount(0)
     // The place the pair of numbers would be says why they are not there.
     await expect(page.locator('[data-progress-blocked]')).toBeVisible()
@@ -43,7 +44,7 @@ test.describe('the shared-machine choice is asked on challenge pages only', () =
   })
 
   test('a challenge page asks', async ({ page }) => {
-    await page.goto('/challenge/door-is-open/')
+    await page.goto(localePath('en', 'challenge/door-is-open/'))
     await expect(page.locator('[data-session-gate]')).toBeVisible()
     // Both answers on screen: this is the untouched state, before anything was cleared.
     await expect(page.locator('[data-session-gate-keep]')).toBeVisible()
@@ -51,12 +52,12 @@ test.describe('the shared-machine choice is asked on challenge pages only', () =
   })
 
   test('a challenge page still asks after the home page did not', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(localePath('en'))
     await expect(page.locator('[data-session-gate]')).toHaveCount(0)
 
     // Same browser session — no reload of the context, so `sessionStorage` carries over.
     await page.getByRole('link', { name: 'Start Challenge' }).click()
-    await page.goto('/challenge/door-is-open/')
+    await page.goto(localePath('en', 'challenge/door-is-open/'))
     await expect(page.locator('[data-session-gate]')).toBeVisible()
   })
 })

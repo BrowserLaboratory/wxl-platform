@@ -29,7 +29,8 @@ if (!/^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/.test(siteBase)) {
   throw new Error(`SITE_BASE must be "/" or a path like "/my-repo/", got ${JSON.stringify(siteBase)}`)
 }
 
-// The source directory, relative to the repository root. The page list below reads it too.
+// The source directory, relative to the repository root. The page list below reads it too, and
+// `rewrites` (`rewrittenPath`, D9) maps each source path in it to its URL.
 const SRC_DIR = 'platform'
 // `.vitepress` sits one level under the repository root (D5, D123): read before any challenge
 // and before the layout check.
@@ -63,12 +64,12 @@ export default defineConfig({
     config: (md) => primaryFolderLinks(md, primary),
   },
   // Cloudflare Pages serves this site's pages without the extension:
-  // `/zh-TW/challenges` answers 200, while `/zh-TW/challenges.html` and
-  // `/zh-TW/challenges/` both 308 to it. Left at VitePress's default (false),
+  // `/<code>/challenges` answers 200, while `/<code>/challenges.html` and
+  // `/<code>/challenges/` both 308 to it. Left at VitePress's default (false),
   // the client router does the opposite — after every SPA navigation
   // `loadPage` recomputes the pathname from the page's `relativePath`, appends
   // `.html`, and `replaceState`s to it. So clicking a nav link whose href is
-  // `/zh-TW/challenges/` parked the address bar on `/zh-TW/challenges.html`:
+  // `/<code>/challenges/` parked the address bar on `/<code>/challenges.html`:
   // a shape the server redirects away from on the next reload.
   //
   // With this true, the router's computed pathname is extensionless for page

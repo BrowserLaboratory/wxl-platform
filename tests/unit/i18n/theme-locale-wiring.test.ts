@@ -663,10 +663,56 @@ describe('the real Layout: the shared-machine session gate', () => {
     expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
 
-  // S1-6 (A6): the five cases above whose assertion names a locale-specific redirect target,
-  // mirrored under P = zh-TW (T = en), stored T. The purely structural cases of this describe
-  // (whether the gate stub mounts, whether it asks) carry no locale-specific literal and are
-  // not mirrored.
+  // S1-6 (A6, A33): the cases above that hold a redirect on to a locale-specific target, or
+  // that the learner's answer withdraws, mirrored under P = zh-TW (T = en), stored T. The purely
+  // structural cases of this describe (whether the gate stub mounts, whether it asks) carry no
+  // locale-specific literal and are not mirrored.
+  it('under P = zh-TW, does not redirect while the choice is unanswered (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGateEvaluate).toHaveBeenCalled()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, holds the redirect on any page while a clear is unconfirmed (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateClearStarted.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = {}
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, does not redirect when the learner chooses to clear (A33)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+
+    gateShouldAsk.value = false
+    gateDecision.value = 'cleared'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
   it('under P = zh-TW, redirects in the same tick when this session has already answered (A6)', () => {
     mockPrimaryLocale.value = 'zh-TW'
     markerPresent = true
@@ -788,6 +834,59 @@ describe('the real Layout: the deferred redirect does not outlive the layout', (
     let release!: () => void
     mockGateEvaluate.mockImplementationOnce(() => new Promise<void>((r) => { release = () => r() }))
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/challenges/')
+    const w = mountLayout()
+    w.unmount()
+
+    release()
+    await new Promise(r => setTimeout(r, 0))
+    gateDecision.value = 'kept'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  // Under P = zh-TW (T = en), stored T: the same three properties.
+  it('under P = zh-TW, stops following the gate decision once unmounted', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    w.unmount()
+
+    gateDecision.value = 'kept'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, does not redirect when the gate answers after the unmount', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateDecision.value = 'not-needed'
+    let release!: () => void
+    mockGateEvaluate.mockImplementationOnce(() => new Promise<void>((r) => { release = () => r() }))
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    w.unmount()
+
+    release()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, starts no decision watcher when the gate answers after the unmount', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    let release!: () => void
+    mockGateEvaluate.mockImplementationOnce(() => new Promise<void>((r) => { release = () => r() }))
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     setPath('/challenges/')
     const w = mountLayout()
     w.unmount()

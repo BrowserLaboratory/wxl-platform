@@ -3,7 +3,7 @@ import en from './messages/en.json'
 import zhTW from './messages/zh-TW.json'
 import type { Arrival } from './arrival'
 import { targetUrl } from './pages'
-import { isKnownLocale as isKnownLocaleOnList, type Locale } from '../../locales.ts'
+import { LOCALES, isKnownLocale as isKnownLocaleOnList, type Locale } from '../../locales.ts'
 
 export type { Locale }
 
@@ -13,9 +13,12 @@ export function isKnownLocale(value: unknown): value is Locale {
   return isKnownLocaleOnList(value)
 }
 
-/** The other of the two locales. The primary-locale epic replaces this with a locale list. */
+/**
+ * The other locale of the two-locale list (D33). The Japanese (ja) epic parameterises it; the
+ * two-locale guard in `tests/unit/i18n/messages-shape.test.ts` (A31, GD1) fails at any other length.
+ */
 export function otherLocale(locale: Locale): Locale {
-  return locale === 'zh-TW' ? 'en' : 'zh-TW'
+  return LOCALES.find((code) => code !== locale) as Locale
 }
 
 export const i18n = createI18n({
@@ -189,7 +192,7 @@ export function readStoredLocale(): Locale | null {
  * **Only an explicit request does (D5).** A cold load of a published page under
  * `/<T>/` is one — also when a short link's server redirect or a reload
  * brought the learner there (D13). The unprefixed tree is the absence of a
- * request and leaves the preference alone: writing there would store the default
+ * request and leaves the preference alone: writing there would store `P`
  * on every cold load and wipe the very preference the cold-load redirect exists
  * to honour.
  *
@@ -240,10 +243,10 @@ export function redirectTargetForStoredLocale(
   P: Locale,
 ): string | null {
   if (arrival.kind !== 'page') return null
-  // No preference is not "no opinion about where to send them" — it is the case the
-  // default exists for. An unreadable `localStorage` and a value naming no known locale
-  // both arrive here as `null` from `readStoredLocale`, and both mean the same thing:
-  // this visitor has expressed no preference the system can honour.
+  // No stored preference asks for the page's own locale (D25). An unreadable `localStorage`
+  // and a value naming no known locale both arrive here as `null` from `readStoredLocale`
+  // and mean the same. Only a primary-locale page gets past the check below, so the page's
+  // own locale is `P`, and the cold load stays put with no line (A1).
   const wanted = readStoredLocale() ?? P
   // A learner who wants the primary locale is already in the unprefixed tree (A4); a page
   // under a locale prefix is an explicit request and stays (A5).

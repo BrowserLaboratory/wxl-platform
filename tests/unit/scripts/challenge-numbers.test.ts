@@ -11,7 +11,7 @@ import {
 } from '../../../scripts/challenge-numbers'
 
 // A challenge's number is the one thing about it that outlives its name. It is
-// written into frontmatter by hand, so nothing about the file system enforces
+// written into the challenge's declaration (`challenge.yaml`) by hand (D62), so nothing about the file system enforces
 // it — these are the checks that stand in for that.
 //
 // The number is deliberately NOT derived from any ordering. A derived number
@@ -88,7 +88,7 @@ describe('challenge number validation', () => {
 
   // The Example table in the challenge-file-structure delta, one row per case.
   // `"007"` is the interesting one: it is the padded spelling the URL uses, so
-  // it is exactly what someone would type into frontmatter by mistake.
+  // it is exactly what someone would type into the challenge's declaration (`challenge.yaml`) by mistake.
   it.each([
     ['zero', 0],
     ['a negative number', -3],

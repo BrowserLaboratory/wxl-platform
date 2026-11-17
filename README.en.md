@@ -135,7 +135,7 @@ tags: [ idor, access-control, fastapi, sqlite ]
 wasmModule: /challenge/door-is-open/runtime.wasm  # produced by keygen
 ```
 
-Each locale has its own brief, `platform/<locale code>/challenge/<slug>/index.md`, whose frontmatter keeps only three keys:
+A challenge's brief for a locale is `platform/<locale code>/challenge/<slug>/index.md`: the primary locale's brief is required, the others are translations and may be absent. Its frontmatter keeps only three keys:
 
 ```yaml
 ---
@@ -251,7 +251,7 @@ No tool changes the primary locale afterwards, and it has a cost:
 - Restart `pnpm dev` for the change to take effect.
 - The site's root address changes language, and `/c/NNN` opens the new primary locale's page.
 - Links already handed out without a locale code open the new primary locale's page; links that start with `/<old primary locale>/…` reach the root only through the old-address rule (when the old primary locale was `zh-TW`) or through the not-found page, which strips the prefix.
-- The brief every challenge must have becomes the new primary locale's. When some challenge lacks it, the hook refuses the commit with W6a and names that challenge, so write each such brief first.
+- The brief every challenge must have becomes the new primary locale's. When some challenge lacks it, the pre-commit hook refuses the commit with a line that names the challenge and the missing brief, so write each such brief first.
 - The hero and nav links on the home pages follow by themselves.
 - A `challenge.yaml` edit shows in the challenge list after a reload, and on the challenge page only after you restart `pnpm dev`.
 
@@ -268,7 +268,7 @@ Every locale has a locale folder, `platform/<locale code>/`, that holds all of t
 7. **Add `"primaryLocale": "en"` to `range.json`** (create the file when it is absent) to keep English at the root. A fork without `range.json`, or without the key, now serves Traditional Chinese at the root, even when it has no page of its own to move.
 8. **Run `pnpm build`.**
 
-A `range.json` at the root also makes the tree a range, so upstream-only tests skip there, as in any range. A range whose `range.json` has no `upstream` field upgrades only with `--from <version>`; without it `pnpm range:upgrade` stops with UP-E06. An uncommitted `range.json` changes local builds only.
+A `range.json` at the root also makes the tree a range, so upstream-only tests skip there, as in any range. A range whose `range.json` has no `upstream` field upgrades only with `--from <version>`; without it `pnpm range:upgrade` stops with UP-E06 (`upstream`) until epic 0011. An uncommitted `range.json` changes local builds only.
 
 `smoke-fixtures/` is a reserved name. A page moved into a folder such as `platform/en/smoke-fixtures/`, by hand or by the upgrade, is not published by a production build.
 
@@ -333,9 +333,9 @@ const siteBase = process.env.SITE_BASE || '/'
 >
 > `platform/public/_redirects` is generated from the challenges; do not edit it by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when challenges change. Commit it together with them: GitHub Pages does not read it, but CI checks that it matches the challenges. If CI reports it stale, run `pnpm redirects:generate` and commit the result.
 >
-> Copied short links carry the locale list's code on either primary locale: `/en/c/NNN` from an English page or list, `/zh-TW/c/NNN` from a Traditional Chinese one. Every numbered challenge has a link for every locale; when that locale has no version of the challenge, the link opens the primary locale's page. `/c/NNN` is the primary locale's page. `/c/NNN` and `/zh/c/NNN`, which earlier releases gave out, keep working but are no longer given out.
+> Copied short links carry the locale code of the page or list they were copied from, on either primary locale: `/en/c/NNN` from an English page or list, `/zh-TW/c/NNN` from a Traditional Chinese one. Every numbered challenge has a link for every locale; when that locale has no version of the challenge, the link opens the primary locale's page. `/c/NNN` is the primary locale's page. `/c/NNN` and `/zh/c/NNN`, which earlier releases gave out, keep working but are no longer given out.
 >
-> A short link coded with the primary locale, and `/c/NNN`, follow the learner's locale preference: a learner who chose a translation is taken to it when the challenge has one, and a learner with no preference stays in the language of the address they opened, because the site does not switch it for them. A short link coded with a translation always opens that translation. Opening a page whose address starts with a locale code directly (typing, pasting, reloading) sets the learner's locale preference to that locale; a short link coded with the primary locale opens a page at the root and sets nothing.
+> A short link coded with the primary locale, and `/c/NNN`, follow the learner's locale preference: a learner who chose a translation is taken to it when the challenge has one, and a learner with no preference stays in the language of the address they opened, because the site does not switch it for them. A short link coded with a translation does not follow the locale preference: when the challenge has that translation it opens it whatever the preference, and when it does not, the link opens the primary locale's page. Opening a page whose address starts with a locale code directly (typing, pasting, reloading) sets the learner's locale preference to that locale; a short link coded with the primary locale opens a page at the root and sets nothing.
 >
 > On an English-primary range, `/en/c/NNN` opens the English page at the root, and a learner whose locale preference is Traditional Chinese may be taken to the translation; on a Traditional-Chinese-primary range, `/en/c/NNN` opens `/en/challenge/<slug>/` and every learner sees English. On a Traditional-Chinese-primary range, old `/zh-TW/…` addresses go to the root: Cloudflare Pages by a rule in `_redirects`, other hosts by the not-found page; on Cloudflare Pages a file under `platform/public/zh-TW/` is redirected by that same rule. After changing `primaryLocale`, commit `range.json` (the pre-commit hook regenerates `_redirects`) or run `pnpm redirects:generate`. An uncommitted `range.json` changes local builds only. A range upgrading to this release gets the new rules by regenerating `_redirects`: when CI reports it stale, run `pnpm redirects:generate` and commit the result.
 

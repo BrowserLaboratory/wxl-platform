@@ -77,7 +77,7 @@ type YamlOutcome = { ok: true; value: unknown } | { ok: false; message: string }
 
 /** `yaml`'s parse of `src` with the declaration reader's options (D129), reporting the first
  *  problem's text instead of the reader's bare reason. */
-function parseYamlStrict(src: string): YamlOutcome {
+export function parseYamlStrict(src: string): YamlOutcome {
   const doc = parseDocument(src, YAML_OPTIONS)
   const first = doc.errors[0] ?? doc.warnings[0]
   if (first) return { ok: false, message: first.message }

@@ -22,7 +22,7 @@
 #    of the hook's own. _redirects never enters that entry.
 # 2. Validates the staged paths under the challenge trees that the ACMRD filter
 #    selects, a brief's index.md among them (challenge-lint-staged.ts, which reads the primary
-#    locale from the index's range.json, D67, D121), and only when there is one. A type change (T)
+#    locale from the index's range.json, D122; validation runs before the generator, D121), and only when there is one. A type change (T)
 #    triggers regeneration but is not validated.
 # 3. Generates _redirects over the staged snapshot (`generate-redirects.ts --staged`, which reads
 #    the index and the index's range.json, never the working tree's). The generator first checks
@@ -433,6 +433,7 @@ git ls-files -z --others --exclude-standard --directory --no-empty-directory -- 
 # or platform/<folder>/challenge/<slug>/, and, for a tree other than the declaration tree, holds a
 # regular file index.md: a folder without one is no brief (D127). It is no slug yet, so no W4 names it.
 untracked_tree_child() {
+  case "$1" in */) ;; *) return 1 ;; esac
   local dir=${1%/} slashes
   slashes=${dir//[!\/]/}
   case "$dir" in

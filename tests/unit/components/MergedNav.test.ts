@@ -8,7 +8,8 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 // Mock vitepress useData + useRouter (LocaleSwitcher inside MergedNav uses useRouter)
 const mockIsDark = ref(false)
 // VitePress resolves this per page from the page's own relativePath, so it is
-// already correct during SSR. `'root'` is what it reports for English.
+// already correct during SSR. `'root'` is what it reports for the primary
+// locale's pages (D32); a non-primary locale reports its own code.
 const mockLocaleIndex = ref<'root' | 'zh-TW' | 'en'>('root')
 // The production `withBase` is identity only because this site's base is '/'.
 // A non-identity double is what makes the localizePath-before-withBase
@@ -469,6 +470,30 @@ describe('MergedNav', () => {
     for (const [href, label] of pairs) {
       expect(labelOf(wrapper, href)).toBe(label)
     }
+  })
+
+  // A28 (AC-16), the server-rendered half: the page locale comes only from `localeIndex` and `P`,
+  // so the static HTML carries the right href and label while the runtime locale is still `en`
+  // (before hydration), under both P.
+  async function renderServer(P: 'en' | 'zh-TW', localeIndex: 'root' | 'en' | 'zh-TW') {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = localeIndex
+    const { createSSRApp, h } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const app = createSSRApp({ render: () => h(MergedNav, defaultProps) })
+    app.use(makeI18n('en'))
+    return renderToString(app)
+  }
+
+  it.each([
+    ['zh-TW', 'root', '/challenges/', '題目列表'],
+    ['zh-TW', 'en', '/en/challenges/', 'Challenges'],
+    ['en', 'root', '/challenges/', 'Challenges'],
+    ['en', 'zh-TW', '/zh-TW/challenges/', '題目列表'],
+  ] as const)('under P = %s, with localeIndex %s, the server-rendered HTML carries the list link and its label (A28)', async (P, localeIndex, href, label) => {
+    const html = await renderServer(P, localeIndex)
+    expect(html).toContain(`href="${href}"`)
+    expect(html).toContain(label)
   })
 
   it('renders challenge title', () => {

@@ -157,6 +157,26 @@ describe('LocaleSwitcher UI', () => {
     expect(wrapper.find('[data-locale-current]').text()).toBe(currentLabel)
   })
 
+  // A28 (AC-16), the server-rendered half: the trigger names the page's locale, derived through
+  // `pageLocaleOf` from `localeIndex` and `P`, while the runtime locale is still `en`.
+  it.each([
+    ['zh-TW', 'root', '切換語系 — 繁體中文'],
+    ['zh-TW', 'en', 'Switch language — English'],
+    ['en', 'root', 'Switch language — English'],
+    ['en', 'zh-TW', '切換語系 — 繁體中文'],
+  ] as const)('under P = %s, with localeIndex %s, the server-rendered trigger names the page locale (A28)', async (P, localeIndex, aria) => {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = localeIndex
+    const { createSSRApp, h } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const app = createSSRApp({ render: () => h(LocaleSwitcher) })
+    app.use(makeI18n('en'))
+    app.provide(LOCALE_CHOICE as symbol, choose)
+    app.provide(MISSING_TRANSLATION_LOCALE as symbol, computed(() => line.value))
+    const html = await renderToString(app)
+    expect(html).toContain(`aria-label="${aria}"`)
+  })
+
   it('the current-locale title is not interactive at all', async () => {
     const wrapper = mountAt('en')
     await wrapper.find('[data-locale-switcher-toggle]').trigger('click')

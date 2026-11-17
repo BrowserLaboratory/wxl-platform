@@ -209,22 +209,37 @@ describe('the shipped primary locale (B14, B47)', () => {
     }
   }
 
-  it.each(COMBOS)(
-    'B14: real tree gives "zh-TW" regardless of env (SITE_BASE=%j CF_PAGES=%j WXL_SMOKE_PAGES=%j WXL_PRIMARY_LOCALE=%j)',
-    async (siteBase, cfPages, smoke, primaryEnv) => {
-      for (const [name, value] of [
-        ['SITE_BASE', siteBase],
-        ['CF_PAGES', cfPages],
-        ['WXL_SMOKE_PAGES', smoke],
-        ['WXL_PRIMARY_LOCALE', primaryEnv],
-      ] as const) {
-        if (value === undefined) delete process.env[name]
-        else process.env[name] = value
-      }
+  function setEnv(siteBase: string | undefined, cfPages: string | undefined, smoke: string | undefined, primaryEnv: string | undefined) {
+    for (const [name, value] of [
+      ['SITE_BASE', siteBase],
+      ['CF_PAGES', cfPages],
+      ['WXL_SMOKE_PAGES', smoke],
+      ['WXL_PRIMARY_LOCALE', primaryEnv],
+    ] as const) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+
+  // The real tree's value is upstream's own (a range sets its own root range.json): upstream-only
+  // through the D124 helper.
+  describe.skipIf(
+    upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+  )('the real tree (upstream-only, D124)', () => {
+    it.each(COMBOS)(
+      'B14: real tree gives "zh-TW" regardless of env (SITE_BASE=%j CF_PAGES=%j WXL_SMOKE_PAGES=%j WXL_PRIMARY_LOCALE=%j)',
+      async (siteBase, cfPages, smoke, primaryEnv) => {
+        setEnv(siteBase, cfPages, smoke, primaryEnv)
+        const define = await loadRealDefine()
+        expect(define?.__WXL_PRIMARY_LOCALE__).toBe('"zh-TW"')
+      },
+    )
+
+    it('B47: the real tree\'s value is a JSON string, not a bare identifier', async () => {
       const define = await loadRealDefine()
-      expect(define?.__WXL_PRIMARY_LOCALE__).toBe('"zh-TW"')
-    },
-  )
+      expect(define?.__WXL_PRIMARY_LOCALE__).toBe(JSON.stringify('zh-TW'))
+    })
+  })
 
   it('B14, B47: a fixture root with {"primaryLocale":"en"} gives the JSON string "en"', async () => {
     const root = buildFixtureRoot({
@@ -236,10 +251,19 @@ describe('the shipped primary locale (B14, B47)', () => {
     expect(config.vite?.define?.__WXL_PRIMARY_LOCALE__).toBe('"en"')
   })
 
-  it('B47: the real tree\'s value is a JSON string, not a bare identifier', async () => {
-    const define = await loadRealDefine()
-    expect(define?.__WXL_PRIMARY_LOCALE__).toBe(JSON.stringify('zh-TW'))
-  })
+  it.each(COMBOS)(
+    'B14: a fixture root with {"primaryLocale":"en"} gives "en" regardless of env (SITE_BASE=%j CF_PAGES=%j WXL_SMOKE_PAGES=%j WXL_PRIMARY_LOCALE=%j)',
+    async (siteBase, cfPages, smoke, primaryEnv) => {
+      setEnv(siteBase, cfPages, smoke, primaryEnv)
+      const root = buildFixtureRoot({
+        rangeJson: '{"primaryLocale":"en"}',
+        platformRangeJson: '{"primaryLocale":"zh-TW"}',
+        vitepressRangeJson: '{"primaryLocale":"zh-TW"}',
+      })
+      const config = await importFixtureConfig(root)
+      expect(config.vite?.define?.__WXL_PRIMARY_LOCALE__).toBe('"en"')
+    },
+  )
 })
 
 // The SITE_BASE check runs before range.json is even read (D123): a broken range.json must not
@@ -387,7 +411,11 @@ describe('transformPageData (B50–B52)', () => {
 
 // Title and description stay site-level; fork:init's own anchors stay single (B60, B77).
 describe('title, description, ignoreDeadLinks and the fork:init anchors (B60, B77)', () => {
-  it('B60: title and description are today\'s strings', async () => {
+  // D153: fork:init's A6 rewrites the site title and description, so their literal values hold
+  // only on upstream itself.
+  it.skipIf(
+    upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(REPO_ROOT), isGitWorkTree(REPO_ROOT), hasRootRangeJson(REPO_ROOT)),
+  )('B60: title and description are today\'s strings', async () => {
     vi.resetModules()
     delete process.env.SITE_BASE
     const mod = (await import('../../../.vitepress/config.mts')) as {

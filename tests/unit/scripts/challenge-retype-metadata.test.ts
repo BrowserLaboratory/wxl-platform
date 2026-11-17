@@ -84,6 +84,10 @@ describe('retypeChallenge — declaration-only mutations', () => {
     const outsideTags = (text: string): string[] =>
       text.split('\n').filter((line) => !/^tags:|^\s+-\s/.test(line))
     expect(outsideTags(after)).toEqual(outsideTags(SAMPLE_DECLARATION.replace(/^tags:.*\n/m, '')))
+    // The tags entry itself stays where it was: the whole file differs from the sample in that entry only.
+    expect(after).toBe(
+      SAMPLE_DECLARATION.replace('tags: [ idor, access-control, fastapi, sqlite ]', 'tags:\n  - sqli\n  - flask'),
+    )
     expectBriefsAndFolderUntouched()
   })
 

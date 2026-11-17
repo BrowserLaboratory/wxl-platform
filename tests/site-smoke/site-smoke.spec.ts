@@ -12,8 +12,9 @@ import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, up
 const distFile = (relPath: string) => readFileSync(join(process.cwd(), '.vitepress/dist', relPath), 'utf8')
 
 /** The one set of raw inputs `upstreamOnlySkipReason` (D124/B93) takes, read once per process.
- *  Every row this wave adds (B48, B59, B70 smoke half, both B81 cases) calls the helper directly
- *  with these, rather than writing its own `test.skip` reason, so B93's stage-6 grep finds each. */
+ *  The upstream-only rows B48, B59, B70 (smoke half), both B81 cases, B79 and the Y39 existence case
+ *  call the helper directly with these, rather than writing its own
+ *  `test.skip` reason, so B93's stage-6 grep finds each. */
 const UPSTREAM_DECISION_INPUTS = {
   githubRepository: process.env.GITHUB_REPOSITORY,
   manifest: readManifest(process.cwd()),
@@ -148,9 +149,7 @@ test('client-side navigation leaves an extensionless URL in the address bar', as
 // B48, B59 and B70's smoke half read dist/ directly (as B44 does in missing-translation.spec.ts)
 // because their own acceptance criteria name file paths under dist/, not rendered page state; B61
 // names neither technique in traceability.md, so the dist-file form is kept for consistency with
-// its neighbours. All depend on `pnpm docs:build` succeeding on the real, moved tree (wave 3's
-// `./shared/challenges.data.ts` import path, B79) — recorded in the ticket's Comments, not fixed
-// here, per this wave's own row list.
+// its neighbours.
 
 test('output: primary pages at the output root, others under /en/ (B48, upstream-only)', () => {
   const skipReason = upstreamOnlySkipReason(
@@ -182,8 +181,18 @@ test('<html lang> follows the page locale (B59, upstream-only)', () => {
 
 test('the nav title links to the page locale\'s home (B61)', () => {
   const navTitleHref = (html: string) => html.match(/<a class="title" href="([^"]*)"/)?.[1]
+  // Only upstream is guaranteed to publish the guide/notes article in every locale; a range may
+  // publish a different set of guide pages, so it checks the locales that have this one.
+  const built = LOCALES.filter((locale) =>
+    existsSync(join(process.cwd(), '.vitepress/dist', `${localePath(locale, 'guide/notes').slice(1)}.html`)))
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  if (skipReason === undefined) expect(built).toEqual([...LOCALES])
+  test.skip(built.length === 0, 'this tree publishes no guide/notes page')
   // D54: each locale's page and the home it links to both come from P through `localePath`.
-  for (const locale of LOCALES) {
+  for (const locale of built) {
     expect(navTitleHref(distFile(`${localePath(locale, 'guide/notes').slice(1)}.html`))).toBe(localePath(locale))
   }
 })
@@ -288,7 +297,12 @@ async function declaredView(page: Page, locale: 'en' | 'zh-TW', slug: string) {
 }
 
 test.describe('translated challenges share one declaration (Y39)', () => {
-  test('there is at least one challenge with a brief in two locale folders', () => {
+  test('there is at least one challenge with a brief in two locale folders (Y39, upstream-only)', () => {
+    const skipReason = upstreamOnlySkipReason(
+      UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+      UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+    )
+    test.skip(skipReason !== undefined, skipReason ?? '')
     expect(TRANSLATED_SLUGS.length).toBeGreaterThan(0)
   })
 

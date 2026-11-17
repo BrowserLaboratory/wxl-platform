@@ -50,8 +50,8 @@ export default defineConfig({
   // outside the repository fails with "Cannot find module" even though it exists and plain
   // Node resolves it fine. The config-base "fixture root" tests (B14, B16, B47) import a copy
   // of `.vitepress/config.mts` from a fresh `os.tmpdir()` directory specifically so each case
-  // observes the real module instead of a spy — this allowlists exactly that directory, not
-  // the filesystem root.
+  // observes the real module instead of a spy — this allowlists the OS temp directory that holds
+  // those fixture roots, not the filesystem root.
   // `os.tmpdir()` is a symlink on macOS (`/var/...` → `/private/var/...`); Vite resolves the
   // requested file before matching it against `allow`, so both forms are listed.
   server: { fs: { allow: ['.', tmpdir(), realpathSync(tmpdir())] } },

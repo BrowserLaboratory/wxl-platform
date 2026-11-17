@@ -127,14 +127,14 @@ export function assembleChallengeFrontmatter(
     if (frontmatter.layout === 'challenge') {
       throw new SiteLayoutError(
         'PL-E18',
-        `PL-E18: ${sourcePath}: layout: challenge is only for platform/<locale>/challenge/<slug>/index.md`,
+        `PL-E18: platform/${sourcePath}: layout: challenge is only for platform/<locale>/challenge/<slug>/index.md`,
       )
     }
     return null
   }
 
   if (frontmatter.layout !== 'challenge') {
-    throw new SiteLayoutError('PL-E17', `PL-E17: ${sourcePath}: a brief must set layout: challenge`)
+    throw new SiteLayoutError('PL-E17', `PL-E17: platform/${sourcePath}: a brief must set layout: challenge`)
   }
 
   const declResult = readDeclaration(slug)
@@ -147,7 +147,7 @@ export function assembleChallengeFrontmatter(
   if (unknownBriefKeys.length > 0) {
     throw new SiteLayoutError(
       'PL-E15',
-      `PL-E15: ${sourcePath}: a brief may carry only title, description and layout, found ${unknownBriefKeys.join(', ')}`,
+      `PL-E15: platform/${sourcePath}: a brief may carry only title, description and layout, found ${unknownBriefKeys.join(', ')}`,
     )
   }
 

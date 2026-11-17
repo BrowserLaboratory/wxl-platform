@@ -145,6 +145,19 @@ describe('L2 layer (task 4.3)', () => {
     expect(calls).toEqual([])
   })
 
+  it('Y109 (D123): range.json unusable and no challenge.yaml → the PL line, not VF1, keygen never spawned', async () => {
+    rmSync(join(projectRoot, 'platform', 'challenge', 'door-is-open', 'challenge.yaml'))
+    const [, make, line] = RANGE_FAULTS.find(([label]) => label.startsWith('PL-E03'))!
+    make(join(projectRoot, 'range.json'))
+    const { spawn, calls } = makeFakeSpawn({})
+    const runners = makeDefaultRunners({ projectRoot, spawn })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe('PL-E03: range.json is not valid JSON.')
+    expect(line).toBe('PL-E03: range.json is not valid JSON.')
+    expect(calls).toEqual([])
+  })
+
   it.skipIf(platform() === 'win32' || process.getuid?.() === 0)('Y109: PL-E02 mode 000 → L2 fails with the PL line, keygen never spawned', async () => {
     E02[1](join(projectRoot, 'range.json'))
     const { spawn, calls } = makeFakeSpawn({})

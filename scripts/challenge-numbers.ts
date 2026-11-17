@@ -63,7 +63,7 @@ export function readChallengeNumber(yamlPath: string): unknown {
 /**
  * The `number` frontmatter value of an old-layout retired page, the legacy read of D63: the move
  * to the split layout does not touch `.archive/`, so a page there still carries its number in
- * frontmatter. Kept until the retired walk is rewritten.
+ * frontmatter. That is why this read stays (D63).
  */
 function readLegacyRetiredNumber(mdPath: string): unknown {
   const raw = readFileSync(mdPath, 'utf-8')

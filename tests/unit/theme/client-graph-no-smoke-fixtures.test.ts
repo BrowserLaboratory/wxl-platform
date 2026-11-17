@@ -8,6 +8,8 @@ import { dirname, join, relative, resolve } from 'node:path'
 // import the module (`.vitepress/pageList.ts`) that holds the predicate. The graph is walked from
 // source with a small resolver (no bundler): relative static imports and `export … from` edges,
 // plus dynamic `import()`; an edge that carries only types is erased by the build and not walked.
+// A `.json` or `.css` file that is reached is read for its text and has no edges of its own. A
+// `import.meta.glob` edge is not followed here: the production build's own check covers it.
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 const ENTRY = join(REPO_ROOT, '.vitepress/theme/index.ts')
@@ -48,7 +50,7 @@ function resolveFile(from: string, specifier: string): string | undefined {
   const base = resolve(dirname(from), specifier.replace(/\?.*$/, ''))
   for (const ext of EXTENSIONS) {
     const candidate = base + ext
-    if (existsSync(candidate) && statSync(candidate).isFile() && /\.(ts|mts|js|vue)$/.test(candidate)) return candidate
+    if (existsSync(candidate) && statSync(candidate).isFile() && /\.(ts|mts|js|vue|json|css)$/.test(candidate)) return candidate
   }
   return undefined
 }
@@ -62,6 +64,7 @@ function walkGraph(entry: string): Map<string, string> {
     if (seen.has(file)) continue
     const text = readFileSync(file, 'utf8')
     seen.set(file, text)
+    if (/\.(json|css)$/.test(file)) continue
     for (const specifier of edgesOf(codeOf(file, text))) {
       const next = resolveFile(file, specifier)
       if (next !== undefined && !seen.has(next)) queue.push(next)
@@ -90,6 +93,7 @@ describe('the client bundle graph names no smoke fixture (L47)', () => {
     expect(files).toContain('.vitepress/theme/index.ts')
     expect(files).toContain('.vitepress/theme/i18n/pages.ts')
     expect(files).toContain('.vitepress/locales.ts')
+    expect(files).toContain('.vitepress/theme/i18n/messages/en.json')
   })
 })
 
@@ -110,6 +114,8 @@ describe('the resolver, on a temporary graph', () => {
       "import { real } from './static.ts'",
       "export const later = () => import('./lib/dynamic')",
       "export * from './component.vue'",
+      "import table from './table.json'",
+      "import './style.css'",
     ].join('\n'))
     writeFileSync(join(dir, 'types-only.ts'), carrier)
     writeFileSync(join(dir, 'named-types.ts'), carrier)
@@ -117,13 +123,23 @@ describe('the resolver, on a temporary graph', () => {
     writeFileSync(join(dir, 'lib/dynamic.ts'), carrier)
     writeFileSync(join(dir, 'component.vue'), `<template><p>${LITERAL}</p></template>\n<script setup lang="ts">\nimport { w } from './vue-edge.ts'\n</script>\n`)
     writeFileSync(join(dir, 'vue-edge.ts'), carrier)
+    writeFileSync(join(dir, 'table.json'), `{"k":"${LITERAL}"}\n`)
+    writeFileSync(join(dir, 'style.css'), `/* ${LITERAL} */\n`)
     return dir
   }
 
   it('follows a dynamic import(), a static edge and a .vue script edge; skips type-only edges', () => {
     const dir = temporaryGraph()
     const reached = [...walkGraph(join(dir, 'entry.ts')).keys()].map((file) => relative(dir, file))
-    expect(reached.sort()).toEqual(['component.vue', 'entry.ts', 'lib/dynamic.ts', 'static.ts', 'vue-edge.ts'])
+    expect(reached.sort()).toEqual([
+      'component.vue',
+      'entry.ts',
+      'lib/dynamic.ts',
+      'static.ts',
+      'style.css',
+      'table.json',
+      'vue-edge.ts',
+    ])
   })
 
   it('so the walk finds the carrier behind the dynamic import and not the one behind import type', () => {
@@ -132,6 +148,8 @@ describe('the resolver, on a temporary graph', () => {
       .filter(([, text]) => text.includes(LITERAL))
       .map(([file]) => relative(dir, file))
     expect(carriers).toContain('lib/dynamic.ts')
+    expect(carriers).toContain('table.json')
+    expect(carriers).toContain('style.css')
     expect(carriers).not.toContain('types-only.ts')
     expect(carriers).not.toContain('named-types.ts')
   })

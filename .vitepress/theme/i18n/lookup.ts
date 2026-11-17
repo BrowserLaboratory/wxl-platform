@@ -13,10 +13,11 @@ function stripPrimaryCodeSegment(local: string, P: Locale): string | null {
 }
 
 /**
- * The list entry of a not-found path's counterpart — the same page in the other locale — or
- * null when none of the path's candidates (`pathCandidates`, the lookup algorithm) has one in
- * the list. A "counterpart" that is still in the path's own locale (`/<T>/<T>/x` →
- * `/<T>/x`) is not one.
+ * The list entry a not-found path is replaced with (D27, D28), or null when none of the path's
+ * candidates (`pathCandidates`, the lookup algorithm) has one in the list: for a translation
+ * path `/<T>/X`, the primary-locale page `/X`; for a primary path `/X`, the translation
+ * `/<T>/X`; for a primary-code path `/<P>/X`, see below. A result still under the path's own
+ * `T` prefix (`/<T>/<T>/x` → `/<T>/x`) is not one.
  *
  * **D28, checked first: the primary-code strip.** A not-found path whose first segment is `P`'s
  * own code (R22's old `/<P>/…` URLs — `P` is never a real prefix, only `T` is) is looked up with

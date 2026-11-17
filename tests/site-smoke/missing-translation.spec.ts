@@ -5,7 +5,7 @@ import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
 import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
 import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../__helpers__/upstreamDecision'
 
-// Spec 0008 on the production bundle (`pnpm docs:build`, served by `vitepress preview`): a cold
+// Spec 0008 on a test build (`WXL_SMOKE_PAGES=1 pnpm docs:build`, served by `vitepress preview`): a cold
 // load of a missing translation falls back to the page that exists, with the
 // missing-translation line, and the learner's stored language survives the trip. The subjects are
 // the two smoke fixtures (L-§4.5): one article that exists only in English and one that exists
@@ -109,12 +109,16 @@ test('the page list spelling matches the pages VitePress published', () => {
   // Both sides are built here: the source pages by the spelling rule, the published pages from
   // the built HTML. Equal sets mean the rule names exactly what the build serves.
   const md: string[] = []
-  const walk = (dir: string, top: boolean) => {
+  const walk = (dir: string, top: boolean, rel = '') => {
     for (const item of readdirSync(dir, { withFileTypes: true })) {
       if (item.name.startsWith('.')) continue
       if (item.isDirectory()) {
         if (top && (item.name === 'public' || item.name === 'shared')) continue
-        walk(join(dir, item.name), false)
+        const childRel = rel === '' ? item.name : `${rel}/${item.name}`
+        // B24: a challenge's application sources are not pages; written independently of the
+        // page-list module, this mirrors the `challenge/*/src/**` srcExclude.
+        if (/^challenge\/[^/]+\/src$/.test(childRel)) continue
+        walk(join(dir, item.name), false, childRel)
       } else if (item.name.endsWith('.md')) {
         // The primary locale's folder is published at the output root (D9): drop its `<P>/` prefix,
         // and nothing else. Written out here, not through the page-list module, so the two sides

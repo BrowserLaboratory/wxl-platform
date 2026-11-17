@@ -46,3 +46,23 @@ describe.skipIf(B95_SKIP !== undefined)('jsonStringifyEscaped equals create-wxlâ
     expect(jsonStringifyEscaped(value)).toBe(jsonStringifyEscapedCreateWxl(value))
   })
 })
+
+// B95: the literal forms. Not tied to create-wxl, so it runs in a range too.
+describe('B95: jsonStringifyEscaped writes the listed forms', () => {
+  it.each([
+    ['\u0009', '"\\u0009"'],
+    ['\u000d', '"\\u000d"'],
+    ['\n', '"\\n"'],
+    ['\u001b', '"\\u001b"'],
+    ['\ud800', '"\\ud800"'],
+    ['\u007f', '"\\u007f"'],
+    ['\u0085', '"\\u0085"'],
+    ['\u009b[31m', '"\\u009b[31m"'],
+  ])('writes %j as %s', (value, expected) => {
+    expect(jsonStringifyEscaped(value)).toBe(expected)
+  })
+
+  it.each([[undefined], [() => {}]])('returns undefined for %s', (value) => {
+    expect(jsonStringifyEscaped(value)).toBeUndefined()
+  })
+})

@@ -77,7 +77,7 @@ digraph fixloop {
      ```
   2. **Parse** the layered output; identify which layer failed (L1 / L2 / L3) and why; address all issues in one combined fix.
   3. **Propose fixes** (all issues at once):
-     - Missing/invalid declaration keys → add/correct in `challenge.yaml` via Edit; missing/invalid brief keys → add/correct in the brief's frontmatter via Edit.
+     - Missing/invalid declaration keys → add/correct in `challenge.yaml` via Edit; missing/invalid brief keys → add/correct in the brief's frontmatter via Edit. After any edit to `challenge.yaml`, restart `pnpm dev` if it is running (the challenge page reads the declaration only at startup, and the restart re-runs keygen).
      - Wrong file type for backend → fix the mismatch.
      - Flag not matching `FLAG{...}` / `CTF{...}` → rewrite `flag.txt`.
      - Hardcoded `localhost` / `127.0.0.1` / `0.0.0.0` in app code → remove/replace.

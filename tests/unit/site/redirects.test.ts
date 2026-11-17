@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { briefFaults, generateRedirects, indexSlugs, indexTrees, writeRedirects, type BriefFault } from '../../../scripts/generate-redirects'
+import { briefFaults, generateRedirects, indexSlugs, indexTrees, writeRedirects, type BriefFault, type IndexTrees } from '../../../scripts/generate-redirects'
 import { SiteLayoutError } from '../../../.vitepress/layout-error'
 import { hasRootRangeJson, isGitWorkTree, readManifest, upstreamOnlySkipReason } from '../../__helpers__/upstreamDecision'
 import { challengePagePath } from '../../../.vitepress/challenge/shortLink'
@@ -28,9 +28,9 @@ import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../.
 //
 //   CAUGHT
 //     a target's page directory renamed or deleted (`platform/<locale>/challenge/`)
-//     a challenge directory left without an `index.md`
 //     the primary locale's target directory holding no challenges at all
-//       (a translation's directory may be missing or empty, see below)
+//       (a folder with no `index.md` is no slug and is ignored, D127; a translation's
+//       directory may be missing or empty, see below)
 //     a translation's brief whose primary-locale brief is missing
 //       (`briefFaults`: `missing-primary`, D64)
 //     a rule that is neither a parameterised classroom link nor a numbered one
@@ -117,7 +117,7 @@ import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../.
 // the order. This file asserts the four parameterised rules verbatim — they are
 // the part that does not derive from the tree — that every other rule is a
 // numbered short link, so an unreviewed rule of any other shape still fails,
-// and, per challenge in git's index, the four rules spec 0008 gives it (G1–G3).
+// and, per challenge in git's index, the four rules D58 gives it.
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 const REDIRECTS = resolve(REPO_ROOT, 'platform/public/_redirects')
@@ -424,8 +424,8 @@ describe('_redirects rule set', () => {
   })
 
   it('gives every challenge in git’s index its four rules in form order, each at the page D58 names (S29)', () => {
-    // From git's per-tree index, not a directory listing: other test files scaffold
-    // throwaway challenges into the real tree while this one runs.
+    // From git's per-tree index, not a directory listing, as the pre-commit hook reads it
+    // (`indexSlugs`): an untracked directory in the working tree is not one of this tree's challenges.
     const slugs = indexSlugs(REPO_ROOT)
     const declared = slugs.get('declaration') ?? new Set<string>()
     expect(declared.size, 'no challenge declaration is tracked').toBeGreaterThan(0)
@@ -530,11 +530,16 @@ describe('brief faults on the real tree (S33)', () => {
   })
 
   it('would report a missing primary brief, in memory (the check is not vacuous)', () => {
-    const without = `platform/${P}/challenge/door-is-open/index.md`
+    // Any challenge with a declaration and the primary locale's brief: the tree's own, not a
+    // particular one.
     const paths = indexPaths()
+    const trees = indexTrees(paths)
+    const slug = [...(trees.slugs.get('declaration') ?? [])].filter((s) => trees.slugs.get(P)?.has(s)).sort()[0]
+    expect(slug, 'no tracked challenge has a declaration and the primary brief').toBeDefined()
+    const without = `platform/${P}/challenge/${slug}/index.md`
     expect(paths).toContain(without)
     const faults = briefFaults(indexTrees(paths.filter((p) => p !== without)), P)
-    expect(faults.map((f) => `${f.kind}:${f.slug}`)).toEqual(['missing-primary:door-is-open'])
+    expect(faults.map((f) => `${f.kind}:${f.slug}`)).toEqual([`missing-primary:${slug}`])
   })
 })
 
@@ -813,5 +818,20 @@ describe('briefFaults order (S35, S-§4.7)', () => {
       'a:missing-declaration',
     ])
     expect(faults.map((f) => f.slug)).toEqual([...faults.map((f) => f.slug)].sort(cmp))
+  })
+
+  it('puts a slug’s missing-declaration (W6c) before its old-layout page (W6d)', () => {
+    const paths = ['platform/challenge/s/index.md', 'platform/en/challenge/s/index.md']
+    const faults = briefFaults(indexTrees(paths), 'en')
+    expect(faults.map((f) => `${f.slug}:${f.kind}`)).toEqual(['s:missing-declaration', 's:old-layout'])
+  })
+
+  it('breaks a tie on present by UTF-16 code unit', () => {
+    // Deliberately in the opposite order: '.' (0x2E) sorts before '/' (0x2F).
+    const trees: IndexTrees = {
+      slugs: new Map([['declaration', new Set<string>()], ['en', new Set<string>()], ['zh-TW', new Set<string>()]]),
+      legacyPaths: ['platform/challenge/s/index.md', 'platform/challenge/s.md'],
+    }
+    expect(briefFaults(trees, 'en').map((f) => f.present)).toEqual(['platform/challenge/s.md', 'platform/challenge/s/index.md'])
   })
 })

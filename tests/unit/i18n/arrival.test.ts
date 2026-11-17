@@ -273,6 +273,17 @@ describe('notFoundRedirect: one redirect per arrival', () => {
   })
 })
 
+describe('notFoundRedirect: one redirect per arrival, under P = zh-TW', () => {
+  const PAGES_ZH = ['/', '/guide/python', '/reference/attack-log-export-format', '/en/', '/en/guide/python']
+
+  it('under P = zh-TW, gives nothing when its own landing would be a not-found path too (C9)', () => {
+    const landing = notFoundRedirect({ pathname: '/en/reference/attack-log-export-format' }, '/', PAGES_ZH, 'zh-TW')!
+    expect(landing.target).toBe('/reference/attack-log-export-format')
+    expect(classifyArrival({ isNotFound: true, relativePath: '404.md', pathname: landing.target, base: '/' }, PAGES_ZH))
+      .toEqual({ kind: 'failed-load' })
+  })
+})
+
 /**
  * The cold-load decision table (A-§4.1, DT17–40, DT57–80), both primaries: the NT, NP and NU
  * rows of `tests/__helpers__/localeTables.ts`, run under both bases and both `X` instances

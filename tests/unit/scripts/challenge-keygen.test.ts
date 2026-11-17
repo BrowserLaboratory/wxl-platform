@@ -1254,19 +1254,18 @@ describe('keygen aborts, names the slug, and leaves challenge.yaml and the publi
 
   afterEach(() => {
     rmSync(shimDir, { recursive: true, force: true })
-    // Re-key the challenge with a real run so the local tree is left exactly as a
-    // normal keygen leaves it. The restore is asserted: a silent failure here would
-    // leave the author's door-is-open unloadable with a clean git status.
+    // Run a real keygen on the copy once more, without the shim, and assert it succeeds: the
+    // aborted run must not have left the copy in a state a normal run cannot recover from.
+    // The copy is then removed.
     const r = spawnSync('pnpm', ['challenge:keygen', '--force', slug], { cwd: repoRoot, encoding: 'utf-8' })
     rmSync(repoRoot, { recursive: true, force: true })
     expect(r.status).toBe(0)
   })
 
-  // The challenge.yaml check compares mtimes, not only bytes: a shipped challenge already
-  // carries `wasmModule` and no legacy fields, so a rewrite would be byte-identical and
-  // a content comparison could not tell "not written" from "written unchanged".
-  // Measured in round 2: moving the frontmatter write above the integrity check left a
-  // content-only assertion green.
+  // This case keeps runtime.wasm and an early, unconditional write of challenge.yaml in check:
+  // a shipped challenge already carries `wasmModule` and no legacy fields, so a write-back of
+  // its declaration is byte-identical and is not written (D80 (a)); the order of the
+  // declaration write against the integrity check is held by the next case.
   it('exits non-zero with [slug] and "payload integrity", leaving challenge.yaml and runtime.wasm untouched', () => {
     const mdBefore = readFileSync(mdPath, 'utf-8')
     const mdMtime = statSync(mdPath).mtimeMs
@@ -1281,6 +1280,29 @@ describe('keygen aborts, names the slug, and leaves challenge.yaml and the publi
     expect(r.status).not.toBe(0)
     expect(output).toMatch(/\[door-is-open\] runtime\.wasm: payload integrity check failed — chall-data is 4 bytes, payload was \d+/)
     expect(readFileSync(mdPath, 'utf-8')).toBe(mdBefore)
+    expect(statSync(mdPath).mtimeMs).toBe(mdMtime)
+    expect(Buffer.from(readFileSync(wasmPath))).toEqual(Buffer.from(wasmBefore))
+    expect(statSync(wasmPath).mtimeMs).toBe(wasmMtime)
+  }, 120_000)
+
+  // A declaration whose write-back would differ (no `wasmModule` yet): were the write placed
+  // before the integrity check, its content and mtime would change on this aborted run (Y59).
+  it('leaves a challenge.yaml whose write-back would differ untouched', () => {
+    const edited = readFileSync(mdPath, 'utf-8').replace(/^wasmModule:.*\n?/m, '')
+    expect(edited).not.toContain('wasmModule')
+    writeFileSync(mdPath, edited, 'utf-8')
+    const mdMtime = statSync(mdPath).mtimeMs
+    const wasmBefore = readFileSync(wasmPath)
+    const wasmMtime = statSync(wasmPath).mtimeMs
+    const r = spawnSync('pnpm', ['challenge:keygen', '--force', slug], {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      env: { ...process.env, PATH: `${shimDir}:${process.env.PATH ?? ''}` },
+    })
+    const output = `${r.stdout ?? ''}${r.stderr ?? ''}`
+    expect(r.status).not.toBe(0)
+    expect(output).toMatch(/\[door-is-open\] runtime\.wasm: payload integrity check failed/)
+    expect(readFileSync(mdPath, 'utf-8')).toBe(edited)
     expect(statSync(mdPath).mtimeMs).toBe(mdMtime)
     expect(Buffer.from(readFileSync(wasmPath))).toEqual(Buffer.from(wasmBefore))
     expect(statSync(wasmPath).mtimeMs).toBe(wasmMtime)
@@ -1386,6 +1408,31 @@ describe('challenge-keygen CLI on a fixture tree (temp copy)', () => {
     expect(r.output).toContain('Challenge not found: bare')
     expect(r.output).not.toMatch(/\[(done|skip|stale)\]/)
   }, 60_000)
+
+  // D152: a challenge.yaml the reader rejects stops the run, naming the slug and giving PL-E14's text.
+  it.each([
+    ['invalid-yaml', 'number: [1\n'],
+    ['multi-document', 'number: 1\n---\nnumber: 2\n'],
+    ['not-a-mapping', '- one\n- two\n'],
+  ])('D152: a declaration that is %s stops keygen with one [slug] line, writing nothing after it', (reason, yaml) => {
+    writeHome()
+    writeChallenge('aaa')
+    writeChallenge('bbb', yaml)
+    writeChallenge('ccc')
+    const r = run()
+    expect(r.status).toBe(1)
+    // The earlier challenge's own tool output may share stderr; the rejection is the last line and the
+    // only one naming the slug.
+    const lines = r.stderr.trimEnd().split('\n')
+    expect(lines.filter((l) => l.startsWith('[bbb] '))).toEqual([
+      `[bbb] PL-E14: platform/challenge/bbb/challenge.yaml: not one YAML mapping (${reason})`,
+    ])
+    expect(lines[lines.length - 1]).toBe(`[bbb] PL-E14: platform/challenge/bbb/challenge.yaml: not one YAML mapping (${reason})`)
+    expect(existsSync(publishedWasm('aaa'))).toBe(true)
+    expect(existsSync(publishedWasm('bbb'))).toBe(false)
+    expect(existsSync(publishedWasm('ccc'))).toBe(false)
+    expect(readFileSync(declPath('ccc'), 'utf-8')).toBe(FIXTURE_DECLARATION)
+  }, 120_000)
 
   // Y53: nothing to process.
   it('Y53 (a): an empty platform/challenge/ is "No challenge files found"', () => {
@@ -1756,9 +1803,15 @@ const UPSTREAM_DECLARATIONS: Record<string, string> = {
   ].join('\n'),
 }
 
-describe.skipIf(
-  upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(LIVE_ROOT), isGitWorkTree(LIVE_ROOT), hasRootRangeJson(LIVE_ROOT)),
-)('challenge-keygen --force over upstream\'s four challenges (Y55, upstream only)', () => {
+const upstreamSkip = upstreamOnlySkipReason(
+  process.env.GITHUB_REPOSITORY,
+  readManifest(LIVE_ROOT),
+  isGitWorkTree(LIVE_ROOT),
+  hasRootRangeJson(LIVE_ROOT),
+)
+describe.skipIf(upstreamSkip !== undefined)(
+  `challenge-keygen --force over upstream's four challenges (Y55, upstream only)${upstreamSkip ? ` [skipped: ${upstreamSkip}]` : ''}`,
+  () => {
   let copy: string
   beforeAll(() => {
     copy = copyRepoForKeygen()
@@ -1774,4 +1827,5 @@ describe.skipIf(
       expect(readFileSync(resolve(copy, 'platform', 'challenge', slug, 'challenge.yaml'), 'utf-8'), slug).toBe(text)
     }
   }, 180_000)
-})
+  },
+)

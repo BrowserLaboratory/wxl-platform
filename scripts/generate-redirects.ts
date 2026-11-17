@@ -103,7 +103,7 @@ function commentLines(text: string, width = 78): string[] {
 }
 
 /**
- * The file's header. The capacity sentences are computed from the form list (K1–K3): F forms
+ * The file's header. The capacity sentences are computed from the form list (D61; K1–K3): F forms
  * take F static rules per numbered challenge and F dynamic slug rules, and the old-address rule
  * of `P = zh-TW` is one more dynamic rule.
  */
@@ -183,10 +183,8 @@ export interface GenerateOptions {
    * Two callers restrict it, both to what git tracks:
    *
    * - The guard test that compares the committed file with freshly generated
-   *   content. Other test files scaffold a throwaway challenge into the real tree to exercise
-   *   the keygen CLI, and vitest runs test files in parallel — so the guard can observe a
-   *   directory that exists for a few hundred milliseconds and belongs to nobody. Bounding it
-   *   to what git tracks removes that race without weakening the assertion.
+   *   content. Like the hook it counts only the files git's index lists (D67), so a directory
+   *   that is untracked or ignored in the working tree does not change the comparison.
    * - The pre-commit hook (`--staged`) passes the index slugs: a file counts only when it is
    *   in the index, and the primary locale comes from the index's `range.json` (D67). A brief left
    *   out this way re-points its locale's rules at the primary locale's page (D58). On a clean
@@ -480,18 +478,23 @@ function localeOfBrief(path: string): Locale {
 /** One fault as the hook prints it (W6a–W6d), without the hook's `[pre-commit] ` prefix. */
 export function briefFaultLine(fault: BriefFault, primary: Locale): string {
   const names = LOCALE_ENGLISH_NAMES
+  // `an` before a vowel letter, `a` otherwise (D151).
+  const kind = (path: string): string => {
+    const name = names[localeOfBrief(path)]
+    return `${/^[AEIOU]/.test(name) ? 'an' : 'a'} ${name}`
+  }
   const tail = 'so CI would fail this commit.'
   if (fault.kind === 'old-layout') return `✗ ${legacyPageLine(fault.present)}`
   if (fault.kind === 'missing-declaration') {
     const dir = fault.present.slice(0, -'index.md'.length)
-    return `✗ ${dir} is a ${names[localeOfBrief(fault.present)]} brief, but the index holds no challenge declaration ${fault.missing}, ${tail}`
+    return `✗ ${dir} is ${kind(fault.present)} brief, but the index holds no challenge declaration ${fault.missing}, ${tail}`
   }
   const primaryBrief = `${names[primary]} brief ${fault.missing}, the primary locale's`
   if (fault.present.endsWith('challenge.yaml')) {
     return `✗ ${fault.present} declares a challenge, but the index holds no ${primaryBrief}, ${tail}`
   }
   const dir = fault.present.slice(0, -'index.md'.length)
-  return `✗ ${dir} is a ${names[localeOfBrief(fault.present)]} brief, but the index holds no ${primaryBrief}, ${tail}`
+  return `✗ ${dir} is ${kind(fault.present)} brief, but the index holds no ${primaryBrief}, ${tail}`
 }
 
 /**
@@ -505,6 +508,7 @@ export function untrackedLines(dirs: readonly string[], primary: Locale): string
   const lines: string[] = []
   const include = 'To include it, git add it and commit again.'
   for (const dir of dirs) {
+    if (!dir.endsWith('/')) continue
     const parts = dir.replace(/\/$/, '').split('/')
     if (parts[0] !== 'platform') continue
     if (parts.length === 3 && parts[1] === 'challenge') {
@@ -568,6 +572,8 @@ if (isDirectRun) {
         generateFor(root, primary, { includeSlug: (slug, locale) => trees.slugs.get(locale)?.has(slug) ?? false }),
       )
     } else {
+      // The primary locale is read first (D123): a range.json fault is the first stderr line.
+      readPrimaryLocale(join(root, 'range.json'))
       if (!existsSync(join(root, 'platform', 'public'))) {
         console.error(`platform/public not found under ${root}`)
         process.exit(1)

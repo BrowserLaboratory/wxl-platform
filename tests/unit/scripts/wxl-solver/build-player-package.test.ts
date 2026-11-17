@@ -124,7 +124,7 @@ const DECLARATION_VALUES = [
   'zz_routes_layer_8be0.py',
 ]
 
-// Messages as in 5a's Y36 table (the text is `.vitepress/primary-locale.ts`'s own).
+// Codes as in 5a's Y36 table; Y110 pins the SiteLayoutError code, not the message text.
 const RANGE_FAULTS: Array<[string, (path: string) => void, string]> = [
   ['PL-E01 range.json is a folder', (p) => mkdirSync(p), 'PL-E01'],
   ['PL-E03 not valid JSON', (p) => writeFileSync(p, '{'), 'PL-E03'],

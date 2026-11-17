@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { tmpdir, platform } from 'node:os'
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import {
   discoverChallenges,
   validateChallenge,
@@ -186,6 +186,36 @@ describe('validateChallenge', () => {
     expect(errors[0].startsWith('Invalid YAML in challenge.yaml: ')).toBe(true)
     // The parser's own wording is not pinned (as for Y4); it must say something.
     expect(errors[0].slice('Invalid YAML in challenge.yaml: '.length).length).toBeGreaterThan(0)
+  })
+
+  const alias = (name: string, n: number) => `[${Array(n).fill(`*${name}`).join(', ')}]`
+  it.each([
+    ['an alias with no anchor', 'x: *nowhere\n'],
+    ['an alias expansion over the limit', `a: &a [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]\nb: &b ${alias('a', 10)}\nc: &c ${alias('b', 10)}\nd: ${alias('c', 10)}\n`],
+    ['a !!timestamp tag', 'd: !!timestamp 2001-01-01\n'],
+    ['a !!set tag', 'tags: !!set {a: null}\n'],
+    ['a !!merge tag', '!!merge x: {k: v}\n'],
+    ['a mapping key that is not a scalar', '? [a]\n: 1\n'],
+    ['an unresolved local tag', 'x: !foo bar\n'],
+  ])('Y68 (D129): %s is invalid YAML, reported without a warning or a throw', (_name, extra) => {
+    const ch = createChallenge(tmpDir, 'odd-yaml', { declaration: `backend: flask\napp: app.py\n${extra}` })
+    const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    let errors: string[] = []
+    let emitted = -1
+    try {
+      errors = validateChallenge(ch)
+    } finally {
+      emitted = emitWarning.mock.calls.length + warn.mock.calls.length + stderr.mock.calls.length
+      emitWarning.mockRestore()
+      warn.mockRestore()
+      stderr.mockRestore()
+    }
+    expect(errors).toHaveLength(1)
+    expect(errors[0].startsWith('Invalid YAML in challenge.yaml: ')).toBe(true)
+    expect(errors[0].slice('Invalid YAML in challenge.yaml: '.length).length).toBeGreaterThan(0)
+    expect(emitted).toBe(0)
   })
 
   it('Y68: reports a file with several documents as invalid YAML, not as a half-read mapping', () => {

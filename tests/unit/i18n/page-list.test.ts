@@ -1,12 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { entryForRelativePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
 import { lookupNotFound } from '../../../.vitepress/theme/i18n/lookup'
 import { pageListFromDir, rewrittenPath, isSmokeFixturePage } from '../../../.vitepress/pageList'
 import { LOCALES } from '../../../.vitepress/locales'
-import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -89,6 +88,19 @@ describe('the page list the site configuration ships', () => {
   // stripping/spelling rule (B43) — independent of both the code under test and VitePress's
   // page list. `challenge/<slug>/src/**`, `public/**` and `shared/**` are excluded the same
   // way `pageListFromDir` excludes them (B24, B25), which is not this row's own subject.
+  /** The primary locale, read from range.json by the test itself (absent or keyless: zh-TW). */
+  function ownPrimary(): string {
+    let text: string
+    try {
+      text = readFileSync(resolve(REPO_ROOT, 'range.json'), 'utf8')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'zh-TW'
+      throw err
+    }
+    const parsed = JSON.parse(text) as Record<string, unknown>
+    return Object.prototype.hasOwnProperty.call(parsed, 'primaryLocale') ? String(parsed.primaryLocale) : 'zh-TW'
+  }
+
   function oracle(primary: string, smoke: boolean): string[] {
     const srcDir = join(__dirname, '../../../platform')
     const found: string[] = []
@@ -131,7 +143,7 @@ describe('the page list the site configuration ships', () => {
   }
 
   it('equals every page of the real source tree, each once, under the real range.json primary', async () => {
-    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+    const primary = ownPrimary()
     delete process.env.WXL_SMOKE_PAGES
     const shipped = await shippedPages()
     expect(new Set(shipped).size).toBe(shipped.length)
@@ -140,12 +152,14 @@ describe('the page list the site configuration ships', () => {
   })
 
   it('with WXL_SMOKE_PAGES=1 it also holds the smoke fixtures (L35)', async () => {
-    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+    const primary = ownPrimary()
     process.env.WXL_SMOKE_PAGES = '1'
     const shipped = await shippedPages()
     expect(new Set(shipped).size).toBe(shipped.length)
     expect(new Set(shipped)).toEqual(new Set(oracle(primary, true)))
-    expect(shipped.filter((entry) => entry.includes('smoke-fixtures'))).toHaveLength(2)
+    const fixtures = (list: string[]) => list.filter((entry) => entry.includes('smoke-fixtures')).sort()
+    expect(fixtures(shipped)).toEqual(fixtures(oracle(primary, true)))
+    expect(fixtures(oracle(primary, false))).toEqual([])
   })
 })
 
@@ -320,6 +334,53 @@ describe('pageListFromDir: no duplicate entries on a passing tree (B41)', () => 
     const root = fixtureTree([...VALID_FILES, 'zh-TW/guide/only.md'])
     const list = pageListFromDir(root, primary)
     expect(new Set(list).size).toBe(list.length)
+  })
+})
+
+// B36 (page-list half): a translation-only page is in the list under its prefixed URL.
+describe('pageListFromDir: a translation-only page (B36)', () => {
+  it.each(['en', 'zh-TW'] as const)('lists the translation-only page under its own URL (primary %s)', (primary) => {
+    const root = fixtureTree(['en/index.md', 'zh-TW/index.md', 'zh-TW/guide/only.md'])
+    const list = pageListFromDir(root, primary)
+    if (primary === 'en') {
+      expect(list).toContain('/zh-TW/guide/only')
+      expect(list).not.toContain('/guide/only')
+    } else {
+      expect(list).toContain('/guide/only')
+      expect(list).not.toContain('/zh-TW/guide/only')
+    }
+  })
+})
+
+// B41 (trees built from B20-B36's cases) and B26/B28 (page-list half): no duplicate entry on any
+// of them under either primary locale, and an ignored path adds no entry.
+describe('pageListFromDir: every passing tree of B20-B36 (B41, B26, B28)', () => {
+  const VALID = ['en/index.md', 'zh-TW/index.md', 'challenge/x/challenge.yaml', 'challenge/x/src/app.py']
+  const TREES: Array<[string, string[]]> = [
+    ['B20 no zh-TW folder (no zh-TW home)', ['en/index.md', 'challenge/x/challenge.yaml']],
+    ['B20 en home only, with a translation folder holding no page', ['en/index.md', 'zh-TW/.keep']],
+    ['B24 a challenge src README', [...VALID, 'challenge/x/src/README.md']],
+    ['B25 public and shared pages', [...VALID, 'public/a.md', 'shared/b.md']],
+    ['B26 dot-prefixed, node_modules and dist', [...VALID, '.draft.md', 'en/.x/a.md', 'node_modules/p/README.md', 'en/dist/old.md']],
+    ['B27 non-page files', [...VALID, 'foo.txt', 'assets/logo.png', 'ja/.keep']],
+    ['B28 an upper-case extension', [...VALID, 'README.MD']],
+    ['B30 deeper locale-named folder', [...VALID, 'en/guide/zh-TW/a.md']],
+    ['B36 a translation-only page', [...VALID, 'zh-TW/guide/only.md']],
+  ]
+
+  describe.each(['en', 'zh-TW'] as const)('primary %s', (primary) => {
+    it.each(TREES)('%s has no duplicate', (_label, files) => {
+      const list = pageListFromDir(fixtureTree(files), primary)
+      expect(new Set(list).size).toBe(list.length)
+    })
+
+    it.each([
+      ['B26', ['.draft.md', 'en/.x/a.md', 'node_modules/p/README.md', 'en/dist/old.md']],
+      ['B28', ['README.MD']],
+    ])('%s: the ignored paths add no entry', (_label, extra) => {
+      const base = pageListFromDir(fixtureTree(VALID), primary)
+      expect(pageListFromDir(fixtureTree([...VALID, ...extra]), primary)).toEqual(base)
+    })
   })
 })
 
