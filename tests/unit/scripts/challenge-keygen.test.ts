@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync } from 'node:fs'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, realpathSync, mkdtempSync, cpSync, symlinkSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { resolve, join } from 'node:path'
+import { resolve, join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
   prepareTemplateWasm,
@@ -806,10 +806,37 @@ describe('planDisplaySource', () => {
 // swallowed the error would leave these unit tests green while the build reported
 // success. These cases abort before any WASM is written, so they stay fast.
 
+const LIVE_ROOT = resolve(__dirname, '../../..')
+
+// The CLI derives its root from its own file location (scripts/challenge-keygen.ts), so a
+// copy of the tree it needs is enough: no test below may write into the live repository.
+// node_modules is linked, not copied; .vitepress/dist and .vitepress/cache (~30 MB) are left out.
+function copyRepoForKeygen(): string {
+  const copy = mkdtempSync(join(realpathSync(tmpdir()), 'wxl-keygen-copy-'))
+  const skip = [resolve(LIVE_ROOT, '.vitepress', 'dist'), resolve(LIVE_ROOT, '.vitepress', 'cache')]
+  for (const rel of ['package.json', 'scripts', '.vitepress', 'platform', 'range.json']) {
+    const from = resolve(LIVE_ROOT, rel)
+    if (!existsSync(from)) continue
+    cpSync(from, resolve(copy, rel), {
+      recursive: true,
+      filter: (src) => !skip.some((d) => src === d || src.startsWith(`${d}/`)),
+    })
+  }
+  symlinkSync(resolve(LIVE_ROOT, 'node_modules'), resolve(copy, 'node_modules'), 'dir')
+  return copy
+}
+
 describe('challenge-keygen CLI rejects an unusable source_files entry', () => {
-  const repoRoot = resolve(__dirname, '../../..')
+  let repoRoot: string
+  let challengeDir: string
+  beforeAll(() => {
+    repoRoot = copyRepoForKeygen()
+    challengeDir = resolve(repoRoot, 'platform', 'challenge', slug)
+  })
+  afterAll(() => {
+    rmSync(repoRoot, { recursive: true, force: true })
+  })
   const slug = 'keygen-source-files-probe'
-  const challengeDir = resolve(repoRoot, 'platform', 'challenge', slug)
 
   function writeChallenge(
     sourceFiles: string,
@@ -869,6 +896,14 @@ describe('challenge-keygen CLI rejects an unusable source_files entry', () => {
 
   // The slug is asserted alongside the path: a batch run that dies on one challenge's
   // whitelist has to say which challenge, or the author is left grepping twenty of them.
+  it('runs the CLI on a copy under os.tmpdir(), never in the live repository', () => {
+    writeChallenge('[ /nope.html ]')
+    runKeygen()
+    expect(relative(realpathSync(tmpdir()), repoRoot).startsWith('..')).toBe(false)
+    expect(relative(LIVE_ROOT, repoRoot).startsWith('..')).toBe(true)
+    expect(existsSync(resolve(LIVE_ROOT, 'platform', 'challenge', slug))).toBe(false)
+  }, 60_000)
+
   it('exits non-zero and names the slug and a path that is not an entry of the challenge', () => {
     writeChallenge('[ /nope.html ]')
     const { status, output } = runKeygen()
@@ -1135,10 +1170,10 @@ describe('wasmMutate — the output file always exists', () => {
 // `.vitepress/wasm/template.wasm` this run re-stages is the same stripped module a
 // normal run produces. Without a real wasm-tools the shim copies instead.
 describe('keygen aborts, names the slug, and leaves frontmatter and the published module alone when the built module fails the payload check', () => {
-  const repoRoot = resolve(__dirname, '../../../')
+  let repoRoot: string
   const slug = 'door-is-open'
-  const mdPath = resolve(repoRoot, 'platform', 'challenge', slug, 'index.md')
-  const wasmPath = resolve(repoRoot, 'platform', 'public', 'challenge', slug, 'runtime.wasm')
+  let mdPath: string
+  let wasmPath: string
   let shimDir: string
 
   function realWasmTools(): string | null {
@@ -1150,6 +1185,11 @@ describe('keygen aborts, names the slug, and leaves frontmatter and the publishe
   }
 
   beforeEach(() => {
+    // The real repo's door-is-open, on a copy: this run re-stages template.wasm and keys
+    // the challenge, and no test may write into the live tree.
+    repoRoot = copyRepoForKeygen()
+    mdPath = resolve(repoRoot, 'platform', 'challenge', slug, 'index.md')
+    wasmPath = resolve(repoRoot, 'platform', 'public', 'challenge', slug, 'runtime.wasm')
     // A healthy published module to protect: CI keys every challenge before the tests
     // run, but a fresh clone has none.
     if (!existsSync(wasmPath)) {
@@ -1186,6 +1226,7 @@ describe('keygen aborts, names the slug, and leaves frontmatter and the publishe
     // normal keygen leaves it. The restore is asserted: a silent failure here would
     // leave the author's door-is-open unloadable with a clean git status.
     const r = spawnSync('pnpm', ['challenge:keygen', '--force', slug], { cwd: repoRoot, encoding: 'utf-8' })
+    rmSync(repoRoot, { recursive: true, force: true })
     expect(r.status).toBe(0)
   })
 
