@@ -313,6 +313,7 @@ describe('run: an invalid argument or an existing slug', () => {
     ['an existing legacy slug', ['--name', 'legacy']],
   ])('%s ends with status 1 before any file is written', (_label, argv) => {
     const root = makeRoot({
+      seed: '# not the generated content\n',
       tree: { ...DEFAULT_TREE, 'platform/challenge/legacy.md': page(9, 'Legacy') },
     })
     const before = snapshot(root)
