@@ -75,14 +75,14 @@ The dev server starts at `http://localhost:5173` by default.
 | `pnpm docs:build` | Build the VitePress static site only |
 | `pnpm docs:preview` | Preview the built static site |
 | `pnpm test` | Run the TypeScript / JavaScript unit tests (Vitest). Bare, it stays in watch mode — use `pnpm test --run` for a single pass |
-| `pnpm test:smoke` | Run the Playwright smoke tests against the built site |
+| `pnpm test:smoke` | Run the Playwright smoke tests against the built site; build it first with `WXL_SMOKE_PAGES=1 pnpm build` |
 | `pnpm wasm:build` | Build every Rust WASM module |
 | `pnpm wasm:test` | Run the Rust unit tests (`cargo test`) |
 | `pnpm wasm:tools` | Attempt to install `wasm-tools` into the Rust toolchain; it silences failures and always exits 0, so confirm with `wasm-tools --version` |
 | `pnpm fork:init` | Rewrite the project identity after forking (author, GitHub URLs, range address, site name, and the deploy setup `--host` decides). Requires `--author` and `--repo`; pass every argument on every run, `--host` and `--base` are mutually exclusive, and the package name changes only with `--name` or `--rebrand` |
 | `pnpm challenge:keygen` | Generate the encrypted WASM module for every challenge |
 | `pnpm create:challenge` | Scaffold a new challenge from flags; `--name <slug>` is required and a bare run exits 1 with its usage line |
-| `pnpm challenge:validate` | Validate every challenge's frontmatter and file layout |
+| `pnpm challenge:validate` | Validate every challenge's declaration, every brief and the file layout |
 | `pnpm challenge:analyze` | Report the content and configuration of a challenge |
 | `pnpm challenge:retype` | Mutate an existing challenge's backend / difficulty / tags / category |
 | `pnpm challenge:verify` | Run the layered verify gate (L1 lint, L2 build, L3 Playwright e2e) on a challenge |
@@ -117,26 +117,35 @@ The two Rust crates live under `chall-wasm/` and are built by `pnpm wasm:build`.
 
 ### Challenge configuration format
 
-Every challenge is a Markdown file with a YAML frontmatter block declaring its configuration:
+Every challenge's configuration lives in one challenge declaration, `platform/challenge/<slug>/challenge.yaml`, shared by every locale. For example, `platform/challenge/door-is-open/challenge.yaml`:
 
 ```yaml
----
-title: Need to Know      # required
-layout: challenge        # selects the challenge UI; without it the page renders as a plain docs page
-backend: fastapi         # required — flask | fastapi | php
-app: app.py              # required — path relative to the challenge's src/ root
+number: 1
 difficulty: easy
 category: web
+backend: fastapi         # required — flask | fastapi | php
+app: app.py              # required — path relative to the challenge's src/ root
 packages: []             # extra Python packages to install via micropip
 tools: [ browser, network, repeater, code ]   # omit the field to get exactly these four;
                                               # list them explicitly to narrow the set, and
                                               # browser is added back even if you drop it
 source_visible: false    # true = white-box, false = black-box (default)
+date: 2026-04-02T08:54:17.674Z
+tags: [ idor, access-control, fastapi, sqlite ]
 wasmModule: /challenge/door-is-open/runtime.wasm  # produced by keygen
+```
+
+Each locale has its own brief, `platform/<locale code>/challenge/<slug>/index.md`, whose frontmatter keeps only three keys:
+
+```yaml
+---
+title: Need to Know      # required
+layout: challenge        # selects the challenge UI; every brief needs this line
+description: ...         # the challenge's summary
 ---
 ```
 
-Challenge source files are picked up by scanning the challenge's `src/` directory. The legacy `fs:` mapping is still accepted for compatibility, but the validator emits a deprecation warning — new challenges SHALL rely on the `src/` scan instead.
+Challenge source files are picked up by scanning the challenge's `src/` directory.
 
 ## Contributing
 
@@ -149,8 +158,8 @@ The pre-commit hook regenerates `platform/public/_redirects` on every commit tha
 - **A range's first commit** that changes a challenge or `_redirects` is refused while anything under `platform/` other than `_redirects` is unstaged or untracked, because git cannot stash before the first commit. Stage it (or remove what should stay out) and commit again.
 - **Changes the hook could not put back.** The hook keeps your unstaged changes and untracked files under `platform/` in a stash entry and prints its commit id. Run the `git stash apply <id>` it prints. Where apply refuses, the `git restore` commands it prints overwrite the files under `platform/` with the entry's copy, so run them before you change anything there. When apply reports a conflict, which happens where two changes touch the same or neighbouring lines, `git checkout <id> -- <path>` takes that file from the entry. git then leaves staged both that file and the entry's other changes it applied; `git restore --staged --source=<id>^2 -- ':(top)platform/' ':(top,exclude)platform/public/_redirects'` puts back what was staged before the commit, so check `git status` before you commit.
 - **A staged change the hook could not put back.** When git's stash stopped partway and changed the index, the message says so and prints `git restore --staged --source=<id>^2 -- …`. It overwrites what is staged under `platform/` with what was staged before the commit, so run it once your files are back and before you stage anything there. When it is the only command printed, your unstaged files are already back; otherwise run the commands of the item above first.
-- **Repairing a stale `_redirects`:** `pnpm redirects:generate` reads the whole working tree, so it refuses while an untracked draft challenge has no `number` in its frontmatter, and its message names the draft. Fix or move the draft first, or stage a challenge change and commit: the hook regenerates the file from what is staged.
-- **A Traditional Chinese brief without its English challenge** is refused. If one was committed earlier with `--no-verify`, every later challenge commit is refused until the English challenge is committed or the brief is removed with `git rm -r platform/zh-TW/challenge/<slug>/`.
+- **Repairing a stale `_redirects`:** `pnpm redirects:generate` reads the whole working tree, so it refuses while an untracked draft challenge has no `number` in its `challenge.yaml`, and its message names the draft. Fix or move the draft first, or stage a challenge change and commit: the hook regenerates the file from what is staged.
+- **A challenge without its primary-locale brief, or without its declaration** is refused: a brief without the primary locale's brief, a brief without a `challenge.yaml`, and a `challenge.yaml` without a primary-locale brief. If one was committed earlier with `--no-verify`, every later challenge commit is refused until the missing piece is committed: write the brief under `platform/<locale code>/challenge/<slug>/`, or retire the whole challenge to `.archive/challenge/<slug>/`.
 
 The stash entry of the two items about changes the hook could not put back stays in `git stash list`. Once your files and the index are back, find its line with `git stash list --format='%gd %H'`, the one whose id is the one the message printed, and drop it with `git stash drop stash@{<n>}` from that line; `git stash drop` does not take the id itself.
 
@@ -222,6 +231,70 @@ npx --yes create-wxl@latest upgrade
 > A range not made with `npm create wxl` (no `range.json`) names the upstream release it came from
 > with `--from <version>`.
 
+### The setup record and the primary locale
+
+`range.json` at the range's top level is the setup record. Its `primaryLocale` decides the range's primary locale: the language whose content the site's root address serves, and the language of the brief that every challenge must have.
+
+- The values `primaryLocale` accepts are the locale list: `en` and `zh-TW`, matched exactly, with no case folding and no trimming.
+- When the file is absent, or has no `primaryLocale` key, the primary locale is `zh-TW`.
+- When the file cannot be read or the value is wrong, the build stops with a message that starts with one of these codes: PL-E01 `range.json` is not a regular file (a directory, a symbolic link and so on; a symbolic link is not followed); PL-E02 the file could not be read (the message carries the errno code); PL-E03 the content is not valid JSON; PL-E04 the content is not a JSON object; PL-E05 `primaryLocale` is not a string; PL-E06 `primaryLocale` is not on the locale list.
+- Until epic 0011 no tool does this for you: a teacher chooses the primary locale by editing the file.
+- A translation's home page may link only to pages that translation has, written from that locale's own home page without a locale code; otherwise the build stops with PL-E12.
+- A range that reruns `pnpm fork:init --site-name` must keep both home pages, because `fork:init` still requires both.
+- When `range.json` has no `upstream` field, `pnpm range:upgrade` needs `--from <version>`.
+
+#### Changing the primary locale later
+
+No tool changes the primary locale afterwards, and it has a cost:
+
+- Edit `primaryLocale` in `range.json` and commit it; the pre-commit hook regenerates `platform/public/_redirects`, or run `pnpm redirects:generate` yourself.
+- Restart `pnpm dev` for the change to take effect.
+- The site's root address changes language, and `/c/NNN` opens the new primary locale's page.
+- Links already handed out without a locale code open the new primary locale's page; links that start with `/<old primary locale>/…` reach the root only through the old-address rule (when the old primary locale was `zh-TW`) or through the not-found page, which strips the prefix.
+- The brief every challenge must have becomes the new primary locale's. When some challenge lacks it, the hook refuses the commit with W6a and names that challenge, so write each such brief first.
+- The hero and nav links on the home pages follow by themselves.
+- A `challenge.yaml` edit shows in the challenge list after a reload, and on the challenge page only after you restart `pnpm dev`.
+
+### Moving to the locale folders
+
+Every locale has a locale folder, `platform/<locale code>/`, that holds all of that locale's pages. A range that was not made with `npm create wxl` and has not been upgraded with `pnpm range:upgrade` (a plain fork, for example) may still be on the old layout: at least one page sits outside every locale folder. A range on the old layout does not build, and you move it yourself, in this order:
+
+1. **Merge the release first**: its new `.vitepress/`, `scripts/`, `platform/shared/`, `platform/public/`, `package.json`, `pnpm-lock.yaml` and the pages upstream moved. Moving on the old code is meaningless. If the merge stops on a page upstream renamed and your fork edited, keep upstream's new path and carry your edit there.
+2. **Move every page outside the locale folders to `platform/en/`**, keeping its path.
+3. **Write each English brief's frontmatter lines other than `title`, `description` and `layout`**, unchanged, into `platform/challenge/<slug>/challenge.yaml`, and delete them from every brief, in every locale.
+4. **In every list and home page of every locale folder**, import `../shared/challenges.data.ts` (replacing `./shared/challenges.data.ts` and `../shared/challenges.zh-TW.data.ts`, which no longer exists) and pass `:lists="data"` instead of `:challenges="data"`.
+5. **Write every home-page link from the locale's own home page**, dropping a `/zh-TW` prefix (`/zh-TW/challenges/` becomes `/challenges/`); a translation's home page may link only to pages that translation has.
+6. **Move the files a moved page uses that stayed behind.**
+7. **Add `"primaryLocale": "en"` to `range.json`** (create the file when it is absent) to keep English at the root. A fork without `range.json`, or without the key, now serves Traditional Chinese at the root, even when it has no page of its own to move.
+8. **Run `pnpm build`.**
+
+A `range.json` at the root also makes the tree a range, so upstream-only tests skip there, as in any range. A range whose `range.json` has no `upstream` field upgrades only with `--from <version>`; without it `pnpm range:upgrade` stops with UP-E06. An uncommitted `range.json` changes local builds only.
+
+`smoke-fixtures/` is a reserved name. A page moved into a folder such as `platform/en/smoke-fixtures/`, by hand or by the upgrade, is not published by a production build.
+
+When you write pages, note that links written as raw HTML and links built by components are not checked.
+
+When the build refuses a layout, the first line of its message starts with one of these codes:
+
+- **PL-E01**: `range.json` is not a regular file. Replace it with a real file; a symbolic link is not followed.
+- **PL-E02**: `range.json` could not be read. Fix the permission or the file named by the errno code in the message (for example `EACCES`).
+- **PL-E03**: `range.json` is not valid JSON (an empty file, a leading BOM, comments and trailing text all count). Make it valid JSON.
+- **PL-E04**: `range.json` does not hold a JSON object. Make it `{ … }`.
+- **PL-E05**: `primaryLocale` is not a string. Make it a locale code string from the locale list.
+- **PL-E06**: `primaryLocale` is not on the locale list. Use a value from the list, matched exactly.
+- **PL-E07**: there are symbolic links where the build looks for pages, including a locale folder itself. Replace each with the file or folder itself.
+- **PL-E08**: a page is outside the locale folders: directly in `platform/`, in `platform/challenge/` outside `<slug>/src/`, or in a folder not named by a locale code. Move it into a locale folder with the steps in this section.
+- **PL-E09**: an entry of a locale folder is named like a locale code (or like one minus `.md`), so its address would collide with that locale's prefix. Rename it.
+- **PL-E10**: the primary locale has no home page, so `platform/<primary locale>/index.md` is missing. Add it.
+- **PL-E11**: a page links to the primary locale's folder (for example `/zh-TW/guide/`), but the primary locale's pages are served without it. Drop the locale prefix.
+- **PL-E12**: a home page's `hero.actions[*].link` or `features[*].link` breaks the rules: it is not a string, starts with `//`, is relative, already carries a locale prefix, or names a page that is not published. Write it from the locale's own home page, such as `/guide/`; the build adds the prefix.
+- **PL-E13**: a brief sets `layout: challenge` but there is no `platform/challenge/<slug>/challenge.yaml`. Add the challenge declaration.
+- **PL-E14**: `challenge.yaml` is not one YAML mapping (the reason is `invalid-yaml`, `multi-document` or `not-a-mapping`). Make it one YAML mapping.
+- **PL-E15**: a brief's frontmatter has a key other than `title`, `description` and `layout`. Move those keys into `challenge.yaml`.
+- **PL-E16**: `challenge.yaml` carries a brief key (`title`, `description` or `layout`). Move it to the brief.
+- **PL-E17**: a challenge's brief does not set `layout: challenge`. Add that line.
+- **PL-E18**: `layout: challenge` is set on another page; only `platform/<locale code>/challenge/<slug>/index.md` may use it. Remove it.
+
 ### After forking: rewrite the project identity
 
 Run `fork:init` with its required flags:
@@ -260,7 +333,11 @@ const siteBase = process.env.SITE_BASE || '/'
 >
 > `platform/public/_redirects` is generated from the challenges; do not edit it by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when challenges change. Commit it together with them: GitHub Pages does not read it, but CI checks that it matches the challenges. If CI reports it stale, run `pnpm redirects:generate` and commit the result.
 >
-> Copied short links carry a locale code: `/en/c/NNN` from an English page or list, `/zh-TW/c/NNN` from a Traditional Chinese one. Every numbered challenge has both, and `/zh-TW/c/NNN` opens the English page while the challenge has no Traditional Chinese translation. `/c/NNN` and `/zh/c/NNN`, which earlier releases gave out, keep working but are no longer given out. For now `/en/c/NNN` opens like `/c/NNN`: a learner whose locale preference is Traditional Chinese, or who has none, is taken to the Traditional Chinese translation when one exists. Opening a `/zh-TW/` page, through a short link or a reload too, sets the learner's locale preference to Traditional Chinese. A range upgrading to this release gets the new rules by regenerating `_redirects`: when CI reports it stale, run `pnpm redirects:generate` and commit the result.
+> Copied short links carry the locale list's code on either primary locale: `/en/c/NNN` from an English page or list, `/zh-TW/c/NNN` from a Traditional Chinese one. Every numbered challenge has a link for every locale; when that locale has no version of the challenge, the link opens the primary locale's page. `/c/NNN` is the primary locale's page. `/c/NNN` and `/zh/c/NNN`, which earlier releases gave out, keep working but are no longer given out.
+>
+> A short link coded with the primary locale, and `/c/NNN`, follow the learner's locale preference: a learner who chose a translation is taken to it when the challenge has one, and a learner with no preference stays in the language of the address they opened, because the site does not switch it for them. A short link coded with a translation always opens that translation. Opening a page whose address starts with a locale code directly (typing, pasting, reloading) sets the learner's locale preference to that locale; a short link coded with the primary locale opens a page at the root and sets nothing.
+>
+> On an English-primary range, `/en/c/NNN` opens the English page at the root, and a learner whose locale preference is Traditional Chinese may be taken to the translation; on a Traditional-Chinese-primary range, `/en/c/NNN` opens `/en/challenge/<slug>/` and every learner sees English. On a Traditional-Chinese-primary range, old `/zh-TW/…` addresses go to the root: Cloudflare Pages by a rule in `_redirects`, other hosts by the not-found page; on Cloudflare Pages a file under `platform/public/zh-TW/` is redirected by that same rule. After changing `primaryLocale`, commit `range.json` (the pre-commit hook regenerates `_redirects`) or run `pnpm redirects:generate`. An uncommitted `range.json` changes local builds only. A range upgrading to this release gets the new rules by regenerating `_redirects`: when CI reports it stale, run `pnpm redirects:generate` and commit the result.
 
 Without `--host`, this line is rewritten only by `--base`; omit `--base` too and it stays whatever it already was — the upstream line, or a literal left by an earlier `--base` run. `--base /<repo>/` writes the literal path into `.vitepress/config.mts`; `--base none` writes the literal `const siteBase = '/'` (it does not clear the line). **With `--base`, a range's site smoke and challenge tests fail in CI** — both navigate from `/`, and a literal sub-path base 404s them; switching to `--host github-pages` leaves the base to be decided at deploy time, so every local and CI build stays at `/` and the problem never arises.
 

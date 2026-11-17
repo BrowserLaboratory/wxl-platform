@@ -9,8 +9,8 @@ unintended solution, exploit spec, blind solve — is defined in [`GLOSSARY.md`]
 
 | Path | What |
 |---|---|
-| `platform/challenge/<slug>/` | the engagement brief (`index.md`) and the application under `src/` |
-| `platform/zh-TW/challenge/<slug>/` | the Traditional Chinese brief |
+| `platform/challenge/<slug>/` | the challenge declaration (`challenge.yaml`) and the application under `src/` |
+| `platform/<locale>/challenge/<slug>/` | the engagement brief for that locale (`index.md`); the primary locale's brief is required |
 | `tests/challenges/<slug>.spec.ts` | the exploit spec |
 | `platform/public/_redirects` | the short-link rules, described below the table |
 

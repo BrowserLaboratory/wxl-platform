@@ -94,8 +94,8 @@ Document language and bilingual sync rules: [docs/agents/language.md](docs/agent
 
 ```
 platform/                         the VitePress site (srcDir): pages, challenges, public assets
-  challenge/<slug>/               one challenge: index.md brief + src/ application
-  zh-TW/                          Traditional Chinese translations; a page without one is shown in English
+  challenge/<slug>/               one challenge: challenge.yaml declaration + src/ application
+  <locale>/                       one folder per locale: its pages and challenge/<slug>/index.md briefs; `range.json` picks the primary locale, served at the URL root
 tests/challenges/<slug>.spec.ts   a challenge's exploit spec (Playwright)
 .vitepress/                       site config, theme, workers
 chall-wasm/                       Rust crates compiled to the challenge runtimes' WASM
@@ -117,7 +117,7 @@ review and every deferral. `.proj.handoffs/` is not: a handoff expires, so it st
 `package.json` lists the scripts. The ones an agent needs and cannot infer:
 
 - `pnpm build` needs the Rust toolchain and `wasm-pack`; `pnpm wasm:build` alone rebuilds the runtimes.
-- `pnpm test` runs vitest; `pnpm test:smoke` and `pnpm test:challenges` run Playwright against a built site.
+- `pnpm test` runs vitest; `pnpm test:smoke` and `pnpm test:challenges` run Playwright against a built site; `pnpm test:smoke` needs a build made with `WXL_SMOKE_PAGES=1`.
 - `pnpm challenge:verify <slug>` is a challenge's release-blocking gate (L1–L3); add `--blind` for L4.
 - `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test` runs the
   `create-wxl` package's own tests; it has its own lockfile, so the root `pnpm install` does not

@@ -3056,6 +3056,101 @@ Deferred to stage 6 (P2, frozen rubric):
 
 Full-suite result (suite step, HEAD fe8b230, report `/private/tmp/claude-501/scratch8a/report-8a.json`, mtime Nov 17 18:34:58 2026, epoch 1794911698, run started 1794911482): 154 files, 885 suites, 6982 tests: 6982 passed, 0 failed, 0 skipped/todo. Single parallel run, no re-run needed. Probe dirs removed before and after (none existed).
 
+### 2026-11-17 (parent, decision on segment 8b's plan needs_user: the two AGENTS.md edits; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: two hunks of `AGENTS.md`;
+nothing else in that file, and no other agent-instruction file.
+
+- Question: rows Y99 and LH4 change `AGENTS.md` (the two "Repository layout" lines, and the `pnpm test:smoke` line
+  gaining `WXL_SMOKE_PAGES=1`). `AGENTS.md` is imported by `CLAUDE.md`, so it is an agent-instruction file; the
+  planner asked whether the user must confirm in person, since an agent's message cannot authorize such an edit.
+- Decision: approved, for these two hunks only. The authorization here is the user's own chat message of 2026-11-17
+  to the parent session, not an agent's relay; it covers the approved test plan, and Y99 and LH4 (D50) are rows of
+  that plan and of spec revision 2.3 that name these lines. Both edits are statements of fact about the repository
+  (the layout moved in `ad01564`; the smoke build needs the switch), not changes to how agents work.
+- Conditions: the executor writes the `AGENTS.md` edits last, as their own hunks, so they can be dropped alone; it
+  changes no rule, pipeline row, hard rule or reference line. The parent shows the user the diff of both hunks
+  verbatim after the segment and reverts them on the user's word.
+
+### 2026-11-17 (parent, the user confirmed two parent decisions in person)
+
+The user, in chat on 2026-11-17, after both items were listed to them: 「兩件事都同意，繼續」. The two items:
+
+1. The means for D80 (b) (keygen converges): the declaration is written before `runtime.wasm` is placed and only
+   when its bytes change, and the staged template is re-staged only when missing, older than wasm-pack's output, or
+   under `--force` (the parent's 5c decision above; D133). Confirmed by the user, so D133's "the user chooses" is met
+   in person, not only under the standing authorization.
+2. The orchestrator's clarification from segment 4b on: a test in the carried list, or one a segment's plan declared
+   in advance as newly red with a later owner, is not a P0 under the frozen rubric; an undeclared newly red test
+   still is. Confirmed by the user as not a change of the frozen rubric.
+
+### 2026-11-17 (segment 8b)
+
+Wave 8, the documents. Rows done, each with its red or its first-run-green reason:
+
+- Row 0 baseline: glossary, sentence-map, upstream-equality, upstream-guard and toolchain-parity = 5 files, 550 passed, 1 skipped; create-wxl upstream-config and release-docs = 2 files, 60 passed. Pre-change greps as planned (0, 0, empty; 8a's coined-term lines for 主語系, 語系清單, 語系資料夾, 舊版面, 搬家, 題目宣告 were all still there).
+- B86: red after README.md's section, before GLOSSARY: glossary.test.ts "primary locale（主語系） does not declare itself new while already in use" (message: declares 「主語系」 to be coined, but that term already occurs in this project's Chinese prose), same for "locale list（語系清單）" (2 failed, 328 passed). Both coined-term lines deleted; green. Neither README writes the quoted upstream-key form. Both languages.
+- B85: green on first run (344 passed), reason: 主語系's coined-term line went in the B86 cycle and the new text coins nothing. Section "之後改主語系" / "Changing the primary locale later", both languages.
+- B84: red after the "搬到語系資料夾" section: 4 failed, 324 passed: locale folder（語系資料夾）, legacy layout（舊版面）, layout move（搬家） and, because the section also says 題目宣告, challenge declaration（題目宣告）, so Y97's red landed here. Four coined-term lines deleted; green (344 passed). Headings are exactly PL-E08's; eight ordered steps; PL-E01 to PL-E18 one line each; the smoke-fixtures reserved-name sentence (also LH4's README half); the B76 sentence. Both languages.
+- LH4: README.md:78 and README.en.md:78 (WXL_SMOKE_PAGES=1 pnpm build), plus the AGENTS.md hunk below. Guard tests green on first run (U9's two lines untouched).
+- A35 and S69: the short-link blockquote's second and third paragraphs rewritten; the first paragraph (Z1, Z2, E1, E2) untouched. Pre-change greps matched, now empty. sentence-map green on first run (those four sentences unchanged). Includes D71 per primary, D30, S-O7/R-13, D67.
+- S70: the orphan item rewritten in both languages. Stage 6 observation: the item above it said a draft has no number "in its frontmatter"; scripts/challenge-numbers.ts:117 says "has no number in its declaration", so I changed it to challenge.yaml in both languages.
+- Y97: validate rows, example split into challenge.yaml (door-is-open keys and comments) and a brief's three keys, fs: sentence gone. Its coined-term red was already taken in B84; green.
+- Y98: CONTRIBUTE.md lines 148, 163, 232, 236, 238 and the D87 restart sentence (at 163). Stage 6 observation: line 184 (L1 "Frontmatter + structure validation") now reads "Declaration, brief and structure validation", as Y96 did for the skill text. Guard tests green on first run (pinned lines are outside these paragraphs).
+- Y99: docs/agents/challenge-pipeline.md rows 12-13 and the AGENTS.md layout lines (below). E1 untouched; green on first run.
+- Y100, LH1's difficulty-badge clause, LH2, A34: the six guide pages (zh-TW and en: python.md, index.md, troubleshooting.md). grep -i frontmatter over the six files is empty; grep for the assumes/以繁體中文為準 wording over troubleshooting is empty. U131 and glossary green on first run: all six paths are in U-§5's EXCEPTIONS, no entry added. LH1's list-title row (Challenges, Choose a challenge to begin) untouched (T-0079).
+- B87: ADR-0008 two dated notes; git diff --numstat = 12 insertions, 0 deletions, two hunks.
+- Y101: no extra edit. The documented dev-server limit is at CONTRIBUTE.md:163 (D87 sentence), README.md:247 and README.en.md:256 (N18 sentence). V-Y8 stays for stage 8.
+
+Rows not done: none. needs_user: none (the AGENTS.md hunks were approved in the parent entry above).
+
+Final commands: pnpm vitest run on the five root files = 5 files, 544 passed, 1 skipped (550 at baseline; the 6 fewer are the K-1 "does not declare itself new" cases of the six coined-term lines removed); pnpm --dir create-wxl exec vitest run test/upstream-config.test.mjs test/release-docs.test.mjs = 2 files, 60 passed; python3 scripts/verify-project.py = PASS. No file added to git. The platform/ files changed are six existing guide pages (not staged by the segment; they go in the segment's commit). No full suite run.
+
+Note for stage 6: README.md's "搬到語系資料夾" intro names a range not upgraded with pnpm range:upgrade, and GLOSSARY's 搬家 entry describes the upgrade doing the move; both match T-0081's behaviour, which lands later.
+
+AGENTS.md diff (two hunks, written last):
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 01a5dc8..4dbcc63 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -94,8 +94,8 @@ Document language and bilingual sync rules: [docs/agents/language.md](docs/agent
+ 
+ ```
+ platform/                         the VitePress site (srcDir): pages, challenges, public assets
+-  challenge/<slug>/               one challenge: index.md brief + src/ application
+-  zh-TW/                          Traditional Chinese translations; a page without one is shown in English
++  challenge/<slug>/               one challenge: challenge.yaml declaration + src/ application
++  <locale>/                       one folder per locale: its pages and challenge/<slug>/index.md briefs; `range.json` picks the primary locale, served at the URL root
+ tests/challenges/<slug>.spec.ts   a challenge's exploit spec (Playwright)
+ .vitepress/                       site config, theme, workers
+ chall-wasm/                       Rust crates compiled to the challenge runtimes' WASM
+@@ -117,7 +117,7 @@ review and every deferral. `.proj.handoffs/` is not: a handoff expires, so it st
+ `package.json` lists the scripts. The ones an agent needs and cannot infer:
+ 
+ - `pnpm build` needs the Rust toolchain and `wasm-pack`; `pnpm wasm:build` alone rebuilds the runtimes.
+-- `pnpm test` runs vitest; `pnpm test:smoke` and `pnpm test:challenges` run Playwright against a built site.
++- `pnpm test` runs vitest; `pnpm test:smoke` and `pnpm test:challenges` run Playwright against a built site; `pnpm test:smoke` needs a build made with `WXL_SMOKE_PAGES=1`.
+ - `pnpm challenge:verify <slug>` is a challenge's release-blocking gate (L1–L3); add `--blind` for L4.
+ - `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test` runs the
+   `create-wxl` package's own tests; it has its own lockfile, so the root `pnpm install` does not
+```
+
+- Deferred to stage 6 (P2, frozen rubric), segment 8b final review:
+  - `platform/zh-TW/guide/troubleshooting.md:202` (P2, confidence medium): the zh-TW "why" paragraph keeps the fixed-direction example "a link in Traditional Chinese to a challenge that exists only in English", while the English text is generic; under A34 ("no fixed root locale") the example holds only when P=en; the line predates this segment and was outside the executor's grep.
+  - `README.md:262` (P2, confidence high): the B84 closing sentence says only "otherwise it stops at UP-E06"; it omits "until epic 0011" and does not name the `upstream` field; README.en.md:271 omits the same.
+  - `README.en.md:336` (P2, confidence high): the S69 English paragraph says "carry the locale list's code", misusing the GLOSSARY term "locale list"; the intent is the locale code of the challenge list the copy button sits in; the zh-TW text does not have the problem.
+  - `README.md:162` (P2, confidence medium): the S70 remedy offers two paths (write the brief, or move the whole challenge to .archive); it does not say to add a missing challenge.yaml, nor D63's "delete every brief in the same commit"; the row text itself only requires naming the two paths, so no row is violated.
+  - `README.md:249` (P2, confidence medium): the "move to locale folders" intro and the smoke-fixtures sentence (line 264, "by hand or by upgrade alike") describe the upgrade's move as existing behaviour, but it lands in T-0081 (K-9); spec B84 words it this way and assigns B84 to T1, so production matches the spec; same class as the 8a GLOSSARY move-entry P2.
+  - `CONTRIBUTE.md:163` (P2, confidence low): the retype paragraph says not to edit `challenge.yaml` by hand, then says to restart `pnpm dev` when it changes "by a retype or by hand"; also "reads the declaration only at startup" approximates D87's cache mechanism (VitePress keys on the Markdown source).
+  - `docs/adr/0008-locale-folders-primary-chosen-at-build.md:50` (P2, confidence low): the second dated note is a blockquote between consequence 2 and 3, which splits the Consequences list in two when rendered; B87's placement and byte-identical-other-lines requirements are met; cosmetic only.
+  - `README.md:98` (P2, confidence low): the architecture tree still reads "Challenge pages (Markdown + YAML frontmatter)" in README.md and README.en.md; the declaration moved to challenge.yaml and the brief keeps three frontmatter keys; outside Y97's listed scope, so outdated rather than wrong.
+  - `platform/en/guide/troubleshooting.md:206` (P2, confidence low): the A34 sentence "while the site remembers no language ... the line does not appear" reads in tension with the same entry's "why" paragraph (line 202: opening an address for a missing translation changes the address bar); text follows A34's expected column; to confirm at stage 6 reading.
+  - `README.md:160` (P2, confidence low): the executor changed two passages outside the row list (README "repair a stale _redirects" item, now saying challenge.yaml, matching the message at scripts/challenge-numbers.ts:117; CONTRIBUTE.md:184 L1 row now "Declaration, brief and structure validation"); content correct, scope note only.
+- Full suite (segment 8b): report `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/s8b/report-8b.json`, mtime 2026-11-17 18:49:29 (epoch 1794912569; run started epoch 1794912363, so written after start), HEAD ba76889 before and after. 6976 tests: 6976 passed, 0 failed, 0 pending, 0 todo; 885 test files, 0 failed suites; exit code 0. No failures, so no `--no-file-parallelism` re-run and no flakes. Probe dirs removed before and after (none existed).
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
