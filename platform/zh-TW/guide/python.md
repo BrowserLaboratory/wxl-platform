@@ -146,7 +146,7 @@ Run 遲遲不能按的時候該怎麼辦，寫在[疑難排解](./troubleshootin
 
 這份清單不代表兩件事：
 
-- 題目在 frontmatter 宣告的套件只會裝進題目自己的 runtime。Code 面板那份 Pyodide 只安裝 `micropip` 與 `requests`，題目用到的套件在這裡 import 不到。
+- 題目宣告裡列出的套件只會裝進題目自己的 runtime。Code 面板那份 Pyodide 只安裝 `micropip` 與 `requests`，題目用到的套件在這裡 import 不到。
 - 面板的 Pyodide 是第二份獨立實例，有自己的虛擬檔案系統，與題目那一份不共用。在這個面板用 Python 讀檔碰不到題目的資料。
 
 ### 自己安裝第三方套件

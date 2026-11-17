@@ -145,7 +145,7 @@ pnpm create:challenge --name <slug> [--title <title>] \
 ```
 
 The script automatically:
-1. Creates the challenge directory and Markdown file under `platform/challenge/`.
+1. Creates the challenge directory with its declaration `platform/challenge/<slug>/challenge.yaml`, and the brief `platform/<P>/challenge/<slug>/index.md` for the primary locale `P`.
 2. Generates the matching backend app skeleton (`app.py` or `index.php`).
 3. Creates `flag.txt` with the supplied flag.
 4. Runs `pnpm challenge:keygen` to produce the encrypted WASM module.
@@ -160,7 +160,7 @@ pnpm create:challenge --name sqli-login --title "SQL Injection Login Bypass" \
 
 ### Mutate gate (`pnpm challenge:retype`)
 
-Once a challenge exists, change its backend / difficulty / tags / category with `challenge:retype` — do **not** edit `index.md` frontmatter or rename `src/app.py` / `src/index.php` by hand. The script keeps the vulnerability body intact, and re-runs `pnpm challenge:keygen` when the backend changes. It never writes to `tests/challenges/<slug>.spec.ts`: a flask ↔ fastapi swap leaves `EXPLOIT_PATH` alone because the routes are unchanged, and a cross-language swap exits with code 2 before anything is modified. Check the spec file yourself after a retype.
+Once a challenge exists, change its backend / difficulty / tags / category with `challenge:retype` — do **not** edit `challenge.yaml` or rename `src/app.py` / `src/index.php` by hand. The script keeps the vulnerability body intact, and re-runs `pnpm challenge:keygen` when the backend changes. It never writes to `tests/challenges/<slug>.spec.ts`: a flask ↔ fastapi swap leaves `EXPLOIT_PATH` alone because the routes are unchanged, and a cross-language swap exits with code 2 before anything is modified. Check the spec file yourself after a retype. If `pnpm dev` is running when `challenge.yaml` changes (by a retype or by hand), restart `pnpm dev`: the challenge list updates on a reload, but the challenge page reads the declaration only at startup.
 
 ```bash
 # Metadata-only mutations
@@ -181,7 +181,7 @@ pnpm challenge:retype <slug> --backend flask
 
 | Layer | Gate | Default? |
 |-------|------|----------|
-| L1 | Frontmatter + structure validation (delegates to `challenge:validate`) | yes |
+| L1 | Declaration, brief and structure validation (delegates to `challenge:validate`) | yes |
 | L2 | Content analysis + keygen + `wasm-tools validate runtime.wasm` (delegates to `challenge:analyze`) | yes |
 | L3 | Playwright e2e exploit spec at `tests/challenges/<slug>.spec.ts` | yes |
 | L4 | Spawn a fresh agent CLI session and require it to solve the challenge blind | only with `--blind` |
@@ -229,13 +229,13 @@ pnpm challenge:keygen --force <slug>  # Force a regeneration
 ```
 
 The script runs this pipeline:
-1. Read the challenge frontmatter and the files under `src/`.
+1. Read the challenge's `challenge.yaml` and the files under `src/`.
 2. Generate a random AES-256 key and encrypt every FS entry.
 3. Derive the flag verifier (PBKDF2-HMAC-SHA256).
 4. Pack the result as a WASM custom section and inject it into the template WASM binary.
-5. Update the `wasmModule` path in the frontmatter.
+5. Update the `wasmModule` path in `challenge.yaml`.
 
-> **Skip behavior**: if the frontmatter already has `wasmModule` and the corresponding `runtime.wasm` file exists, the script skips that challenge. In CI environments — where `.wasm` files are not under version control — the script regenerates automatically. Use `--force` to force a regeneration.
+> **Skip behavior**: if `challenge.yaml` already has `wasmModule` and the corresponding `runtime.wasm` file exists, the script skips that challenge. In CI environments — where `.wasm` files are not under version control — the script regenerates automatically. Use `--force` to force a regeneration.
 
 ## Commit conventions
 
