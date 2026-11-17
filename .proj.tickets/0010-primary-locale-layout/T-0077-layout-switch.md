@@ -2483,6 +2483,108 @@ Deferred to stage 6 (P2, frozen rubric):
 
 Full-suite result (suite step): single parallel run (JSON reporter, exit 1): 151 test files, 804 suites, 6451 tests: 6330 passed, 9 failed, 112 skipped, 0 todo. Plus 1 file failed at collection (`tests/pre-commit-sh.test.ts`, a file failure with no assertions: "Cannot generate _redirects: the challenge tree is inconsistent. door (platform/zh-TW/challenge/door/index.md) has no declaration platform/challenge/door/challenge.yaml"). Every failure matched an allowed entry, so the `--no-file-parallelism` re-run was not needed and no flake was observed.
 
+### 2026-11-17 (parent, decision on segment 5c's plan needs_user: D80 (b), D133, Y-O5; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the means by which keygen
+converges (D80 (b)); nothing else. D133 says the user chooses when write order or the module's mtime cannot make (b)
+hold; the user's authorization covers decisions an executor would refer to them, so the parent decides as the planner
+recommends and lists it to the user with its cost and the alternative.
+
+- Measurement (Y-O5, the planner's scratch clone, since deleted): with today's code every second and third run
+  reports `[stale]` for all four challenges. Two causes: `index.md` is written after `runtime.wasm`; and `main`
+  re-stages `.vitepress/wasm/template.wasm` on every run, which is itself a tracked input. Changing the write order
+  alone still gives `[stale]`. With the staged template re-staged only when it is missing, older than wasm-pack's
+  output, or under `--force`, runs 2 and 3 report `[skip]`; touching the raw template, the staged template, a `src/`
+  file or the declaration each gives one `[stale]` and then `[skip]` again.
+- Decision: approved as recommended. (1) The declaration is written after the staged module passes the integrity
+  check and before `runtime.wasm` is placed, and only when its bytes change (D80 (a)). (2) `main` calls
+  `prepareTemplateWasm` only when `force || isOutputStale(staged template, [virtual_fs_bg.wasm])`. The tracked set
+  does not change, so Y57 (e) holds; AC-39's "converges" is met, not weakened. Y58 and Y57's CLI half are written
+  against this.
+- Why the parent reads this as inside D80 (b): the means is mtime-based and changes no tracked input; `pnpm build`
+  and `pnpm dev` run `wasm:build` first, so they rebuild as today.
+- Known cost, recorded for stage 6 and listed to the user: after upgrading only `wasm-tools` or `wasm-opt`, the
+  staged template is not redone until `pnpm wasm:build` or `--force` runs.
+- Alternative not taken: track wasm-pack's raw output instead of the staged file (a one-line change, but it changes
+  what is tracked, against Y57's text).
+
+### 2026-11-17 (segment 5c)
+
+Wave 5, keygen. Done, with the parent's decision on D80 (b)/D133 applied (declaration
+  written after the integrity check and before `runtime.wasm`, only when bytes change; `prepareTemplateWasm` only when
+  `force || isOutputStale(staged template, [virtual_fs_bg.wasm])`). Y-O5 measured in a scratch clone before the
+  segment: runs 2 and 3 all `[stale]` (write order alone not enough; staged template re-staged every run), `[skip]`
+  after both changes; the four upstream `challenge.yaml` round-trip byte-for-byte.
+  - Y61, 8 existing source_files cases: fixture only (`challenge.yaml` + brief under `platform/<P>/challenge/<slug>/`,
+    P from the copy's `range.json`). Red: `Challenge not found: keygen-source-files-probe` (6), `expected 1 to be +0` (3).
+    Green after `keygenSlugs` + `processChallenge(root, slug, ...)` reading `readChallengeDeclaration`. Isolation case stayed green.
+  - Y59 (carried failure): pointed at `challenge.yaml`; first-green (the integrity check precedes every write). Mutation:
+    removing `assertPayloadIntact` red. The plan's mutation (a), moving the write above the check, is NOT visible
+    with the live fixture: door-is-open's declaration already has `wasmModule` and no legacy key, so the write is
+    byte-identical and D80 (a) skips it; the mtime assertion goes red only when the early write changes bytes (verified with a
+    one-byte change). Y59's assertions were left as approved; suggestion for stage 6: a fixture whose write-back differs.
+  - Y52 (a)(b), Y53 (a)(b): first-green (discovery already keyed on `challenge.yaml` after Y61). Mutations: dropping the
+    `existsSync(challenge.yaml)` filter red Y52 (a)(b) and Y53 (b); `slugs.length === 0` off red Y53 (a)(b).
+  - Y20 keygen half, 5 keys: red `expected [ '[prep] ...' ] to include '[warn] legacy: deprecated field 'fs' ...'` (only `fs`);
+    green after importing `LEGACY_FIELDS` from `.vitepress/challenge/config.ts`. Mutation (skip `fs`) red.
+  - Y54: first-green; fixture checked as a fixed point of `toString({lineWidth:0})` and holds a long flow sequence.
+    Mutations: `toString()` without `lineWidth: 0` red; removing the `doc.delete` loop red. Mutation (c) (touch a brief) not run.
+  - Y21 keygen half: first-green; mutation (default flag file name) red.
+  - Y56: red `expected 1794903281829.5415 to be 1577836800000`; green after `if (next !== raw)`.
+  - Y57 function half: 2 of the 4 re-pointed cases red (`expected [ ... ] to include '<...>/src/app.py'`) plus the new
+    case; green after dropping the `index.md` test. Mutation (drop src scan) red.
+  - Y58 (a)(b): red, second run printed `[stale]` instead of `[skip] again`; green after the write order and the
+    template mtime condition. Mutation (always re-stage) red.
+  - Y57 CLI half, 6 cells: first-green after Y58. Mutations: primary brief added to the tracked set red the zh-TW (a) cell;
+    drop src scan red (c); always re-stage red both (a) cells.
+  - Y55: first-green, upstream-only through `upstreamOnlySkipReason`; four texts hand-typed from Y-§2.4. Mutation
+    (`toString()` without `lineWidth: 0`) red. NOT moved to V-Y5: the test never calls wasm-pack, it needs only the built
+    `virtual_fs_bg.wasm`, as Y61 and Y59 do; CI builds wasm before `pnpm test`.
+  - Y60: (i) red `expected '[done]  good ...' not to contain 'legacy flat file structure'`, green after removing the flat
+    branch and `parseMd`; (ii) first-green. After B38's layout check, (i) was rewritten as planned: exit non-zero, stderr
+    lines 1-2 = PL-E08 first line and `"platform/challenge/old.md"`, no flat warning, platform/ snapshot unchanged.
+  - Y107: (a)(b) first-green; six fault cells red `expected +0 to be 1` (PL-E02 skipped under win32 or root), green after
+    `readPrimaryLocale` at the top of `main`. Mutation (fixed `zh-TW`) red 7.
+  - B38 keygen half: (1) red `expected +0 not to be +0`, green after `checkSourceLayout`; (2) first-green (range.json read first).
+    Mutation (drop the layout check) red (1) and Y60 (i).
+  - Not done / notes: nothing undone. Cross-area: a declaration that is not one mapping is skipped with
+    `[skip] <slug>: declaration unreadable (<reason>)`, no row, no test (stage 6 P2). `main` keeps no flat discovery at all.
+  - `git add`: none (nothing under `platform/` changed; fixtures live in `os.tmpdir()`).
+  - Commands: `npx vitest run tests/unit/scripts/challenge-keygen.test.ts` 114 passed (114); same with
+    `GITHUB_REPOSITORY=acme/range` 113 passed, 1 skipped (Y55, upstreamOnlySkipReason); `tests/unit/challenge/config.test.ts`,
+    `tests/unit/challenge/plugin.test.ts`, `tests/challenge-validate.test.ts`, `tests/unit/site/redirects-generated.test.ts`
+    4 files, 347 passed. `git status --porcelain --ignored` identical before and after; `find platform .vitepress/wasm scripts -newer <stamp>` empty.
+  - Full suite (segment 5c, vitest in Node only, no browser): parallel run 6629 total, 6508 passed, 9 failed, 112 skipped
+    (844 suites, 8 failed suites). Serial run (`--no-file-parallelism`): identical, 6508 passed / 9 failed / 112 skipped. No flakes.
+  - Deferred to stage 6 (P2, frozen rubric):
+    - `tests/unit/scripts/challenge-keygen.test.ts:1270` (high): with the real door-is-open fixture, Y59 cannot detect a declaration write moved above the integrity check, because the write-back is byte-identical and D80 (a) skips it (`if (next !== raw)` at `scripts/challenge-keygen.ts:762` never writes); an unconditional early write or an early `runtime.wasm` would still go red. Suggest a fixture whose write-back differs.
+    - `scripts/challenge-keygen.ts:600` (medium): a declaration that `readChallengeDeclaration` rejects (invalid YAML, multi-document, not a mapping) is skipped with `[skip] <slug>: declaration unreadable (<reason>)` and the run exits 0; no row or test defines this case. It is the counterpart of HEAD's `[skip] <slug>: no frontmatter`, so not a regression.
+    - `scripts/challenge-keygen.ts:624` (high): the flat-branch removal leaves a bare `{ ... }` block (lines 624-658) in `processChallenge` that is only extra indentation; style only.
+    - `tests/unit/scripts/challenge-keygen.test.ts:1360` (low): the fixture-tree CLI cases set `NODE_NO_WARNINGS=1`, so the "stderr's first line is the PL line" assertions (Y107, B38, Y60 (i)) do not cover the real `pnpm challenge:keygen` run on Node 22, where an ExperimentalWarning may print first (same caveat as 5a and 5b).
+    - `tests/unit/scripts/challenge-keygen.test.ts:1265` (medium): Y59's mtime assertion can no longer catch a declaration write moved above the integrity check, and its comment still claims it can (same root cause as the first item); fix with a differing-write-back fixture and an updated comment.
+    - `tests/unit/scripts/challenge-keygen.test.ts:1424` (high): the Y20 keygen case title says "one exact warning" but the test only checks that the exact line is present, not that it appears once; wording or test strength only.
+    - `scripts/challenge-verify.ts:277` (high): outside this segment, `challenge-verify-L1.test.ts` › "passes for a well-formed challenge" is red (`TypeError: The "path" argument must be of type string`, from `validateChallenge` at `scripts/challenge-validate.ts:163`; L1 still passes an index.md path into the new signature). `git diff HEAD` is empty for those files and the L1 path never reaches keygen, so it predates 5c; it belongs to the verify segment (owner 5f) and is on the carried list.
+    - `scripts/challenge-keygen.ts:600` (medium, duplicate of the second item): the unreadable-declaration skip with exit 0 is uncovered by any row or test.
+
+### 2026-11-17 (parent, segment 5c's suite stop: segment 5b's full-suite report was stale)
+
+- The orchestrator stopped at 5c's suite step on one "unexpected" failure:
+  `tests/unit/scripts/challenge-verify-L1.test.ts › L1 layer (task 4.2) passes for a well-formed challenge and surfaces
+  "✓ L1 passed"`. It is not new. Segment 5a's plan declared it in advance (L1 still calls `validateChallenge` with one
+  argument; owner: segment 5f), and 5a's suite listed it as still failing.
+- Cause, from the orchestrator's journal: segment 5b's suite step reported "6451 tests: 6330 passed, 9 failed, 112
+  skipped", byte for byte segment 4d's numbers, and without the verify-L1 failure that was red before and after it.
+  5a's real run had 6561 tests. The 5b suite agent read an old JSON report file; its "full-suite result" line in
+  5b's Comments entry is therefore wrong and is corrected by this entry. The carried list lost the verify-L1 entry.
+- What covers 5b now: 5c's suite was run for real, parallel and with `--no-file-parallelism`, identical both times
+  (vitest in Node): 6629 tests, 6508 passed, 9 failed, 112 skipped. The failures are verify-L1 (above), the 8
+  `create-challenge-run` cases (owner: 5e) and `tests/pre-commit-sh.test.ts` failing at collection (owner: wave 6).
+  Y59 is green. That run is on a tree containing 5b's commit `8afc11b`, so it verifies 5b's change as well.
+- Handling (no user decision involved; a record correction): the verify-L1 entry is restored to the carried list with
+  owner 5f, and from segment 5d on the suite step must write a new, segment-named report file and state its path,
+  modification time and HEAD sha.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, realpathSync, mkdtempSync, cpSync, symlinkSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync, rmSync, statSync, realpathSync, mkdtempSync, cpSync, symlinkSync, chmodSync, readdirSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { resolve, join, relative } from 'node:path'
-import { tmpdir } from 'node:os'
+import { resolve, join, relative, basename } from 'node:path'
+import { tmpdir, platform } from 'node:os'
 import {
   prepareTemplateWasm,
   assertUsableWasm,
@@ -18,6 +18,7 @@ import {
   slugToSeed,
   isOutputStale,
   getTrackedInputPaths,
+  keygenSlugs,
   aesGcmEncryptRaw,
   planDisplaySource,
   wasmMutate,
@@ -26,6 +27,9 @@ import {
   type ChallengePayload,
 } from '../../../scripts/challenge-keygen'
 import { extractCustomSection } from '../../../.vitepress/theme/composables/useWasmLoader'
+import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
+import { parseDocument } from 'yaml'
+import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../../__helpers__/upstreamDecision'
 
 // ─── XOR masks matching Rust key_derive.rs compile-time constants ────────────
 const MASK_A = new Uint8Array([
@@ -536,14 +540,14 @@ describe('getTrackedInputPaths', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('includes the challenge markdown file', () => {
+  it('includes the challenge declaration file', () => {
     // Set up a per-folder challenge structure
     const challDir = join(tmpDir, 'platform', 'challenge', 'test-chall')
     const srcDir = join(challDir, 'src')
     mkdirSync(srcDir, { recursive: true })
 
-    const mdPath = join(challDir, 'index.md')
-    writeFileSync(mdPath, '---\ntitle: Test\napp: app.py\nbackend: flask\n---\nContent')
+    const mdPath = join(challDir, 'challenge.yaml')
+    writeFileSync(mdPath, 'app: app.py\nbackend: flask\n')
     writeFileSync(join(srcDir, 'app.py'), 'print("hello")')
     writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{test}')
 
@@ -559,8 +563,8 @@ describe('getTrackedInputPaths', () => {
     const srcDir = join(challDir, 'src')
     mkdirSync(srcDir, { recursive: true })
 
-    const mdPath = join(challDir, 'index.md')
-    writeFileSync(mdPath, '---\ntitle: Test\napp: app.py\nbackend: flask\n---\nContent')
+    const mdPath = join(challDir, 'challenge.yaml')
+    writeFileSync(mdPath, 'app: app.py\nbackend: flask\n')
     writeFileSync(join(srcDir, 'app.py'), 'print("hello")')
     writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{test}')
 
@@ -577,8 +581,8 @@ describe('getTrackedInputPaths', () => {
     const templatesDir = join(srcDir, 'templates')
     mkdirSync(templatesDir, { recursive: true })
 
-    const mdPath = join(challDir, 'index.md')
-    writeFileSync(mdPath, '---\ntitle: Test\napp: app.py\nbackend: flask\n---\nContent')
+    const mdPath = join(challDir, 'challenge.yaml')
+    writeFileSync(mdPath, 'app: app.py\nbackend: flask\n')
     writeFileSync(join(srcDir, 'app.py'), 'print("hello")')
     writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{test}')
     writeFileSync(join(templatesDir, 'index.html'), '<html></html>')
@@ -597,8 +601,8 @@ describe('getTrackedInputPaths', () => {
     const srcDir = join(challDir, 'src')
     mkdirSync(srcDir, { recursive: true })
 
-    const mdPath = join(challDir, 'index.md')
-    writeFileSync(mdPath, '---\ntitle: Test\napp: app.py\nbackend: flask\n---\nContent')
+    const mdPath = join(challDir, 'challenge.yaml')
+    writeFileSync(mdPath, 'app: app.py\nbackend: flask\n')
     writeFileSync(join(srcDir, 'app.py'), 'print("hello")')
     writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{test}')
     writeFileSync(join(srcDir, '.fsignore'), '*.log')
@@ -608,6 +612,34 @@ describe('getTrackedInputPaths', () => {
 
     const paths = getTrackedInputPaths(mdPath, templatePath)
     expect(paths).toContain(join(srcDir, '.fsignore'))
+  })
+
+  it('tracks the declaration, the template and the src/ files, and no brief under platform/<locale>/', () => {
+    const challDir = join(tmpDir, 'platform', 'challenge', 'test-chall')
+    const srcDir = join(challDir, 'src')
+    mkdirSync(join(srcDir, 'templates'), { recursive: true })
+    const declPath = join(challDir, 'challenge.yaml')
+    writeFileSync(declPath, 'app: app.py\nbackend: flask\n')
+    writeFileSync(join(srcDir, 'app.py'), 'print("hello")')
+    writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{test}')
+    writeFileSync(join(srcDir, 'templates', 'index.html'), '<html></html>')
+    for (const locale of ['en', 'zh-TW']) {
+      const brief = join(tmpDir, 'platform', locale, 'challenge', 'test-chall')
+      mkdirSync(brief, { recursive: true })
+      writeFileSync(join(brief, 'index.md'), '---\ntitle: T\nlayout: challenge\n---\n')
+    }
+    const templatePath = join(tmpDir, 'template.wasm')
+    writeFileSync(templatePath, 'fake-wasm')
+
+    const without = getTrackedInputPaths(declPath, templatePath)
+    expect([...without].sort()).toEqual(
+      [declPath, templatePath, join(srcDir, 'app.py'), join(srcDir, 'flag.txt'), join(srcDir, 'templates', 'index.html')].sort(),
+    )
+    expect(without.some((p) => p.startsWith(join(tmpDir, 'platform', 'en')) || p.startsWith(join(tmpDir, 'platform', 'zh-TW')))).toBe(false)
+    expect(without).not.toContain(join(srcDir, '.fsignore'))
+
+    writeFileSync(join(srcDir, '.fsignore'), '*.log')
+    expect(getTrackedInputPaths(declPath, templatePath)).toContain(join(srcDir, '.fsignore'))
   })
 })
 
@@ -848,23 +880,22 @@ describe('challenge-keygen CLI rejects an unusable source_files entry', () => {
     writeFileSync(resolve(dir, 'src', 'app.py'), 'from flask import Flask\n')
     writeFileSync(resolve(dir, 'src', 'flag.txt'), `${flag}\n`)
     writeFileSync(resolve(dir, 'src', 'logo.png'), Buffer.from([0x89, 0x50, 0xff, 0xfe]))
+    // AC-61: the declaration carries every field but the brief's; the brief (title, layout)
+    // sits in the primary locale's folder, P read from the copy's own range.json.
     writeFileSync(
-      resolve(dir, 'index.md'),
+      resolve(dir, 'challenge.yaml'),
       [
-        '---',
-        `title: Probe`,
-        'layout: challenge',
         'backend: flask',
         'app: app.py',
         'packages: [ flask ]',
         `source_visible: ${sourceVisible}`,
         `source_files: ${sourceFiles}`,
-        '---',
-        '',
-        'probe',
         '',
       ].join('\n'),
     )
+    const briefDir = resolve(repoRoot, 'platform', readPrimaryLocale(join(repoRoot, 'range.json')), 'challenge', basename(dir))
+    mkdirSync(briefDir, { recursive: true })
+    writeFileSync(resolve(briefDir, 'index.md'), ['---', 'title: Probe', 'layout: challenge', '---', '', 'probe', ''].join('\n'))
   }
 
   // spawnSync, not execFileSync: the redaction notice goes to stderr, and execFileSync
@@ -881,6 +912,7 @@ describe('challenge-keygen CLI rejects an unusable source_files entry', () => {
   afterEach(() => {
     for (const s of [slug, payloadSlug]) {
       rmSync(resolve(repoRoot, 'platform', 'challenge', s), { recursive: true, force: true })
+      rmSync(resolve(repoRoot, 'platform', readPrimaryLocale(join(repoRoot, 'range.json')), 'challenge', s), { recursive: true, force: true })
       rmSync(resolve(repoRoot, 'platform', 'public', 'challenge', s), { recursive: true, force: true })
     }
   })
@@ -1169,7 +1201,7 @@ describe('wasmMutate — the output file always exists', () => {
 // is delegated to the real wasm-tools when one is installed, so the shared
 // `.vitepress/wasm/template.wasm` this run re-stages is the same stripped module a
 // normal run produces. Without a real wasm-tools the shim copies instead.
-describe('keygen aborts, names the slug, and leaves frontmatter and the published module alone when the built module fails the payload check', () => {
+describe('keygen aborts, names the slug, and leaves challenge.yaml and the published module alone when the built module fails the payload check', () => {
   let repoRoot: string
   const slug = 'door-is-open'
   let mdPath: string
@@ -1188,7 +1220,7 @@ describe('keygen aborts, names the slug, and leaves frontmatter and the publishe
     // The real repo's door-is-open, on a copy: this run re-stages template.wasm and keys
     // the challenge, and no test may write into the live tree.
     repoRoot = copyRepoForKeygen()
-    mdPath = resolve(repoRoot, 'platform', 'challenge', slug, 'index.md')
+    mdPath = resolve(repoRoot, 'platform', 'challenge', slug, 'challenge.yaml')
     wasmPath = resolve(repoRoot, 'platform', 'public', 'challenge', slug, 'runtime.wasm')
     // A healthy published module to protect: CI keys every challenge before the tests
     // run, but a fresh clone has none.
@@ -1230,12 +1262,12 @@ describe('keygen aborts, names the slug, and leaves frontmatter and the publishe
     expect(r.status).toBe(0)
   })
 
-  // The frontmatter check compares mtimes, not only bytes: a shipped challenge already
+  // The challenge.yaml check compares mtimes, not only bytes: a shipped challenge already
   // carries `wasmModule` and no legacy fields, so a rewrite would be byte-identical and
   // a content comparison could not tell "not written" from "written unchanged".
   // Measured in round 2: moving the frontmatter write above the integrity check left a
   // content-only assertion green.
-  it('exits non-zero with [slug] and "payload integrity", leaving index.md and runtime.wasm untouched', () => {
+  it('exits non-zero with [slug] and "payload integrity", leaving challenge.yaml and runtime.wasm untouched', () => {
     const mdBefore = readFileSync(mdPath, 'utf-8')
     const mdMtime = statSync(mdPath).mtimeMs
     const wasmBefore = readFileSync(wasmPath)
@@ -1255,3 +1287,491 @@ describe('keygen aborts, names the slug, and leaves frontmatter and the publishe
   }, 120_000)
 })
 
+// ─── The CLI on a fixture tree (T-0077 wave 5c: Y52-Y61, Y107, B38 keygen half) ─────────────
+//
+// Y-q2: a temp copy of the tooling only (package.json, scripts/, .vitepress/, node_modules
+// linked), with NO platform/ and no range.json; every case writes the tree it needs, and
+// afterEach clears both. The CLI derives its root from its own location, so nothing here can
+// touch the live repository.
+
+const FIXTURE_FLAG = 'FLAG{fixture_0000aaaa}'
+const FIXTURE_DECLARATION = [
+  'number: 1',
+  'backend: flask',
+  'app: app.py',
+  'packages: [ flask ]',
+  'source_visible: false',
+  '',
+].join('\n')
+
+function copyToolingForKeygen(): string {
+  const copy = mkdtempSync(join(realpathSync(tmpdir()), 'wxl-keygen-fixture-'))
+  const skip = [resolve(LIVE_ROOT, '.vitepress', 'dist'), resolve(LIVE_ROOT, '.vitepress', 'cache')]
+  for (const rel of ['package.json', 'scripts', '.vitepress']) {
+    cpSync(resolve(LIVE_ROOT, rel), resolve(copy, rel), {
+      recursive: true,
+      filter: (src) => !skip.some((d) => src === d || src.startsWith(`${d}/`)),
+    })
+  }
+  symlinkSync(resolve(LIVE_ROOT, 'node_modules'), resolve(copy, 'node_modules'), 'dir')
+  return copy
+}
+
+describe('challenge-keygen CLI on a fixture tree (temp copy)', () => {
+  let root: string
+  beforeAll(() => {
+    root = copyToolingForKeygen()
+  })
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+  afterEach(() => {
+    rmSync(resolve(root, 'platform'), { recursive: true, force: true })
+    rmSync(resolve(root, 'range.json'), { recursive: true, force: true })
+  })
+
+  const declPath = (slug: string) => resolve(root, 'platform', 'challenge', slug, 'challenge.yaml')
+  const publishedWasm = (slug: string) => resolve(root, 'platform', 'public', 'challenge', slug, 'runtime.wasm')
+
+  /** `platform/<P>/index.md`: the primary locale's home page, which the layout check expects. */
+  function writeHome(locale = 'zh-TW'): void {
+    mkdirSync(resolve(root, 'platform', locale), { recursive: true })
+    writeFileSync(resolve(root, 'platform', locale, 'index.md'), '---\ntitle: Home\n---\n\nhome\n')
+  }
+
+  function writeChallenge(slug: string, declaration = FIXTURE_DECLARATION, flag = FIXTURE_FLAG): void {
+    const dir = resolve(root, 'platform', 'challenge', slug)
+    mkdirSync(resolve(dir, 'src'), { recursive: true })
+    writeFileSync(resolve(dir, 'challenge.yaml'), declaration)
+    writeFileSync(resolve(dir, 'src', 'app.py'), 'from flask import Flask\n')
+    writeFileSync(resolve(dir, 'src', 'flag.txt'), `${flag}\n`)
+  }
+
+  function writeBrief(slug: string, locale: string, title = 'Brief'): void {
+    const dir = resolve(root, 'platform', locale, 'challenge', slug)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(resolve(dir, 'index.md'), `---\ntitle: ${title}\nlayout: challenge\n---\n\nbody\n`)
+  }
+
+  function run(args: string[] = []): { status: number; stdout: string; stderr: string; output: string } {
+    const r = spawnSync(process.execPath, ['--experimental-strip-types', 'scripts/challenge-keygen.ts', ...args], {
+      cwd: root,
+      encoding: 'utf-8',
+      env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    })
+    const stdout = r.stdout ?? ''
+    const stderr = r.stderr ?? ''
+    return { status: r.status ?? -1, stdout, stderr, output: `${stdout}${stderr}` }
+  }
+
+  // Y52: a folder without challenge.yaml is not a challenge.
+  it('Y52 (a): without a slug, processes the folder that has a challenge.yaml and ignores one that has only src/', () => {
+    writeHome()
+    writeChallenge('good')
+    mkdirSync(resolve(root, 'platform', 'challenge', 'bare', 'src'), { recursive: true })
+    writeFileSync(resolve(root, 'platform', 'challenge', 'bare', 'src', 'app.py'), 'x = 1\n')
+    const r = run()
+    expect(r.status).toBe(0)
+    expect(r.output).toMatch(/\[done\] {2}good/)
+    expect(r.output).not.toContain('bare')
+    expect(existsSync(resolve(root, 'platform', 'public', 'challenge', 'bare'))).toBe(false)
+  }, 120_000)
+
+  it('Y52 (b): naming the folder that has only src/ is "Challenge not found"', () => {
+    writeHome()
+    writeChallenge('good')
+    mkdirSync(resolve(root, 'platform', 'challenge', 'bare', 'src'), { recursive: true })
+    const r = run(['bare'])
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('Challenge not found: bare')
+    expect(r.output).not.toMatch(/\[(done|skip|stale)\]/)
+  }, 60_000)
+
+  // Y53: nothing to process.
+  it('Y53 (a): an empty platform/challenge/ is "No challenge files found"', () => {
+    writeHome()
+    mkdirSync(resolve(root, 'platform', 'challenge'), { recursive: true })
+    const r = run()
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('No challenge files found')
+  }, 60_000)
+
+  it('Y53 (b): a folder with only src/ is "No challenge files found"', () => {
+    writeHome()
+    mkdirSync(resolve(root, 'platform', 'challenge', 'bare', 'src'), { recursive: true })
+    const r = run()
+    expect(r.status).toBe(1)
+    expect(r.output).toContain('No challenge files found')
+  }, 60_000)
+
+  // Y20 (keygen half): the five legacy keys are warned about, by name, and removed.
+  const LEGACY_KEYS = ['fs', 'fs_key', 'fsKeyParts', 'encryptedFs', 'flag_verifier'] as const
+  const LEGACY_DECLARATION = [
+    'number: 1',
+    'backend: flask',
+    'app: app.py',
+    'packages: [ flask ]',
+    'source_visible: false',
+    'fs:',
+    '  /x.txt: x.txt',
+    'fs_key: abc',
+    'fsKeyParts: [ a, b ]',
+    'encryptedFs: abc',
+    'flag_verifier: abc',
+    '',
+  ].join('\n')
+
+  it.each(LEGACY_KEYS)('Y20 (keygen): the legacy key %s gets one exact warning and is removed from challenge.yaml', (key) => {
+    writeHome()
+    writeChallenge('legacy', LEGACY_DECLARATION)
+    const r = run(['legacy'])
+    expect(r.status).toBe(0)
+    expect(r.output.split('\n')).toContain(`[warn] legacy: deprecated field '${key}' found — will be removed`)
+    const after = parseDocument(readFileSync(declPath('legacy'), 'utf-8')).toJSON() as Record<string, unknown>
+    expect(Object.keys(after)).not.toContain(key)
+  }, 120_000)
+
+  // Y54: one rebuild writes back a line-preserving result (D79, R15's twin).
+  it('Y54: the rebuild drops only the legacy key lines, appends wasmModule, and touches no brief', () => {
+    const lines = [
+      '# header comment',
+      'backend: flask # trailing comment',
+      'number: 1',
+      'app: app.py',
+      'fs_key: abc',
+      'packages: [ flask ]',
+      'fs:',
+      '  /x.txt: x.txt',
+      'source_visible: false',
+      'tags: [ alpha-tag, bravo-tag, charlie-tag, delta-tag, echo-tag, foxtrot-tag, golf-tag, hotel-tag ]',
+    ]
+    const declaration = `${lines.join('\n')}\n`
+    // The fixture must itself be a fixed point of the writer, or a difference below could be
+    // the fixture's formatting and not keygen's behaviour.
+    expect(parseDocument(declaration).toString({ lineWidth: 0 })).toBe(declaration)
+    writeHome('zh-TW')
+    writeChallenge('keep', declaration)
+    writeBrief('keep', 'zh-TW')
+    writeBrief('keep', 'en')
+    const briefs = ['zh-TW', 'en'].map((l) => resolve(root, 'platform', l, 'challenge', 'keep', 'index.md'))
+    const before = briefs.map((b) => ({ bytes: readFileSync(b), mtime: statSync(b).mtimeMs }))
+    const r = run(['keep'])
+    expect(r.status).toBe(0)
+    const expected = [
+      ...lines.filter((l) => !['fs_key: abc', 'fs:', '  /x.txt: x.txt'].includes(l)),
+      'wasmModule: /challenge/keep/runtime.wasm',
+    ]
+    expect(readFileSync(declPath('keep'), 'utf-8').split('\n')).toEqual([...expected, ''])
+    briefs.forEach((b, i) => {
+      expect(readFileSync(b)).toEqual(before[i].bytes)
+      expect(statSync(b).mtimeMs).toBe(before[i].mtime)
+    })
+  }, 120_000)
+
+  // Y21 (keygen half): no optional key is required.
+  it('Y21 (keygen): a declaration with only number, backend and app builds, with default flag file and metadata', async () => {
+    writeHome()
+    writeChallenge('minimal', ['number: 1', 'backend: flask', 'app: app.py', ''].join('\n'))
+    const r = run(['minimal'])
+    expect(r.status).toBe(0)
+    expect(r.output).toMatch(/\[done\] {2}minimal/)
+    expect(r.output).not.toContain('flag file not found')
+    const wasm = new Uint8Array(readFileSync(publishedWasm('minimal')))
+    const payload = parsePayload(extractCustomSection(wasm, 'chall-data')!)
+    expect(Buffer.from(payload.verifier)).toEqual(Buffer.from(await deriveFlagVerifier(`${FIXTURE_FLAG}\n`, 'minimal')))
+    expect(JSON.parse(new TextDecoder().decode(payload.metadata))).toEqual({ backend: 'flask', source_visible: false, packages: [] })
+    expect(payload.entries.map((e) => e.path)).not.toContain('__source__')
+  }, 120_000)
+
+  // Y56 (D80 (a)): identical content is not written, so the file's mtime is not moved.
+  it('Y56: a rebuild whose write-back would be byte-identical leaves challenge.yaml unwritten', () => {
+    const declaration = `${FIXTURE_DECLARATION}wasmModule: /challenge/same/runtime.wasm\n`
+    writeHome()
+    writeChallenge('same', declaration)
+    const past = new Date('2020-01-01T00:00:00Z')
+    utimesSync(declPath('same'), past, past)
+    const mtime = statSync(declPath('same')).mtimeMs
+    const r = run(['--force', 'same'])
+    expect(r.status).toBe(0)
+    expect(r.output).toMatch(/\[done\] {2}same/)
+    expect(readFileSync(declPath('same'), 'utf-8')).toBe(declaration)
+    expect(statSync(declPath('same')).mtimeMs).toBe(mtime)
+  }, 120_000)
+
+  // Y58 (D80 (b), D133): a run that just rebuilt is followed by a run that skips.
+  it.each([
+    ['(a) the declaration has no wasmModule yet', FIXTURE_DECLARATION],
+    ['(b) the declaration already has wasmModule', `${FIXTURE_DECLARATION}wasmModule: /challenge/again/runtime.wasm\n`],
+  ])('Y58 %s: the run right after a rebuild reports [skip], not [stale] or [done]', (_label, declaration) => {
+    writeHome()
+    writeChallenge('again', declaration)
+    const first = run(['again'])
+    expect(first.status).toBe(0)
+    expect(first.output).toMatch(/\[done\] {2}again/)
+    const second = run(['again'])
+    expect(second.status).toBe(0)
+    expect(second.output).toContain('[skip] again')
+    expect(second.output).not.toContain('[stale]')
+    expect(second.output).not.toMatch(/\[done\]/)
+  }, 120_000)
+
+  // Y57 (CLI half): which files make the next run [stale], and which never do.
+  const FUTURE = new Date(Date.now() + 60 * 60 * 1000)
+  it.each([
+    ['(a) the en brief', 'skip', (slug: string) => resolve(root, 'platform', 'en', 'challenge', slug, 'index.md')],
+    ['(a) the zh-TW brief', 'skip', (slug: string) => resolve(root, 'platform', 'zh-TW', 'challenge', slug, 'index.md')],
+    ['(b) challenge.yaml', 'stale', (slug: string) => declPath(slug)],
+    ['(c) a src/ file', 'stale', (slug: string) => resolve(root, 'platform', 'challenge', slug, 'src', 'app.py')],
+    ['(d) src/.fsignore', 'stale', (slug: string) => resolve(root, 'platform', 'challenge', slug, 'src', '.fsignore')],
+    ['(e) the template module', 'stale', () => resolve(root, '.vitepress', 'wasm', 'virtual-fs', 'virtual_fs_bg.wasm')],
+  ] as const)('Y57 %s newer than the module gives [%s]', (_label, expected, target) => {
+    const slug = 'tracked'
+    writeHome()
+    writeChallenge(slug)
+    writeFileSync(resolve(root, 'platform', 'challenge', slug, 'src', '.fsignore'), '*.log\n')
+    writeBrief(slug, 'en')
+    writeBrief(slug, 'zh-TW')
+    expect(run([slug]).output).toMatch(/\[done\] {2}tracked/)
+    const path = target(slug)
+    const original = statSync(path).mtime
+    utimesSync(path, FUTURE, FUTURE)
+    try {
+      const r = run([slug])
+      expect(r.status).toBe(0)
+      if (expected === 'skip') {
+        expect(r.output).toContain('[skip] tracked')
+        expect(r.output).not.toContain('[stale]')
+      } else {
+        expect(r.output).toContain('[stale] tracked')
+      }
+    } finally {
+      utimesSync(path, original, original)
+    }
+  }, 120_000)
+
+  // B38 (keygen half; D19): the old layout is named by the layout check before any challenge is touched.
+  const PL_E08_FIRST_LINE =
+    'PL-E08: these pages are outside the locale folders. Every page lives in platform/<locale>/ for a locale on the locale list (en, zh-TW); a range on the old layout moves its pages as README.en.md describes in "Moving to the locale folders" (README.md: 「搬到語系資料夾」):'
+
+  function snapshotPlatform(): string[] {
+    return readdirSync(resolve(root, 'platform'), { recursive: true, withFileTypes: true })
+      .filter((d) => d.isFile())
+      .map((d) => {
+        const path = resolve(d.parentPath, d.name)
+        return `${path}|${statSync(path).size}|${statSync(path).mtimeMs}`
+      })
+      .sort()
+  }
+
+  // Y60 (D81): a flat platform/challenge/<slug>.md is no challenge; keygen neither reads nor mentions it.
+  const OLD_FLAT = '---\ntitle: Old\nbackend: flask\napp: app.py\n---\n\nold\n'
+  function writeOldFlat(): string {
+    const path = resolve(root, 'platform', 'challenge', 'old.md')
+    writeFileSync(path, OLD_FLAT)
+    return path
+  }
+
+  // Since the layout check (B38) a flat .md under platform/challenge/ ends the run as PL-E08 (Y-q4);
+  // the case keeps its Y60 claim: keygen still neither warns about nor reads the flat file.
+  it('Y60 (i): a flat old.md beside good/ ends the run as PL-E08 with no flat warning, no output line and no write', () => {
+    writeHome()
+    writeChallenge('good')
+    const flat = writeOldFlat()
+    const before = snapshotPlatform()
+    const r = run()
+    expect(r.status).not.toBe(0)
+    expect(r.stderr.split('\n').slice(0, 2)).toEqual([PL_E08_FIRST_LINE, '  "platform/challenge/old.md"'])
+    expect(r.output).not.toContain('legacy flat file structure')
+    expect(r.output.split('\n').filter((l) => /^\[(skip|done|warn|stale)\]/.test(l))).toEqual([])
+    expect(readFileSync(flat, 'utf-8')).toBe(OLD_FLAT)
+    expect(snapshotPlatform()).toEqual(before)
+    expect(existsSync(resolve(root, 'platform', 'public', 'challenge', 'old'))).toBe(false)
+  }, 120_000)
+
+  // Y-q4's long-term proof, at the function: the slugs keygen takes are the folders only.
+  it('Y60 (ii): keygenSlugs returns [good] for the tree, and [] when the flat slug is named', () => {
+    writeHome()
+    writeChallenge('good')
+    writeOldFlat()
+    expect(keygenSlugs(root)).toEqual(['good'])
+    expect(keygenSlugs(root, 'old')).toEqual([])
+  })
+
+  // Y107 (D123): range.json is read before anything else; without it, or with primaryLocale en, the run works.
+  const rangeJson = () => resolve(root, 'range.json')
+
+  it('Y107 (a): with no range.json the run builds', () => {
+    writeHome('zh-TW')
+    writeChallenge('rj')
+    const r = run(['rj'])
+    expect(r.status).toBe(0)
+    expect(r.output).toMatch(/\[done\] {2}rj/)
+  }, 120_000)
+
+  it('Y107 (b): with {"primaryLocale":"en"} and the home page in platform/en/ the run builds', () => {
+    writeFileSync(rangeJson(), '{"primaryLocale":"en"}')
+    writeHome('en')
+    writeChallenge('rj')
+    const r = run(['rj'])
+    expect(r.status).toBe(0)
+    expect(r.output).toMatch(/\[done\] {2}rj/)
+  }, 120_000)
+
+  // Messages as in 5a's Y36 table (the text is `.vitepress/primary-locale.ts`'s own).
+  const RANGE_FAULTS: Array<[string, (path: string) => void, string]> = [
+    ['PL-E01 range.json is a folder', (p) => mkdirSync(p), 'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.'],
+    ['PL-E03 not valid JSON', (p) => writeFileSync(p, '{'), 'PL-E03: range.json is not valid JSON.'],
+    ['PL-E04 not an object', (p) => writeFileSync(p, '[]'), 'PL-E04: range.json does not hold a JSON object.'],
+    ['PL-E05 not a string', (p) => writeFileSync(p, '{"primaryLocale":7}'), 'PL-E05: "primaryLocale" in range.json is not a string: 7.'],
+    ['PL-E06 not on the list', (p) => writeFileSync(p, '{"primaryLocale":"ja"}'), 'PL-E06: "primaryLocale" in range.json is "ja", which is not on the locale list: en, zh-TW.'],
+  ]
+  const E02: [string, (path: string) => void, string] = [
+    'PL-E02 mode 000',
+    (p) => { writeFileSync(p, '{}'); chmodSync(p, 0o000) },
+    'PL-E02: range.json could not be read (EACCES).',
+  ]
+
+  function expectStoppedBeforeAnyWork(r: ReturnType<typeof run>, firstLine: string): void {
+    expect(r.status).toBe(1)
+    expect(r.stderr.split('\n')[0]).toBe(firstLine)
+    expect(r.output).not.toMatch(/\[(skip|done|stale)\]/)
+    expect(existsSync(publishedWasm('rj'))).toBe(false)
+  }
+
+  it.each(RANGE_FAULTS)('Y107 (c): %s stops the run before it builds or writes anything', (_label, make, line) => {
+    writeHome()
+    writeChallenge('rj')
+    make(rangeJson())
+    const bytes = readFileSync(declPath('rj'))
+    const mtime = statSync(declPath('rj')).mtimeMs
+    expectStoppedBeforeAnyWork(run(['rj']), line)
+    expect(readFileSync(declPath('rj'))).toEqual(bytes)
+    expect(statSync(declPath('rj')).mtimeMs).toBe(mtime)
+  }, 60_000)
+
+  it.skipIf(platform() === 'win32' || process.getuid?.() === 0)('Y107 (c): PL-E02 mode 000 stops the run before it builds or writes anything', () => {
+    writeHome()
+    writeChallenge('rj')
+    E02[1](rangeJson())
+    const bytes = readFileSync(declPath('rj'))
+    const mtime = statSync(declPath('rj')).mtimeMs
+    expectStoppedBeforeAnyWork(run(['rj']), E02[2])
+    expect(readFileSync(declPath('rj'))).toEqual(bytes)
+    expect(statSync(declPath('rj')).mtimeMs).toBe(mtime)
+  }, 60_000)
+
+  function writeOldLayout(): void {
+    writeHome()
+    writeChallenge('good')
+    writeFileSync(resolve(root, 'platform', 'index.md'), '---\ntitle: Old home\n---\n')
+    mkdirSync(resolve(root, 'platform', 'guide'), { recursive: true })
+    writeFileSync(resolve(root, 'platform', 'guide', 'x.md'), '---\ntitle: X\n---\n')
+  }
+
+  it('B38 (keygen) (1): a page outside the locale folders is PL-E08 before any challenge is processed', () => {
+    writeOldLayout()
+    const before = snapshotPlatform()
+    const r = run()
+    expect(r.status).not.toBe(0)
+    expect(r.stderr.split('\n').slice(0, 3)).toEqual([PL_E08_FIRST_LINE, '  "platform/guide/x.md"', '  "platform/index.md"'])
+    expect(r.output).not.toMatch(/\[(skip|done|stale)\]/)
+    expect(snapshotPlatform()).toEqual(before)
+    expect(existsSync(publishedWasm('good'))).toBe(false)
+  }, 60_000)
+
+  it('B38 (keygen) (2): on the old layout a broken range.json is reported first, as PL-E03 and not PL-E08', () => {
+    writeOldLayout()
+    writeFileSync(rangeJson(), '{')
+    const r = run()
+    expect(r.status).toBe(1)
+    expect(r.stderr.split('\n')[0]).toBe('PL-E03: range.json is not valid JSON.')
+  }, 60_000)
+
+})
+
+// ─── Y55 (D124, upstream only): --force over upstream's four challenges changes no byte ───────
+//
+// Hand-typed from traceability.md Y-§2.4, not re-read from disk: a test that compared the files
+// with themselves could not see keygen rewriting them. Not moved to V-Y5: the test never calls
+// wasm-pack, it needs only the built `virtual_fs_bg.wasm`, as the Y61 and Y59 cases above do.
+
+const UPSTREAM_DECLARATIONS: Record<string, string> = {
+  'door-is-open': [
+    'number: 1',
+    'difficulty: easy',
+    'category: web',
+    'backend: fastapi',
+    'app: app.py',
+    'packages: []',
+    'tools: [ browser, network, repeater, code ]',
+    'source_visible: false',
+    'date: 2026-04-02T08:54:17.674Z',
+    'tags: [ idor, access-control, fastapi, sqlite ]',
+    'wasmModule: /challenge/door-is-open/runtime.wasm',
+    '',
+  ].join('\n'),
+  'staff-only': [
+    'number: 2',
+    'difficulty: easy',
+    'category: web',
+    'backend: flask',
+    'app: app.py',
+    'packages: [ flask ]',
+    'tools: [ browser, network, repeater, code ]',
+    'source_visible: false',
+    'date: 2026-08-17T16:21:14.557Z',
+    'tags: [ sql, injection, flask, sqlite ]',
+    'wasmModule: /challenge/staff-only/runtime.wasm',
+    '',
+  ].join('\n'),
+  'just-a-preview': [
+    'number: 8',
+    'difficulty: easy',
+    'category: web',
+    'backend: fastapi',
+    'app: app.py',
+    'packages: []',
+    'tools: [ browser, network, repeater, code ]',
+    'source_visible: true',
+    'source_files: [ /templates/layout.html, /templates/index.html, /templates/detail.html, /templates/preview.html, /templates/_editor.html, /templates/missing.html, /static/app.css ]',
+    'date: 2026-09-06T09:23:32.337Z',
+    'tags: [ ssti, template-injection, jinja2, fastapi ]',
+    'wasmModule: /challenge/just-a-preview/runtime.wasm',
+    '',
+  ].join('\n'),
+  'selected-excerpts': [
+    'number: 10',
+    'difficulty: medium',
+    'category: web',
+    'backend: flask',
+    'app: app.py',
+    'packages: [ flask ]',
+    'tools: [ browser, network, repeater, code ]',
+    'source_visible: true',
+    'source_files: [ /workspace.py, /revisions.py, /course_pack.py, /templates/base.html, /templates/workbench.html, /templates/article.html, /templates/preview.html, /templates/course-pack.html, /templates/missing.html, /static/app.css ]',
+    'date: 2026-09-13T13:28:46.765Z',
+    'tags: [ idor, access-control, ssti, template-injection, jinja2, flask ]',
+    'wasmModule: /challenge/selected-excerpts/runtime.wasm',
+    '',
+  ].join('\n'),
+}
+
+describe.skipIf(
+  upstreamOnlySkipReason(process.env.GITHUB_REPOSITORY, readManifest(LIVE_ROOT), isGitWorkTree(LIVE_ROOT), hasRootRangeJson(LIVE_ROOT)),
+)('challenge-keygen --force over upstream\'s four challenges (Y55, upstream only)', () => {
+  let copy: string
+  beforeAll(() => {
+    copy = copyRepoForKeygen()
+  })
+  afterAll(() => {
+    rmSync(copy, { recursive: true, force: true })
+  })
+
+  it('exits 0 and leaves each challenge.yaml byte-for-byte equal to the Y-§2.4 text', () => {
+    const r = spawnSync('pnpm', ['challenge:keygen', '--force'], { cwd: copy, encoding: 'utf-8' })
+    expect(r.status, `${r.stdout}${r.stderr}`).toBe(0)
+    for (const [slug, text] of Object.entries(UPSTREAM_DECLARATIONS)) {
+      expect(readFileSync(resolve(copy, 'platform', 'challenge', slug, 'challenge.yaml'), 'utf-8'), slug).toBe(text)
+    }
+  }, 180_000)
+})
