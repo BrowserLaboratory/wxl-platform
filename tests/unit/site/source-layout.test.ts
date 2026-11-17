@@ -1,9 +1,15 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, statSync, unlinkSync } from 'node:fs'
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, statSync, unlinkSync } from 'node:fs'
 import { tmpdir, platform } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 import { classifySourcePath, checkSourceLayout } from '../../../.vitepress/source-layout'
 import { SiteLayoutError } from '../../../.vitepress/layout-error'
+import {
+  upstreamOnlySkipReason,
+  readManifest,
+  isGitWorkTree,
+  hasRootRangeJson,
+} from '../../__helpers__/upstreamDecision'
 
 // 0010-S2 working test: claims no row (U136 compares `classifySourcePath` with create-wxl's
 // `isLegacyPage` in T-0077). Every path classifies the same for both primaries.
@@ -60,6 +66,43 @@ describe('classifySourcePath (0010-S2 working test)', () => {
 
       it.each(LOCALE_PAGE)('%s is a locale page', (path) => {
         expect(classifySourcePath(path, primary)).toBe('locale-page')
+      })
+    })
+  }
+})
+
+// ─── U136 / D116: the table shared with create-wxl ──────────────────────────────────────────────
+// `create-wxl/` is not in a range (.gitattributes: /create-wxl export-ignore), so this half is
+// upstream-only, declared through D124's helper (never an existsSync check, so a deleted file
+// cannot skip silently: on upstream `WXL_EXPECT_UPSTREAM` guards the decision).
+
+const ROOT = resolve(__dirname, '../../..')
+const PREDICATE_TABLE = resolve(ROOT, 'create-wxl/test/fixtures/page-predicate.json')
+const U136_SKIP = upstreamOnlySkipReason(
+  process.env.GITHUB_REPOSITORY,
+  readManifest(ROOT),
+  isGitWorkTree(ROOT),
+  hasRootRangeJson(ROOT),
+)
+
+// Read here, behind the same decision: vitest runs a skipped describe's factory at collection, so a
+// readFileSync inside it would fail the whole file in a range (no `create-wxl/`). On upstream a
+// missing table still throws (ENOENT), never skips.
+const PREDICATE_ROWS: Array<{ path: string; class: string }> =
+  U136_SKIP === undefined ? JSON.parse(readFileSync(PREDICATE_TABLE, 'utf8')) : []
+
+describe.skipIf(U136_SKIP !== undefined)('U136: classifySourcePath over the table shared with create-wxl (D116)', () => {
+  const rows = PREDICATE_ROWS.filter((row) => row.class !== 'not-source')
+
+  it('runs a non-empty set of rows, each a platform/ path', () => {
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) expect(row.path.startsWith('platform/')).toBe(true)
+  })
+
+  for (const primary of ['en', 'zh-TW'] as const) {
+    describe(`primary = ${primary}`, () => {
+      it.each(rows.map((row) => [row.path, row.class]))('%s is %s', (path, cls) => {
+        expect(classifySourcePath(path.slice('platform/'.length), primary)).toBe(cls)
       })
     })
   }

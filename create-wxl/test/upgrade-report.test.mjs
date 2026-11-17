@@ -17,6 +17,7 @@ import { snapshotTree } from './helpers/snapshot.mjs'
 import { en, zhTW } from '../src/messages.mjs'
 import { jsonValue } from '../src/text.mjs'
 import { buildReport } from '../src/upgrade-report.mjs'
+import { ANCHOR_PATHS } from '../src/merge-plan.mjs'
 import * as engineModule from '../../scripts/fork-init.ts'
 
 const BASE_COMMIT = '6'.repeat(40)
@@ -148,6 +149,21 @@ describe('exit code regardless of attention items (U25)', () => {
 })
 
 describe('anchor file changes add UP-A12 (U59)', () => {
+  it("U112: ANCHOR_PATHS is exported and equals D107's nine paths, in order", () => {
+    expect(ANCHOR_PATHS).toEqual([
+      'package.json',
+      'README.md',
+      'README.en.md',
+      'CONTRIBUTE.md',
+      '.vitepress/config.mts',
+      '.vitepress/challenge/shortLink.ts',
+      'platform/en/index.md',
+      'platform/zh-TW/index.md',
+      'scripts/templates/deploy.yml.template',
+    ])
+    expect(ANCHOR_PATHS).not.toContain('platform/index.md')
+  })
+
   it('adds a UP-A12 line, last, when one anchor file differs between base and target', async () => {
     const fixture = await buildUpgradeFixtures({ branches: ['M5-updated'], rangeJson: rangeJsonFor(BASE_COMMIT) })
     let tmpRoot

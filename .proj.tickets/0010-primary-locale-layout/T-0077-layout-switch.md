@@ -2893,6 +2893,144 @@ Wave 6, the hook and T-0059's hook half. Under the standing authorization; not c
     - `scripts/pre-commit.sh:527` (P2, confidence low): if the W4 wording call (`--describe-untracked`) fails, `set -e` fails the hook after `_redirects` was already written and staged.
   - Full suite (parallel, one pass): 6809 tests passed, 0 failed, 0 pending (6809 total) across 151 test files (874 suites, 0 failed). Report: `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/suite-report-6.json` (mtime Nov 17 18:02 2026; run 17:59:41 to 18:02:57; HEAD ceb7f8d). No re-run with --no-file-parallelism needed. Probe dirs removed before and after (none existed).
 
+### 2026-11-17 (parent, decisions on segment 7's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the two questions segment 7's
+planner raised; nothing else. Both follow the planner's recommendation.
+
+1. A range has no `create-wxl/` (`.gitattributes`: `/create-wxl export-ignore`), but U134 imports
+   `create-wxl/src/layout-move.mjs` from a root test and U136's root half reads
+   `create-wxl/test/fixtures/page-predicate.json`. Approved as recommended: U134 does
+   `await import('../../../create-wxl/src/layout-move.mjs')` only after the upstream decision; U136's root half is
+   declared with `describe.skipIf(upstreamOnlySkipReason(<real inputs>))` (D124's helper, not `existsSync`, so a
+   deleted file cannot skip silently and `WXL_EXPECT_UPSTREAM` still guards upstream). No row and no table entry is
+   dropped. This makes U136's root half upstream-only, which D124's list does not name: recorded for stage 6.
+   - Found by the same planner, outside segment 7's scope and recorded as a stage 6 item to fix: wave 1's B95 test
+     `tests/unit/site/layout-error.test.ts` statically imports `create-wxl/src/text.mjs` (commit `8ddc422`), so in a
+     range `pnpm test` would fail at collection. The parent confirmed line 3 of that file and `.gitattributes` line 6.
+     Stage 8's range observation (V-B7) checks the outcome.
+2. U130's exception table: 14 paths or 15. Approved: pin the 14 paths of traceability.md's U-§5, and assert that the
+   table's key set equals the paths parsed from that section. The parent read U-§5 (10 table rows naming 14 paths);
+   the plan's "15" is a slip, and the spec's "15 paths" elsewhere is R6's moved-path example, a different list. No
+   exception path is added, so D130's per-path approval is not triggered.
+
+### 2026-11-17 (parent, after segment 6: the working-tree rule for `platform/` changes; segment 7 restarted)
+
+- Segment 6's commit `ad01564` carried D108's move with the new hook running; full suite on that tree: 6809 passed,
+  0 failed, 0 skipped (vitest in Node). The carried list is empty and nothing is staged.
+- The orchestrator's rule "every change under `platform/` is staged and committed with the move in wave 6" no longer
+  fits: segment 8b edits pages under `platform/`, and under that rule its commit would have left them staged. From
+  segment 7 on, `platform/` files are committed with the segment that changes them, by a plain `git commit` with
+  the hook running, and the commit step reports an empty `git status` afterwards.
+- To apply this the parent stopped segment 7's implementer shortly after it started. Its partial, unchecked edits
+  (`create-wxl/src/merge-plan.mjs`, `create-wxl/test/upgrade-report.test.mjs`, for U112) stay in the working tree;
+  the restarted implementer is told to verify them against the plan and finish. No user decision is involved.
+
+### 2026-11-17 (segment 7)
+
+Wave 7, area U's switch parts and T9. Under the standing authorization and the parent's decisions on this segment's
+two questions (U134 dynamic import after the upstream decision; U136's root half `describe.skipIf(upstreamOnlySkipReason(...))`;
+exception table pinned to U-§5's 14 paths, key set asserted equal to the parsed section). Not committed.
+
+- Resumption: the earlier implementer's U112 edit was half done (the `ANCHOR_PATHS` const was removed from `planMerge` but
+  no top-level export existed). Added `export const ANCHOR_PATHS` (item 7 `platform/en/index.md`) in
+  `create-wxl/src/merge-plan.mjs`. Red seen by dropping `export`: `expected undefined to deeply equal [ 'package.json', ... ]`.
+- U112 (`create-wxl/test/upgrade-report.test.mjs`): done, red line above.
+- U133 (`create-wxl/test/layout-move.test.mjs`): green first, because T-0076 already made the literal equal. Mutation
+  `['zh-TW', 'en']` in `layout-move.mjs`: `expected [ 'zh-TW', 'en' ] to deeply equal [ 'en', 'zh-TW' ]`; restored.
+- U136 create-wxl half: red `ENOENT ... fixtures/page-predicate.json`, then the 32-row table
+  (`create-wxl/test/fixtures/page-predicate.json`, class literal `not-source`) turned it green. Mutation `platform/shared/x.md` ->
+  `outside`: `expected false to be true`; restored.
+- U136 root half (`tests/unit/site/source-layout.test.ts`): green first (the predicate existed since wave 1). Runs the 29
+  non-`not-source` rows under both P. Mutations: `platform/en/dist/old.md` -> `locale-page`: `expected 'excluded' to be 'locale-page'`;
+  `platform/ja/index.md` -> `excluded`: red on both sides (`expected 'outside' to be 'excluded'` / `expected true to be false`); restored.
+- U142 (`tests/unit/workflows/checkout-tags.test.ts`): red 3 of 3 `expected undefined to be +0`; then `with: fetch-depth: 0` on
+  `quality-gates.yml` jobs `test` and `fork-init-cross-os` and `release.yml` job `release`. Regression: `tests/unit/workflows` and
+  `create-wxl/test/upstream-config.test.mjs` pass.
+- U139, U132, U130, U131, U134, U147 (`tests/unit/site/upstream-equality.test.ts`): U139 red `ReferenceError: loadEquality is not defined`,
+  then green; U132 red `expected [Function] to throw an error` (2 of 2), then `resolveBaseTag`; U130, U131, U147 green first
+  (move applied since wave 1, U-§5 edits done by earlier waves; dry run: 22 ops, 14 move/4 declare/4 strip). Mutations (all restored):
+  drop `platform/en/index.md` from EXCEPTIONS -> `platform/en/index.md bytes differ from the transform of v3.1.1` and the U-§5 set
+  assertion red; drop `platform/zh-TW/guide/notes.md` -> `differs from v3.1.1`; drop the english smoke fixture -> `is not a transform
+  output, an untouched v3.1.1 page, or in U-§5`; `BASE_TAG` `v3.1.0` -> `expected [ 'v3.1.1' ] to deeply equal []`; `BASE_TAG` `v9.9.9`
+  -> `base tag v9.9.9 is missing from this checkout`; U147 expectation `[]` -> red on all 3 tags.
+  `GITHUB_REPOSITORY=someone/else npx vitest run tests/unit/site/upstream-equality.test.ts`: 9 passed, 6 skipped, 0 failed.
+- U134: the transform import is `await import('../../../create-wxl/src/layout-move.mjs')` (line 264), after the upstream decision;
+  root and create-wxl both resolve `yaml` 2.9.0. Stage 6 reading.
+- Notes for later: the real-tree rows read `git` through an isolated env; the compared tree is the working tree today (the index
+  supplies paths and modes). U131 must be re-run after wave 8 (D130). `layout-error.test.ts` untouched (B95 stays a stage 6 item).
+- Commands: `pnpm --dir create-wxl install --frozen-lockfile && pnpm --dir create-wxl test`: 39 files, 890 passed, 1 skipped (was 855 passed, 1 skipped; +35 = U112 1, U133 1, U136 33).
+  `npx vitest run tests/unit/site/upstream-equality.test.ts tests/unit/site/source-layout.test.ts tests/unit/workflows tests/unit/scripts/upstream-guard.test.ts tests/unit/site/layout-error.test.ts`: 12 files, 467 passed, 1 skipped.
+- `git add`: none (no file under `platform/` changed; new untracked files for the parent to commit:
+  `create-wxl/test/fixtures/page-predicate.json`, `tests/unit/site/upstream-equality.test.ts`, `tests/unit/workflows/checkout-tags.test.ts`).
+
+### 2026-11-17 (parent, segment 7's fix round: the parent's own decision 1 was not enough; B95 joins the round; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: whether segment 7's single fix
+round also repairs `tests/unit/site/layout-error.test.ts`; nothing else.
+
+- Correction of the parent's decision 1 for segment 7 (above): `describe.skipIf` plus a literal-specifier dynamic
+  import does not keep a range green. Both checkers reproduced it in a simulated range (`git archive
+  --worktree-attributes HEAD`, a `range.json`, no `GITHUB_REPOSITORY`): vitest runs a skipped describe's factory, so
+  `source-layout.test.ts` fails on `readFileSync` (120 previously green tests lost); and `vite:import-analysis`
+  resolves a string-literal dynamic import at transform time, so `upstream-equality.test.ts` fails instead of being
+  skipped. Both are P0 by the frozen rubric (D124: the test job runs in every range). The fix plan prototyped both
+  repairs and a new `tests/unit/site/range-collection.test.ts` that runs the upstream-only files in a temporary copy
+  without `create-wxl/`.
+- Decision: wave 1's B95 file `tests/unit/site/layout-error.test.ts` (static import of `create-wxl/src/text.mjs`,
+  commit `8ddc422`) is repaired in the same fix round, as its third cycle, with the same pattern and the same
+  range-collection test as its red. The fix planner proposed a separate segment; the parent keeps it in this round
+  because it is the same defect class, the red test exists only here, and a separate segment would re-plan the same
+  change. The cases that compare with create-wxl's copy become upstream-only; every other case still runs in a range;
+  no assertion is removed. This makes B95's comparison upstream-only, which D124's list does not name: recorded for
+  stage 6 together with U136's root half. The earlier note that B95 waits for stage 6 is superseded.
+- Not touched: `tests/unit/scripts/fork-init.test.ts` (reads `create-wxl/package.json` inside a case, from epic 0009)
+  and `upstream-guard.test.ts` (only names the path in fixtures). If either fails in the simulated range the executor
+  reports it; stage 8's range observation (V-B7) is the real check.
+
+### 2026-11-17 (segment 7, fix round)
+
+Fix list applied test-first, under the standing authorization and the parent's decision above. Not committed. All three
+cycles share one new test, `tests/unit/site/range-collection.test.ts`: it copies `.vitepress`, `scripts`,
+`tests/__helpers__`, `tests/__mocks__`, `vitest.config.ts`, `package.json`, `tests/setup.ts` and the listed files into
+`os.tmpdir()` (no `create-wxl/`, a `range.json`, no `GITHUB_REPOSITORY`), runs a second vitest there and requires every file
+`passed` and the upstream-only suites only `skipped`. Nothing is written into the live tree.
+
+- Cycle 1 (Finding 1, U136 root half): red `AssertionError: expected [ Array(1) ] to deeply equal []` with
+  `<tmp>/tests/unit/site/source-layout.test.ts: ENOENT ... <tmp>/create-wxl/test/fixtures/page-predicate.json`. Fix (test file only):
+  `PREDICATE_ROWS` read behind `U136_SKIP === undefined`, outside the describe factory; assertions untouched. Green.
+- Cycle 2 (Finding 2, U134): red with `Failed to resolve import "../../../create-wxl/src/layout-move.mjs" from "tests/unit/site/upstream-equality.test.ts"`.
+  Fix: `LAYOUT_MOVE_MODULE = pathToFileURL(join(ROOT, 'create-wxl/src/layout-move.mjs')).href`, `import(/* @vite-ignore */ ...)`, comment extended. Green.
+- Cycle 3 (B95, `layout-error.test.ts`): red with `Failed to resolve import "../../../create-wxl/src/text.mjs" from "tests/unit/site/layout-error.test.ts"`.
+  Fix: the one describe (every case compares with create-wxl's copy; no other case exists in the file) is `describe.skipIf(B95_SKIP !== undefined)`
+  from `upstreamOnlySkipReason(<real inputs>)`; `text.mjs` loads by non-literal file URL after the decision. The 10 cases and their
+  assertions are unchanged. `range-collection.test.ts`'s upstream-only name pattern gained `jsonStringifyEscaped equals create-wxl`.
+- Upstream check: `GITHUB_REPOSITORY=<UPSTREAM_SLUG>` on the live tree: `layout-error` + `source-layout` 2 files, 189 passed (the comparison runs, U136 runs).
+  In a temporary copy with `create-wxl/` but without `text.mjs`, on upstream: `Cannot find module 'file:///.../create-wxl/src/text.mjs'`, file failed
+  (no silent skip); with `text.mjs` present: 10 passed. For the other two files the failing-on-deletion behaviour is by construction (same pattern; U136's
+  `readFileSync` throws ENOENT on upstream).
+- Simulated range for the two older files (not touched): `upstream-guard.test.ts` passes; `fork-init.test.ts` has one create-wxl-related failure,
+  `... moves create-wxl's repository.url with the root manifest's`: `ENOENT ... <tmp>/create-wxl/package.json` (reads it inside a case, no upstream guard).
+  (Two more failures there are only my partial copy lacking `.claude`/`.agents` skills.) Left as is; for stage 6 / V-B7.
+- Commands: `npx vitest run tests/unit/site/range-collection.test.ts tests/unit/site/source-layout.test.ts tests/unit/site/upstream-equality.test.ts tests/unit/site/layout-error.test.ts`: all green.
+- `git add`: `tests/unit/site/range-collection.test.ts` (new). No file under `platform/` changed.
+
+Deferred to stage 6 (P2, frozen rubric):
+
+- `create-wxl/test/fixtures/page-predicate.json:1` (P2, medium): the shared U136 table holds every path the approved plan row lists (U11's 15, the plan's 19 B21–B28 paths, root-level `postcss.config.mjs`) but omits some B21–B28 examples traceability's U136 refers to (`reference/x.md`, `fr/a.md`, `docs/a.md`, `challenge/x/index.md`, `challenge/x/notes.md`, `platform/assets/logo.png`); the plan row is covered.
+- `tests/unit/site/upstream-equality.test.ts:286` (P2, high): paths on the exception list return at once (`if (path in EXCEPTIONS) return`) but are still titled "equals the transform output", so the 22 U130 cases look like 22 byte-equalities.
+- `tests/unit/site/upstream-equality.test.ts:182` (P2, medium): `readWorkingTree` takes paths from `git ls-files -s`, so a new page never git-added is invisible to U131 until staged.
+- `tests/unit/site/upstream-equality.test.ts:265` (P2, medium): one top-level try/catch puts every collection error (readComparedTree, readTagTree, planLayoutMove) under the title "the base tag v3.1.1 is in the checkout"; also U130 (1) does not assert `outputs` is non-empty (U131 catches it in practice).
+- `tests/unit/site/upstream-equality.test.ts:303` (P2, low): the U-§5 parser ends the section at the next `\n###`, which is "### Area B" inside the following `## Overridden contracts`; a future table placed between would add paths to the parsed set.
+- `tests/unit/site/upstream-equality.test.ts:277` (P2, medium): `describe.skipIf` receives only a boolean, so the reason from `upstreamOnlySkipReason` is not shown in the output (same in `source-layout.test.ts:89` U136_SKIP); D124 says the reason is passed to `it.skipIf` or `describe.skipIf`.
+- `tests/unit/site/upstream-equality.test.ts:275` (P2, low): `PRIMARY = readPrimaryLocale(range.json)` runs at module level outside the skip guard; a `range.json` that makes it throw fails collection instead of skipping.
+- `tests/unit/site/upstream-equality.test.ts:1` (P2, high): segment 7's new files were untracked (`page-predicate.json`, `upstream-equality.test.ts`, `checkout-tags.test.ts`); only `range-collection.test.ts` was git-added. Handled by the segment commit, which includes them.
+- `tests/unit/site/range-collection.test.ts:20` (P2, medium): the simulated range is a hand-picked partial copy, not `git archive --worktree-attributes`, so it follows `.gitattributes` export-ignore only by construction; its `node_modules` symlinks to the live repo, so the inner vitest cache lands in gitignored `node_modules/.vite`. Hardening ideas only; no tracked file is written.
+
+Full-suite result (suite step, HEAD ad01564, run 18:23:24 to 18:27:00): 6942 tests: 6942 passed, 0 failed, 0 pending/todo; 154 test files, 885 suites, 0 failed suites. No parallel-only flakes; no `--no-file-parallelism` re-run needed. Report: `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/run/report7.json`.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.

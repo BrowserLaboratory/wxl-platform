@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { planLayoutMove } from '../src/layout-move.mjs'
+import { planLayoutMove, isLegacyPage, LOCALES } from '../src/layout-move.mjs'
 
 const FIXTURES = fileURLToPath(new URL('./fixtures/layout-move/door-is-open/', import.meta.url))
 
@@ -710,5 +710,34 @@ describe('U31: deterministic', () => {
     const first = planLayoutMove({ files: buildFiles() })
     const second = planLayoutMove({ files: buildFiles() })
     expect(first).toEqual(second)
+  })
+})
+
+describe('U133: the locale list literal equals the site module', () => {
+  it('LOCALES equals .vitepress/locales.ts, order and values', () => {
+    const text = readFileSync(new URL('../../.vitepress/locales.ts', import.meta.url), 'utf8')
+    const match = /export const LOCALES = \[([^\]]*)\] as const/.exec(text)
+    expect(match).not.toBeNull()
+    const siteLocales = [...match[1].matchAll(/'([^']*)'/g)].map((m) => m[1])
+    expect(siteLocales.length).toBeGreaterThan(0)
+    expect(LOCALES).toEqual(siteLocales)
+  })
+})
+
+describe('U136: isLegacyPage over the shared page-predicate table', () => {
+  const table = JSON.parse(
+    readFileSync(new URL('./fixtures/page-predicate.json', import.meta.url), 'utf8'),
+  )
+
+  it('the table is not empty and uses only the four classes', () => {
+    expect(table.length).toBeGreaterThan(0)
+    const classes = new Set(table.map((row) => row.class))
+    for (const c of classes) {
+      expect(['outside', 'excluded', 'locale-page', 'not-source']).toContain(c)
+    }
+  })
+
+  it.each(table.map((row) => [row.path, row.class]))('%s is classified %s', (path, cls) => {
+    expect(isLegacyPage(path)).toBe(cls === 'outside')
   })
 })
