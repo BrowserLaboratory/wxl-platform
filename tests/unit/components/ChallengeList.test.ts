@@ -651,6 +651,30 @@ describe('ChallengeList server rendering', () => {
     expect(html).not.toContain('只有英文')
   })
 
+  // B3-9/A32, under P = zh-TW (T = en): the same two SSR properties, mirrored.
+  it('under P = zh-TW, ships the mark of a borrowed entry in the page\'s locale, whatever the runtime locale (A28, A32, 0008 E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "Chinese list" under this P is localeIndex 'root' (the primary tree, zh-TW's own) —
+    // matching the mounted-component mirror's own comment above (A32) — not 'en' (the English
+    // list), where PHP Check would be native, not borrowed.
+    mockLocaleIndex.value = 'root'
+    const html = await ssr(BORROWED_ZH, 'en')
+    expect(html).toContain('只有英文')
+    expect(html).not.toContain('Traditional Chinese only')
+    expect(html).toMatch(/lang="en"[^>]*>PHP Check</)
+    // A28's link half: the English-tree URL under this P, not the pre-switch `/challenge/...`.
+    expect(html).toContain('href="/en/challenge/v05-php-check/"')
+  })
+
+  it('under P = zh-TW, ships the English list\'s mark in the page\'s locale with a Traditional Chinese runtime (A28, A32, 0008 E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "English list" under this P is localeIndex 'en', not 'root'.
+    mockLocaleIndex.value = 'en'
+    const html = await ssr(CHINESE_ONLY_ZH, 'zh-TW')
+    expect(html).toContain('Traditional Chinese only')
+    expect(html).not.toContain('只有英文')
+  })
+
   it('ships no completion marker, even for a challenge that is completed', async () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
     const html = await ssr()
@@ -920,6 +944,10 @@ describe('ChallengeList with an untranslated entry', () => {
     expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
     expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
     expect(row.find('[data-short-link]').exists()).toBe(false)
+    // The short link's text does not leak into the row even indirectly — same string as the
+    // original P = en case (881): the short link's prefix follows the LIST's own locale (the
+    // English list, here), not P, so the theoretical value is identical on both sides of the flip.
+    expect(row.text()).not.toContain('/en/c/007')
     // The page-mode URL ("its page in page mode") is deliberately NOT asserted here: it goes
     // through `challengeLink`/`shortLinkPath` (`.vitepress/challenge/shortLink.ts`), which
     // still hard-codes "`zh-TW` locale → `/zh-TW` prefix" regardless of `primaryLocale()` — the
@@ -927,7 +955,8 @@ describe('ChallengeList with an untranslated entry', () => {
     // running this case against the current code: it returns
     // `${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`, the pre-switch literal, not the P-aware
     // `${DISPLAY_ORIGIN}/challenge/zh-only/` this row would otherwise want. Not fixed here —
-    // shortLink.ts is outside this wave's file list.
+    // shortLink.ts is outside this wave's file list; the deferred assertion is taken over by
+    // traceability.md's S54 ("Page mode × entry, both P"), alongside S30 and S26, at wave 4.
   })
 
   it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list\'s grid view too (A32, E3, E6)', async () => {
