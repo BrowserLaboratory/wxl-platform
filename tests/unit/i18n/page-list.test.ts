@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { entryForRelativePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
 import { lookupNotFound } from '../../../.vitepress/theme/i18n/lookup'
-import { pageListFromDir, rewrittenPath } from '../../../.vitepress/pageList'
+import { pageListFromDir, rewrittenPath, isSmokeFixturePage } from '../../../.vitepress/pageList'
+import { LOCALES } from '../../../.vitepress/locales'
 import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 
 const tempDirs: string[] = []
@@ -88,7 +89,7 @@ describe('the page list the site configuration ships', () => {
   // stripping/spelling rule (B43) — independent of both the code under test and VitePress's
   // page list. `challenge/<slug>/src/**`, `public/**` and `shared/**` are excluded the same
   // way `pageListFromDir` excludes them (B24, B25), which is not this row's own subject.
-  function oracle(primary: string): string[] {
+  function oracle(primary: string, smoke: boolean): string[] {
     const srcDir = join(__dirname, '../../../platform')
     const found: string[] = []
     const walk = (dir: string, top: boolean, rel: string) => {
@@ -97,6 +98,9 @@ describe('the page list the site configuration ships', () => {
         if (item.name.startsWith('.')) continue
         if (item.isDirectory()) {
           if (top && (item.name === 'public' || item.name === 'shared')) continue
+          // L35: a test build publishes the fixtures, a production build does not. The rule is
+          // written here, not borrowed from the code under test.
+          if (!smoke && item.name === 'smoke-fixtures' && (LOCALES as readonly string[]).includes(rel)) continue
           if (/^challenge\/[^/]+\/src$/.test(childRel)) continue
           walk(join(dir, item.name), false, childRel)
         } else if (item.name.endsWith('.md')) {
@@ -112,16 +116,36 @@ describe('the page list the site configuration ships', () => {
     return found
   }
 
-  it('equals every page of the real source tree, each once, under the real range.json primary', async () => {
-    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+  const originalSmoke = process.env.WXL_SMOKE_PAGES
+  afterEach(() => {
+    if (originalSmoke === undefined) delete process.env.WXL_SMOKE_PAGES
+    else process.env.WXL_SMOKE_PAGES = originalSmoke
+  })
+
+  async function shippedPages(): Promise<string[]> {
     vi.resetModules()
     const config = (await import('../../../.vitepress/config.mts')).default as {
       vite?: { define?: Record<string, string> }
     }
-    const shipped = JSON.parse(config.vite!.define!.__WXL_PAGES__) as string[]
+    return JSON.parse(config.vite!.define!.__WXL_PAGES__) as string[]
+  }
+
+  it('equals every page of the real source tree, each once, under the real range.json primary', async () => {
+    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+    delete process.env.WXL_SMOKE_PAGES
+    const shipped = await shippedPages()
     expect(new Set(shipped).size).toBe(shipped.length)
-    expect(new Set(shipped)).toEqual(new Set(oracle(primary)))
+    expect(new Set(shipped)).toEqual(new Set(oracle(primary, false)))
     expect(shipped).not.toContain('/404')
+  })
+
+  it('with WXL_SMOKE_PAGES=1 it also holds the smoke fixtures (L35)', async () => {
+    const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+    process.env.WXL_SMOKE_PAGES = '1'
+    const shipped = await shippedPages()
+    expect(new Set(shipped).size).toBe(shipped.length)
+    expect(new Set(shipped)).toEqual(new Set(oracle(primary, true)))
+    expect(shipped.filter((entry) => entry.includes('smoke-fixtures'))).toHaveLength(2)
   })
 })
 
@@ -332,5 +356,53 @@ describe('pageListFromDir: the full-table fixture (B42)', () => {
       '/challenge/staff-only/',
     ].sort()
     expect(pageListFromDir(root, 'zh-TW')).toEqual(expected)
+  })
+})
+
+// L35, predicate half (D49, L-q3): a smoke fixture is a page under `<locale code>/smoke-fixtures/`,
+// at any depth below it; the codes come from LOCALES, never from a literal list.
+describe('isSmokeFixturePage (L35)', () => {
+  it.each(LOCALES)('is true for %s/smoke-fixtures/x.md', (code) => {
+    expect(isSmokeFixturePage(`${code}/smoke-fixtures/x.md`)).toBe(true)
+  })
+
+  it('is true below a nested folder, as the ** glob is (L-q3)', () => {
+    expect(isSmokeFixturePage('en/smoke-fixtures/a/b.md')).toBe(true)
+  })
+
+  it.each(['smoke-fixtures/x.md', 'challenge/smoke-fixtures/x.md', 'xx/smoke-fixtures/x.md'])(
+    'is false for %s',
+    (source) => {
+      expect(isSmokeFixturePage(source)).toBe(false)
+    },
+  )
+})
+
+// L35, page-list half (L-q4): the flag is an argument; the module reads no environment variable.
+// Expected URLs are L-§4.5's, typed by hand.
+describe('pageListFromDir and the smoke fixtures (L35)', () => {
+  const FILES = [
+    'en/index.md',
+    'zh-TW/index.md',
+    'en/smoke-fixtures/english-only.md',
+    'zh-TW/smoke-fixtures/traditional-chinese-only.md',
+    'en/smoke-fixtures/a/b.md',
+  ]
+  const FIXTURE_URLS = {
+    'zh-TW': ['/en/smoke-fixtures/english-only', '/smoke-fixtures/traditional-chinese-only'],
+    en: ['/smoke-fixtures/english-only', '/zh-TW/smoke-fixtures/traditional-chinese-only'],
+  } as const
+
+  it.each(['en', 'zh-TW'] as const)('with primary %s, no fixture entry unless smokePages is true', (primary) => {
+    const root = fixtureTree(FILES)
+    for (const list of [pageListFromDir(root, primary), pageListFromDir(root, primary, { smokePages: false })]) {
+      expect(list.filter((entry) => entry.includes('smoke-fixtures'))).toEqual([])
+    }
+  })
+
+  it.each(['en', 'zh-TW'] as const)('with primary %s, smokePages true lists the two L-§4.5 URLs', (primary) => {
+    const root = fixtureTree(FILES)
+    const list = pageListFromDir(root, primary, { smokePages: true })
+    expect(list).toEqual(expect.arrayContaining([...FIXTURE_URLS[primary]]))
   })
 })

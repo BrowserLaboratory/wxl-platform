@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { assembleChallengeFrontmatter } from './challenge/plugin'
 import { readChallengeDeclaration } from './challenge/declaration'
-import { pageListFromDir, rewrittenPath } from './pageList'
+import { pageListFromDir, rewrittenPath, SMOKE_FIXTURE_GLOBS } from './pageList'
 import { readPrimaryLocale } from './primary-locale'
 import { primaryFolderLinks } from './primary-folder-links'
 import { checkSourceLayout } from './source-layout'
@@ -41,7 +41,9 @@ const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
 checkSourceLayout(resolve(REPO_ROOT, SRC_DIR), primary)
 // The page list (B43): computed once, so the defines and `transformPageData`'s
 // `localizeHomeLinks` call below share the exact same list.
-const pages = pageListFromDir(resolve(REPO_ROOT, SRC_DIR), primary)
+// A test build publishes the smoke fixture pages (D49): only the exact value '1' does, read once.
+const smokePages = process.env.WXL_SMOKE_PAGES === '1'
+const pages = pageListFromDir(resolve(REPO_ROOT, SRC_DIR), primary, { smokePages })
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -50,7 +52,8 @@ export default defineConfig({
   base: siteBase,
   // A challenge's own application code, the copied-verbatim public assets and the data
   // loaders are not pages (B24, B25); `pageListFromDir` applies the same exclusions.
-  srcExclude: ['challenge/*/src/**', 'public/**', 'shared/**'],
+  // The smoke fixture pages are excluded too, unless this is a test build (D49).
+  srcExclude: ['challenge/*/src/**', 'public/**', 'shared/**', ...(smokePages ? [] : SMOKE_FIXTURE_GLOBS)],
   // The primary locale's own folder serves without its prefix (D8, D9, BC3); every other
   // locale keeps its folder as a URL segment.
   rewrites: (id) => rewrittenPath(id, primary),

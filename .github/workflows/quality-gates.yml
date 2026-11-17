@@ -117,6 +117,11 @@ jobs:
       - name: Build VitePress site
         run: pnpm docs:build
 
+      # A production build publishes no smoke fixture page and carries no trace of one (D49, L47).
+      - name: Check no smoke fixture shipped
+        run: |
+          ! find .vitepress/dist -path '*smoke-fixtures*' | grep -q . && ! grep -rq smoke-fixtures .vitepress/dist
+
   prose-audit:
     # PR-time deterministic prose audit on changed outward-facing markdown.
     # Guarded to pull_request because the base-vs-head diff needs github.base_ref,
@@ -226,7 +231,10 @@ jobs:
       - name: Generate challenge keys
         run: pnpm challenge:keygen
 
+      # The smoke suite needs the two fixture pages, which only a test build publishes (D49).
       - name: Build VitePress site
+        env:
+          WXL_SMOKE_PAGES: '1'
         run: pnpm docs:build
 
       - name: Install Playwright Chromium

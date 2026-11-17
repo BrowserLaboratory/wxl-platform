@@ -1,16 +1,84 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { PRIMARY } from './localePath'
+import { PRIMARY, localePath } from './localePath'
+import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
 import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../__helpers__/upstreamDecision'
 
 // Spec 0008 on the production bundle (`pnpm docs:build`, served by `vitepress preview`): a cold
 // load of a missing translation falls back to the page that exists, with the
-// missing-translation line, and the learner's stored language survives the trip. The upstream
-// tree's one English-only article, the attack-log export format reference, is the subject.
+// missing-translation line, and the learner's stored language survives the trip. The subjects are
+// the two smoke fixtures (L-§4.5): one article that exists only in English and one that exists
+// only in Traditional Chinese, so both directions are covered under either primary locale. They
+// are published by a test build only (D49); the `beforeAll` below says so when they are not.
 
-const REFERENCE = '/reference/attack-log-export-format'
 const ROOT = process.cwd()
+
+// L37 (D49, L-§4.5): the two smoke fixtures exist only in a test build, `WXL_SMOKE_PAGES=1 pnpm
+// docs:build`. Their URLs follow the build's primary locale (D54).
+const EN_ONLY = localePath('en', 'smoke-fixtures/english-only')
+const ZH_ONLY = localePath('zh-TW', 'smoke-fixtures/traditional-chinese-only')
+
+// Every test of this file fails at once, with a message naming the flag, when the build under
+// test is a production build: the fixtures are missing, so the cases below could not mean anything.
+test.beforeAll(async ({ browser }) => {
+  const baseURL = test.info().project.use.baseURL
+  const page = await browser.newPage({ baseURL })
+  try {
+    for (const [url, h1] of [
+      [EN_ONLY, 'Smoke fixture: English only'],
+      [ZH_ONLY, '測試用頁面：只有繁體中文'],
+    ] as const) {
+      const response = await page.goto(url)
+      const heading = (await page.locator('h1').first().textContent({ timeout: 5_000 }).catch(() => null))
+        // VitePress appends a zero-width header anchor to the heading text.
+        ?.replace(/\u200b/g, '')
+        .trim()
+      if (response?.status() !== 200 || heading !== h1) {
+        throw new Error(
+          `${url} is not the smoke fixture (status ${response?.status()}, h1 ${JSON.stringify(heading)}, expected ${JSON.stringify(h1)}). ` +
+            'This suite needs a test build: run `WXL_SMOKE_PAGES=1 pnpm docs:build` (or `WXL_SMOKE_PAGES=1 pnpm build`) before `pnpm test:smoke`.',
+        )
+      }
+    }
+  } finally {
+    await page.close()
+  }
+})
+
+
+/** The interface strings of a locale: the same JSON the theme renders from. */
+const messages = (locale: Locale) =>
+  JSON.parse(readFileSync(join(ROOT, `.vitepress/theme/i18n/messages/${locale}.json`), 'utf8')) as {
+    missing_translation: { notice: string; list_link: string }
+  }
+
+/** The locale a base-less URL path belongs to: its first segment when that names a non-primary locale. */
+const localeOfPath = (path: string): Locale =>
+  LOCALES.find((code) => code !== PRIMARY && path.startsWith(`/${code}/`)) ?? PRIMARY
+
+/**
+ * `X(path)`: the path with its locale segment swapped for the other locale's, which is the
+ * counterpart URL that is not a page (L-§4.7). The two fixtures are each other's counterpart.
+ */
+function X(path: string): string {
+  const own = localeOfPath(path)
+  const rest = own === PRIMARY ? path.slice(1) : path.slice(`/${own}/`.length)
+  return localePath(LOCALES.find((code) => code !== own)!, rest)
+}
+
+const pathnameOf = (page: Page) => new URL(page.url()).pathname
+
+/** Cold load of a fixture (A1, A2, A4, A5): the line it shows, if any, and the value stored afterwards. */
+function coldLoadOutcome(pageLocale: Locale, stored: Locale | null) {
+  if (pageLocale === PRIMARY) {
+    // A primary-locale page: a stored translation locale shows the line in it (A4); none or P show
+    // nothing (A1, A2); nothing is written.
+    return { line: stored !== null && stored !== PRIMARY ? stored : null, after: stored }
+  }
+  // A translation page: no line, and the page's own locale is written (A5).
+  return { line: null, after: pageLocale }
+}
 
 /** Sets the stored language before the first page script of the test, and never again. */
 async function storeLocale(page: Page, value: 'en' | 'zh-TW' | null) {
@@ -32,6 +100,8 @@ const runtimeLocale = (page: Page) =>
     return typeof locale === 'string' ? locale : (locale as { value?: string } | undefined)?.value
   })
 
+// L39: the source walk below includes the two smoke fixtures unconditionally (L-q6); this suite
+// requires a test build, which the `beforeAll` above guarantees.
 test('the page list spelling matches the pages VitePress published', () => {
   // Both sides are built here: the source pages by the spelling rule, the published pages from
   // the built HTML. Equal sets mean the rule names exactly what the build serves.
@@ -85,20 +155,29 @@ test('dist/index.html is the Traditional Chinese home and dist/en/index.html the
   expect(hero(dist('en/index.html'))).not.toContain('網站滲透實驗室')
 })
 
-for (const stored of [null, 'zh-TW', 'en'] as const) {
-  test(`a missing translation falls back to the English page, stored language ${stored ?? 'none'}`, async ({ page }) => {
-    await storeLocale(page, stored)
-    await page.goto(`/zh-TW${REFERENCE}`)
+// L-§4.7 row 1 (A14, D27's primary-path case): the not-found path in one locale lands on the
+// fixture that exists, with the line in the path's own locale, whatever is stored.
+const FALLBACKS = [
+  { name: 'a Traditional Chinese-only article asked for in English', subject: X(ZH_ONLY), requested: 'en', lands: ZH_ONLY },
+  { name: 'an English-only article asked for in Traditional Chinese', subject: X(EN_ONLY), requested: 'zh-TW', lands: EN_ONLY },
+] as const
 
-    await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
-    const line = page.locator('[data-missing-translation]')
-    await expect(line).toBeVisible()
-    await expect(line).toHaveAttribute('lang', 'zh-TW')
-    await expect(line.locator('[data-missing-translation-text]')).toHaveText('這一頁沒有繁體中文版本，所以顯示英文版。')
-    await expect(line.getByRole('link')).toHaveText('前往繁體中文題目清單')
-    await expect(line.getByRole('link')).toHaveAttribute('href', '/zh-TW/challenges')
-    expect(await storedLocale(page)).toBe(stored)
-  })
+for (const { name, subject, requested, lands } of FALLBACKS) {
+  for (const stored of [null, 'zh-TW', 'en'] as const) {
+    test(`a missing translation falls back to the page that exists: ${name}, stored language ${stored ?? 'none'}`, async ({ page }) => {
+      await storeLocale(page, stored)
+      await page.goto(subject)
+
+      await expect.poll(() => pathnameOf(page)).toBe(lands)
+      const line = page.locator('[data-missing-translation]')
+      await expect(line).toBeVisible()
+      await expect(line).toHaveAttribute('lang', requested)
+      await expect(line.locator('[data-missing-translation-text]')).toHaveText(messages(requested).missing_translation.notice)
+      await expect(line.getByRole('link')).toHaveText(messages(requested).missing_translation.list_link)
+      await expect(line.getByRole('link')).toHaveAttribute('href', localePath(requested, 'challenges'))
+      expect(await storedLocale(page)).toBe(stored)
+    })
+  }
 }
 
 test('a path with no counterpart shows the not-found page, with no line', async ({ page }) => {
@@ -109,18 +188,25 @@ test('a path with no counterpart shows the not-found page, with no line', async 
   expect(await storedLocale(page)).toBeNull()
 })
 
-test('the HTML as served carries no line', async ({ request }) => {
-  const served = await (await request.get(REFERENCE)).text()
-  expect(served).not.toContain('data-missing-translation')
-})
+for (const [name, url] of [['English-only', EN_ONLY], ['Traditional Chinese-only', ZH_ONLY]] as const) {
+  test(`the HTML as served carries no line: ${name} article`, async ({ request }) => {
+    const served = await (await request.get(url)).text()
+    expect(served).not.toContain('data-missing-translation')
+  })
+}
 
-test('Back after the fallback returns to the page opened before it', async ({ page }) => {
+test('Back after the fallback returns to the page opened before it (A20)', async ({ page }) => {
   await storeLocale(page, 'en')
-  await page.goto('/challenges')
-  await page.goto(`/zh-TW${REFERENCE}`)
-  await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
+  await page.goto(localePath(PRIMARY, 'challenges'))
+  await hydrated(page)
+  // A stored translation locale may already have moved the list to its counterpart (A3); whichever
+  // list the learner is on is the page Back must return to.
+  const before = pathnameOf(page)
+  expect(before).toMatch(/\/challenges$/)
+  await page.goto(X(ZH_ONLY))
+  await expect.poll(() => pathnameOf(page)).toBe(ZH_ONLY)
   await page.goBack()
-  await expect(page).toHaveURL(/\/challenges$/)
+  await expect.poll(() => pathnameOf(page)).toBe(before)
 })
 
 // D7: every page has one locale menu, the custom switcher; VitePress's three built-in
@@ -172,32 +258,38 @@ test('a choice in the custom locale switcher on an article is stored, and Back r
 // in the chosen locale, and the page's own locale, now offered too, takes the line away. At every
 // width the switcher shows at (the menus' hiding is the cases above).
 for (const { width, height } of BUILT_IN_MENUS) {
-  test(`at ${width} wide the switcher stays on an English-only article, and the way back removes the line`, async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width, height } })
-    const page = await context.newPage()
-    await storeLocale(page, 'en')
-    await page.goto(REFERENCE)
-    await hydrated(page)
-    const before = await page.evaluate(() => history.length)
-    await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+  // L-§4.7 row 4 (A21: SW08/SW09 and SW11): each fixture, asked for in the other locale, stays put.
+  for (const { name, url, own, other, storedFirst } of [
+    { name: 'a Traditional Chinese-only article', url: ZH_ONLY, own: 'zh-TW', other: 'en', storedFirst: 'zh-TW' },
+    { name: 'an English-only article', url: EN_ONLY, own: 'en', other: 'zh-TW', storedFirst: 'en' },
+  ] as const) {
+    test(`at ${width} wide the switcher stays on ${name}, and the way back removes the line`, async ({ browser }) => {
+      const context = await browser.newContext({ viewport: { width, height } })
+      const page = await context.newPage()
+      await storeLocale(page, storedFirst)
+      await page.goto(url)
+      await hydrated(page)
+      const before = await page.evaluate(() => history.length)
+      await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
 
-    await page.locator('[data-locale-switcher-toggle]:visible').click()
-    await page.locator('[data-locale-option="zh-TW"]:visible').click()
-    await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', 'zh-TW')
-    expect(new URL(page.url()).pathname).toBe(REFERENCE)
-    expect(await page.evaluate(() => history.length)).toBe(before)
-    expect(await page.evaluate(() => document.documentElement.lang)).toMatch(/^en/)
-    expect(await runtimeLocale(page)).toBe('en')
-    expect(await storedLocale(page)).toBe('zh-TW')
+      await page.locator('[data-locale-switcher-toggle]:visible').click()
+      await page.locator(`[data-locale-option="${other}"]:visible`).click()
+      await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', other)
+      expect(pathnameOf(page)).toBe(url)
+      expect(await page.evaluate(() => history.length)).toBe(before)
+      expect(await page.evaluate(() => document.documentElement.lang)).toMatch(own === 'en' ? /^en/ : /^zh/)
+      expect(await runtimeLocale(page)).toBe(own)
+      expect(await storedLocale(page)).toBe(other)
 
-    await page.locator('[data-locale-switcher-toggle]:visible').click()
-    await expect(page.locator('[data-locale-option]:visible')).toHaveCount(2)
-    await page.locator('[data-locale-option="en"]:visible').click()
-    await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
-    expect(new URL(page.url()).pathname).toBe(REFERENCE)
-    expect(await storedLocale(page)).toBe('en')
-    await context.close()
-  })
+      await page.locator('[data-locale-switcher-toggle]:visible').click()
+      await expect(page.locator('[data-locale-option]:visible')).toHaveCount(2)
+      await page.locator(`[data-locale-option="${own}"]:visible`).click()
+      await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+      expect(pathnameOf(page)).toBe(url)
+      expect(await storedLocale(page)).toBe(own)
+      await context.close()
+    })
+  }
 
   test(`at ${width} wide the switcher in a challenge page's bar goes to the translation that exists (B1)`, async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width, height } })
@@ -257,29 +349,34 @@ async function hydrated(page: Page) {
 
 // T-0053's "the detour through a missing translation keeps the stored language" is folded in
 // here: the detour it allowed for is gone, and these cases assert the stored language too.
-for (const stored of [null, 'zh-TW'] as const) {
-  test(`a cold load of an English-only article stays put, with the line, stored ${stored ?? 'none'}`, async ({ page }) => {
+// L-§4.7 rows 5 and 6 (A1, A2, A4, A5): a cold load of a fixture never redirects to a counterpart
+// that is not there; whether the line shows and what is stored follow the arrival rules.
+const COLD_LOADS = [
+  { name: 'a Traditional Chinese-only article', url: ZH_ONLY, pageLocale: 'zh-TW', stored: 'en' },
+  { name: 'a Traditional Chinese-only article', url: ZH_ONLY, pageLocale: 'zh-TW', stored: null },
+  { name: 'an English-only article', url: EN_ONLY, pageLocale: 'en', stored: 'zh-TW' },
+  { name: 'a Traditional Chinese-only article', url: ZH_ONLY, pageLocale: 'zh-TW', stored: 'zh-TW' },
+] as const
+
+for (const { name, url, pageLocale, stored } of COLD_LOADS) {
+  test(`a cold load of ${name} stays put, stored ${stored ?? 'none'}`, async ({ page }) => {
+    const { line, after } = coldLoadOutcome(pageLocale, stored)
     await storeLocale(page, stored)
     await recordNavigations(page)
-    await page.goto(REFERENCE)
-    await expect(page.locator('[data-missing-translation]')).toBeVisible()
-    await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', 'zh-TW')
+    await page.goto(url)
     await hydrated(page)
-    await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
-    // A3: no detour through the missing translation, not even one replaced straight back.
-    expect((await navigations(page)).filter((url) => url.includes('/zh-TW/'))).toEqual([])
-    expect(await storedLocale(page)).toBe(stored)
+    expect(pathnameOf(page)).toBe(url)
+    if (line === null) {
+      await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+    } else {
+      await expect(page.locator('[data-missing-translation]')).toBeVisible()
+      await expect(page.locator('[data-missing-translation]')).toHaveAttribute('lang', line)
+    }
+    // A3 for these pages: no detour through another URL, not even one replaced straight back.
+    expect((await navigations(page)).filter((entry) => new URL(entry, page.url()).pathname !== url)).toEqual([])
+    await expect.poll(() => storedLocale(page)).toBe(after)
   })
 }
-
-test('a cold load of an English-only article with en stored shows no line', async ({ page }) => {
-  await storeLocale(page, 'en')
-  await page.goto(REFERENCE)
-  await hydrated(page)
-  await expect(page).toHaveURL(new RegExp(`${REFERENCE}$`))
-  await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
-  expect(await storedLocale(page)).toBe('en')
-})
 
 test('a cold load of an alias goes to the counterpart\'s list entry, and writes nothing', async ({ page }) => {
   await storeLocale(page, null)

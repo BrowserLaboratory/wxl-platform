@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync, rea
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { LOCALES } from '../../../.vitepress/locales'
+import { readPrimaryLocale } from '../../../.vitepress/primary-locale'
 import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../../__helpers__/upstreamDecision'
 
 // ─── The "fixture root" mechanism (B14, B16, B47 preamble) ─────────────────────────────────────
@@ -61,8 +63,10 @@ async function importFixtureConfig(root: string) {
 
 type HeadEntry = [string, Record<string, string>]
 
-async function loadConfig(siteBase: string | undefined, cfPages?: string) {
+async function loadConfig(siteBase: string | undefined, cfPages?: string, smokePages?: string) {
   vi.resetModules()
+  if (smokePages === undefined) delete process.env.WXL_SMOKE_PAGES
+  else process.env.WXL_SMOKE_PAGES = smokePages
   if (siteBase === undefined) delete process.env.SITE_BASE
   else process.env.SITE_BASE = siteBase
   if (cfPages === undefined) delete process.env.CF_PAGES
@@ -71,15 +75,25 @@ async function loadConfig(siteBase: string | undefined, cfPages?: string) {
   const config = mod.default as {
     base?: string
     head?: HeadEntry[]
+    srcExclude?: string[]
     vite?: { define?: Record<string, unknown> }
   }
   const hrefs = (config.head ?? []).map(([, attrs]) => attrs.href)
-  return { base: config.base, hrefs, shortLinks: config.vite?.define?.__WXL_SHORT_LINKS__ }
+  return {
+    base: config.base,
+    hrefs,
+    shortLinks: config.vite?.define?.__WXL_SHORT_LINKS__,
+    srcExclude: config.srcExclude ?? [],
+    pages: JSON.parse(String(config.vite?.define?.__WXL_PAGES__ ?? '[]')) as string[],
+  }
 }
 
 const original = process.env.SITE_BASE
 const originalCfPages = process.env.CF_PAGES
+const originalSmokePages = process.env.WXL_SMOKE_PAGES
 afterEach(() => {
+  if (originalSmokePages === undefined) delete process.env.WXL_SMOKE_PAGES
+  else process.env.WXL_SMOKE_PAGES = originalSmokePages
   if (original === undefined) delete process.env.SITE_BASE
   else process.env.SITE_BASE = original
   if (originalCfPages === undefined) delete process.env.CF_PAGES
@@ -409,5 +423,35 @@ describe('srcExclude (B24, B25)', () => {
     expect(mod.default.srcExclude).toEqual(
       expect.arrayContaining(['challenge/*/src/**', 'public/**', 'shared/**']),
     )
+  })
+})
+
+// L34 (D49, L-§4.5): only the exact string '1' publishes the smoke fixtures. The two fixture entries
+// are L-§4.5's URLs for each primary locale, typed by hand and chosen by the real range.json (D54).
+describe('WXL_SMOKE_PAGES (L34)', () => {
+  const FIXTURE_ENTRIES = {
+    'zh-TW': ['/en/smoke-fixtures/english-only', '/smoke-fixtures/traditional-chinese-only'],
+    en: ['/smoke-fixtures/english-only', '/zh-TW/smoke-fixtures/traditional-chinese-only'],
+  } as const
+  const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+
+  it.each([
+    ['unset', undefined],
+    ['empty', ''],
+    ['0', '0'],
+    ['true', 'true'],
+    ['a leading space', ' 1'],
+    ['a trailing space', '1 '],
+    ['01', '01'],
+    ['1', '1'],
+  ])('flag %s: srcExclude and the page list agree with the flag', async (_label, flag) => {
+    const { srcExclude, pages } = await loadConfig(undefined, undefined, flag)
+    const published = flag === '1'
+    for (const code of LOCALES) {
+      expect(srcExclude.includes(`${code}/smoke-fixtures/**`)).toBe(!published)
+    }
+    for (const entry of FIXTURE_ENTRIES[primary]) {
+      expect(pages.includes(entry)).toBe(published)
+    }
   })
 })
