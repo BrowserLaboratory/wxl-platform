@@ -16,11 +16,18 @@ import {
   rmSync,
   existsSync,
   statSync,
+  chmodSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { platform, tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import { run, type KeygenResult } from '../../../scripts/create-challenge'
 import { generateRedirects } from '../../../scripts/generate-redirects'
+import { validateChallenge } from '../../../scripts/challenge-validate'
+import { nextChallengeNumber } from '../../../scripts/challenge-numbers'
+import { parse as parseYaml } from 'yaml'
+import { checkSourceLayout } from '../../../.vitepress/source-layout'
+import { challengePagePath } from '../../../.vitepress/challenge/shortLink'
+import type { Locale } from '../../../.vitepress/locales'
 
 const REPO_ROOT = resolve(__dirname, '..', '..', '..')
 const REAL_REDIRECTS = join(REPO_ROOT, 'platform', 'public', '_redirects')
@@ -32,9 +39,19 @@ const roots: string[] = []
 /** Every root the suite made, kept after cleanup for the afterAll check. */
 const madeRoots: string[] = []
 
-function page(number: number | undefined, title = 'Fixture'): string {
+/** A challenge's declaration (`challenge.yaml`): the number lives here and nowhere else. */
+function declaration(number?: number): string {
   const n = number === undefined ? '' : `number: ${number}\n`
-  return `---\ntitle: ${title}\n${n}layout: challenge\n---\n\n# ${title}\n`
+  return `${n}difficulty: easy\ncategory: web\nbackend: flask\napp: app.py\n`
+}
+
+/** A brief: `title` and `layout` only (D74). */
+function brief(title = 'Fixture'): string {
+  return `---\ntitle: ${title}\nlayout: challenge\n---\n\n# ${title}\n`
+}
+
+function home(): string {
+  return `---\ntitle: Home\n---\n\n# Home\n`
 }
 
 function put(root: string, rel: string, content: string): void {
@@ -43,15 +60,23 @@ function put(root: string, rel: string, content: string): void {
   writeFileSync(p, content, 'utf-8')
 }
 
+/** Both locales' home pages: the layout check wants the primary's whichever `P` is. */
+const HOMES: Record<string, string> = {
+  'platform/zh-TW/index.md': home(),
+  'platform/en/index.md': home(),
+}
+
 /**
  * door-is-open (1) in both locales and a retired challenge holding 2, so the
  * next challenge gets 3. `_redirects` is the generated content unless `seed`
  * says otherwise; `seed: null` leaves it out.
  */
 const DEFAULT_TREE: Record<string, string> = {
-  'platform/challenge/door-is-open/index.md': page(1, 'Door Is Open'),
-  'platform/zh-TW/challenge/door-is-open/index.md': page(1, '門是開的'),
-  '.archive/challenge/old/index.md': page(2, 'Old'),
+  ...HOMES,
+  'platform/challenge/door-is-open/challenge.yaml': declaration(1),
+  'platform/zh-TW/challenge/door-is-open/index.md': brief('門是開的'),
+  'platform/en/challenge/door-is-open/index.md': brief('Door Is Open'),
+  '.archive/challenge/old/challenge.yaml': declaration(2),
 }
 
 function makeRoot(opts: { seed?: string | null; tree?: Record<string, string> } = {}): string {
@@ -127,20 +152,33 @@ function harness(
 
 const ARGV = ['--name', 'new-chall', '--backend', 'php']
 const NEW_DIR = 'platform/challenge/new-chall'
-/** The files a php scaffold writes, relative to the new challenge's directory. */
-const SCAFFOLD_FILES = ['index.md', 'src/index.php', 'src/flag.txt']
+/** The new challenge's brief, relative to the root, for primary locale `P`. */
+const briefRel = (P: Locale): string => `platform/${P}/challenge/new-chall/index.md`
+/** The files a php scaffold writes, relative to the root, brief first. */
+const SCAFFOLD_FILES = (P: Locale): string[] => [
+  briefRel(P),
+  `${NEW_DIR}/challenge.yaml`,
+  `${NEW_DIR}/src/index.php`,
+  `${NEW_DIR}/src/flag.txt`,
+]
 /** Every path the scaffold creates under `root`, directories included. */
-const SCAFFOLD = [NEW_DIR, `${NEW_DIR}/src`, ...SCAFFOLD_FILES.map((f) => `${NEW_DIR}/${f}`)]
+const SCAFFOLD = (P: Locale): string[] => [
+  NEW_DIR,
+  `${NEW_DIR}/src`,
+  `platform/${P}/challenge/new-chall`,
+  ...SCAFFOLD_FILES(P),
+]
 /** Bytes that differ from any generated content, so a rewrite would show. */
 const SENTINEL = '# sentinel bytes, not the generated content\n'
 
-function expectScaffold(root: string): void {
-  for (const f of SCAFFOLD_FILES) expect(existsSync(join(root, NEW_DIR, f))).toBe(true)
+function expectScaffold(root: string, P: Locale): void {
+  for (const f of SCAFFOLD_FILES(P)) expect(existsSync(join(root, f))).toBe(true)
 }
 
 /** W1's listed substrings (traceability, messages table), besides the cause. */
-function expectW1(stderr: string): void {
+function expectW1(stderr: string, P: Locale = 'zh-TW'): void {
   expect(stderr).toContain(`${NEW_DIR}/`)
+  expect(stderr).toContain(briefRel(P))
   expect(stderr).toContain('platform/public/_redirects')
   expect(stderr).toContain('git commit')
 }
@@ -167,27 +205,137 @@ afterAll(() => {
 
 // ─── C01, C02 ───────────────────────────────────────────────────────────────
 
+const escapeRe = (t: string): string => t.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+
 describe('run: a successful run', () => {
-  it('regenerates _redirects over the whole tree and names it on stdout', () => {
+  it('Y70 (no range.json): writes the zh-TW brief, challenge.yaml and src/, names the four on stdout, brief first', () => {
     const root = makeRoot()
     const before = snapshot(root)
-    const h = harness(root)
+    const h = harness(root, () => {
+      // What the scaffold is at the moment keygen runs: the four files and three directories.
+      atKeygen = changedPaths(before, snapshot(root))
+      return { ok: true, output: 'keygen: wrote flag\n' }
+    })
+    let atKeygen: string[] = []
 
     const status = run(ARGV, h.deps)
 
     expect(status).toBe(0)
+    expect(atKeygen).toEqual([...SCAFFOLD('zh-TW')].sort())
+    expect(changedPaths(before, snapshot(root))).toEqual(
+      [...SCAFFOLD('zh-TW'), 'platform/public/_redirects'].sort(),
+    )
+    const lines = SCAFFOLD_FILES('zh-TW').map((f) => `  ${f}\n`)
+    expect(SCAFFOLD_FILES('zh-TW')).toEqual([
+      'platform/zh-TW/challenge/new-chall/index.md',
+      'platform/challenge/new-chall/challenge.yaml',
+      'platform/challenge/new-chall/src/index.php',
+      'platform/challenge/new-chall/src/flag.txt',
+    ])
+    const positions = lines.map((l) => h.out().indexOf(l))
+    for (const [i, pos] of positions.entries()) expect(pos, lines[i]).toBeGreaterThanOrEqual(0)
+    expect([...positions].sort((x, y) => x - y)).toEqual(positions)
     const content = readRedirects(root)
     expect(content).toBe(generateRedirects(root))
-    expect(content).toMatch(/^\/c\/003\s+\/challenge\/new-chall\/\s+302$/m)
-    expect(content).toMatch(/^\/zh\/c\/001\s+\/zh-TW\/challenge\/door-is-open\/\s+302$/m)
+    const page = (slug: string): string => challengePagePath(slug, 'zh-TW', 'zh-TW')
+    expect(content).toMatch(new RegExp(`^/c/003\\s+${escapeRe(page('new-chall'))}\\s+302$`, 'm'))
+    expect(content).toMatch(new RegExp(`^/zh/c/001\\s+${escapeRe(page('door-is-open'))}\\s+302$`, 'm'))
     expect(h.out()).toContain('platform/public/_redirects')
     expect(h.calls).toEqual([['new-chall', root]])
-    expect(changedPaths(before, snapshot(root))).toEqual(
-      [...SCAFFOLD, 'platform/public/_redirects'].sort(),
-    )
     expect(h.err()).not.toContain('pnpm challenge:keygen')
     expect(h.err()).not.toContain('git commit')
   })
+})
+
+describe('run: the primary locale (Y71, Y72)', () => {
+  it('Y72 ({"primaryLocale":"en"}): the brief goes to platform/en/, nothing under platform/zh-TW/', () => {
+    const root = makeRoot({ tree: { ...DEFAULT_TREE, 'range.json': '{"primaryLocale":"en"}' } })
+    const before = snapshot(root)
+    const h = harness(root)
+
+    expect(run(ARGV, h.deps)).toBe(0)
+
+    const changed = changedPaths(before, snapshot(root))
+    expect(changed).toEqual([...SCAFFOLD('en'), 'platform/public/_redirects'].sort())
+    expect(changed.filter((p) => p.startsWith('platform/zh-TW/'))).toEqual([])
+  })
+
+  it('Y71 (range.json holds only "upstream"): as Y70', () => {
+    const range = '{ "upstream": { "repo": "browserlab/wxl-platform", "version": "3.1.0" } }'
+    const root = makeRoot({ tree: { ...DEFAULT_TREE, 'range.json': range } })
+    const before = snapshot(root)
+    const h = harness(root)
+
+    expect(run(ARGV, h.deps)).toBe(0)
+
+    // range.json itself is not in the diff: nothing wrote it.
+    expect(changedPaths(before, snapshot(root))).toEqual(
+      [...SCAFFOLD('zh-TW'), 'platform/public/_redirects'].sort(),
+    )
+    const lines = SCAFFOLD_FILES('zh-TW').map((f) => `  ${f}\n`)
+    for (const l of lines) expect(h.out()).toContain(l)
+  })
+})
+
+// ─── Y73 ────────────────────────────────────────────────────────────────────
+
+describe('run: an unusable range.json (Y73, R19)', () => {
+  // The same six faults and first lines as challenge-validate.test.ts's Y36.
+  const CASES: [string, (root: string) => void, string][] = [
+    [
+      'PL-E01 (range.json is a directory)',
+      (root) => mkdirSync(join(root, 'range.json')),
+      'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.',
+    ],
+    ['PL-E03 (not JSON)', (root) => writeFileSync(join(root, 'range.json'), '{'), 'PL-E03: range.json is not valid JSON.'],
+    ['PL-E04 (not an object)', (root) => writeFileSync(join(root, 'range.json'), '[]'), 'PL-E04: range.json does not hold a JSON object.'],
+    [
+      'PL-E05 (primaryLocale not a string)',
+      (root) => writeFileSync(join(root, 'range.json'), '{"primaryLocale":7}'),
+      'PL-E05: "primaryLocale" in range.json is not a string: 7.',
+    ],
+    [
+      'PL-E06 (primaryLocale not on the list)',
+      (root) => writeFileSync(join(root, 'range.json'), '{"primaryLocale":"ja"}'),
+      'PL-E06: "primaryLocale" in range.json is "ja", which is not on the locale list: en, zh-TW.',
+    ],
+  ]
+
+  it.each(CASES)('%s: status 1, the PL line first, nothing written', (_name, breakRange, firstLine) => {
+    const root = makeRoot({ seed: SENTINEL })
+    breakRange(root)
+    const before = snapshot(root)
+    const h = harness(root)
+
+    expect(run(ARGV, h.deps)).toBe(1)
+    expect(h.err().split('\n')[0]).toBe(firstLine)
+    expect(snapshot(root)).toEqual(before)
+    expect(readRedirects(root)).toBe(SENTINEL)
+    expect(h.calls).toEqual([])
+  })
+
+  it.skipIf(platform() === 'win32' || process.getuid?.() === 0)(
+    'PL-E02 (mode 000): status 1, the PL line first, nothing written',
+    () => {
+      const root = makeRoot({ seed: SENTINEL })
+      writeFileSync(join(root, 'range.json'), '{}')
+      chmodSync(join(root, 'range.json'), 0o000)
+      const h = harness(root)
+      let status: number
+      try {
+        status = run(ARGV, h.deps)
+      } finally {
+        chmodSync(join(root, 'range.json'), 0o644)
+      }
+      const after = snapshot(root)
+      expect(status).toBe(1)
+      expect(h.err().split('\n')[0]).toBe('PL-E02: range.json could not be read (EACCES).')
+      expect(after.get('range.json')).toBe(Buffer.from('{}').toString('base64'))
+      expect([...after.keys()].filter((k) => k.includes('new-chall'))).toEqual([])
+      expect(readRedirects(root)).toBe(SENTINEL)
+      expect(h.calls).toEqual([])
+    },
+  )
 })
 
 // ─── C08 ────────────────────────────────────────────────────────────────────
@@ -229,10 +377,24 @@ describe('run: keygen fails after the scaffold was written', () => {
     expect(run(ARGV, h.deps)).toBe(3)
     expect(h.err()).toContain(KEYGEN_OUTPUT)
     expect(h.err()).toContain(`${NEW_DIR}/`)
+    expect(h.err()).toContain(briefRel('zh-TW'))
     expect(h.err()).toContain('pnpm challenge:keygen new-chall')
     expect(readRedirects(root)).toBe(SENTINEL)
-    expectScaffold(root)
+    expectScaffold(root, 'zh-TW')
     expect(h.calls).toHaveLength(1)
+  })
+
+  it('Y84: with P = en, W2 names the English brief', () => {
+    const root = makeRoot({ seed: SENTINEL, tree: { ...DEFAULT_TREE, 'range.json': '{"primaryLocale":"en"}' } })
+    const h = harness(root, () => ({ ok: false, output: KEYGEN_OUTPUT }))
+
+    expect(run(ARGV, h.deps)).toBe(3)
+    expect(h.err()).toContain(KEYGEN_OUTPUT)
+    expect(h.err()).toContain(`${NEW_DIR}/`)
+    expect(h.err()).toContain(briefRel('en'))
+    expect(h.err()).toContain('pnpm challenge:keygen new-chall')
+    expect(h.err()).not.toContain(briefRel('zh-TW'))
+    expectScaffold(root, 'en')
   })
 })
 
@@ -241,16 +403,19 @@ describe('run: keygen fails after the scaffold was written', () => {
 describe('run: the generator refuses the tree after keygen', () => {
   it.each([
     ['C04: two challenges hold one number', {
-      'platform/challenge/a/index.md': page(1, 'A'),
-      'platform/challenge/b/index.md': page(1, 'B'),
+      ...HOMES,
+      'platform/challenge/a/challenge.yaml': declaration(1),
+      'platform/zh-TW/challenge/a/index.md': brief('A'),
+      'platform/challenge/b/challenge.yaml': declaration(1),
+      'platform/zh-TW/challenge/b/index.md': brief('B'),
     }],
-    ['C06: a challenge index.md carries no number', {
+    ['C06: a challenge.yaml carries no number', {
       ...DEFAULT_TREE,
-      'platform/challenge/draft/index.md': page(undefined, 'Draft'),
+      'platform/challenge/draft/challenge.yaml': declaration(undefined),
     }],
-    ['C07: a Traditional Chinese brief carries another number', {
+    ['C07: a brief has no declaration, so no number', {
       ...DEFAULT_TREE,
-      'platform/zh-TW/challenge/door-is-open/index.md': page(5, '門是開的'),
+      'platform/zh-TW/challenge/orphan/index.md': brief('Orphan'),
     }],
   ])('%s: status 2 with W1, nothing else touched', (_label, tree) => {
     const root = makeRoot({ seed: SENTINEL, tree })
@@ -268,8 +433,28 @@ describe('run: the generator refuses the tree after keygen', () => {
     expect(h.err()).toContain(refusal)
     expectW1(h.err())
     expect(readRedirects(root)).toBe(SENTINEL)
-    expectScaffold(root)
+    expectScaffold(root, 'zh-TW')
     expect(h.calls).toHaveLength(1)
+  })
+})
+
+describe('run: the generator refuses the tree after keygen, P = en (Y84)', () => {
+  it('Y84: W1 names the English brief', () => {
+    const root = makeRoot({
+      seed: SENTINEL,
+      tree: {
+        ...DEFAULT_TREE,
+        'range.json': '{"primaryLocale":"en"}',
+        'platform/challenge/draft/challenge.yaml': declaration(undefined),
+      },
+    })
+    const h = harness(root)
+
+    expect(run(ARGV, h.deps)).toBe(2)
+    expectW1(h.err(), 'en')
+    expect(h.err()).not.toContain(briefRel('zh-TW'))
+    expect(readRedirects(root)).toBe(SENTINEL)
+    expectScaffold(root, 'en')
   })
 })
 
@@ -294,7 +479,7 @@ describe('run: _redirects cannot be written', () => {
     expect(h.err()).toContain(writeError)
     expectW1(h.err())
     expect(statSync(target).isDirectory()).toBe(true)
-    expectScaffold(root)
+    expectScaffold(root, 'zh-TW')
   })
 })
 
@@ -309,12 +494,11 @@ describe('run: an invalid argument or an existing slug', () => {
     ['an unknown difficulty', ['--name', 'x', '--difficulty', 'insane']],
     ['an unknown option', ['--nmae', 'x']],
     ['a positional argument', ['--name', 'x', 'extra']],
-    ['an existing per-folder slug', ['--name', 'door-is-open']],
-    ['an existing legacy slug', ['--name', 'legacy']],
-  ])('%s ends with status 1 before any file is written', (_label, argv) => {
+    ['an existing per-folder slug', ['--name', 'door-is-open'],
+      'Error: Challenge "door-is-open" already exists: platform/challenge/door-is-open/\n'],
+  ] as Array<[string, string[], string?]>)('%s ends with status 1 before any file is written', (_label, argv, exactErr) => {
     const root = makeRoot({
       seed: '# not the generated content\n',
-      tree: { ...DEFAULT_TREE, 'platform/challenge/legacy.md': page(9, 'Legacy') },
     })
     const before = snapshot(root)
     const h = harness(root)
@@ -323,5 +507,139 @@ describe('run: an invalid argument or an existing slug', () => {
     expect(snapshot(root)).toEqual(before)
     expect(h.calls).toEqual([])
     expect(h.err()).toMatch(/^Error:/)
+    if (exactErr !== undefined) expect(h.err().startsWith(exactErr)).toBe(true)
+  })
+})
+
+// ─── Y83, Y75, Y85 ──────────────────────────────────────────────────────────
+
+describe('run: what the scaffold is (Y83, Y75, Y85)', () => {
+  const treeFor = (P: Locale): Record<string, string> =>
+    P === 'en' ? { ...DEFAULT_TREE, 'range.json': '{"primaryLocale":"en"}' } : DEFAULT_TREE
+
+  it.each<Locale>(['zh-TW', 'en'])('Y83: the scaffold validates (P = %s)', (P) => {
+    const root = makeRoot({ tree: treeFor(P) })
+    const h = harness(root)
+
+    expect(run(ARGV, h.deps)).toBe(0)
+
+    const result = validateChallenge(root, 'new-chall')
+    const failed = result.checks.filter((c) => !c.passed).map((c) => `${c.label}: ${c.message}`)
+    expect(failed).toEqual([])
+    expect(result.allPassed).toBe(true)
+  })
+
+  it('Y75: wasmModule lands last after keygen', () => {
+    const root = makeRoot()
+    const yamlPath = join(root, NEW_DIR, 'challenge.yaml')
+    let beforeKeygen: string[] = []
+    const h = harness(root, () => {
+      beforeKeygen = Object.keys(parseYaml(readFileSync(yamlPath, 'utf-8')) as object)
+      // What the real keygen does: it appends the key after the last one.
+      writeFileSync(yamlPath, `${readFileSync(yamlPath, 'utf-8')}wasmModule: /challenge/new-chall/runtime.wasm\n`)
+      return { ok: true, output: 'keygen: wrote flag\n' }
+    })
+
+    const status = run(ARGV, h.deps)
+
+    // The content assertions come first so a fault in them is not hidden behind the status.
+    expect(beforeKeygen).toEqual(['number', 'difficulty', 'category', 'backend', 'app', 'packages', 'date', 'tags'])
+    expect(Object.keys(parseYaml(readFileSync(yamlPath, 'utf-8')) as object)).toEqual([...beforeKeygen, 'wasmModule'])
+    expect(status).toBe(0)
+  })
+
+  it('Y85: the written number is nextChallengeNumber(root), a retired declaration included', () => {
+    const root = makeRoot({ tree: { ...DEFAULT_TREE, '.archive/challenge/old/challenge.yaml': declaration(7) } })
+    const expected = nextChallengeNumber(root)
+    expect(expected).toBe(8)
+    const h = harness(root)
+
+    const status = run(ARGV, h.deps)
+
+    const written = parseYaml(readFileSync(join(root, NEW_DIR, 'challenge.yaml'), 'utf-8')) as { number: number }
+    expect(written.number).toBe(expected)
+    expect(status).toBe(0)
+  })
+})
+
+// ─── Y80, Y81, Y111 ─────────────────────────────────────────────────────────
+
+describe('run: a collision (Y80, Y81)', () => {
+  /** Runs with `tree` added to the default one; checks status 1, the exact CC1 line, nothing changed. */
+  function expectCollision(argv: string[], extra: Record<string, string>, collided: string, slug: string): void {
+    const root = makeRoot({ seed: SENTINEL, tree: { ...DEFAULT_TREE, ...extra } })
+    const before = snapshot(root)
+    const h = harness(root)
+
+    expect(run(argv, h.deps)).toBe(1)
+    expect(h.err()).toBe(`Error: Challenge "${slug}" already exists: ${collided}\n`)
+    expect(snapshot(root)).toEqual(before)
+    expect(h.calls).toEqual([])
+  }
+
+  it.each([
+    ['only src/', {
+      [`${NEW_DIR}/src/index.php`]: SENTINEL,
+      [`${NEW_DIR}/src/flag.txt`]: SENTINEL,
+    }],
+    ['only challenge.yaml', { [`${NEW_DIR}/challenge.yaml`]: declaration(9) }],
+    ['both', {
+      [`${NEW_DIR}/challenge.yaml`]: declaration(9),
+      [`${NEW_DIR}/src/index.php`]: SENTINEL,
+      [`${NEW_DIR}/src/flag.txt`]: SENTINEL,
+    }],
+  ])('Y80: an existing challenge directory with %s collides', (_label, extra) => {
+    expectCollision(ARGV, extra, `${NEW_DIR}/`, 'new-chall')
+  })
+
+  it.each<[Locale, Locale]>([
+    ['zh-TW', 'zh-TW'],
+    ['zh-TW', 'en'],
+    ['en', 'en'],
+    ['en', 'zh-TW'],
+  ])('Y81: with P = %s, platform/%s/challenge/new-chall/ collides', (P, L) => {
+    const range = P === 'en' ? { 'range.json': '{"primaryLocale":"en"}' } : {}
+    expectCollision(
+      ARGV,
+      { ...range, [`platform/${L}/challenge/new-chall/index.md`]: brief('Existing') },
+      `platform/${L}/challenge/new-chall/`,
+      'new-chall',
+    )
+  })
+
+  it('Y111: --name t collides with a brief folder that has no index.md', () => {
+    expectCollision(
+      ['--name', 't'],
+      { 'platform/zh-TW/challenge/t/diagram.png': 'png bytes' },
+      'platform/zh-TW/challenge/t/',
+      't',
+    )
+  })
+})
+
+// ─── Y105 ───────────────────────────────────────────────────────────────────
+
+describe('run: a tree in the legacy layout (Y105, D82, D19)', () => {
+  it.each([
+    ['platform/index.md is present', ARGV, { 'platform/index.md': home() }, 'platform/index.md'],
+    ['a flat platform/challenge/legacy.md stops at PL-E08', ['--name', 'legacy'],
+      { 'platform/challenge/legacy.md': brief('Legacy') }, 'platform/challenge/legacy.md'],
+  ])('%s: refused with PL-E08 before anything is written', (_label, argv, extra, listed) => {
+    const root = makeRoot({ seed: SENTINEL, tree: { ...DEFAULT_TREE, ...extra } })
+    const before = snapshot(root)
+    const h = harness(root)
+    let refusal = ''
+    try {
+      checkSourceLayout(join(root, 'platform'), 'zh-TW')
+    } catch (e) {
+      refusal = (e as Error).message
+    }
+    expect(refusal.split('\n')[0]).toMatch(/^PL-E08:/)
+    expect(refusal.split('\n')[1]).toBe(`  "${listed}"`)
+
+    expect(run(argv, h.deps)).toBe(1)
+    expect(h.err().split('\n').slice(0, 2)).toEqual(refusal.split('\n').slice(0, 2))
+    expect(snapshot(root)).toEqual(before)
+    expect(h.calls).toEqual([])
   })
 })

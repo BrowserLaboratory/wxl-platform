@@ -2653,6 +2653,101 @@ Deferred to stage 6 (P2, frozen rubric), segment 5d final review:
 
 Full suite (parallel run only; no re-run needed, all failures allowed, no flakes): report `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/s5d/report-5d.json` (mtime Nov 17 16:41:43 2026, written after the run start: start epoch 1794904856, file 1794904903), HEAD d2c7e30. Tests: 6652 total, 6528 passed, 12 failed, 112 skipped, 0 todo. Suites: 845 total, 10 failed suites (`tests/pre-commit-sh.test.ts` file-level collection failure counted as a suite failure, with no per-test entries). Failing tests: 8 in create-challenge-run, 1 in L1, 3 in L2.
 
+### 2026-11-17 (parent, decision on segment 5e's plan needs_user: 0007's C07; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: what happens to 0007's case
+C07 in `tests/unit/scripts/create-challenge-run.test.ts`; nothing else.
+
+- Question: C07 ("a Traditional Chinese brief carries another number → the generator refuses → status 2") loses its
+  premise under the new layout: the number lives only in `challenge.yaml`, the generator no longer reads a brief's
+  number, and the old fixture would now end with status 0.
+- Decision: approved as the planner recommends. C07 is re-pointed to D64 (b): a brief with no declaration
+  (`platform/zh-TW/challenge/orphan/index.md`), so no number; its label changes and its five assertions stay as they
+  are. C04 and C06 only change the file that carries the fault (`index.md` → `challenge.yaml`), the same fault class,
+  and need no decision. The executor adds C04, C06 and C07's fixture re-pointing to traceability.md's "Overridden
+  contracts" row for create:challenge (the row D149 already amended for C05), marked as added at stage 5 under the
+  user's standing authorization on 2026-11-17, so stage 6 reads it there.
+- Why it is listed: C07's change replaces the fault class, not only a path, and that row did not name it.
+
+- 2026-11-17 (segment 5e): create:challenge, rows Y70-Y85, Y105, Y111's create clause, and C07's re-point,
+  all done. Files: `scripts/create-challenge.ts`, `tests/unit/scripts/create-challenge.test.ts`,
+  `tests/unit/scripts/create-challenge-run.test.ts`, and one sentence in `traceability.md` row 1741 (see
+  the end). No file under `platform/` was touched, so no `git add` was made. Baseline before any edit: the
+  two files held 47 cases, 8 failed / 39 passed (the carried failures in the plan).
+  - Row 0, fixtures (`DEFAULT_TREE` rewritten: both homes, `challenge.yaml` declarations, both brief
+    locales, the retired declaration; constants made functions of `P`). First red before production
+    moved: `expected 2 to be +0` (C01, PL-E08 on the old scaffold's `platform/challenge/new-chall/index.md`).
+    Also red from the fixture alone, as intended: C03 `expected false to be true` (`expectScaffold`), C05's
+    "existing per-folder slug" `expected 2 to be 1`.
+  - Y78: `TypeError: Cannot read properties of undefined (reading 'en')`. Y74: `TypeError: generateBrief
+    is not a function`; my first regex split the brief after `---` instead of after the `---` line, a test
+    slip fixed before the production change counted. Y76: `expected 'Stage8 Decl' to be
+    '未命名題目（stage8-decl）'` (the en cell was already green: existing Title Case).
+  - Y77 and Y79: green on first run (`if (title) return title` is old behaviour; Y78 and Y76 had filled both
+    locales). Mutations: the title branch removed gave `expected 'X' to be 'X Y'` and `expected
+    '未命名題目（x）' to be 'X Y'`; the `zh-TW` entry renamed gave `TypeError: Cannot read properties of
+    undefined (reading 'title')` / `'body'`. Both restored.
+  - Y75 (function half): `TypeError: generateDeclaration is not a function` (10 cases, the nine old
+    `generateMarkdown` cases re-pointed one by one, none dropped; title and layout assertions moved to Y74).
+  - Y80 (function half): `expected undefined to be 'Challenge "s" already exists: platform/challenge/s/'`
+    (my helper returns the message, so the line differs from the plan's `expected [Function] to throw`; the
+    reason is the same, the old check only saw `<slug>/index.md`). The `<slug>.md` case stayed until Y82.
+  - Y81 (function half): same shape, two red cells (one per locale). Y82: after I had already edited the
+    production file, I re-added the legacy branch temporarily to see the red:
+    `expected 'Challenge "s" already exists (legacy)…' to be undefined`, then removed it again.
+  - Y70: red `expected 2 to be +0`. This needed a temporary alias because an earlier cycle had already removed
+    `generateMarkdown` (otherwise the line was `ReferenceError: generateMarkdown is not defined`). Green with
+    the new scaffold block; the carried failures (three "replaces", C04, C06, C07, C09, C03) turned green with it.
+  - Y72: red `expected [ Array(8) ] to deeply equal [ Array(8) ]`. Y71: green on first run (no `primaryLocale`
+    key gives zh-TW); mutation `primary = 'en'` made it fail with the same array diff.
+  - Y73: all six red, but the line was `expected 'Error: PL-E0x: …' to be 'PL-E0x: …'` (my Y72 change had put the
+    read inside the argument try, which adds `Error:` and USAGE). Green after the read got its own try that
+    prints `e.message` only (D123). PL-E02 ran (not skipped here: not win32, not root).
+  - Y105: red `expected 2 to be 1` for both cells (`platform/index.md`, and `--name legacy` with a flat
+    `legacy.md`). Production now runs arguments, primary locale, layout check, collision, number, write (D82).
+    C05's "existing per-folder slug" gained the exact stderr; its other 8 cells lost `legacy.md`.
+  - Y80/Y81/Y111 (run halves): green on first run (the function-half cycles had already changed the caller to
+    pass `root`). Mutations: removing the `checkCollision` call failed all 8; limiting the locale loop to zh-TW
+    failed the two cells whose `L` is `en` (that is one cell with `L = P` and one with `L != P`, not two
+    `L != P` cells as the plan said); testing `index.md` instead of the directory failed only Y111
+    (`expected +0 to be 1`). All restored.
+  - Y84: red `expected 'Error: keygen failed after the scaffo…' to contain 'platform/zh-TW/challenge/new-chall/index.md'`
+    (W2) and the same shape for W1, 8 cells; green after the sentences gained `with its brief at <path>`. P = en
+    has one W2 cell and one W1 cell; `expectW1` takes `P`. 0007's substrings are untouched.
+  - Y83 (both P) and Y85: green on first run. Mutations: a `number` key in the brief gave `expected [ Array(1) ] to
+    deeply equal []` (`brief (<P>)` failed); `number: 1` gave `expected 1 to be 8`.
+  - Y75 (run half): green on first run; the double appends `wasmModule` like keygen and the test checks it is
+    absent before and last after. Mutation (`wasmModule` in `generateDeclaration`) failed the "before keygen" key
+    list. Limit: this fixes only that `run` does not rewrite the declaration after keygen; the real keygen
+    write-back is 5c's Y54 and stage 8's V-Y1.
+  - C07: re-pointed per the parent decision (label `C07: a brief has no declaration, so no number`, tree =
+    default plus `platform/zh-TW/challenge/orphan/index.md`, assertions unchanged). C04 and C06 now use
+    `challenge.yaml` (C04 adds the two homes).
+  - Cleanup: `SLUG_RE` replaced by `SLUG_GRAMMAR` from `.vitepress/challenge/shortLink.ts`; file header and exit
+    status text no longer say frontmatter stub. `node --experimental-strip-types` still loads the module.
+  - Commands: `pnpm vitest run tests/unit/scripts/create-challenge.test.ts tests/unit/scripts/create-challenge-run.test.ts`
+    twice, each 2 files, 82 passed (40 + 42); `pnpm vitest run tests/unit/site/redirects-generated.test.ts
+    tests/challenge-validate.test.ts`: 2 files, 245 passed. No full suite run.
+  - `traceability.md` row 1741 (create:challenge "Overridden contracts"): appended the C04, C06 and C07 re-pointing,
+    marked as added at stage 5 under the standing authorization of 2026-11-17, as the parent decision asked.
+  - Notes for later segments: `validateArgs` now returns `title: string | undefined`; `ScaffoldArgs` changed
+    accordingly. Glossary clause of Y78 stays with stage 6. A missing `platform/` directory now throws from the
+    layout check's `lstatSync` (rethrown, not status 1); the real repository always has one.
+
+  - Deferred to stage 6 (P2, frozen rubric), segment 5e findings (duplicates merged):
+    - `tests/unit/scripts/create-challenge-run.test.ts:442` (medium): Y84 P=en W1 case does not assert 0007's first W1 substring (the generator's error message); only the zh-TW W1 cases (C04/C06/C07/C09) check it. The W1 path is shared and locale-independent, so this is strength, not a coverage gap.
+    - `tests/unit/scripts/create-challenge-run.test.ts:275` (medium): Y71 ("as Y70") checks that the four scaffold lines are on stdout but not that the brief comes first, which Y70 checks. Production prints one fixed block, so Y70 still catches an ordering fault.
+    - `tests/unit/scripts/create-challenge-run.test.ts:317` (medium): Y73's PL-E02 cell does not prove a byte-identical tree. It checks range.json's bytes, no 'new-chall' path and the _redirects sentinel, with no before/after snapshot (the other five R19 cells compare `snapshot(root)`).
+    - `tests/unit/scripts/create-challenge.test.ts:329` (low): Y79's non-empty title check uses `not.toBe('')`, so a title function returning undefined or a non-string would pass. The Record<Locale,...> type covers totality at compile time.
+    - `tests/unit/scripts/create-challenge-run.test.ts:532` (medium): Y75's run half only checks that run does not rewrite challenge.yaml after a keygen double appends wasmModule. The real write-back is 5c's Y54 and stage 8's V-Y1.
+    - `scripts/create-challenge.ts:375` (low): no run-level test checks that the default title written to the brief follows the primary locale. Y76 is tested only through getTitle/generateBrief, as the plan scopes it; stage 8's V-Y1/V-Y2 cover it end to end.
+    - `tests/unit/scripts/create-challenge-run.test.ts:238` (medium): C01/Y70's _redirects route regexes take the expected page path from `challengePagePath`, the helper generate-redirects.ts uses to build the rule, so they partly repeat production code. S52's literal table in shortLink.test.ts still pins the helper; literals `/challenge/new-chall/` and `/challenge/door-is-open/` would make C01 independent again.
+    - `scripts/create-challenge.ts:349` (low): if platform/ is missing, checkSourceLayout's lstatSync throws ENOENT and run() rethrows it as an uncaught exception instead of returning status 1. Outside Y70-Y85/Y105; a real repository always has platform/.
+    - `.vitepress/challenge/config.ts:41` (medium): create:challenge no longer uses `validateChallengeConfig`, so only config.test.ts calls it. Y-q1 assigns its removal to wave 5 (ticket line ~1135) but 5e neither removed nor scheduled it; the parent should assign it to a segment.
+    - `tests/unit/scripts/create-challenge.test.ts:132` (high): stale label "does not throw when neither md nor directory exists" still mentions the flat .md file that checkCollision no longer checks (D84/Y82).
+  - Full suite (parallel run only, no rerun needed, no unexpected failures). Report: `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/s5e/report-5e.json`, mtime 2026-11-17 16:55:16 (run started 16:54:26), HEAD 5647630. 856 suites (JSON numFailedTestSuites=5, counting describe-level suites), 6687 tests: 6571 passed, 4 failed, 112 pending/skipped (the pre-commit-sh.test.ts tests, which never ran because of the file-level collection failure). 3 test files failed: pre-commit-sh.test.ts (collection), challenge-verify-L1.test.ts (1 of 2), challenge-verify-L2.test.ts (3 of 3). create-challenge-run.test.ts: all 42 passed, so its 8 carried reds are now green. No flakes. Probe dirs removed before and after; no probe files in git status.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
