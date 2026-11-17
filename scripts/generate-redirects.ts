@@ -23,8 +23,7 @@
  * change at a watched path. It reads the index slugs (`indexSlugs`); the hook has already put
  * the staged snapshot in the working tree under `platform/`, but ignored directories stay on
  * disk, so a file counts only when git's index lists it. The output goes to stdout; the hook
- * writes and stages it only once generation succeeded. Segments 4c and wave 6 rewrite this
- * mode on the split layout.
+ * writes and stages it only once generation succeeded.
  */
 
 import { writeFileSync, existsSync, statSync, readdirSync } from 'node:fs'
@@ -33,16 +32,15 @@ import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
 import {
-  CHALLENGE_TREES,
   collectChallengeNumbers,
   checkChallengeNumbers,
   padChallengeNumber,
   isChallengeNumber,
 } from './challenge-numbers.ts'
 import { challengePagePath, SLUG_GRAMMAR } from '../.vitepress/challenge/shortLink.ts'
-import { LOCALES, LOCALE_ENGLISH_NAMES, type Locale } from '../.vitepress/locales.ts'
+import { DEFAULT_PRIMARY_LOCALE, LOCALES, LOCALE_ENGLISH_NAMES, type Locale } from '../.vitepress/locales.ts'
 import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
-import { checkSourceLayout } from '../.vitepress/source-layout.ts'
+import { checkSourceLayout, classifySourcePath } from '../.vitepress/source-layout.ts'
 import { jsonStringifyEscaped } from '../.vitepress/layout-error.ts'
 
 /**
@@ -171,8 +169,7 @@ export interface GenerateOptions {
    * challenge declaration (`declaration`) or a locale's brief (`en`, `zh-TW`, … the locale
    * list's codes). Defaults to all of them.
    *
-   * Two callers restrict it, both to what git tracks (the `--staged` call and the guard test
-   * are rewritten on the new keys by segment 4c):
+   * Two callers restrict it, both to what git tracks:
    *
    * - The guard test that compares the committed file with freshly generated
    *   content. Other test files scaffold a throwaway challenge into the real tree to exercise
@@ -349,26 +346,98 @@ export function writeRedirects(root: string, options: GenerateOptions = {}): str
   return target
 }
 
-/**
- * The index slugs of `root`'s repository: per locale tree, the slugs whose
- * `<tree>/<slug>/index.md` is in git's index. git is run in `root` with the
- * caller's environment, so inside a hook it reads the index git handed it.
- */
-export function indexSlugs(root: string): Map<string, Set<string>> {
-  const trees = CHALLENGE_TREES.map((t) => ({ locale: t.locale, prefix: `${t.segments.join('/')}/` }))
-  const out = execFileSync('git', ['ls-files', '-z', '--', ...trees.map((t) => t.prefix)], {
-    cwd: root,
-    encoding: 'utf8',
-  })
-  const slugs = new Map(trees.map((t) => [t.locale, new Set<string>()]))
-  for (const path of out.split('\0')) {
-    for (const tree of trees) {
-      if (!path.startsWith(tree.prefix)) continue
-      const rest = path.slice(tree.prefix.length).split('/')
-      if (rest.length === 2 && rest[1] === 'index.md') slugs.get(tree.locale)?.add(rest[0])
+export type Slug = string
+
+/** What the index holds, sorted into the trees the brief check reads (S-§4.7). */
+export interface IndexTrees {
+  /** `declaration` ← `platform/challenge/<slug>/challenge.yaml`; `<L>` ← `platform/<L>/challenge/<slug>/index.md`. */
+  slugs: Map<'declaration' | Locale, Set<Slug>>
+  /** Index paths under `platform/challenge/` that `classifySourcePath` calls `outside`, UTF-16 sorted. */
+  legacyPaths: string[]
+}
+
+/** Sort the repository-relative paths `git ls-files -z` prints into `IndexTrees` (S-§4.7). */
+export function indexTrees(paths: readonly string[]): IndexTrees {
+  const slugs = new Map<'declaration' | Locale, Set<Slug>>([
+    ['declaration', new Set<Slug>()],
+    ...LOCALES.map((locale): ['declaration' | Locale, Set<Slug>] => [locale, new Set<Slug>()]),
+  ])
+  const legacyPaths: string[] = []
+  for (const path of paths) {
+    const parts = path.split('/')
+    if (parts[0] !== 'platform') continue
+    if (parts.length === 4 && parts[1] === 'challenge' && parts[3] === 'challenge.yaml') {
+      slugs.get('declaration')?.add(parts[2])
+    }
+    const locale = LOCALES.find((l) => l === parts[1])
+    if (locale !== undefined && parts.length === 5 && parts[2] === 'challenge' && parts[4] === 'index.md') {
+      slugs.get(locale)?.add(parts[3])
+    }
+    if (
+      parts[1] === 'challenge' &&
+      classifySourcePath(parts.slice(1).join('/'), DEFAULT_PRIMARY_LOCALE) === 'outside'
+    ) {
+      legacyPaths.push(path)
     }
   }
-  return slugs
+  legacyPaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  return { slugs, legacyPaths }
+}
+
+/**
+ * The index slugs of `root`'s repository, per tree (`declaration` and each locale). git is run in
+ * `root` with the caller's environment, so inside a hook it reads the index git handed it.
+ */
+export function indexSlugs(root: string): Map<'declaration' | Locale, Set<Slug>> {
+  const out = execFileSync('git', ['ls-files', '-z', '--', 'platform/'], { cwd: root, encoding: 'utf8' })
+  return indexTrees(out.split('\0').filter((p) => p !== '')).slugs
+}
+
+/** A brief fault (S-§4.7). `present` and `missing` are repository-relative paths. */
+export type BriefFault =
+  | { kind: 'missing-primary'; slug: Slug; present: string; missing: string }
+  | { kind: 'missing-declaration'; slug: Slug; present: string; missing: string }
+  | { kind: 'old-layout'; slug: Slug; present: string; missing: null }
+
+const briefPath = (locale: Locale, slug: Slug): string => ['platform', locale, 'challenge', slug, 'index.md'].join('/')
+const declarationPath = (slug: Slug): string => ['platform', 'challenge', slug, 'challenge.yaml'].join('/')
+
+/** The faults of the index's briefs under primary locale `primary` (D64). */
+export function briefFaults(trees: IndexTrees, primary: Locale): BriefFault[] {
+  const faults: BriefFault[] = []
+  const has = (locale: Locale, slug: Slug) => trees.slugs.get(locale)?.has(slug) ?? false
+  const slugs = new Set<Slug>()
+  for (const set of trees.slugs.values()) for (const slug of set) slugs.add(slug)
+  for (const slug of slugs) {
+    const first = LOCALES.find((locale) => has(locale, slug))
+    if (!has(primary, slug)) {
+      const present = first !== undefined ? briefPath(first, slug) : declarationPath(slug)
+      faults.push({ kind: 'missing-primary', slug, present, missing: briefPath(primary, slug) })
+    }
+    if (!(trees.slugs.get('declaration')?.has(slug) ?? false)) {
+      for (const locale of LOCALES) {
+        if (!has(locale, slug)) continue
+        faults.push({
+          kind: 'missing-declaration',
+          slug,
+          present: briefPath(locale, slug),
+          missing: declarationPath(slug),
+        })
+      }
+    }
+  }
+  for (const present of trees.legacyPaths) {
+    const parts = present.split('/')
+    const slug = parts.length === 3 ? parts[2].replace(/\.md$/, '') : parts[2]
+    faults.push({ kind: 'old-layout', slug, present, missing: null })
+  }
+  // D64's order: slug, then kind (W6a/W6b missing-primary, W6c missing-declaration, W6d old-layout),
+  // then present, each by UTF-16 code unit.
+  const rank = { 'missing-primary': 0, 'missing-declaration': 1, 'old-layout': 2 } as const
+  const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  return faults.sort(
+    (a, b) => cmp(a.slug, b.slug) || rank[a.kind] - rank[b.kind] || cmp(a.present, b.present),
+  )
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
