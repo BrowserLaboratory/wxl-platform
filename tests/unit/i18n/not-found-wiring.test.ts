@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref, reactive, h, defineComponent, nextTick } from 'vue'
-import { SW } from '../../__helpers__/localeTables'
+import { SW, BASES } from '../../__helpers__/localeTables'
 
 /**
  * Spec 0008, seam S1 wired into the REAL Layout: a not-found arrival whose counterpart is a
@@ -188,12 +188,33 @@ describe('the real Layout: a not-found arrival', () => {
   // with `stored = 'zh-TW'` (DT05): the case is non-vacuous, not just an assertion that never had
   // anything to redirect.
   it('a stored T preference does not cause a second cold-load redirect after an NP landing (A19, D29)', async () => {
-    // `/en/guide/python` is NOT itself a published page (unlike `/en/challenge/v05-php-check/`,
-    // which is not published either, but unlike it `/guide/python` — the landing below — DOES
-    // have a published zh-TW counterpart) — it is a crafted R22-style `/<P>/X` URL, the genuine NP
-    // shape (D28): a not-found arrival whose primary-code strip finds the real entry.
+    // `/en/guide/python` is a crafted R22-style `/<P>/X` URL, the genuine NP shape (D28): a
+    // not-found arrival whose primary-code strip finds the real entry. Neither
+    // `/en/guide/python` nor `/en/challenge/v05-php-check/` is itself a published page — both
+    // are crafted NP URLs — but they differ in their OWN counterpart's publication: the landing
+    // below, `/guide/python`, has a published `/zh-TW/guide/python` counterpart, while
+    // `/challenge/v05-php-case/`'s zh-TW counterpart does not exist, which is why the landing
+    // below must be `/guide/python`, not the challenge page (B3-3).
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
     arrive('/en/guide/python', NOT_FOUND)
+    mountLayout()
+    await flushPromises()
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo).toHaveBeenCalledWith('/guide/python', { replace: true })
+    mockGo.mockReset()
+    arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
+    await flushPromises()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  // B4-4, under P = zh-TW (T = en): the same property, mirrored. `/zh-TW/guide/python` is the
+  // crafted NP URL (`zh-TW` is P's own code here); its counterpart `/en/guide/python` IS
+  // published (per the P-dependent `publishedPages` mock), so the landing below must be
+  // `/guide/python`, the real entry, not a page with no counterpart.
+  it('under P = zh-TW, a stored T preference does not cause a second cold-load redirect after an NP landing (A19, D29)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    arrive('/zh-TW/guide/python', NOT_FOUND)
     mountLayout()
     await flushPromises()
     expect(mockGo).toHaveBeenCalledTimes(1)
@@ -308,9 +329,15 @@ describe('the real Layout: around the not-found redirect', () => {
 
   // S1-A20, under P = zh-TW (T = en): the same property, entries re-spelled for the /en/ tree.
   // B3-6: no `mockGo.mockReset()` between the two arrivals (S2-l's pattern) — the assertions
-  // below cover the FULL call list from mount to the end, so a stray extra redirect (for
-  // example from `useArrivals` ignoring `P` and treating itself as `P = en`) cannot be erased
-  // by the reset before the discriminating assertion runs.
+  // below cover the FULL call list from mount to the end, so a stray extra redirect cannot be
+  // erased by the reset before the discriminating assertion runs. B4-7a: hardcoding ONLY
+  // `useArrivals.ts`'s `primaryLocale()` call site to `'en'` no longer discriminates, now that
+  // `publishedPages` is P-dependent (B3's own item 2) — the wrongly-computed target
+  // `/zh-TW/guide/python` is correctly absent from the real P = en-shaped page list either way.
+  // The example that DOES: hardcoding BOTH that call site to `'en'` AND `pages` to the P =
+  // en-shaped list turns this case red — `go('/zh-TW/guide/python', { replace: true })` fires on
+  // mount already, failing the FIRST assertion below (`not.toHaveBeenCalled()`), not only the
+  // later one the full-call-list check was written for.
   it('under P = zh-TW, does the same for a client-side navigation to a missing translation', async () => {
     mockPrimaryLocale.value = 'zh-TW'
     arrive('/guide/python', { isNotFound: false, relativePath: 'guide/python.md' })
@@ -934,6 +961,9 @@ describe('the real Layout: a locale switcher choice', () => {
     await flushPromises()
     expect(mockGo).not.toHaveBeenCalled()
     expect(choose('en')).toBe('navigate')
+    // B4-6: the full call list, not only `toHaveBeenCalledWith` (B3-7's own pattern, mirrored
+    // here on the P = en original).
+    expect(mockGo).toHaveBeenCalledTimes(1)
     expect(mockGo).toHaveBeenCalledWith('/reference/attack-log-export-format')
   })
 
@@ -1073,28 +1103,59 @@ const SW_SCENARIOS: Record<
   SW16: { path: '/en/no-such-page', page: NOT_FOUND, chosen: 'en', target: null },
 }
 
-describe.each(['en', 'zh-TW'] as const)('the real Layout: a locale switcher choice, the full SW table (P = %s)', (P) => {
+// B4-1e: P × base, not just P — the two bases the spec names (A7), as the DT/NT tables
+// already run them. `withBase` is mocked as identity in this file (top of file), so a path
+// under a non-root base has to carry the prefix itself; `b.prefix` is `''` for `/`.
+describe.each(
+  (['en', 'zh-TW'] as const).flatMap((P) => BASES.map((b) => [P, b.label, b.base, b.prefix] as const)),
+)('the real Layout: a locale switcher choice, the full SW table (P = %s, base = %s)', (P, _baseLabel, base, prefix) => {
   it.each(SW.filter((row) => row.P === P))(
     '$id (page=$page, chosen=$chosen, counterpart=$counterpart): $decision',
     async (row) => {
       mockPrimaryLocale.value = P
+      mockBase.value = base
       const scenario = SW_SCENARIOS[row.id]
-      arrive(scenario.path, scenario.page)
+      // B4-1g: ties the transcribed scenario to the SW row's OWN columns it claims to follow —
+      // without this, the comment above (SW_SCENARIOS) that it "cannot drift silently" would be
+      // unenforced prose.
+      expect(scenario.page.isNotFound, `${row.id}: page.isNotFound should match row.page`).toBe(row.page === 'not-found')
+      if (row.chosen !== 'either') {
+        const ownLocale = row.page === 'translation' ? row.T : row.P
+        const otherOfOwn = ownLocale === row.P ? row.T : row.P
+        const expectedChosen = row.chosen === 'own' ? ownLocale : otherOfOwn
+        expect(scenario.chosen, `${row.id}: chosen should follow row.chosen (${row.chosen})`).toBe(expectedChosen)
+      }
+      arrive(`${prefix}${scenario.path}`, scenario.page)
       const layout = mountLayout()
       await flushPromises()
       // A not-found arrival with a listed counterpart (SW13/SW15) already redirected once on
       // mount (B7's own, separately tested, property); the reset below isolates what the
-      // CHOICE itself does, which is this block's own question.
-      mockGo.mockReset()
+      // CHOICE itself does, which is this block's own question. Scoped to SW13–16 only
+      // (B4-1d): every other row's page arrival calls `go()` zero times on mount, so resetting
+      // there too would silently swallow a stray extra mount-time call this test should catch.
+      if (row.id === 'SW13' || row.id === 'SW14' || row.id === 'SW15' || row.id === 'SW16') mockGo.mockReset()
       expect(switcher.choose, 'the Layout provides no choice').not.toBeNull()
+      // B4-1c (SW06/SW12): the cold-load mount above already writes the OTHER locale to
+      // storage (shouldPersistOnColdLoad), which happens to equal these two rows' own `chosen`
+      // value — so a final-value check alone would pass even if the CHOICE itself wrote
+      // nothing. A spy scoped to just this call makes the write the choice's own.
+      const setSpy = row.id === 'SW06' || row.id === 'SW12' ? vi.spyOn(window.localStorage, 'setItem') : null
       const outcome = switcher.choose!(scenario.chosen)
       await flushPromises()
+      if (setSpy) {
+        expect(setSpy).toHaveBeenCalledWith(LOCALE_STORAGE_KEY, scenario.chosen)
+        setSpy.mockRestore()
+      }
       expect(outcome).toBe(row.decision)
       if (row.decision === 'navigate') {
         // A switcher choice is a push, never a history replacement (B1–B3, B7): no `replace`
         // option on this call, unlike a cold-load or not-found redirect.
         expect(mockGo).toHaveBeenCalledTimes(1)
-        expect(mockGo).toHaveBeenCalledWith(scenario.target)
+        expect(mockGo).toHaveBeenCalledWith(`${prefix}${scenario.target}`)
+        // B4-1a: a navigate choice leaves the page on screen unchanged (the mock `go` never
+        // actually re-renders); SW13–16's pre-mount redirect was isolated by the `mockGo.mockReset()`
+        // above, so this line asserts the CHOICE itself puts up no line, not an earlier one.
+        expect(layout.find('[data-missing-translation]').exists()).toBe(false)
       } else {
         expect(mockGo).not.toHaveBeenCalled()
         if (row.line === null) {
@@ -1107,4 +1168,45 @@ describe.each(['en', 'zh-TW'] as const)('the real Layout: a locale switcher choi
       expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(scenario.chosen)
     },
   )
+})
+
+// B4-1f: SW13–16's boundary conditions name "page kinds primary/translation/not-found/failed
+// load" — only the not-found kind was exercised above. `switcherDecision` treats a failed load
+// the same as a not-found arrival (`arrival.ts`'s non-'page' branch does not distinguish them),
+// so one representative mirror per row, with the not-found double swapped for a real page
+// double (`isNotFound: true`, `pathname` itself published — `classifyArrival`'s own "failed
+// load" rule), proves the same property holds for that page kind too.
+describe.each(['en', 'zh-TW'] as const)('the real Layout: a locale switcher choice, a failed load mirrors the not-found rows (SW13-16, P = %s)', (P) => {
+  type FailedLoadScenario = { path: string; chosen: 'en' | 'zh-TW'; decision: 'navigate' | 'stay'; target: string | null }
+  const FAILED_LOAD: Record<'en' | 'zh-TW', Record<string, FailedLoadScenario>> = {
+    en: {
+      // SW13 mirror: a published page whose OWN counterpart is listed.
+      SW13: { path: '/zh-TW/guide/python', chosen: 'zh-TW', decision: 'navigate', target: '/guide/python' },
+      // SW14 mirror: a published page whose counterpart is unlisted.
+      SW14: { path: '/guide/english-only', chosen: 'en', decision: 'stay', target: null },
+    },
+    'zh-TW': {
+      SW15: { path: '/en/guide/python', chosen: 'en', decision: 'navigate', target: '/guide/python' },
+      SW16: { path: '/en/only-in-english', chosen: 'zh-TW', decision: 'stay', target: null },
+    },
+  }
+  it.each(Object.entries(FAILED_LOAD[P]) as [string, FailedLoadScenario][])('%s (failed load)', async (id, scenario) => {
+    mockPrimaryLocale.value = P
+    arrive(scenario.path, { isNotFound: true, relativePath: '404.md' })
+    const layout = mountLayout()
+    await flushPromises()
+    mockGo.mockReset()
+    const outcome = switcher.choose!(scenario.chosen)
+    await flushPromises()
+    expect(outcome).toBe(scenario.decision)
+    if (scenario.decision === 'navigate') {
+      expect(mockGo).toHaveBeenCalledTimes(1)
+      expect(mockGo).toHaveBeenCalledWith(scenario.target)
+    } else {
+      expect(mockGo).not.toHaveBeenCalled()
+    }
+    // SW13–16 never a line, failed load included.
+    expect(layout.find('[data-missing-translation]').exists()).toBe(false)
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe(scenario.chosen)
+  })
 })
