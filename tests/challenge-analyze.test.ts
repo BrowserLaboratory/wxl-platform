@@ -1,7 +1,12 @@
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import {
+  mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, cpSync, realpathSync, symlinkSync,
+  chmodSync, readdirSync, readFileSync,
+} from 'node:fs'
+import { join, resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
+import { tmpdir, platform } from 'node:os'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import {
   discoverChallenges,
   validateChallenge,
@@ -12,107 +17,139 @@ import {
   type ChallengeFile,
   type AnalysisResult,
 } from '../scripts/challenge-analyze'
+import type { Locale } from '../.vitepress/locales'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function writeChallengeMd(dir: string, frontmatter: string, body = ''): void {
-  writeFileSync(join(dir, 'index.md'), `---\n${frontmatter}\n---\n${body}`)
-}
+const DEFAULT_DECLARATION = [
+  'backend: fastapi',
+  'app: app.py',
+  'source_visible: false',
+  'difficulty: easy',
+  'category: web',
+  'tags: [test]',
+  '',
+].join('\n')
 
-function createPerFolderChallenge(
-  challengesDir: string,
+/**
+ * A challenge in the new layout under `root`: platform/challenge/<slug>/{challenge.yaml,src/}
+ * and, where `briefs` names them, platform/<locale>/challenge/<slug>/index.md. `primary`
+ * (default zh-TW) fixes the briefPath of the returned ChallengeFile. Without `briefs`, both
+ * locales get a brief titled "<slug> Challenge".
+ */
+function createChallenge(
+  root: string,
   slug: string,
   opts: {
-    frontmatter?: string
+    declaration?: string
     appContent?: string
     flagContent?: string
     extraFiles?: Record<string, string>
+    briefs?: Partial<Record<Locale, string>>
+    primary?: Locale
   } = {},
-): string {
-  const slugDir = join(challengesDir, slug)
+): ChallengeFile {
+  const slugDir = join(root, 'platform', 'challenge', slug)
   const srcDir = join(slugDir, 'src')
   mkdirSync(srcDir, { recursive: true })
 
-  const fm = opts.frontmatter ?? [
-    `title: "${slug} Challenge"`,
-    'backend: fastapi',
-    'app: app.py',
-    'source_visible: false',
-    'difficulty: easy',
-    'category: web',
-    'tags: [test]',
-  ].join('\n')
-
-  writeChallengeMd(slugDir, fm)
+  writeFileSync(join(slugDir, 'challenge.yaml'), opts.declaration ?? DEFAULT_DECLARATION)
   writeFileSync(join(srcDir, 'app.py'), opts.appContent ?? 'from fastapi import FastAPI\napp = FastAPI()\n')
   writeFileSync(join(srcDir, 'flag.txt'), opts.flagContent ?? 'FLAG{test_flag_123}\n')
 
-  if (opts.extraFiles) {
-    for (const [name, content] of Object.entries(opts.extraFiles)) {
-      const filePath = join(srcDir, name)
-      const fileDir = join(srcDir, ...name.split('/').slice(0, -1))
-      mkdirSync(fileDir, { recursive: true })
-      writeFileSync(filePath, content)
-    }
+  for (const [name, content] of Object.entries(opts.extraFiles ?? {})) {
+    mkdirSync(join(srcDir, ...name.split('/').slice(0, -1)), { recursive: true })
+    writeFileSync(join(srcDir, name), content)
   }
 
-  return slugDir
+  const briefs = opts.briefs ?? {
+    'zh-TW': `---\ntitle: "${slug} Challenge"\n---\n`,
+    en: `---\ntitle: "${slug} Challenge"\n---\n`,
+  }
+  for (const [locale, text] of Object.entries(briefs)) {
+    mkdirSync(join(root, 'platform', locale, 'challenge', slug), { recursive: true })
+    writeFileSync(join(root, 'platform', locale, 'challenge', slug, 'index.md'), text)
+  }
+
+  const primary = opts.primary ?? 'zh-TW'
+  return {
+    slug,
+    declarationPath: join(slugDir, 'challenge.yaml'),
+    briefPath: join(root, 'platform', primary, 'challenge', slug, 'index.md'),
+  }
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('discoverChallenges', () => {
-  let tmpDir: string
+  let root: string
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'analyze-discover-'))
+    root = mkdtempSync(join(tmpdir(), 'analyze-discover-'))
   })
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(root, { recursive: true, force: true })
   })
 
-  it('discovers per-folder challenges', () => {
-    createPerFolderChallenge(tmpDir, 'demo-a')
-    createPerFolderChallenge(tmpDir, 'demo-b')
+  const declaration = (slug: string) => join(root, 'platform', 'challenge', slug, 'challenge.yaml')
+  const brief = (locale: string, slug: string) => join(root, 'platform', locale, 'challenge', slug, 'index.md')
 
-    const results = discoverChallenges(tmpDir)
-    const slugs = results.map((r) => r.slug).sort()
+  /** Y69 (D73, D89): a challenge is a folder holding challenge.yaml; nothing else is one. */
+  function makeTree(): void {
+    for (const slug of ['a', 'b']) {
+      mkdirSync(join(root, 'platform', 'challenge', slug), { recursive: true })
+      writeFileSync(declaration(slug), 'backend: flask\napp: app.py\n')
+    }
+    mkdirSync(join(root, 'platform', 'challenge', 'only-src', 'src'), { recursive: true })
+    writeFileSync(join(root, 'platform', 'challenge', 'flat.md'), '---\ntitle: Flat\nbackend: flask\napp: app.py\n---\n')
+    mkdirSync(join(root, 'platform', 'zh-TW', 'challenge', 'brief-only'), { recursive: true })
+    writeFileSync(brief('zh-TW', 'brief-only'), '---\ntitle: Brief only\n---\n')
+  }
 
-    expect(slugs).toEqual(['demo-a', 'demo-b'])
-    expect(results.every((r) => r.isPerFolder)).toBe(true)
+  it.each(['zh-TW', 'en'] as const)('Y69: lists the folders holding challenge.yaml, with the brief of %s', (primary) => {
+    makeTree()
+    const found = discoverChallenges(root, primary)
+    expect([...found].sort((x, y) => x.slug.localeCompare(y.slug))).toEqual([
+      { slug: 'a', declarationPath: declaration('a'), briefPath: brief(primary, 'a') },
+      { slug: 'b', declarationPath: declaration('b'), briefPath: brief(primary, 'b') },
+    ])
   })
 
-  it('discovers legacy .md challenges', () => {
-    writeFileSync(
-      join(tmpDir, 'legacy-chall.md'),
-      '---\ntitle: Legacy\nbackend: flask\napp: app.py\n---\n',
-    )
-
-    const results = discoverChallenges(tmpDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].slug).toBe('legacy-chall')
-    expect(results[0].isPerFolder).toBe(false)
+  it('Y69: briefPath is returned even when the primary-locale brief does not exist', () => {
+    makeTree()
+    expect(existsSync(brief('en', 'a'))).toBe(false)
+    expect(discoverChallenges(root, 'en', 'a')).toEqual([
+      { slug: 'a', declarationPath: declaration('a'), briefPath: brief('en', 'a') },
+    ])
   })
 
-  it('filters by target slug', () => {
-    createPerFolderChallenge(tmpDir, 'demo-a')
-    createPerFolderChallenge(tmpDir, 'demo-b')
-
-    const results = discoverChallenges(tmpDir, 'demo-a')
-    expect(results).toHaveLength(1)
-    expect(results[0].slug).toBe('demo-a')
+  it('Y69: a flat .md, a folder with only src/, and a brief with no folder are not challenges', () => {
+    makeTree()
+    const slugs = discoverChallenges(root, 'zh-TW').map((c) => c.slug)
+    expect(slugs).not.toContain('flat')
+    expect(slugs).not.toContain('only-src')
+    expect(slugs).not.toContain('brief-only')
+    expect(discoverChallenges(root, 'zh-TW', 'flat')).toEqual([])
+    expect(discoverChallenges(root, 'zh-TW', 'only-src')).toEqual([])
+    expect(discoverChallenges(root, 'zh-TW', 'brief-only')).toEqual([])
   })
 
-  it('returns empty array for non-existent directory', () => {
-    const results = discoverChallenges(join(tmpDir, 'nope'))
-    expect(results).toEqual([])
+  it('Y69: filters by target slug', () => {
+    makeTree()
+    expect(discoverChallenges(root, 'zh-TW', 'a')).toEqual([
+      { slug: 'a', declarationPath: declaration('a'), briefPath: brief('zh-TW', 'a') },
+    ])
   })
 
-  it('returns empty array when target slug not found', () => {
-    createPerFolderChallenge(tmpDir, 'demo-a')
-    const results = discoverChallenges(tmpDir, 'nonexistent')
-    expect(results).toEqual([])
+  it('Y69: returns an empty array when the root has no platform/challenge', () => {
+    expect(discoverChallenges(root, 'zh-TW')).toEqual([])
+    expect(discoverChallenges(join(root, 'nope'), 'zh-TW')).toEqual([])
+  })
+
+  it('Y69: returns an empty array when the target slug does not exist', () => {
+    makeTree()
+    expect(discoverChallenges(root, 'zh-TW', 'nonexistent')).toEqual([])
   })
 })
 
@@ -127,95 +164,74 @@ describe('validateChallenge', () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('returns no errors for a valid per-folder challenge', () => {
-    createPerFolderChallenge(tmpDir, 'valid-chall')
-    const ch: ChallengeFile = {
-      slug: 'valid-chall',
-      mdPath: join(tmpDir, 'valid-chall', 'index.md'),
-      isPerFolder: true,
-    }
-
-    const errors = validateChallenge(ch)
-    expect(errors).toEqual([])
+  it('returns no errors for a valid challenge', () => {
+    const ch = createChallenge(tmpDir, 'valid-chall')
+    expect(validateChallenge(ch)).toEqual([])
   })
 
-  it('reports error when frontmatter is missing', () => {
-    const slugDir = join(tmpDir, 'no-fm')
-    mkdirSync(slugDir, { recursive: true })
-    writeFileSync(join(slugDir, 'index.md'), '# Just markdown, no frontmatter\n')
+  it('Y68: reports a missing challenge.yaml as exactly that', () => {
+    const slugDir = join(tmpDir, 'platform', 'challenge', 'no-decl')
+    mkdirSync(join(slugDir, 'src'), { recursive: true })
+    expect(validateChallenge({
+      slug: 'no-decl',
+      declarationPath: join(slugDir, 'challenge.yaml'),
+      briefPath: join(tmpDir, 'platform', 'zh-TW', 'challenge', 'no-decl', 'index.md'),
+    })).toEqual(['No challenge.yaml found'])
+  })
 
-    const errors = validateChallenge({
-      slug: 'no-fm',
-      mdPath: join(slugDir, 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors).toContain('No YAML frontmatter found')
+  it('Y68: reports YAML that does not parse as one error naming challenge.yaml', () => {
+    const ch = createChallenge(tmpDir, 'bad-yaml', { declaration: 'backend: [flask\n' })
+    const errors = validateChallenge(ch)
+    expect(errors).toHaveLength(1)
+    expect(errors[0].startsWith('Invalid YAML in challenge.yaml: ')).toBe(true)
+    // The parser's own wording is not pinned (as for Y4); it must say something.
+    expect(errors[0].slice('Invalid YAML in challenge.yaml: '.length).length).toBeGreaterThan(0)
+  })
+
+  it('Y68: reports a file with several documents as invalid YAML, not as a half-read mapping', () => {
+    const ch = createChallenge(tmpDir, 'two-docs', { declaration: 'backend: flask\napp: app.py\n---\nbackend: php\n' })
+    const errors = validateChallenge(ch)
+    expect(errors).toHaveLength(1)
+    expect(errors[0].startsWith('Invalid YAML in challenge.yaml: ')).toBe(true)
+  })
+
+  it.each([
+    ['an empty file', ''],
+    ['a file holding only a comment', '# nothing here\n'],
+    ['a scalar root', 'just text\n'],
+  ])('Y68: %s keeps the existing "challenge config must be an object"', (_label, declaration) => {
+    const ch = createChallenge(tmpDir, 'not-a-mapping', { declaration })
+    expect(validateChallenge(ch)).toEqual(['challenge config must be an object'])
   })
 
   it('reports error when required fields are missing', () => {
-    const slugDir = join(tmpDir, 'missing-fields')
-    mkdirSync(join(slugDir, 'src'), { recursive: true })
-    writeChallengeMd(slugDir, 'title: Test\n')
-
-    const errors = validateChallenge({
-      slug: 'missing-fields',
-      mdPath: join(slugDir, 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors.some((e) => e.includes('backend') || e.includes('app'))).toBe(true)
+    const ch = createChallenge(tmpDir, 'missing-fields', { declaration: 'difficulty: easy\n' })
+    expect(validateChallenge(ch)).toEqual(['missing required field: backend'])
   })
 
-  it('reports error when src/ directory is missing for per-folder', () => {
-    const slugDir = join(tmpDir, 'no-src')
+  it('reports error when src/ directory is missing', () => {
+    const slugDir = join(tmpDir, 'platform', 'challenge', 'no-src')
     mkdirSync(slugDir, { recursive: true })
-    writeChallengeMd(slugDir, 'title: Test\nbackend: flask\napp: app.py\n')
-
-    const errors = validateChallenge({
+    writeFileSync(join(slugDir, 'challenge.yaml'), 'backend: flask\napp: app.py\n')
+    expect(validateChallenge({
       slug: 'no-src',
-      mdPath: join(slugDir, 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors.some((e) => e.includes('src/'))).toBe(true)
+      declarationPath: join(slugDir, 'challenge.yaml'),
+      briefPath: join(tmpDir, 'platform', 'zh-TW', 'challenge', 'no-src', 'index.md'),
+    })).toEqual([`src/ directory not found: ${join(slugDir, 'src')}`])
   })
 
   it('reports error when app file is missing', () => {
-    const slugDir = join(tmpDir, 'no-app')
-    const srcDir = join(slugDir, 'src')
-    mkdirSync(srcDir, { recursive: true })
-    writeChallengeMd(slugDir, 'title: Test\nbackend: flask\napp: app.py\n')
-    writeFileSync(join(srcDir, 'flag.txt'), 'FLAG{x}')
-
-    const errors = validateChallenge({
-      slug: 'no-app',
-      mdPath: join(slugDir, 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors.some((e) => e.includes('App file not found'))).toBe(true)
+    const ch = createChallenge(tmpDir, 'no-app', { declaration: 'backend: flask\napp: app.py\n' })
+    const appPath = join(tmpDir, 'platform', 'challenge', 'no-app', 'src', 'app.py')
+    rmSync(appPath)
+    expect(validateChallenge(ch)).toEqual([`App file not found: ${appPath}`])
   })
 
   it('reports error when flag file is missing', () => {
-    const slugDir = join(tmpDir, 'no-flag')
-    const srcDir = join(slugDir, 'src')
-    mkdirSync(srcDir, { recursive: true })
-    writeChallengeMd(slugDir, 'title: Test\nbackend: flask\napp: app.py\n')
-    writeFileSync(join(srcDir, 'app.py'), 'print("hi")')
-
-    const errors = validateChallenge({
-      slug: 'no-flag',
-      mdPath: join(slugDir, 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors.some((e) => e.includes('Flag file not found'))).toBe(true)
-  })
-
-  it('reports error when file cannot be read', () => {
-    const errors = validateChallenge({
-      slug: 'ghost',
-      mdPath: join(tmpDir, 'ghost', 'index.md'),
-      isPerFolder: true,
-    })
-    expect(errors.some((e) => e.includes('Cannot read file'))).toBe(true)
+    const ch = createChallenge(tmpDir, 'no-flag', { declaration: 'backend: flask\napp: app.py\n' })
+    const flagPath = join(tmpDir, 'platform', 'challenge', 'no-flag', 'src', 'flag.txt')
+    rmSync(flagPath)
+    expect(validateChallenge(ch)).toEqual([`Flag file not found: ${flagPath}`])
   })
 })
 
@@ -231,23 +247,20 @@ describe('analyzeChallenge', () => {
   })
 
   it('returns correct metadata for a valid challenge', () => {
-    createPerFolderChallenge(tmpDir, 'test-chall', {
-      frontmatter: [
-        'title: "Test Challenge"',
+    const ch = createChallenge(tmpDir, 'test-chall', {
+      declaration: [
         'backend: fastapi',
         'app: app.py',
         'source_visible: false',
         'difficulty: medium',
         'category: web',
         'tags: [sqli, fastapi]',
+        '',
       ].join('\n'),
+      briefs: { 'zh-TW': '---\ntitle: "Test Challenge"\n---\n' },
     })
 
-    const result = analyzeChallenge({
-      slug: 'test-chall',
-      mdPath: join(tmpDir, 'test-chall', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.title).toBe('Test Challenge')
     expect(result.backend).toBe('fastapi')
@@ -256,17 +269,59 @@ describe('analyzeChallenge', () => {
     expect(result.tags).toEqual(['sqli', 'fastapi'])
   })
 
+  // Y66 (D89): the title is the primary-locale brief's; everything else comes from challenge.yaml.
+  it.each([
+    ['zh-TW', '知的必要'],
+    ['en', 'Need to Know'],
+  ] as const)('Y66: with primary %s the title is %s, the rest comes from challenge.yaml', (primary, title) => {
+    const root = join(tmpDir, primary)
+    createChallenge(root, 'door', {
+      declaration: [
+        'backend: flask',
+        'app: app.py',
+        'difficulty: hard',
+        'category: crypto',
+        'tags: [a, b]',
+        'tools: [code]',
+        '',
+      ].join('\n'),
+      briefs: {
+        'zh-TW': '---\ntitle: 知的必要\n---\n',
+        en: '---\ntitle: Need to Know\n---\n',
+      },
+    })
+
+    const result = analyzeChallenge(discoverChallenges(root, primary, 'door')[0])
+
+    expect(result.title).toBe(title)
+    expect(result.backend).toBe('flask')
+    expect(result.difficulty).toBe('hard')
+    expect(result.category).toBe('crypto')
+    expect(result.tags).toEqual(['a', 'b'])
+    expect(result.toolsSummary).toBe('browser, code')
+    expect(formatAnalysis(result).split('\n')[0]).toBe(`=== ${title} ===`)
+  })
+
+  // Y67 (D89): "as today when title is absent" — the slug stands in for a title that cannot be read.
+  it.each([
+    ['only the other locale has a brief', { en: '---\ntitle: Need to Know\n---\n' }],
+    ['the brief has no title key', { 'zh-TW': '---\ndescription: no title here\n---\n' }],
+  ] as const)('Y67: the title is the slug when %s', (_label, briefs) => {
+    const ch = createChallenge(tmpDir, 'door', { briefs, primary: 'zh-TW' })
+
+    const result = analyzeChallenge(ch)
+
+    expect(result.title).toBe('door')
+    expect(formatAnalysis(result).split('\n')[0]).toBe('=== door ===')
+  })
+
   it('counts files and sizes correctly', () => {
-    createPerFolderChallenge(tmpDir, 'size-test', {
+    const ch = createChallenge(tmpDir, 'size-test', {
       appContent: 'x'.repeat(100),
       flagContent: 'FLAG{test}\n',
     })
 
-    const result = analyzeChallenge({
-      slug: 'size-test',
-      mdPath: join(tmpDir, 'size-test', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.totalFiles).toBe(2) // app.py + flag.txt
     expect(result.totalSizeBytes).toBeGreaterThan(0)
@@ -275,18 +330,14 @@ describe('analyzeChallenge', () => {
   })
 
   it('includes extra files in analysis', () => {
-    createPerFolderChallenge(tmpDir, 'extra-files', {
+    const ch = createChallenge(tmpDir, 'extra-files', {
       extraFiles: {
         'templates/index.html': '<html>test</html>',
         'config.json': '{"key":"value"}',
       },
     })
 
-    const result = analyzeChallenge({
-      slug: 'extra-files',
-      mdPath: join(tmpDir, 'extra-files', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.totalFiles).toBe(4) // app.py + flag.txt + index.html + config.json
     const names = result.files.map((f) => f.name).sort()
@@ -297,149 +348,89 @@ describe('analyzeChallenge', () => {
   })
 
   it('warns when flag does not match expected pattern', () => {
-    createPerFolderChallenge(tmpDir, 'bad-flag', {
+    const ch = createChallenge(tmpDir, 'bad-flag', {
       flagContent: 'this-is-not-a-flag',
     })
 
-    const result = analyzeChallenge({
-      slug: 'bad-flag',
-      mdPath: join(tmpDir, 'bad-flag', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.warnings.some((w) => w.includes('FLAG{') || w.includes('CTF{'))).toBe(true)
   })
 
   it('does not warn when flag matches FLAG{...} pattern', () => {
-    createPerFolderChallenge(tmpDir, 'good-flag', {
+    const ch = createChallenge(tmpDir, 'good-flag', {
       flagContent: 'FLAG{correct_format}\n',
     })
 
-    const result = analyzeChallenge({
-      slug: 'good-flag',
-      mdPath: join(tmpDir, 'good-flag', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.warnings.filter((w) => w.includes('Flag does not match'))).toHaveLength(0)
   })
 
   it('does not warn when flag matches CTF{...} pattern', () => {
-    createPerFolderChallenge(tmpDir, 'ctf-flag', {
+    const ch = createChallenge(tmpDir, 'ctf-flag', {
       flagContent: 'CTF{also_valid}\n',
     })
 
-    const result = analyzeChallenge({
-      slug: 'ctf-flag',
-      mdPath: join(tmpDir, 'ctf-flag', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.warnings.filter((w) => w.includes('Flag does not match'))).toHaveLength(0)
   })
 
   it('warns when app code contains localhost references', () => {
-    createPerFolderChallenge(tmpDir, 'localhost-warn', {
+    const ch = createChallenge(tmpDir, 'localhost-warn', {
       appContent: 'import requests\nresponse = requests.get("http://127.0.0.1:8000/api")\n',
     })
 
-    const result = analyzeChallenge({
-      slug: 'localhost-warn',
-      mdPath: join(tmpDir, 'localhost-warn', 'index.md'),
-      isPerFolder: true,
-    })
+    const result = analyzeChallenge(ch)
 
     expect(result.warnings.some((w) => w.includes('Hardcoded localhost'))).toBe(true)
   })
 
   it('reports the injected browser for a list that omits it', () => {
-    createPerFolderChallenge(tmpDir, 'code-only-tools', {
-      frontmatter: [
-        'title: "Code Only"',
-        'backend: flask',
-        'app: app.py',
-        'tools: [code]',
-      ].join('\n'),
+    const ch = createChallenge(tmpDir, 'code-only-tools', {
+      declaration: ['backend: flask', 'app: app.py', 'tools: [code]', ''].join('\n'),
     })
 
-    expect(analyzeChallenge({
-      slug: 'code-only-tools',
-      mdPath: join(tmpDir, 'code-only-tools', 'index.md'),
-      isPerFolder: true,
-    }).toolsSummary).toBe('browser, code')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser, code')
   })
 
   it('does not call a duplicate-padded list "all enabled"', () => {
-    createPerFolderChallenge(tmpDir, 'dup-tools', {
-      frontmatter: [
-        'title: "Dup Tools"',
-        'backend: flask',
-        'app: app.py',
-        'tools: [code, code, code, code, code]',
-      ].join('\n'),
+    const ch = createChallenge(tmpDir, 'dup-tools', {
+      declaration: ['backend: flask', 'app: app.py', 'tools: [code, code, code, code, code]', ''].join('\n'),
     })
 
-    expect(analyzeChallenge({
-      slug: 'dup-tools',
-      mdPath: join(tmpDir, 'dup-tools', 'index.md'),
-      isPerFolder: true,
-    }).toolsSummary).toBe('browser, code')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser, code')
   })
 
   it('lists tabs in canonical order, not the order the author wrote', () => {
-    createPerFolderChallenge(tmpDir, 'author-order', {
-      frontmatter: ['title: "Order"', 'backend: flask', 'app: app.py', 'tools: [code, network]'].join('\n'),
+    const ch = createChallenge(tmpDir, 'author-order', {
+      declaration: ['backend: flask', 'app: app.py', 'tools: [code, network]', ''].join('\n'),
     })
 
-    expect(analyzeChallenge({
-      slug: 'author-order',
-      mdPath: join(tmpDir, 'author-order', 'index.md'),
-      isPerFolder: true,
-    }).toolsSummary).toBe('browser, network, code')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser, network, code')
   })
 
   it('reports browser alone for an empty tools array', () => {
-    createPerFolderChallenge(tmpDir, 'empty-tools', {
-      frontmatter: ['title: "Empty"', 'backend: flask', 'app: app.py', 'tools: []'].join('\n'),
+    const ch = createChallenge(tmpDir, 'empty-tools', {
+      declaration: ['backend: flask', 'app: app.py', 'tools: []', ''].join('\n'),
     })
 
-    expect(analyzeChallenge({
-      slug: 'empty-tools',
-      mdPath: join(tmpDir, 'empty-tools', 'index.md'),
-      isPerFolder: true,
-    }).toolsSummary).toBe('browser')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser')
   })
 
   it('names the tabs the default actually yields when tools is not set', () => {
-    createPerFolderChallenge(tmpDir, 'default-tools')
+    const ch = createChallenge(tmpDir, 'default-tools')
 
-    const result = analyzeChallenge({
-      slug: 'default-tools',
-      mdPath: join(tmpDir, 'default-tools', 'index.md'),
-      isPerFolder: true,
-    })
-
-    expect(result.toolsSummary).toBe('browser, network, repeater, code (default)')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser, network, repeater, code (default)')
   })
 
   it('reports specific tools when set', () => {
-    createPerFolderChallenge(tmpDir, 'specific-tools', {
-      frontmatter: [
-        'title: "Specific Tools"',
-        'backend: flask',
-        'app: app.py',
-        'source_visible: false',
-        'tools: [browser, code]',
-      ].join('\n'),
+    const ch = createChallenge(tmpDir, 'specific-tools', {
+      declaration: ['backend: flask', 'app: app.py', 'source_visible: false', 'tools: [browser, code]', ''].join('\n'),
     })
 
-    const result = analyzeChallenge({
-      slug: 'specific-tools',
-      mdPath: join(tmpDir, 'specific-tools', 'index.md'),
-      isPerFolder: true,
-    })
-
-    expect(result.toolsSummary).toBe('browser, code')
+    expect(analyzeChallenge(ch).toolsSummary).toBe('browser, code')
   })
 })
 
@@ -561,4 +552,120 @@ describe('formatSummaryTable', () => {
     expect(output).toContain('1 warning(s)')
     expect(output).toContain('Total challenges: 2')
   })
+})
+
+// ─── The CLI on a fixture tree (Y108; Y-q2: a temp copy, never the live tree) ──────────────
+//
+// `main` reads range.json first (D123), then discovers the challenges with P. Each case runs the
+// real script, with --experimental-strip-types, in a copy of package.json, scripts/ and .vitepress/
+// under os.tmpdir() whose node_modules is a symlink to the live one.
+
+const LIVE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+function copyToolingForAnalyze(): string {
+  const copy = mkdtempSync(join(realpathSync(tmpdir()), 'wxl-analyze-fixture-'))
+  const skip = [resolve(LIVE_ROOT, '.vitepress', 'dist'), resolve(LIVE_ROOT, '.vitepress', 'cache')]
+  for (const rel of ['package.json', 'scripts', '.vitepress']) {
+    cpSync(resolve(LIVE_ROOT, rel), resolve(copy, rel), {
+      recursive: true,
+      filter: (src) => !skip.some((d) => src === d || src.startsWith(`${d}/`)),
+    })
+  }
+  symlinkSync(resolve(LIVE_ROOT, 'node_modules'), resolve(copy, 'node_modules'), 'dir')
+  return copy
+}
+
+describe('challenge-analyze CLI on a fixture tree (temp copy)', () => {
+  let root: string
+  beforeAll(() => {
+    root = copyToolingForAnalyze()
+  })
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+  afterEach(() => {
+    rmSync(resolve(root, 'platform'), { recursive: true, force: true })
+    rmSync(resolve(root, 'range.json'), { recursive: true, force: true })
+  })
+
+  const rangeJson = () => resolve(root, 'range.json')
+
+  function run(args: string[]): { status: number; stdout: string; stderr: string } {
+    const r = spawnSync(process.execPath, ['--experimental-strip-types', 'scripts/challenge-analyze.ts', ...args], {
+      cwd: root,
+      encoding: 'utf-8',
+      env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    })
+    return { status: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' }
+  }
+
+  function writeDoor(): void {
+    createChallenge(root, 'door', {
+      declaration: 'backend: flask\napp: app.py\ndifficulty: easy\n',
+      briefs: {
+        'zh-TW': '---\ntitle: 知的必要\n---\n',
+        en: '---\ntitle: Need to Know\n---\n',
+      },
+    })
+  }
+
+  function snapshotPlatform(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const d of readdirSync(resolve(root, 'platform'), { recursive: true, withFileTypes: true })) {
+      if (!d.isFile()) continue
+      const path = resolve(d.parentPath, d.name)
+      out[path] = readFileSync(path).toString('base64')
+    }
+    return out
+  }
+
+  it('Y108 (a): with no range.json the title comes from the zh-TW brief', () => {
+    writeDoor()
+    const r = run(['door'])
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain('=== 知的必要 ===')
+    expect(r.stdout).not.toContain('Need to Know')
+  }, 60_000)
+
+  it('Y108 (b): with {"primaryLocale":"en"} the title comes from the en brief', () => {
+    writeFileSync(rangeJson(), '{"primaryLocale":"en"}')
+    writeDoor()
+    const r = run(['door'])
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain('=== Need to Know ===')
+    expect(r.stdout).not.toContain('知的必要')
+  }, 60_000)
+
+  // The text is `.vitepress/primary-locale.ts`'s own (5a's Y36 table, as in keygen's RANGE_FAULTS).
+  const RANGE_FAULTS: Array<[string, (path: string) => void, string]> = [
+    ['PL-E01 range.json is a folder', (p) => mkdirSync(p), 'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.'],
+    ['PL-E03 not valid JSON', (p) => writeFileSync(p, '{'), 'PL-E03: range.json is not valid JSON.'],
+    ['PL-E04 not an object', (p) => writeFileSync(p, '[]'), 'PL-E04: range.json does not hold a JSON object.'],
+    ['PL-E05 not a string', (p) => writeFileSync(p, '{"primaryLocale":7}'), 'PL-E05: "primaryLocale" in range.json is not a string: 7.'],
+    ['PL-E06 not on the list', (p) => writeFileSync(p, '{"primaryLocale":"ja"}'), 'PL-E06: "primaryLocale" in range.json is "ja", which is not on the locale list: en, zh-TW.'],
+  ]
+  const E02: [string, (path: string) => void, string] = [
+    'PL-E02 mode 000',
+    (p) => { writeFileSync(p, '{}'); chmodSync(p, 0o000) },
+    'PL-E02: range.json could not be read (EACCES).',
+  ]
+
+  function expectStopped(make: (path: string) => void, line: string): void {
+    writeDoor()
+    make(rangeJson())
+    const before = snapshotPlatform()
+    const r = run(['door'])
+    expect(r.status).toBe(1)
+    expect(r.stderr.split('\n')[0]).toBe(line)
+    expect(r.stdout).not.toContain('===')
+    expect(snapshotPlatform()).toEqual(before)
+  }
+
+  it.each(RANGE_FAULTS)('Y108 (c): %s stops the run before any challenge is analyzed', (_label, make, line) => {
+    expectStopped(make, line)
+  }, 60_000)
+
+  it.skipIf(platform() === 'win32' || process.getuid?.() === 0)('Y108 (c): PL-E02 mode 000 stops the run before any challenge is analyzed', () => {
+    expectStopped(E02[1], E02[2])
+  }, 60_000)
 })

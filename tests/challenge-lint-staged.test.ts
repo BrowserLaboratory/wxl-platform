@@ -174,6 +174,26 @@ describe('runLintStaged', () => {
     expect(result.errors).toEqual([])
   })
 
+  // Y69 (5b's P2): the analysis step looks the challenge up through discoverChallenges(root, P, slug);
+  // before this, a stale signature found nothing and the step was skipped without a word.
+  it.each([
+    ['zh-TW (no range.json in the index)', undefined, { 'zh-TW': brief() }],
+    ['en (range.json in the index)', '{"primaryLocale":"en"}', { en: brief() }],
+  ] as const)('Y69: the analysis step reports a hardcoded localhost reference, P = %s', (_label, range, briefs) => {
+    makeRepo(tmpDir, {
+      briefs,
+      src: { 'app.py': 'import requests\nrequests.get("http://127.0.0.1:8000")', 'flag.txt': 'FLAG{test_case}' },
+    })
+    if (range !== undefined) {
+      writeFileSync(join(tmpDir, 'range.json'), range)
+      git(tmpDir, 'add', 'range.json')
+    }
+
+    const result = runLintStaged(tmpDir, ['s'])
+    expect(result.hasErrors).toBe(true)
+    expect(result.errors).toEqual([{ slug: 's', messages: ['Hardcoded localhost reference in app.py'] }])
+  })
+
   it('catches invalid tools values (full validator check)', () => {
     makeRepo(tmpDir, {
       slug: 'bad-tools',

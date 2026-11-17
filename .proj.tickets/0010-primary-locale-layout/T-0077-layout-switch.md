@@ -2585,6 +2585,74 @@ Wave 5, keygen. Done, with the parent's decision on D80 (b)/D133 applied (declar
   owner 5f, and from segment 5d on the suite step must write a new, segment-named report file and state its path,
   modification time and HEAD sha.
 
+### 2026-11-17 (parent, decisions on segment 5d's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the three questions segment 5d's
+planner raised; nothing else. Each follows the planner's recommendation.
+
+1. One test case outside the approved test plan table is added to `tests/challenge-lint-staged.test.ts`: with
+   `127.0.0.1` in `src/app.py`, `runLintStaged` reports `Hardcoded localhost reference in app.py`. Approved. Y69's new
+   `discoverChallenges` signature forces a change at `scripts/challenge-lint-staged.ts:106`; both of 5b's checkers
+   found that step silently skipped and untested. It adds a case; it drops, shrinks or replaces no approved row.
+2. Shapes Y68 does not name. Approved as recommended, no new message text: for an empty, comment-only or non-mapping
+   `challenge.yaml`, analyze keeps its own lenient read and the existing `challenge config must be an object` from
+   `validateChallengeDeclaration`; a multi-document file falls under `Invalid YAML in challenge.yaml: <message>`. One
+   assertion pins each shape. The VM2 and VM4 texts stay `challenge:validate`'s (Y3, Y5, Y6), which the hook and
+   verify run first. Recorded for stage 6 as a spec wording item: Y68 and D89 are silent on these two shapes.
+3. `tests/unit/scripts/challenge-verify-L2.test.ts`'s three cases turn red after 5d's `discoverChallenges` change
+   and stay red until segment 5f (Y86, Y87, Y109). Accepted as a planned inter-wave red, declared in advance by the
+   plan, as with segment 4a. The alternative keeps the legacy branch Y69 removes and would not save L2's fixtures.
+
+### 2026-11-17 (segment 5d)
+
+Rows Y62-Y69 and Y108 (retype and analyze). Authorization and the three plan decisions: the parent entry
+"2026-11-17 (parent, decisions on segment 5d's plan needs_user)". No commit, no stash/checkout/reset/restore, no
+`git add` (nothing under platform/ was touched; every fixture lives under `os.tmpdir()`).
+
+Baseline (row 0): `npx vitest run` over the 5 retype files, `challenge-analyze`, `challenge-lint-staged`,
+`challenge-verify-L2`: 8 files, 96 passed (L2's 3 cases green). `git status --porcelain --ignored` saved for the
+close.
+
+| Row | Red line (before the production change) | Production change |
+|---|---|---|
+| 1 Y63 | `expected 'Challenge no-such-challenge not found…' to be 'Challenge no-such-challenge not found…'` (both cells; old text ended `index.md`) | retype checks and reports `challenge.yaml` (`declarationPath`) |
+| 2 Y62 | `Error: index.md has no YAML frontmatter block` (4 cases red) | whole-file `parseDocument` / `doc.set` / `toString({ lineWidth: 0 })`; `splitFrontmatter`, `serializeIndex`, `ParsedIndex` deleted (no other importer, grepped); header comment says challenge.yaml. The fixture is a fixed point of `toString({lineWidth:0})` (the byte-for-byte cases pass). |
+| 3 Y65 | none: first green, because row 2 left retype not reading any brief. Mutation (retype reads the zh-TW brief's `backend` as oldBackend): (i) `expected 2 to be +0`, (ii) `Error: bad brief`; restored | none |
+| 4 Y64 | not run on the old fixtures one by one; row 1 had turned them red for RT1 (`expected 1 to be +0` / `1 to be 2` as the plan predicted, not individually captured). Fixtures re-pointed to challenge.yaml: green. Mutations: dropping `doc.set('backend'/'app')` -> same-family red (`expected 'difficulty: easy…' to contain 'backend: flask'`); writing the declaration before the cross-family return -> cross-family red (`expected 'backend: php…' to be 'backend: fastapi…'`); both restored | fixtures and assertions only (same-family now asserts runKeygen called exactly once with the slug; cross-family also asserts the slug folder holds only challenge.yaml and src) |
+| 5 | row 1 left `-errors` "keygen throws" red (`expected 1 to be 3`); spec-sync cases were not run alone on the old fixture (same row-1 cause). Fixtures re-pointed: all 5 retype files green (17 cases) | fixtures only |
+| 6 Y69 | `expected [] to deeply equal [ { slug: 'a', … } ]` (4 cases: both P, brief-absent, target filter). The "not challenges" case and the empty-root cases were first green on the old code (nothing to find in that tree); mutation "no challenge.yaml check" -> only-src case red; restored | `ChallengeFile = { slug, declarationPath, briefPath }`; `discoverChallenges(root, primary, targetSlug?)`; legacy branch gone |
+| 7 Y68 | `expected [ 'Cannot read file: undefined' ] to deeply equal [ 'No challenge.yaml found' ]`; 11 cases red | `readDeclaration` (ENOENT -> `No challenge.yaml found`; `doc.errors[0]` -> `Invalid YAML in challenge.yaml: <msg>`), `validateChallengeDeclaration`, isPerFolder/legacy gone. `validateChallengeConfig` untouched. Pinned per parent decision 2: empty, comment-only and scalar root -> `challenge config must be an object`; two documents -> `Invalid YAML in challenge.yaml: …` |
+| 8a Y66 | `TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined` (15 cases red: the converted analyzeChallenge cases and Y66 x2) | analyzeChallenge reads the declaration and the primary brief's title (no fallback yet) |
+| 8b Y67 | `Error: ENOENT: no such file or directory, open '…/zh-TW/challenge/door/index.md'` (other-locale-only brief); `expected undefined to be 'door'` (no title key) | `readBriefTitle`: unreadable, no frontmatter, parse error or non-string title -> slug |
+| 9 Y69 caller | `expected false to be true` (2 cases, P = zh-TW and P = en from the index's range.json) | `scripts/challenge-lint-staged.ts`: `discoverChallenges(root, primary, slug)`. Mutation (old call) -> both red; restored. This is the one case outside the approved table (parent decision 1). |
+| 10 Y108 | (a)(b) `expected 1 to be +0`; (c) `expected 'Challenge not found: door' to be 'PL-E0x: …'` (6 cells, PL-E02 included: it ran, uid is not 0) | `main` reads `readPrimaryLocale(join(root,'range.json'))` first; a `SiteLayoutError` -> `console.error(message); exit(1)`; no `checkSourceLayout` (D19). Header comment updated. |
+
+Mutations at the close (each restored): retype writing `index.md` -> 6 of `-metadata` red (Y62); briefPath fixed to zh-TW -> Y66 en, Y69 en x2, Y108 (b) red; `main` not reading range.json -> Y108 (b) and all six (c) red; discover without the challenge.yaml check -> 3 Y69 cases red; lint-staged on the old call -> both new cases red.
+
+Commands and counts:
+- Baseline above: 8 files, 96 passed.
+- Close: `npx vitest run tests/unit/scripts/challenge-retype tests/challenge-analyze.test.ts tests/challenge-lint-staged.test.ts tests/challenge-validate.test.ts tests/unit/challenge/config.test.ts tests/unit/scripts/challenge-verify-L2.test.ts`: 10 files, 325 tests, 322 passed, 3 failed (all in `challenge-verify-L2.test.ts`, the planned inter-wave red, owner segment 5f: `analyze could not discover slug`).
+- Same with `GITHUB_REPOSITORY=acme/range`: 322 passed, 3 failed, 8 skipped (the skips belong to the other files' upstream-only rows, none in 5d's files).
+- `git status --porcelain --ignored` differs from the baseline only by the 3 scripts and 7 test files listed below; `find platform -newer <stamp>` (excluding the gitignored `platform/public/challenge/`) is empty.
+
+Files changed: `scripts/challenge-retype.ts`, `scripts/challenge-analyze.ts`, `scripts/challenge-lint-staged.ts`, `tests/unit/scripts/challenge-retype-{errors,metadata,same-family,cross-family,spec-sync}.test.ts`, `tests/challenge-analyze.test.ts`, `tests/challenge-lint-staged.test.ts`, this ticket.
+
+Notes for later segments:
+- 5f (verify L1/L2, Y86, Y87, Y109): `scripts/challenge-verify.ts:288` still calls `discoverForAnalyze(<platform/challenge>, slug)`; the new call is `discoverChallenges(projectRoot, primary, slug)`. Its L2 fixtures are still `index.md`.
+- Wave 6 (the hook): `scripts/challenge-analyze.ts` now imports `.vitepress/primary-locale.ts`, `.vitepress/layout-error.ts` and (type only) `.vitepress/locales.ts`; `tests/__helpers__/preCommitRepo.ts` COPIED_FILES must cover them.
+- Stage 6: `challenge-retype.ts` rewrites the whole challenge.yaml through `yaml`'s `toString({ lineWidth: 0 })`, so a hand-formatted declaration that is not a fixed point of it is normalised on the first retype (Y54's rule in 5c applies the same way). The checked-in declarations were not run through it here.
+- Y68 and D89 are silent on empty / comment-only / scalar / multi-document challenge.yaml (decision 2); also an array root reaches `missing required field: backend` through `validateChallengeDeclaration`, which no case pins.
+
+Deferred to stage 6 (P2, frozen rubric), segment 5d final review:
+- `tests/unit/scripts/challenge-retype-metadata.test.ts:76` (P2, confidence medium): Y62's `--tags` case removes the tags lines from both sides before comparing, so it cannot catch the tags entry moving to another position in the mapping; the other three Y62 cases compare the whole file byte for byte and pin key order, so the row as a whole stays covered.
+- `tests/unit/scripts/challenge-retype-spec-sync.test.ts:40` (P2, confidence high): the red runs for the re-pointed Y64 fixtures and for the spec-sync and keygen-throws fixtures were not recorded file by file (table rows 4 and 5 say so); mutations afterwards show the tests can fail, so only the /tdd red evidence is thinner.
+- `.claude/skills/wxl-mutate/SKILL.md:56` (P2, confidence low): the wxl-mutate skill (Claude and Codex copies) still says the retype-owned fields live in `index.md` frontmatter, but retype now owns challenge.yaml (D90); outside 5d's rows, probably a later docs segment's.
+- `scripts/challenge-analyze.ts:114` (P2, confidence high): no test covers `readDeclaration`'s non-ENOENT branch (`Cannot read file: <path>`, e.g. a directory or EACCES); the old "cannot be read" case became Y68's ENOENT case, and Y68 names only the absent and invalid cases.
+- `tests/unit/scripts/challenge-retype-same-family.test.ts:86` (P2, confidence medium): Y64's "app changes in challenge.yaml" cannot be observed in the same-family test: fastapi and flask both use `app.py`, so `app: app.py` stays green without `doc.set('app', ...)`; php is cross-family (exit 2), so no same-family swap changes `app`. The assertion predates the segment.
+
+Full suite (parallel run only; no re-run needed, all failures allowed, no flakes): report `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/s5d/report-5d.json` (mtime Nov 17 16:41:43 2026, written after the run start: start epoch 1794904856, file 1794904903), HEAD d2c7e30. Tests: 6652 total, 6528 passed, 12 failed, 112 skipped, 0 todo. Suites: 845 total, 10 failed suites (`tests/pre-commit-sh.test.ts` file-level collection failure counted as a suite failure, with no per-test entries). Failing tests: 8 in create-challenge-run, 1 in L1, 3 in L2.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
