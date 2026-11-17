@@ -19,6 +19,8 @@
  * nav can give different locales for one challenge (spec 0008, F7).
  */
 
+import type { Locale } from '../locales.ts'
+
 /** Minimum width of the decimal spelling used in URLs and on screen. */
 export const NUMBER_PAD_WIDTH = 3
 
@@ -40,13 +42,14 @@ export const SITE_ORIGIN = 'https://wxl.browserlab.online'
 /**
  * Whether a frontmatter value is a usable challenge number.
  *
- * Integer and greater than zero. A string is rejected even when it spells a
+ * A safe integer (at most `Number.MAX_SAFE_INTEGER`, so `1e21` and `2 ** 53` are refused: D62)
+ * and at least one. A string is rejected even when it spells a
  * number, because `"007"` is the padded URL spelling and is exactly what gets
  * copied into frontmatter by mistake — accepting it would let two challenges
  * hold `7` and `"007"` and pass a uniqueness check.
  */
 export function isChallengeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1
 }
 
 /** The decimal spelling used in URLs and on screen: at least three digits, never truncated. */
@@ -58,7 +61,7 @@ export function padChallengeNumber(n: number): string {
  * The locale a link is built in: a short link's locale segment (`/en/`, `/zh-TW/`), which every
  * short link carries; and for a page URL, `/zh-TW` before the page path or nothing for English.
  */
-export type ShortLinkLocale = 'en' | 'zh-TW'
+export type ShortLinkLocale = Locale
 
 /**
  * The path a redirect rule maps, carrying its locale code: `/en/c/001`, or `/zh-TW/c/001` in
@@ -88,7 +91,16 @@ export function shortLinkDisplay(n: number, locale: ShortLinkLocale, origin: str
 const SCHEME = /^[a-z]+:\/\//
 
 /** The slug grammar `create:challenge` enforces; a page URL is only built from a slug inside it. */
-const SLUG_GRAMMAR = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+export const SLUG_GRAMMAR = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+
+/**
+ * The path of a challenge's page in `locale`, given the range's primary locale: the primary
+ * locale's pages carry no locale segment, every other locale's carry theirs (0010-S26, D68).
+ * The slug is not checked against the grammar: a route template such as `:slug` passes through.
+ */
+export function challengePagePath(slug: string, locale: Locale, primary: Locale): string {
+  return `${locale === primary ? '' : `/${locale}`}/challenge/${slug}/`
+}
 
 /** `short` copies the short link; `page` copies the challenge page's URL. Fixed once per build. */
 export type LinkMode = 'short' | 'page'

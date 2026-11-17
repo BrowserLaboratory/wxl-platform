@@ -47,6 +47,10 @@ import {
   padChallengeNumber,
   isChallengeNumber,
 } from './challenge-numbers.ts'
+import { challengePagePath } from '../.vitepress/challenge/shortLink.ts'
+
+// The primary locale of the tree. Segment 4b replaces this constant with the tree's P (range.json).
+const PRIMARY = 'en' as const
 
 /**
  * The four short-link forms, in the order each challenge's rules are written. `/en/c/` and
@@ -68,7 +72,7 @@ const FORMS: ReadonlyArray<{ prefix: string; chinese: boolean }> = [
  */
 const PARAMETERISED: ReadonlyArray<[string, string]> = FORMS.map(({ prefix, chinese }) => [
   `${prefix}:slug`,
-  chinese ? '/zh-TW/challenge/:slug/' : '/challenge/:slug/',
+  challengePagePath(':slug', chinese ? 'zh-TW' : 'en', PRIMARY),
 ])
 
 const STATUS = '302'
@@ -185,9 +189,9 @@ function numericRules(root: string, options: GenerateOptions = {}): NumericRule[
   const rules: NumericRule[] = []
   for (const [slug, { number, locales }] of bySlug) {
     const padded = padChallengeNumber(number)
-    const english = `/challenge/${slug}/`
+    const english = challengePagePath(slug, 'en', PRIMARY)
     // The Traditional Chinese page when it is included, the English page otherwise (G3).
-    const chinese = locales.has('zh-TW') ? `/zh-TW/challenge/${slug}/` : english
+    const chinese = locales.has('zh-TW') ? challengePagePath(slug, 'zh-TW', PRIMARY) : english
     for (const form of FORMS) {
       // Without an included English page only the Traditional Chinese forms are written (G9).
       if (!form.chinese && !locales.has('root')) continue
