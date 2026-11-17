@@ -143,7 +143,15 @@ export function checkSourceLayout(srcDir: string, primary: Locale): void {
 
 const PL_E07_FIRST_LINE =
   'PL-E07: these paths are symbolic links where the build looks for pages; replace each with the file or folder itself:'
+/** Where a range on the old layout finds how to move its pages; PL-E08 and the pre-commit hook's W6d both say it (D113). */
+export const PL_E08_MOVE = 'README.en.md describes in "Moving to the locale folders"'
+
+/** The pre-commit hook's W6d line for one old-layout path, without the hook's prefix (D113: one wording with PL-E08). */
+export function legacyPageLine(path: string): string {
+  return `${path} is outside the locale folders (PL-E08), so CI would fail this commit; move it as ${PL_E08_MOVE}.`
+}
+
 const PL_E08_FIRST_LINE =
-  `PL-E08: these pages are outside the locale folders. Every page lives in platform/<locale>/ for a locale on the locale list (${LOCALES.join(', ')}); a range on the old layout moves its pages as README.en.md describes in "Moving to the locale folders" (README.md: 「搬到語系資料夾」):`
+  `PL-E08: these pages are outside the locale folders. Every page lives in platform/<locale>/ for a locale on the locale list (${LOCALES.join(', ')}); a range on the old layout moves its pages as ${PL_E08_MOVE} (README.md: 「搬到語系資料夾」):`
 const PL_E09_FIRST_LINE =
   `PL-E09: these entries of a locale folder are named like a locale on the locale list (${LOCALES.join(', ')}); their URLs would collide with that locale's prefix:`

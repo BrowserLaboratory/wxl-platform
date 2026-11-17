@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # pre-commit hook: validate staged challenges and regenerate platform/public/_redirects
 #
-# It triggers when the staged snapshot differs from HEAD at a watched path:
-# platform/challenge/, platform/zh-TW/challenge/ or platform/public/_redirects
-# itself (added, copied, modified, renamed, deleted or changed in type). Any
-# other commit passes through untouched.
+# It triggers when the staged snapshot differs from HEAD at a watched path (added, copied,
+# modified, renamed, deleted or changed in type): the declaration tree platform/challenge/, the
+# challenge tree of every locale on the locale list (platform/<L>/challenge/), platform/public/
+# _redirects itself, and range.json (D65, D66, D126). The bash here knows no locale name. A glob
+# pre-filter starts no Node, so a commit that has nothing to do with challenges (README.md,
+# platform/public/other.txt) stays a plain git command. A commit that passes it gets the exact
+# list from the generator (`--challenge-trees`, the locale list's own folders), and the trigger is
+# judged again over that list: platform/public/challenge/ or a folder off the list does not
+# trigger. Any other commit passes through untouched.
 #
 # A first commit (no HEAD) that triggers is refused before any change when
 # something under platform/ other than _redirects is unstaged or untracked
@@ -15,25 +20,25 @@
 # 1. Puts the staged snapshot in the working tree under platform/: every other
 #    unstaged change and untracked file under platform/ goes into a stash entry
 #    of the hook's own. _redirects never enters that entry.
-# 2. Validates the staged platform/challenge/ paths that the ACMRD filter
-#    selects, as before (challenge-lint-staged.ts), and only when there is one.
-#    A type change (T) triggers regeneration but is not validated.
-# 3. Before generating, refuses an orphan brief (D12): a slug in the
-#    Traditional Chinese tree's index slugs that the English tree's index slugs
-#    lack, which CI would fail. It exits 1 with a message naming
-#    platform/zh-TW/challenge/<slug>/ and platform/challenge/<slug>/, and
-#    nothing is changed. The check reads the whole staged snapshot, not only
-#    the staged change.
-# 4. Generates _redirects over the staged snapshot, restricted to the index
-#    slugs: per tree, the slugs whose <tree>/<slug>/index.md is in the index.
-#    A page counts only when its own tree lists its slug, so ignored and
-#    untracked challenge directories are left out: an English one gets no
-#    rules, and a Traditional Chinese one leaves its challenge's two
-#    Traditional Chinese rules pointing at the English page. Every challenge
-#    with an English page gets four rules: /en/c/ and /zh-TW/c/, which the copy
-#    control gives, and /c/ and /zh/c/, kept for links already handed out. So
-#    adding or deleting a Traditional Chinese brief re-points its two
-#    Traditional Chinese rules; it never adds or removes a rule.
+# 2. Validates the staged paths under the challenge trees that the ACMRD filter
+#    selects, a brief's index.md among them (challenge-lint-staged.ts, which reads the primary
+#    locale from the index's range.json, D67, D121), and only when there is one. A type change (T)
+#    triggers regeneration but is not validated.
+# 3. Generates _redirects over the staged snapshot (`generate-redirects.ts --staged`, which reads
+#    the index and the index's range.json, never the working tree's). The generator first checks
+#    the briefs the index holds (D64): a brief with no primary-locale brief, a brief with no
+#    declaration, a challenge declared with no brief, a page left outside the locale folders
+#    (W6a-W6d, then W6r once). Each such fault would fail CI, so it exits 1 with a line naming the
+#    paths and nothing is changed; this runs before any other output (D121). The check reads the
+#    whole staged snapshot, not only the staged change.
+# 4. Restricts generation to the index slugs: per tree, the slugs whose
+#    <tree>/<slug>/index.md (a declaration: <slug>/challenge.yaml) is in the index. A file counts
+#    only when its own tree lists its slug, so ignored and untracked directories are left out:
+#    an untracked declaration folder gets no rules, and an untracked brief leaves its locale's
+#    rules pointing at the primary locale's page (D58). Every challenge with a primary-locale
+#    brief gets four rules: /en/c/ and /zh-TW/c/, which the copy control gives, and /c/ and
+#    /zh/c/, kept for links already handed out. So adding or deleting a translation re-points
+#    its locale's rules; it never adds or removes a rule.
 # 5. Writes and stages _redirects only after validation and generation
 #    succeeded. Afterwards the working tree's _redirects equals the staged one,
 #    even if it held an unstaged change before (D3).
@@ -87,11 +92,31 @@ set -euo pipefail
 unset GIT_LITERAL_PATHSPECS GIT_GLOB_PATHSPECS GIT_NOGLOB_PATHSPECS GIT_ICASE_PATHSPECS
 
 REDIRECTS=platform/public/_redirects
-WATCHED=(platform/challenge/ platform/zh-TW/challenge/ "$REDIRECTS")
+# The trigger has two steps. The first is a cheap pre-filter that starts no Node, so that a commit
+# with nothing to do with challenges stays a plain git command: any folder's challenge tree, by
+# glob (D65, D66). The bash here knows no locale name; the locale list is Node's.
+PRESCREEN=(platform/challenge/ ':(glob)platform/*/challenge/**' "$REDIRECTS" range.json)
 # Everything under platform/ except _redirects: what the hook stashes and restores.
 REST=(platform/ ":(exclude)$REDIRECTS")
 
 # ── Trigger ─────────────────────────────────────────────────────────────────
+changed=0
+git diff --cached --quiet --no-renames -- "${PRESCREEN[@]}" || changed=$?
+case $changed in
+  0) exit 0 ;;
+  1) ;;
+  *) exit "$changed" ;;
+esac
+# The pre-filter matched. The second step reads the challenge trees from the generator, which holds
+# the locale list: platform/challenge/ and platform/<L>/challenge/ for each locale L on it (D126).
+# The list is written to a variable by an assignment, where `set -e` sees node fail; it is split with
+# a `read` loop (bash 3.2-compatible, unlike `mapfile`).
+TREE_LIST=$(node --experimental-strip-types scripts/generate-redirects.ts --challenge-trees)
+TREES=()
+while IFS= read -r tree; do
+  [ -z "$tree" ] || TREES+=("$tree")
+done <<< "$TREE_LIST"
+WATCHED=("${TREES[@]}" "$REDIRECTS" range.json)
 changed=0
 git diff --cached --quiet --no-renames -- "${WATCHED[@]}" || changed=$?
 case $changed in
@@ -395,19 +420,30 @@ if [ -e "$REDIRECTS" ] || [ -L "$REDIRECTS" ]; then
   WT_BLOB=$(git hash-object -- "$REDIRECTS")
 fi
 
-# Untracked challenge directories directly under either watched tree, for W4.
-# Ignored directories are not listed.
-# Each git listing below is written to a file first: a failure inside `< <( )`
-# would escape `set -e`, and the loop would read an empty list.
-git ls-files -z --others --exclude-standard --directory --no-empty-directory -- platform/challenge/ platform/zh-TW/challenge/ > "$WORK/untracked-dirs"
-UNTRACKED_DIRS=""
-while IFS= read -r -d '' path; do
-  rest=${path#platform/zh-TW/challenge/}
-  rest=${rest#platform/challenge/}
-  case "$rest" in
-    "$path" | */*/) ;;
-    */) UNTRACKED_DIRS="$UNTRACKED_DIRS$path"$'\n' ;;
+# Untracked brief and declaration folders directly under a challenge tree, for W4. Ignored
+# directories are not listed. The list is written, NUL separated, before the stash takes the
+# files off the disk; --describe-untracked words the messages (W4a, W4b), since only Node knows
+# which locales the range has. Each git listing below is written to a file first: a failure
+# inside `< <( )` would escape `set -e`, and the loop would read an empty list.
+# (The pathspecs are the trees themselves, not a glob: with --directory and a glob git lists the
+# files of a folder it could have collapsed.)
+git ls-files -z --others --exclude-standard --directory --no-empty-directory -- "${TREES[@]}" > "$WORK/untracked-dirs"
+
+# True when the path (ending in `/`) is a folder directly under a challenge tree, platform/challenge/<slug>/
+# or platform/<folder>/challenge/<slug>/, and, for a tree other than the declaration tree, holds a
+# regular file index.md: a folder without one is no brief (D127). It is no slug yet, so no W4 names it.
+untracked_tree_child() {
+  local dir=${1%/} slashes
+  slashes=${dir//[!\/]/}
+  case "$dir" in
+    platform/challenge/*) [ "${#slashes}" -eq 2 ] ;;
+    platform/*/challenge/*) [ "${#slashes}" -eq 3 ] && [ -f "$1index.md" ] && [ ! -L "$1index.md" ] ;;
+    *) return 1 ;;
   esac
+}
+: > "$WORK/untracked-list"
+while IFS= read -r -d '' path; do
+  if untracked_tree_child "$path"; then printf '%s\0' "$path" >> "$WORK/untracked-list"; fi
 done < "$WORK/untracked-dirs"
 
 # ── Stash everything else under platform/ ───────────────────────────────────
@@ -456,7 +492,7 @@ fi
 # is built with a `read` loop (bash 3.2-compatible, unlike `mapfile`) and the
 # validator is skipped when it is empty: bash 3.2 under `set -u` rejects the
 # expansion of an empty array.
-git diff --cached --name-only -z --diff-filter=ACMRD -- platform/challenge/ > "$WORK/validate"
+git diff --cached --name-only -z --diff-filter=ACMRD -- "${TREES[@]}" > "$WORK/validate"
 VALIDATE=()
 while IFS= read -r -d '' path; do
   VALIDATE+=("$path")
@@ -467,51 +503,10 @@ if [ ${#VALIDATE[@]} -gt 0 ]; then
   [ "$validation" -eq 0 ] || exit "$validation"
 fi
 
-# ── Orphan briefs (D12) ─────────────────────────────────────────────────────
-# A Traditional Chinese brief whose slug the English tree's index slugs lack
-# would fail CI ("backs every translated slug with a root-locale challenge"),
-# so it is refused before generating. Both lists come from the index the hook
-# runs on, as the generator's index slugs do, and are compared as whole
-# strings in plain arrays (bash 3.2 has no associative arrays). Neither array
-# is expanded when empty: bash 3.2 under `set -u` rejects that.
-# index_slugs <tree> <file> reads the tree's `git ls-files -z` from <file>, which
-# the caller writes at the top level, where `set -e` sees git fail.
-index_slugs() {
-  local path rest
-  while IFS= read -r -d '' path; do
-    rest=${path#"$1"}
-    case "$rest" in
-      */*/*) ;;
-      */index.md) printf '%s\0' "${rest%/index.md}" ;;
-    esac
-  done < "$2"
-}
-git ls-files -z -- platform/challenge/ > "$WORK/ls-en"
-git ls-files -z -- platform/zh-TW/challenge/ > "$WORK/ls-zh"
-EN_SLUGS=()
-while IFS= read -r -d '' slug; do EN_SLUGS+=("$slug"); done < <(index_slugs platform/challenge/ "$WORK/ls-en")
-ORPHANS=()
-while IFS= read -r -d '' slug; do
-  found=false
-  if [ ${#EN_SLUGS[@]} -gt 0 ]; then
-    for en in "${EN_SLUGS[@]}"; do
-      if [ "$en" = "$slug" ]; then found=true; break; fi
-    done
-  fi
-  [ "$found" = true ] || ORPHANS+=("$slug")
-done < <(index_slugs platform/zh-TW/challenge/ "$WORK/ls-zh")
-if [ ${#ORPHANS[@]} -gt 0 ]; then
-  for slug in "${ORPHANS[@]}"; do
-    echo "[pre-commit] ✗ platform/zh-TW/challenge/$slug/ is a Traditional Chinese brief, but the index holds no English challenge platform/challenge/$slug/ (its index.md is not staged), so CI would fail this commit." >&2
-  done
-  cat >&2 <<'EOF'
-[pre-commit]   Delete, rename or retire each brief together with its English directory: delete
-[pre-commit]   both, rename both, or, when you retire the challenge to .archive/challenge/,
-[pre-commit]   delete its brief in the same commit (git rm -r platform/zh-TW/challenge/<slug>/).
-[pre-commit]   If the English challenge exists but is not staged yet, git add it. Nothing was changed.
-EOF
-  exit 1
-fi
+# ── The brief check (D64, D121) ─────────────────────────────────────────────
+# The check that used to sit here in bash (an orphan brief, 0007 D12) is the generator's: `--staged`
+# below refuses a brief fault before it prints anything, reading the index and the index's
+# range.json (D67), so the bash names no locale tree.
 
 # ── Generate, then write and stage ──────────────────────────────────────────
 node --experimental-strip-types scripts/generate-redirects.ts --staged --root "$TOP" > "$WORK/expected" || exit 1
@@ -528,12 +523,9 @@ EXPECTED_BLOB=$(blob_of ":$REDIRECTS")
 teachers() { [ "$1" != "$HEAD_BLOB" ] && [ "$1" != "$EXPECTED_BLOB" ]; }
 if teachers "$INDEX_BLOB" || teachers "$WT_BLOB"; then
   echo "[pre-commit] platform/public/_redirects: replaced your version with the one generated from the staged challenges. It is generated; do not edit it by hand." >&2
-  while IFS= read -r dir; do
-    [ -n "$dir" ] || continue
-    effect="leaves it out"
-    case "$dir" in platform/zh-TW/challenge/*) effect="does not use it: its challenge's Traditional Chinese short links open the English page, if there is one" ;; esac
-    echo "[pre-commit] $dir is untracked, so _redirects $effect. To include it, git add it and commit again." >&2
-  done <<< "$UNTRACKED_DIRS"
+  if [ -s "$WORK/untracked-list" ]; then
+    node --experimental-strip-types scripts/generate-redirects.ts --describe-untracked "$WORK/untracked-list" --root "$TOP" >&2
+  fi
 fi
 
 exit 0

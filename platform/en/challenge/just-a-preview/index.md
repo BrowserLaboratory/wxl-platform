@@ -1,19 +1,7 @@
 ---
 title: Just a Preview
-number: 8
 layout: challenge
-difficulty: easy
-category: web
-backend: fastapi
-app: app.py
-packages: []
-tools: [ browser, network, repeater, code ]
-source_visible: true
-source_files: [ /templates/layout.html, /templates/index.html, /templates/detail.html, /templates/preview.html, /templates/_editor.html, /templates/missing.html, /static/app.css ]
-date: 2026-09-06T09:23:32.337Z
-tags: [ ssti, template-injection, jinja2, fastapi ]
 description: A white-box engagement against Corvid Labs' internal prompt library, whose editor tells authors that rendering a preview runs in a restricted environment.
-wasmModule: /challenge/just-a-preview/runtime.wasm
 ---
 
 # Just a Preview

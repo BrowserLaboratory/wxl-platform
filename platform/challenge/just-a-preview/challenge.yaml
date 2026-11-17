@@ -1,0 +1,12 @@
+number: 8
+difficulty: easy
+category: web
+backend: fastapi
+app: app.py
+packages: []
+tools: [ browser, network, repeater, code ]
+source_visible: true
+source_files: [ /templates/layout.html, /templates/index.html, /templates/detail.html, /templates/preview.html, /templates/_editor.html, /templates/missing.html, /static/app.css ]
+date: 2026-09-06T09:23:32.337Z
+tags: [ ssti, template-injection, jinja2, fastapi ]
+wasmModule: /challenge/just-a-preview/runtime.wasm

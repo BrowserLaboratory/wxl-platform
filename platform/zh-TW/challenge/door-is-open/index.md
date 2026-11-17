@@ -1,18 +1,7 @@
 ---
 title: 知的必要
-number: 1
 layout: challenge
-difficulty: easy
-category: web
-backend: fastapi
-app: app.py
-packages: []
-tools: [ browser, network, repeater, code ]
-source_visible: false
-date: 2026-04-02T08:54:17.674Z
-tags: [ idor, access-control, fastapi, sqlite ]
 description: 針對 FileHub 的黑箱滲透測試委託。這家檔案分享服務在產品頁上保證，某個帳號上傳的檔案只有該帳號讀得到。
-wasmModule: /challenge/door-is-open/runtime.wasm
 ---
 
 # 知的必要

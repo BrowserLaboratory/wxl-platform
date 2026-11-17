@@ -1,19 +1,7 @@
 ---
 title: Selected Excerpts
-number: 10
 layout: challenge
-difficulty: medium
-category: web
-backend: flask
-app: app.py
-packages: [ flask ]
-tools: [ browser, network, repeater, code ]
-source_visible: true
-source_files: [ /workspace.py, /revisions.py, /course_pack.py, /templates/base.html, /templates/workbench.html, /templates/article.html, /templates/preview.html, /templates/course-pack.html, /templates/missing.html, /static/app.css ]
-date: 2026-09-13T13:28:46.765Z
-tags: [ idor, access-control, ssti, template-injection, jinja2, flask ]
 description: A white-box assessment of Kestrel Press's editorial workspace, where contributors draft teaching materials and curriculum editors assemble selected excerpts into a course pack.
-wasmModule: /challenge/selected-excerpts/runtime.wasm
 ---
 
 # Selected Excerpts

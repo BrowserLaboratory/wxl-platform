@@ -747,6 +747,37 @@ describe.each(BOTH)('briefFaults (S35), P = %s', (P) => {
   })
 })
 
+// Y111 (D127), the redirects clause: a folder with no index.md is no brief, so it is no slug and no
+// fault. The hook clause (W4 names no such folder) is pre-commit-sh.test.ts's; `targetDirectoryFaults`
+// ignoring `u` is 'ignores a folder with no index.md: it is no slug (D127)' above.
+describe('Y111 (D127): only index.md makes a brief, P = zh-TW', () => {
+  const declared = [
+    'platform/challenge/s/challenge.yaml',
+    'platform/zh-TW/challenge/s/index.md',
+    'platform/zh-TW/challenge/s/hints.md',
+    'platform/zh-TW/challenge/t/diagram.png',
+    'platform/zh-TW/challenge/u/notes.md',
+  ]
+
+  it('indexTrees lists only s as a zh-TW slug, and briefFaults finds none', () => {
+    const trees = indexTrees(declared)
+    expect([...(trees.slugs.get('zh-TW') ?? [])]).toEqual(['s'])
+    expect(briefFaults(trees, 'zh-TW')).toEqual([])
+  })
+
+  it('contrast: a declaration for t gives exactly one missing-primary fault (W6b), whose present file is that declaration', () => {
+    const faults = briefFaults(indexTrees([...declared, 'platform/challenge/t/challenge.yaml']), 'zh-TW')
+    expect(faults).toEqual([
+      {
+        kind: 'missing-primary',
+        slug: 't',
+        present: 'platform/challenge/t/challenge.yaml',
+        missing: 'platform/zh-TW/challenge/t/index.md',
+      },
+    ])
+  })
+})
+
 describe('briefFaults order (S35, S-§4.7)', () => {
   const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
   it('returns the S-§4.7 example verbatim, in D64 order (P = zh-TW)', () => {

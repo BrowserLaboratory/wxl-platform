@@ -2790,6 +2790,109 @@ C07 in `tests/unit/scripts/create-challenge-run.test.ts`; nothing else.
     - `.claude/skills/wxl-create/SKILL.md:175` (P2, low): the restart sentence sits right after "Do NOT touch ... `challenge.yaml` in this step" and names `pnpm dev` while the reachability probe names `pnpm docs:dev`; a reader may not see that it applies to the Step 4 edits made before the self-test. Same wording in the .agents twin and in SKILL.zhTW.md:154 in both trees. Both scripts exist in package.json (lines 19 and 28), so the sentence is accurate and satisfies Y94; wording only.
   - Full suite (segment 5g, suite step): 6710 tests total: 6598 passed, 0 failed, 112 skipped (all in tests/pre-commit-sh.test.ts), 0 todo. 857 suites: 856 passed, 1 failed (pre-commit-sh.test.ts failed at collection). No flake, since a --no-file-parallelism re-run was not needed. Report: /private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/suite-5g.json, mtime 2026-11-17 17:07:49 (epoch 1794906469); the run started at epoch 1794906423, so the file was written after the start. HEAD was 944825f. The collection error reads "Cannot generate _redirects: the challenge tree is inconsistent. door (platform/zh-TW/challenge/door/index.md) has no declaration platform/challenge/door/challenge.yaml".
 
+### 2026-11-17 (parent, decision on segment 6's plan needs_user: two O5 cells; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: two cells of the O5 table in
+`tests/pre-commit-sh.test.ts` ("a git command that fails where set -e cannot see it"); nothing else.
+
+- Question: two cells pin the bash D12 block's commands, `ls-files -z -- platform/challenge/` and
+  `ls-files -z -- platform/zh-TW/challenge/`. The block moves to Node (Overridden contracts, "Orphan … checked in
+  bash"), so those bash commands no longer exist, and S49 only allows path literals to change.
+- Decision: approved as the planner recommends. Both cells stay; the cell count does not drop. They are re-pointed to
+  the two git reads that replace them: `ls-files -z -- platform/` (the index path read of `--staged`) and
+  `ls-files -s -- range.json` (the index's `range.json`, D114). The git wrapper is on PATH, so Node's
+  `execFileSync('git')` goes through it too; the assertions (the wrapper was hit, O5 exact) are unchanged. The
+  executor adds the two cells' names to the "Orphan" row of traceability.md's "Overridden contracts" table, marked
+  as added at stage 5 under the user's standing authorization on 2026-11-17; nothing else in the spec folder.
+- Why it is listed: the cells' target changes, not only a path literal, and that row did not name them.
+- Earlier concern closed: segment 5g's commit `ceb7f8d` updated `wxl-mutate/SKILL.md` in both skill trees to name
+  `challenge.yaml` as what retype owns (5d's deferred P2 about the skill is resolved there).
+
+### 2026-11-17 (segment 6)
+
+Wave 6, the hook and T-0059's hook half. Under the standing authorization; not committed; no `git add` (nothing under
+`platform/` changed and no file was created, so the index is as the segment started).
+
+- Rows done, with the red line (a row marked "green first" was green on its first run; its reason or mutation follows):
+  - C0 fixture: baseline before any edit, 112 skipped (beforeAll threw `the challenge tree is inconsistent ... has no
+    declaration`). After the fixture, hook untouched: collects 117; the red was
+    `✗ platform/zh-TW/challenge/door/ is a Traditional Chinese brief, but the index holds no English challenge platform/challenge/door/`
+    (exit 1, `expected 1 to be +0`).
+  - S38: red as C0's line (old D12 message); green after the bash D12 block was deleted, with the zh-TW twin green first
+    (P and the working tree agree).
+  - S44: six faults x two P, H17-commit, H21-commit-a: red `expected [] to deeply equal [ ...(2) ]` (W6c: the generator's
+    `Cannot generate _redirects` line, no `[pre-commit] ✗`) and `expected +0 to be 1` (W6a, W6b, W6d). Green with the
+    `--staged` brief check. `recordScript` gained a stdout-bytes option.
+  - S45: green first (indexTrees reads only the index); mutation `--cached --others` made both K-17 boundary cells red.
+  - S36: red `expected [] to have a length of 1 but got +0` (en brief and range.json cells, both P); green with the new
+    WATCHED.
+  - S39: green after S36 (the zh-TW twins were red until then: staged `_redirects` != oracle); mutation (the en tree left
+    out of `--challenge-trees`) turned the twins, the en-brief trigger cell and H24 red.
+  - S40: green first; mutation `includeSlug: () => true` turned H20 (both P) red (`[pre-commit] ✓ tmp`).
+  - S46: green first; mutation (archive tree renamed in `nextChallengeNumber`) gave `expected 2 to be 4` in H39 and
+    H39 boundary, both P. Reading: the next number after retiring door is 4 (1 and 3 live or retired, 2 retired); the
+    assertion catches an implementation that forgets the archive, not one that returns an in-between number.
+  - S37: red `expected [] to deeply equal [ Array(1) ]` (and H24 `expected [] to include 'platform/en/...brief.md'`); green
+    with the ACMRD pathspec.
+  - Y90, S48, S73: green first after S37 (VM6, R26, VM10, VM1, VM13 are wave 5's); mutation (ACMRD pathspec back to
+    `platform/challenge/`) turned them red (`expected +0 to be 1`; S73 (1), (2) turned into W6 lines).
+  - S42: red `expected 1 to be +0` (the working tree's zh-TW range.json made test-chall's en brief a W6a fault); green
+    with the internal `generateFor` and `readIndexPrimaryLocale` (exported `generateRedirects` unchanged).
+  - S43: gitlink and PL-E02 cells red `expected +0 to be 1` before S42, green after; mutation (working tree read) turned
+    the same two cells, S42 and S76 (a) red.
+  - S76: (a) red with S42's, then green; (b) and (c) green first (wave 5 reads the index's P).
+  - S41, S74, S77, S78, S79: green first after S36/S44; mutation (range.json out of WATCHED) turned all of S41, S74, S77,
+    S78, S79 red; mutation (briefFaults skipped) turned S44's cells red (S74, S77, S78 (b) share that path).
+  - S47: red `expected stderr to match /platform\/en\/challenge\/draft\/.../` (P = en) and the W4b sentence (P = zh-TW, and
+    the H10 translation-tree twin); green with `--describe-untracked` and the bash list.
+  - Y111 (hook clause): green first (the bash list already carried the D127 `index.md` test when S47 was written);
+    mutation (the `[ -f index.md ]` test removed) turned it red.
+  - Y111 (redirects clause): green first (4c); mutation (`parts[4] === 'index.md'` removed) gave
+    `expected [ 's', 't', 'u' ] to deeply equal [ 's' ]`.
+  - S80: five path cells red `expected [ Array(1) ] to deeply equal []`; green with `--challenge-trees` and the second
+    trigger step. The untracked `platform/ja/challenge/s/` W4 case was green first (Node's `LOCALES.find` already skips
+    an unlisted folder; the plan expected a red there).
+  - S51 (hook half): 18 cells green first; mutation (the slug throw disabled) turned the refusal cells red.
+  - S49: every other case green on the rebuilt fixture with only path literals changed; H45 also runs S44's first case
+    under `/bin/bash` 3.2 (it ran: bash 3.2 here). The two O5 cells are re-pointed as the parent decided: `ls-files -z --
+    platform/` and `ls-files -s -- range.json`; the count did not drop.
+  - S66: `grep -nE 'English tree|root tree|root-locale|English page first|Traditional Chinese tree' scripts/pre-commit.sh`
+    prints nothing; header and the old D12 spot cite D64, D65, D126, D66, D67, D121; generate-redirects.ts Usage gained
+    `--describe-untracked` (and the internal `--challenge-trees`), and the `--staged` paragraph was rewritten.
+  - Closing: the two read-only checks passed against the real repository (12 staged paths: `challenge-lint-staged`
+    exit 0, four challenges check; `generate-redirects.ts --staged --root . | diff - platform/public/_redirects` empty);
+    `git status --short -- platform/` shows nothing unstaged or untracked, so the hook takes no stash path on the commit.
+- Rows not done: none. Two readings to confirm at stage 6: (1) S80's "both logs empty" holds because the recording and
+  blocking stubs pass `--challenge-trees` and `--describe-untracked` straight to the real script, unrecorded (they are
+  no run of the generation); (2) the plan's S47 pathspec "`platform/challenge/` + glob" does not work, since with
+  `--directory` a glob makes git list the files of a folder it could collapse; S47 listed `platform/`, and S80's TREES
+  (non-glob folders) is the final form, pinned in the O5 table as `-- platform/challenge/ platform/en/challenge/
+  platform/zh-TW/challenge/` (untracked listing and ACMRD list).
+- Other changes: `.vitepress/source-layout.ts` exports `PL_E08_MOVE` and `legacyPageLine` (W6d and PL-E08 share one
+  wording, D113; the PL-E08 first line is byte-identical). The fixtures gained `platform/<P>/index.md` (PL-E10: E1's
+  repair step runs the full mode, whose layout check needs a home page). `traceability.md` "Orphan" row: the two O5
+  cells added, marked as stage 5 under the standing authorization, 2026-11-17; nothing else in the spec folder.
+- New helpers in `tests/__helpers__/preCommitRepo.ts`: `buildFixture(variant)`, `declarationText`, `writeBrief(repo, locale,
+  slug)`, `Repo.primary`, `recordScript(..., recordStdout)`; COPIED_FILES gained locales.ts, primary-locale.ts,
+  layout-error.ts, source-layout.ts, challenge/declaration.ts (closure computed by script).
+- Commands (no full suite): `npx vitest run tests/pre-commit-sh.test.ts tests/unit/site/redirects.test.ts
+  tests/unit/site/redirects-generated.test.ts tests/unit/challenge/shortLink.test.ts tests/challenge-lint-staged.test.ts`:
+  5 files, 464 passed, 0 failed (pre-commit-sh.test.ts has 208 tests, run at 178 s with the other four). The read-only
+  checks above. No file under `platform/` changed; nothing to `git add`.
+- For the commit step: a plain `git commit` of the whole index (hook running); the hook's own `_redirects` regeneration
+  should find nothing to change.
+  - Deferred to stage 6 (P2, frozen rubric), segment 6 final review:
+    - `tests/pre-commit-sh.test.ts:721` (P2, confidence medium): S40's clause "ignored dir not named by W4" cannot fail in H20 or 0008 G3: neither case forces W3, and without W3 the hook never prints W4 (guarded by H10/S47, line 930).
+    - `tests/pre-commit-sh.test.ts:340` (P2, confidence low): S36's kept O1 cases (H06: README.md, platform/public/other.txt) run only on the `en` fixture, although the row's boundary column says "both fixtures"; the O1 path does not depend on P.
+    - `tests/pre-commit-sh.test.ts:1486` (P2, confidence low): S43's title says "the generator is the one that refuses" (0007 O4 with W5), but the test does not assert that the generator's `--staged` ran or that the validator did not.
+    - `tests/pre-commit-sh.test.ts:487` (P2, confidence medium): several "validator never runs" assertions were dropped rather than inverted (H02/H14, H41, K-17, H13); Y88-Y90 and D121 make them false, but "Overridden contracts" does not name these individual cells.
+    - `tests/pre-commit-sh.test.ts:870` (P2, confidence medium): H21-commit-a no longer shows that the brief check reads the index.lock git hands the hook; only the validator's read of the lock is shown (matches the approved S44 recipe).
+    - `tests/pre-commit-sh.test.ts:2500` (P2, confidence low): the O5 table hard-codes TREES = 'platform/challenge/ platform/en/challenge/ platform/zh-TW/challenge/' instead of deriving it from LOCALES (fails loudly, maintenance only).
+    - `tests/pre-commit-sh.test.ts:969` (P2, confidence low): the "no primary-locale index slug at all" case still says it guards an empty-list expansion under bash 3.2 `set -u`, but those bash arrays were removed.
+    - `scripts/pre-commit.sh:527` (P2, confidence low): if the W4 wording call (`--describe-untracked`) fails, `set -e` fails the hook after `_redirects` was already written and staged.
+  - Full suite (parallel, one pass): 6809 tests passed, 0 failed, 0 pending (6809 total) across 151 test files (874 suites, 0 failed). Report: `/private/tmp/claude-501/-Users-phoenix--claude-spares-spare-ewfjDD/6664f559-2fb1-4393-860a-844e6aa7b0ee/scratchpad/suite-report-6.json` (mtime Nov 17 18:02 2026; run 17:59:41 to 18:02:57; HEAD ceb7f8d). No re-run with --no-file-parallelism needed. Probe dirs removed before and after (none existed).
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
@@ -3540,3 +3643,8 @@ as T1 defines green.
     - `tests/unit/site/redirects.test.ts:473` (P2, confidence medium): S33's non-vacuity case hard-codes upstream's slug `door-is-open` without `upstreamOnlySkipReason`, so it fails in a range or fork that removed that demonstration challenge (D124/D54: derive from P and the tree).
     - `tests/unit/site/redirects.test.ts:318` (P2, confidence low): `indexPrimaryLocale()` runs at describe-collection time in three describes, so a malformed index `range.json` fails the whole file at collection instead of one test.
   - Full suite (parallel, one pass): 6418 tests in total, 6297 passed, 9 failed, 112 skipped, 0 todo; 795 suites, 8 failed suites (1 whole-file collection failure: tests/pre-commit-sh.test.ts). No flake check needed since every failure matched an allowed entry. The first command attempt aborted on a zsh no-match glob in rm, so the suite was re-run correctly. The 4 redirects tests (redirects-generated.test.ts and the 3 in redirects.test.ts) now pass.
+
+- 2026-11-17 (segment 6, fix round): two P1 findings, both test-only (production unchanged), file `tests/pre-commit-sh.test.ts`.
+  - S76 (c): added the PL-E02 cell to the `it.each` (same cell as S43; `gitWrapper(repo, 'show :range.json', 'fail')`, `wrapper.matched()` asserted). Green on first run: the behaviour was already implemented in the wave (readIndexPrimaryLocale throws PL-E02 `unknown`; the hook ends at O3 before the generator), this only fills the plan cell that was missed. It can fail: if the validator did not read the index, the wrapper would catch the generator's `--staged` read and the empty-`--staged` assertion or `matched()` would go red. `-t "S76 \(c\)"`: 7 passed (6 + 1).
+  - H23: restored the removed `validatorLog()` + `readRecord(log)` assertion (brief `platform/<P>/challenge/old-chall/index.md` reaches the validator) and added the declaration path `platform/challenge/old-chall/challenge.yaml`. Green on first run: a restored assertion, behaviour unchanged. It can fail if the hook stops passing un-retired paths to the validator (`toContain` goes red). `-t "H23"`: 2 passed (en, zh-TW); the `readRecord(validator|log)` count went 9 to 11.
+  - No file added to the index; no commit.

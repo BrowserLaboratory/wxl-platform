@@ -1,18 +1,7 @@
 ---
 title: 僅限員工
-number: 2
 layout: challenge
-difficulty: easy
-category: web
-backend: flask
-app: app.py
-packages: [ flask ]
-tools: [ browser, network, repeater, code ]
-source_visible: false
-date: 2026-08-17T16:21:14.557Z
-tags: [ sql, injection, flask, sqlite ]
 description: 針對 Corkboard 的黑箱滲透測試委託。這套內部公佈欄系統宣稱，管理後台只有帶著管理者旗標的帳號打得開。
-wasmModule: /challenge/staff-only/runtime.wasm
 ---
 
 # 僅限員工
