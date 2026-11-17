@@ -1,76 +1,103 @@
 /**
- * Every challenge in every locale's list (spec 0008, seam S4, G7).
+ * Every challenge in every locale's list (0010-S17; D37-D44, L-§4.1-L-§4.3).
  *
- * Both content loaders read both locale trees and hand every brief here with their own locale.
- * A challenge is keyed by its slug, its directory name. The list takes the brief in its own
- * locale when there is one, and otherwise borrows the brief the challenge has; `locale` names the
- * locale of the brief used, which is the locale of the page `url` opens. A field the used brief
- * leaves out takes the list locale's default. `id` is the English brief's frontmatter `id`, else
- * the Traditional Chinese brief's, else the 1-based position in one shared order — the English
- * briefs in the order given, then challenges with only a Traditional Chinese brief, by slug — so
- * both lists hold the same challenges with the same `id`s, in the same order, whichever order the
- * loader lists the two trees in.
+ * The loader reads the briefs and the declarations and hands them here. A challenge is keyed by
+ * its slug, its directory name, and is listed exactly when it has a brief in the primary locale's
+ * folder (D38). A brief supplies `title` and `description`; the challenge's declaration supplies
+ * `number`, `difficulty`, `category`, `date` and `tags` (D37). `id` is the 1-based position in one
+ * slug order shared by every list (D41).
  *
- * No VitePress import: the loaders run inside the build, and this has to be importable by tests.
+ * No VitePress import: the loader runs inside the build, and this has to be importable by tests.
  */
-import type { ChallengeData, ChallengeLocale as Locale } from './challenges.data'
+import type { ChallengeData, ChallengeLists } from './challenges.data'
+import type { Locale } from '../../.vitepress/locales'
+import { declarationReadError, type DeclarationResult } from '../../.vitepress/challenge/declaration'
+import en from '../../.vitepress/theme/i18n/messages/en.json'
+import zhTW from '../../.vitepress/theme/i18n/messages/zh-TW.json'
 
-/** One challenge brief as a content loader gives it: its base-less page URL and its frontmatter. */
-export interface ChallengeBrief {
+/** The string tables the defaults are read from (D42); a locale without one never reaches a default. */
+const TABLES: Record<Locale, { challenge_list: { default_title: string; default_category: string } }> = {
+  en,
+  'zh-TW': zhTW,
+}
+
+/** Read only when a field needs its default, so a locale with no string table works when none is needed. */
+const defaultOf = (locale: Locale, key: 'default_title' | 'default_category'): string => TABLES[locale].challenge_list[key]
+
+/** A value when it is a string, else undefined: YAML reads `title: 2048` as a number. */
+const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
+
+/** One challenge brief as the loader gives it (L-§4.3). */
+export interface BriefInput {
+  locale: Locale
+  slug: string
+  /** The page-list entry of the brief's source path: base-less, with a trailing slash (D39). */
   url: string
   frontmatter: Record<string, unknown>
 }
 
-/** What a list shows for a field the brief leaves out, in the list's own locale. */
-const DEFAULTS: Record<Locale, { title: string; category: string }> = {
-  en: { title: 'Web exploitation challenge', category: 'General' },
-  'zh-TW': { title: '網站攻防挑戰', category: '綜合' },
+export type DeclarationRead = DeclarationResult
+
+export interface MergeInput {
+  briefs: readonly BriefInput[]
+  declarations: ReadonlyMap<string, DeclarationRead>
+  locales: readonly Locale[]
+  primary: Locale
 }
 
-/** The locale tree a brief's page is in, and its slug: `/zh-TW/challenge/<slug>/` or `/challenge/<slug>/`. */
-function placeOf(url: string): { locale: Locale; slug: string } {
-  const segments = url.replace(/\.html$/, '').split('/').filter((s) => s !== '')
-  return { locale: segments[0] === 'zh-TW' ? 'zh-TW' : 'en', slug: segments[segments.length - 1] ?? '' }
+/** A date as the list shows it: a string `Date.parse` accepts as written, a `Date` as ISO text, else null. */
+function dateOf(value: unknown): string | null {
+  if (typeof value === 'string') return Number.isFinite(Date.parse(value)) ? value : null
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString()
+  return null
 }
 
-/** A frontmatter value when it is a string, else undefined: YAML reads `title: 2048` as a number. */
-const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
-
-function toData(brief: ChallengeBrief, locale: Locale, listLocale: Locale, id: number | string): ChallengeData {
-  const fm = brief.frontmatter
-  // Fields the list searches and sorts as text take the default when they are not strings: one
-  // tree's brief now reaches both lists, so a stray number would break both (stage 7, S-1).
+/**
+ * One list entry, built field by field from the two sources of L-§4.2 and never by spreading
+ * either (D37, Y113): the brief gives `title`, `description`, `locale` and `url`; the declaration
+ * gives the rest. `number` is the declared number or nothing, never a position (a handout prints it).
+ */
+function toData(brief: BriefInput, declaration: Record<string, unknown>, id: number, listLocale: Locale): ChallengeData {
   return {
     id,
-    // Read from frontmatter and never derived: a number is what a handout prints.
-    number: typeof fm.number === 'number' ? fm.number : undefined,
-    title: text(fm.title) ?? DEFAULTS[listLocale].title,
+    number: typeof declaration.number === 'number' ? declaration.number : undefined,
+    title: text(brief.frontmatter.title) ?? defaultOf(listLocale, 'default_title'),
     url: brief.url,
-    locale,
-    difficulty: (fm.difficulty as ChallengeData['difficulty']) ?? 'mystery',
-    category: text(fm.category) ?? DEFAULTS[listLocale].category,
-    date: (fm.date as string | undefined) ?? null,
-    tags: Array.isArray(fm.tags) ? fm.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-    description: text(fm.description) ?? '',
+    locale: brief.locale,
+    difficulty: text(declaration.difficulty) ?? 'mystery',
+    category: text(declaration.category) ?? defaultOf(listLocale, 'default_category'),
+    date: dateOf(declaration.date),
+    tags: Array.isArray(declaration.tags) ? declaration.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    description: text(brief.frontmatter.description) ?? '',
   }
 }
 
-/** The list for `listLocale`, from every brief of both locale trees. */
-export function mergeLocaleChallenges(briefs: readonly ChallengeBrief[], listLocale: Locale): ChallengeData[] {
-  const bySlug = new Map<string, Partial<Record<Locale, ChallengeBrief>>>()
-  const englishOrder: string[] = []
-  for (const brief of briefs) {
-    const { locale, slug } = placeOf(brief.url)
-    const entry = bySlug.get(slug) ?? {}
-    entry[locale] = brief
-    bySlug.set(slug, entry)
-    if (locale === 'en') englishOrder.push(slug)
+/**
+ * The declaration of a listed challenge, or the D56 error: a listed challenge (it has a primary
+ * brief) whose declaration is missing from `declarations` or unreadable fails the merge, with the
+ * brief path of the primary locale. The read of an unlisted challenge is never looked at.
+ */
+function declarationOf(primaryBrief: BriefInput, declarations: ReadonlyMap<string, DeclarationRead>): Record<string, unknown> {
+  const read = declarations.get(primaryBrief.slug)
+  if (read?.ok) return read.value
+  throw declarationReadError(`${primaryBrief.locale}/challenge/${primaryBrief.slug}/index.md`, primaryBrief.slug, read?.reason ?? 'absent')
+}
+
+export function mergeLocaleChallenges({ briefs, declarations, locales, primary }: MergeInput): ChallengeLists {
+  const bySlug = new Map<string, Map<Locale, BriefInput>>()
+  for (const b of briefs) {
+    const entry = bySlug.get(b.slug) ?? new Map<Locale, BriefInput>()
+    entry.set(b.locale, b)
+    bySlug.set(b.slug, entry)
   }
-  const chineseOnly = [...bySlug.keys()].filter((slug) => !bySlug.get(slug)!.en).sort()
-  return [...englishOrder, ...chineseOnly].map((slug, index) => {
-    const entry = bySlug.get(slug)!
-    const id = (entry.en?.frontmatter.id ?? entry['zh-TW']?.frontmatter.id ?? index + 1) as number | string
-    const used: Locale = entry[listLocale] ? listLocale : listLocale === 'en' ? 'zh-TW' : 'en'
-    return toData(entry[used]!, used, listLocale, id)
-  })
+  // UTF-16 code unit order (the default comparison, not localeCompare): one order, every list (D41).
+  const listed = [...bySlug.keys()].filter((slug) => bySlug.get(slug)!.has(primary)).sort()
+  const lists = {} as ChallengeLists
+  for (const locale of locales) {
+    lists[locale] = listed.map((slug, index) => {
+      const own = bySlug.get(slug)!
+      return toData((own.get(locale) ?? own.get(primary))!, declarationOf(own.get(primary)!, declarations), index + 1, locale)
+    })
+  }
+  return lists
 }

@@ -7,6 +7,10 @@
  *   pnpm redirects:generate           # rewrite platform/public/_redirects
  *   node --experimental-strip-types scripts/generate-redirects.ts --staged --root <top level>
  *                                     # print the staged snapshot's file (the pre-commit hook)
+ *   node --experimental-strip-types scripts/generate-redirects.ts --describe-untracked <file> --root <top level>
+ *                                     # print the hook's W4a/W4b lines for the folders listed in <file>
+ *   node --experimental-strip-types scripts/generate-redirects.ts --challenge-trees
+ *                                     # print the hook's trigger paths, one per line (internal)
  *
  * The file used to be hand-edited. Nothing then kept it in step with the
  * challenge tree, and its contents are a public commitment — the paths in it
@@ -20,13 +24,20 @@
  * `platform/<locale>/challenge/<slug>/index.md`.
  *
  * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every commit that carries a
- * change at a watched path. It reads the index slugs (`indexSlugs`); the hook has already put
- * the staged snapshot in the working tree under `platform/`, but ignored directories stay on
- * disk, so a file counts only when git's index lists it. The output goes to stdout; the hook
- * writes and stages it only once generation succeeded.
+ * change at a watched path. It decides what exists from the index alone: `git ls-files` for the
+ * paths (`indexTrees`) and the index's `range.json` for `P` (`readIndexPrimaryLocale`, D67, D114).
+ * The working tree, in which the hook has put the staged snapshot under `platform/`, supplies only
+ * the declaration contents; ignored directories stay on disk, so a file counts only when git's index
+ * lists it. The briefs the index holds are checked first (`briefFaults`, D64): a fault prints one
+ * `[pre-commit] ✗ …` line each (W6a-W6d) and the remedy once (W6r) to stderr, exits 1 and writes
+ * nothing to stdout. Otherwise the file goes to stdout; the hook writes and stages it only once
+ * generation succeeded.
+ *
+ * `--describe-untracked <file>` words the hook's W4a and W4b for the untracked folders the hook
+ * listed in <file> (NUL separated); `--challenge-trees` lists the paths the hook watches.
  */
 
-import { writeFileSync, existsSync, statSync, readdirSync } from 'node:fs'
+import { writeFileSync, existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -39,8 +50,8 @@ import {
 } from './challenge-numbers.ts'
 import { challengePagePath, SLUG_GRAMMAR } from '../.vitepress/challenge/shortLink.ts'
 import { DEFAULT_PRIMARY_LOCALE, LOCALES, LOCALE_ENGLISH_NAMES, type Locale } from '../.vitepress/locales.ts'
-import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
-import { checkSourceLayout, classifySourcePath } from '../.vitepress/source-layout.ts'
+import { readIndexPrimaryLocale, readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { checkSourceLayout, classifySourcePath, legacyPageLine } from '../.vitepress/source-layout.ts'
 import { jsonStringifyEscaped } from '../.vitepress/layout-error.ts'
 
 /**
@@ -305,7 +316,15 @@ function formatRules(rows: ReadonlyArray<[string, string]>): string[] {
  * also called on index snapshots and by guards (D19).
  */
 export function generateRedirects(root: string, options: GenerateOptions = {}): string {
-  const primary = readPrimaryLocale(join(root, 'range.json'))
+  return generateFor(root, readPrimaryLocale(join(root, 'range.json')), options)
+}
+
+/**
+ * `generateRedirects` for a primary locale the caller has read: the full mode reads it from the
+ * working tree's `range.json`, `--staged` from the index's (D67, D114). Internal, so the exported
+ * signature carries no seam parameter.
+ */
+function generateFor(root: string, primary: Locale, options: GenerateOptions): string {
   const numeric = numericRules(root, primary, options)
   // Slug rules: one per form, after every numbered rule, at the form locale's page (D59). A slug
   // rule cannot know whether the page exists; the site's not-found handling takes a missing one.
@@ -386,13 +405,20 @@ export function indexTrees(paths: readonly string[]): IndexTrees {
 }
 
 /**
- * The index slugs of `root`'s repository, per tree (`declaration` and each locale), the input of
- * the brief-fault check (D64) and of the `--staged` mode's `includeSlug` (D67). git is run in
+ * Every path `git ls-files -z -- platform/` lists in `root`'s repository, read once. git runs in
  * `root` with the caller's environment, so inside a hook it reads the index git handed it.
  */
-export function indexSlugs(root: string): Map<'declaration' | Locale, Set<Slug>> {
+export function indexPaths(root: string): string[] {
   const out = execFileSync('git', ['ls-files', '-z', '--', 'platform/'], { cwd: root, encoding: 'utf8' })
-  return indexTrees(out.split('\0').filter((p) => p !== '')).slugs
+  return out.split('\0').filter((p) => p !== '')
+}
+
+/**
+ * The index slugs of `root`'s repository, per tree (`declaration` and each locale), the input of
+ * the brief-fault check (D64) and of the `--staged` mode's `includeSlug` (D67).
+ */
+export function indexSlugs(root: string): Map<'declaration' | Locale, Set<Slug>> {
+  return indexTrees(indexPaths(root)).slugs
 }
 
 /** A brief fault (S-§4.7). `present` and `missing` are repository-relative paths. */
@@ -442,6 +468,67 @@ export function briefFaults(trees: IndexTrees, primary: Locale): BriefFault[] {
   )
 }
 
+// ─── The hook's brief-fault lines (S-§4.5: W6a–W6d, W6r) ───────────────────────
+
+/** The locale a brief path `platform/<L>/challenge/<slug>/index.md` sits under. */
+function localeOfBrief(path: string): Locale {
+  const locale = LOCALES.find((l) => l === path.split('/')[1])
+  if (locale === undefined) throw new Error(`not a brief path: ${path}`)
+  return locale
+}
+
+/** One fault as the hook prints it (W6a–W6d), without the hook's `[pre-commit] ` prefix. */
+export function briefFaultLine(fault: BriefFault, primary: Locale): string {
+  const names = LOCALE_ENGLISH_NAMES
+  const tail = 'so CI would fail this commit.'
+  if (fault.kind === 'old-layout') return `✗ ${legacyPageLine(fault.present)}`
+  if (fault.kind === 'missing-declaration') {
+    const dir = fault.present.slice(0, -'index.md'.length)
+    return `✗ ${dir} is a ${names[localeOfBrief(fault.present)]} brief, but the index holds no challenge declaration ${fault.missing}, ${tail}`
+  }
+  const primaryBrief = `${names[primary]} brief ${fault.missing}, the primary locale's`
+  if (fault.present.endsWith('challenge.yaml')) {
+    return `✗ ${fault.present} declares a challenge, but the index holds no ${primaryBrief}, ${tail}`
+  }
+  const dir = fault.present.slice(0, -'index.md'.length)
+  return `✗ ${dir} is a ${names[localeOfBrief(fault.present)]} brief, but the index holds no ${primaryBrief}, ${tail}`
+}
+
+/**
+ * W4a and W4b (S-§4.5, 0010-S28): one hook line for each untracked folder directly under a challenge
+ * tree, without the hook's `[pre-commit] ` prefix. `dirs` are repository-relative paths ending in
+ * `/`. The declaration folder and the primary locale's brief folder are left out of the file
+ * (W4a); another locale's brief folder is not used, and its short links open the primary locale's
+ * page (W4b). A path that is no such folder, or whose locale is not on the list, gets no line.
+ */
+export function untrackedLines(dirs: readonly string[], primary: Locale): string[] {
+  const lines: string[] = []
+  const include = 'To include it, git add it and commit again.'
+  for (const dir of dirs) {
+    const parts = dir.replace(/\/$/, '').split('/')
+    if (parts[0] !== 'platform') continue
+    if (parts.length === 3 && parts[1] === 'challenge') {
+      lines.push(`${dir} is untracked, so _redirects leaves it out. ${include}`)
+      continue
+    }
+    const locale = LOCALES.find((l) => l === parts[1])
+    if (locale === undefined || parts.length !== 4 || parts[2] !== 'challenge') continue
+    lines.push(
+      locale === primary
+        ? `${dir} is untracked, so _redirects leaves it out. ${include}`
+        : `${dir} is untracked, so _redirects does not use it: its challenge's ${LOCALE_ENGLISH_NAMES[locale]} short links open the ${LOCALE_ENGLISH_NAMES[primary]} page, if there is one. ${include}`,
+    )
+  }
+  return lines
+}
+
+/** W6r, printed once after the fault lines: how a challenge is deleted, renamed or retired. */
+const BRIEF_FAULT_REMEDY = [
+  '  A challenge is platform/challenge/<slug>/ and its briefs under platform/<locale>/challenge/<slug>/: delete, rename or retire them together.',
+  '  To retire one, move platform/challenge/<slug>/ to .archive/challenge/<slug>/ and delete its briefs in the same commit (git rm -r platform/<locale>/challenge/<slug>/).',
+  '  If a part exists but is not staged yet, git add it. Nothing was changed.',
+]
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const __filename_ = fileURLToPath(import.meta.url)
@@ -450,13 +537,35 @@ const isDirectRun = process.argv[1] && (
   process.argv[1].endsWith('generate-redirects.js')
 )
 if (isDirectRun) {
-  const { values } = parseArgs({ options: { staged: { type: 'boolean' }, root: { type: 'string' } } })
+  const { values } = parseArgs({
+    options: {
+      staged: { type: 'boolean' },
+      root: { type: 'string' },
+      'describe-untracked': { type: 'string' },
+      'challenge-trees': { type: 'boolean' },
+    },
+  })
   const root = values.root !== undefined ? resolve(values.root) : resolve(dirname(__filename_), '..')
   try {
-    if (values.staged) {
-      const slugs = indexSlugs(root)
+    if (values['challenge-trees']) {
+      // The hook's trigger paths (S-q6): the declaration tree and each listed locale's brief tree.
+      const trees = [['platform', 'challenge'], ...LOCALES.map((locale) => ['platform', locale, 'challenge'])]
+      for (const tree of trees) console.log(`${tree.join('/')}/`)
+    } else if (values['describe-untracked'] !== undefined) {
+      // The hook's list of untracked folders, NUL separated; P is the index's (D114).
+      const dirs = readFileSync(values['describe-untracked'], 'utf8').split('\0').filter((d) => d !== '')
+      for (const line of untrackedLines(dirs, readIndexPrimaryLocale(root))) console.error(`[pre-commit] ${line}`)
+    } else if (values.staged) {
+      const primary = readIndexPrimaryLocale(root)
+      const trees = indexTrees(indexPaths(root))
+      const faults = briefFaults(trees, primary)
+      if (faults.length > 0) {
+        for (const fault of faults) console.error(`[pre-commit] ${briefFaultLine(fault, primary)}`)
+        for (const line of BRIEF_FAULT_REMEDY) console.error(`[pre-commit] ${line}`)
+        process.exit(1)
+      }
       process.stdout.write(
-        generateRedirects(root, { includeSlug: (slug, locale) => slugs.get(locale)?.has(slug) ?? false }),
+        generateFor(root, primary, { includeSlug: (slug, locale) => trees.slugs.get(locale)?.has(slug) ?? false }),
       )
     } else {
       if (!existsSync(join(root, 'platform', 'public'))) {

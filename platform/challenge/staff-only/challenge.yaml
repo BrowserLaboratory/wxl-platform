@@ -1,0 +1,11 @@
+number: 2
+difficulty: easy
+category: web
+backend: flask
+app: app.py
+packages: [ flask ]
+tools: [ browser, network, repeater, code ]
+source_visible: false
+date: 2026-08-17T16:21:14.557Z
+tags: [ sql, injection, flask, sqlite ]
+wasmModule: /challenge/staff-only/runtime.wasm
