@@ -4,7 +4,7 @@
  * Layered release-blocking gate for a wxl challenge.
  *
  * Layers:
- *   L1  structure + frontmatter lint (delegates to validateChallenge())
+ *   L1  declaration (challenge.yaml) + the primary locale's brief (delegates to validateChallenge())
  *   L2  content analysis + keygen + wasm-tools validate
  *   L3  Playwright e2e via tests/challenges/<slug>.spec.ts
  *   L4  blind solve via scripts/challenge-verify-blind.ts (opt-in, --blind)
@@ -20,9 +20,12 @@
 
 import { parseArgs } from 'node:util'
 import { existsSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { SiteLayoutError } from '../.vitepress/layout-error.ts'
+import type { Locale } from '../.vitepress/locales.ts'
 import { validateChallenge as l1Validate } from './challenge-validate.ts'
 import {
   analyzeChallenge,
@@ -264,28 +267,45 @@ function l4StatusFromExit(code: number): LayerStatus {
   return 'fail'
 }
 
+/**
+ * The primary locale P, read first by every runner that needs it (D123). A range.json fault
+ * (PL-E01..PL-E06) becomes the layer's failure, carrying the first line of the error.
+ */
+function readPrimary(projectRoot: string): { primary: Locale } | { fault: string } {
+  try {
+    return { primary: readPrimaryLocale(join(projectRoot, 'range.json')) }
+  } catch (err) {
+    if (err instanceof SiteLayoutError) return { fault: err.message.split('\n')[0] }
+    throw err
+  }
+}
+
 export function makeDefaultRunners(deps: Partial<DefaultRunnerDeps> = {}): LayerRunners {
   const projectRoot = deps.projectRoot ?? PROJECT_ROOT
   const spawn = deps.spawn ?? ((cmd, args, opts) => spawnSync(cmd, args, { encoding: 'utf8', ...opts }))
 
   return {
     L1: async (slug) => {
-      const indexPath = resolve(projectRoot, 'platform', 'challenge', slug, 'index.md')
-      if (!existsSync(indexPath)) {
-        return { layer: 'L1', status: 'fail', reason: `index.md not found: ${indexPath}` }
+      const read = readPrimary(projectRoot)
+      if ('fault' in read) return { layer: 'L1', status: 'fail', reason: read.fault }
+      const declarationPath = resolve(projectRoot, 'platform', 'challenge', slug, 'challenge.yaml')
+      if (!existsSync(declarationPath)) {
+        return { layer: 'L1', status: 'fail', reason: `challenge.yaml not found: ${declarationPath}` }
       }
-      const result = l1Validate(indexPath)
+      const result = l1Validate(projectRoot, slug, read.primary)
       if (result.allPassed) return { layer: 'L1', status: 'pass', reason: null }
       const failedLabels = result.checks.filter((c) => !c.passed).map((c) => c.label).join(', ')
       return { layer: 'L1', status: 'fail', reason: `validate failed: ${failedLabels}` }
     },
 
     L2: async (slug) => {
-      const indexPath = resolve(projectRoot, 'platform', 'challenge', slug, 'index.md')
-      if (!existsSync(indexPath)) {
-        return { layer: 'L2', status: 'fail', reason: `index.md not found: ${indexPath}` }
+      const read = readPrimary(projectRoot)
+      if ('fault' in read) return { layer: 'L2', status: 'fail', reason: read.fault }
+      const declarationPath = resolve(projectRoot, 'platform', 'challenge', slug, 'challenge.yaml')
+      if (!existsSync(declarationPath)) {
+        return { layer: 'L2', status: 'fail', reason: `challenge.yaml not found: ${declarationPath}` }
       }
-      const challenges = discoverForAnalyze(resolve(projectRoot, 'platform', 'challenge'), slug)
+      const challenges = discoverForAnalyze(projectRoot, read.primary, slug)
       if (challenges.length === 0) {
         return { layer: 'L2', status: 'fail', reason: `analyze could not discover slug ${slug}` }
       }
