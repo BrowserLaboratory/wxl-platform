@@ -40,12 +40,12 @@ export const NUMBER_PAD_WIDTH = 3
 export const SITE_ORIGIN = 'https://wxl.browserlab.online'
 
 /**
- * Whether a frontmatter value is a usable challenge number.
+ * Whether a value is a usable challenge number, as declared in `challenge.yaml`.
  *
  * A safe integer (at most `Number.MAX_SAFE_INTEGER`, so `1e21` and `2 ** 53` are refused: D62)
  * and at least one. A string is rejected even when it spells a
  * number, because `"007"` is the padded URL spelling and is exactly what gets
- * copied into frontmatter by mistake — accepting it would let two challenges
+ * copied into the declaration by mistake — accepting it would let two challenges
  * hold `7` and `"007"` and pass a uniqueness check.
  */
 export function isChallengeNumber(value: unknown): value is number {
@@ -59,7 +59,8 @@ export function padChallengeNumber(n: number): string {
 
 /**
  * The locale a link is built in: a short link's locale segment (`/en/`, `/zh-TW/`), which every
- * short link carries; and for a page URL, `/zh-TW` before the page path or nothing for English.
+ * short link carries; and for a page URL the locale of the page, which carries its own segment
+ * unless it is the range's primary locale, whose pages carry none (D68, `challengePagePath`).
  */
 export type ShortLinkLocale = Locale
 
@@ -119,12 +120,18 @@ export interface ChallengeLink {
  * to as given, not normalised. The link is built in `locale` whatever the mode; which locale
  * that is, is the caller's: `ShortLinkShare` passes its list's or page's locale in short mode
  * and the entry page's in page mode (spec 0008, F10).
+ *
+ * `primary` is the range's primary locale `P`, passed by the caller because this module may not
+ * read the build's constants. Only page mode looks at it: the page's path is
+ * `challengePagePath(slug, locale, primary)` (D68, S54), so with P = zh-TW a zh-TW entry's URL
+ * has no locale segment and an en entry's carries `/en`. A short link is the same under either P.
  */
 export function challengeLink(
   mode: LinkMode,
   n: number | undefined,
   slug: string | undefined,
   locale: ShortLinkLocale,
+  primary: Locale,
   origin: string = SITE_ORIGIN,
 ): ChallengeLink | null {
   if (!isChallengeNumber(n)) return null
@@ -132,6 +139,6 @@ export function challengeLink(
     return { url: shortLinkUrl(n, locale, origin), display: shortLinkDisplay(n, locale, origin) }
   }
   if (slug === undefined || !SLUG_GRAMMAR.test(slug)) return null
-  const url = `${origin}${locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/${slug}/`
+  const url = `${origin}${challengePagePath(slug, locale, primary)}`
   return { url, display: url.replace(SCHEME, '') }
 }

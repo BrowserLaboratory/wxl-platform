@@ -27,14 +27,15 @@ import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../.
 // consequences, each reproduced against a throwaway copy of the worktree:
 //
 //   CAUGHT
-//     a target's prefix directory renamed or deleted (`platform/challenge/`)
+//     a target's page directory renamed or deleted (`platform/<locale>/challenge/`)
 //     a challenge directory left without an `index.md`
-//     the English target prefix's directory holding no challenges at all
-//       (a Traditional Chinese one may be missing or empty, see below)
-//     a Traditional Chinese page whose root-locale counterpart is missing
+//     the primary locale's target directory holding no challenges at all
+//       (a translation's directory may be missing or empty, see below)
+//     a translation's brief whose primary-locale brief is missing
+//       (`briefFaults`: `missing-primary`, D64)
 //     a rule that is neither a parameterised classroom link nor a numbered one
 //     a challenge in git's index without its four numbered rules, or with a
-//       Traditional Chinese rule at a page its tree does not track
+//       rule at a translation's page its tree does not track
 //
 // The file is now generated from the challenge tree, so "a rule added to,
 // removed from, or edited in `_redirects`" moved out of this file: it is caught
@@ -53,7 +54,7 @@ import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../.
 //       been printed.
 //       The numbered rules are the answer to this one, and they answer it by
 //       not being derived from the name at all: `/c/001` follows the challenge
-//       through a rename because the number is written into its frontmatter.
+//       through a rename because the number is written into its `challenge.yaml` (D62).
 //       That is a reason to hand out the numbered link, not a check this file
 //       performs — a printed *slug* link still breaks on a rename, silently,
 //       and still nothing here can see it.
@@ -81,31 +82,34 @@ import { readChallengeNumber, padChallengeNumber, isChallengeNumber } from '../.
 //
 // HOW TARGETS ARE RESOLVED
 //
-// `.vitepress/config.mts` sets `srcDir` to `platform`, so the site path
-// `/<prefix>/<slug>/` comes from `platform/<prefix>/<slug>/index.md`. Resolving
-// against the source tree rather than `.vitepress/dist` keeps this runnable
-// under `pnpm test --run`, which does not build first — a build costs three
-// `wasm-pack build` invocations. Introducing a `rewrites` mapping to the
-// VitePress config invalidates this correspondence, and whoever introduces one
-// has to restate how targets are resolved.
+// `.vitepress/config.mts` sets `srcDir` to `platform`, and a rewrite maps the primary
+// locale's pages to the output root. A target's page path is therefore resolved
+// back to its source by the reverse of `challengePagePath` (D68): a path with no
+// locale segment is the primary locale's `platform/<P>/challenge/<slug>/index.md`,
+// one with a locale segment is that locale's. Resolving against the source tree
+// rather than `.vitepress/dist` keeps this runnable under `pnpm test --run`, which
+// does not build first — a build costs three `wasm-pack build` invocations.
+// Changing the `rewrites` mapping invalidates this correspondence, and whoever
+// changes it has to restate how targets are resolved.
 //
 // The slug set is derived per rule from that rule's own target directory and is
-// never pooled across rules. `platform/zh-TW/challenge/` is a subset of
-// `platform/challenge/`, and the two are equal whenever every challenge has been
-// translated; a pooled set would demand a Traditional Chinese page for a
-// combination that is not supposed to exist yet. The subset is not required to
-// be proper — equality is a permitted state, not a signal that the per-rule
-// derivation has collapsed into pooling.
+// never pooled across rules. A translation's directory is a subset of the
+// primary locale's, and the two are equal whenever every challenge has been
+// translated; a pooled set would demand a translated page for a combination that
+// is not supposed to exist yet. The subset is not required to be proper —
+// equality is a permitted state, not a signal that the per-rule derivation has
+// collapsed into pooling.
 //
-// Subset, though, is directional and is asserted. A translated page whose
-// root-locale counterpart is missing makes `/zh/c/<slug>` resolve while
-// `/c/<slug>` 404s — an asymmetry between the two short links that nobody
-// declared, and the one cross-rule claim the per-rule derivation would
-// otherwise leave unguarded.
+// Subset, though, is directional and is asserted: only the primary locale's
+// directory is required (D64, D127). A translated brief whose primary-locale
+// brief is missing is `briefFaults`' `missing-primary`: it would make the
+// translation's short link resolve while the primary locale's 404s — an
+// asymmetry between the short links that nobody declared, and the one cross-rule
+// claim the per-rule derivation would otherwise leave unguarded.
 //
-// A Traditional Chinese target directory may be missing or empty: translation is
-// optional (spec 0008, G2), and a range can drop every translation. The English
-// one may not.
+// A translation's target directory may be missing or empty: translation is
+// optional (spec 0008, G2), and a range can drop every translation. The primary
+// locale's may not.
 //
 // The rule set is not written out here: the file grows four rules with every
 // challenge, so an enumerated expectation would have to be edited on every new

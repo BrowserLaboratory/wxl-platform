@@ -655,6 +655,52 @@ describe('MergedNav in page mode with a non-root base (N04)', () => {
   })
 })
 
+// S55: under P = zh-TW the nav's two controls follow the page's locale and the primary locale's
+// pages have no segment (D68). The page's localeIndex is 'root' for zh-TW (P) and 'en' for the
+// translation; `mockLocaleIndex` is set directly, not through `mountIn`, which assumes P = en.
+// (localeIndex, props locale, short path, page path)
+describe.each([
+  ['root', 'zh-TW', '/zh-TW/c/001', '/challenge/door-is-open/'],
+  ['en', 'en', '/en/c/001', '/en/challenge/door-is-open/'],
+] as const)('MergedNav copy controls under P = zh-TW, localeIndex %s (S55, D68)', (localeIndex, locale, shortPath, pagePath) => {
+  const props = { ...defaultProps, number: 1, slug: 'door-is-open' }
+  const mountUnderZh = (runtime: 'en' | 'zh-TW') => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = localeIndex
+    return mount(MergedNav, { props, global: { plugins: [makeI18n(runtime)] } })
+  }
+
+  it('passes the page locale as both locale and entryLocale to both controls', () => {
+    const controls = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en').findAllComponents(ShortLinkShare)
+    expect(controls).toHaveLength(2)
+    for (const control of controls) {
+      expect(control.props()).toEqual({ number: 1, slug: 'door-is-open', locale, entryLocale: locale })
+    }
+  })
+
+  it('shows and copies the short link in the page\'s locale, from both controls', async () => {
+    mockMode.value = 'short'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en')
+    expect(wrapper.findAll('[data-short-link]').map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${shortPath}`, `${DISPLAY_ORIGIN}${shortPath}`])
+    for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
+    expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${shortPath}`], [`${SITE_ORIGIN}${shortPath}`]])
+  })
+
+  it('shows and copies the page URL under a non-root base, the base not in the copied value', async () => {
+    mockMode.value = 'page'
+    mockBase.value = '/my-range'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en')
+    expect(wrapper.findAll('[data-short-link]').map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${pagePath}`, `${DISPLAY_ORIGIN}${pagePath}`])
+    for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
+    expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${pagePath}`], [`${SITE_ORIGIN}${pagePath}`]])
+    for (const [url] of writeText.mock.calls as unknown as [string][]) expect(url).not.toContain('/my-range')
+  })
+})
+
 // After C1 a solved challenge that is opened again starts a FRESH attack session and
 // keeps the earlier one, so the page a returning learner lands on is indistinguishable
 // from a first attempt. This badge is the only thing on it that says otherwise.

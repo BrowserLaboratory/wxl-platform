@@ -35,6 +35,7 @@ import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { challengeLink, type ShortLinkLocale } from '../../challenge/shortLink'
 import { linkMode } from '../linkMode'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 // One control, used in the challenge list and beside the challenge title. A challenge has one
 // link per locale (spec 0008): the list and the nav each give the one in their own locale, so
@@ -47,7 +48,7 @@ import { linkMode } from '../linkMode'
 // the text rather than merely saying the copy did not work.
 
 const props = defineProps<{
-  /** The challenge's frontmatter number. Anything else renders nothing. */
+  /** The challenge's number, as declared in `challenge.yaml`. Anything else renders nothing. */
   number?: number | string | null
   /**
    * The challenge's slug, which the page URL is built from. Unused for a short link, so a
@@ -65,8 +66,9 @@ const props = defineProps<{
   locale: ShortLinkLocale
   /**
    * The locale of the challenge page this control's challenge opens: the entry's in the list, the
-   * page's own in the nav. Only the page URL follows it (spec 0008, F6, F10); a short link is in
-   * `locale`, whose redirect rule opens the page that exists.
+   * page's own in the nav. Only the page URL follows it (spec 0008, F6, F10): it carries this
+   * locale's segment unless this is the range's primary locale, whose pages have none (D68). A short
+   * link is in `locale`, whose redirect rule opens the page that exists.
    */
   entryLocale: ShortLinkLocale
 }>()
@@ -80,11 +82,12 @@ const mode = linkMode()
 /**
  * The link to show and copy, or null when there is none — a challenge without a number has no
  * link, and in page mode neither has one without a usable slug. A string number is converted
- * with `Number()` first. The short link is in `locale`, the page URL in `entryLocale`.
+ * with `Number()` first. The short link is in `locale`, the page URL in `entryLocale` and the
+ * primary locale's pages have no locale segment (D68).
  */
 const link = computed(() => {
   const raw = typeof props.number === 'string' ? Number(props.number) : props.number
-  return challengeLink(mode, raw ?? undefined, props.slug, mode === 'short' ? props.locale : props.entryLocale)
+  return challengeLink(mode, raw ?? undefined, props.slug, mode === 'short' ? props.locale : props.entryLocale, primaryLocale())
 })
 
 const display = computed(() => link.value?.display ?? '')

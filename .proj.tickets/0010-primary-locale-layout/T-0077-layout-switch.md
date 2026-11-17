@@ -2295,6 +2295,94 @@ P0 findings are handled; nothing else.
   failed (suite error), 112 skipped. The four carried failures are green.
 - git add by this segment: `platform/public/_redirects` only.
 
+### 2026-11-17 (parent, decisions on segment 4d's plan needs_user; 依使用者授權核准)
+
+Under the user's standing authorization quoted in the 2026-11-17 parent entry above (「授權：所有建議我都同意，權限都授權到
+兩個 epic 完成…executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」). Scope: the three questions and one
+side item segment 4d's planner raised; nothing else. Each follows the planner's recommendation.
+
+1. `challengeLink` gains a required `primary` parameter: `(mode, n, slug, locale, primary, origin = SITE_ORIGIN)`.
+   Approved. D68 and S54 make the page-mode address `challengePagePath(slug, entryLocale, P)`; `shortLink.ts` is shared
+   with Node build scripts and must not read a build constant, so the caller passes P. `ShortLinkShare`'s props do not
+   change; its one call site is updated in the same cycle; existing tests only gain the explicit `'en'` argument.
+2. S66 (the comments in `scripts/pre-commit.sh`) moves from segment 4d to segment 6. Approved. The row is neither
+   dropped nor shrunk; wave 4's file list has no `pre-commit.sh`, wave 6 rewrites the hook, and
+   `tests/pre-commit-sh.test.ts` is red at collection until then. Segment 6's scope in the orchestrator now names S66.
+3. S08 (0007's smoke row: the Traditional Chinese nav URL text is cut at 375×812), conditional on 4d's measurement.
+   Approved as recommended: if it is still green, leave it; if it turns red because the primary-locale address is now
+   6 characters shorter, retarget it to the translation-locale challenge page (the one with a locale segment), update
+   its title and comment, and keep it upstream-only with the same assertion (`scrollWidth > clientWidth`). If the
+   translation page is not cut at 375 either, the executor stops and reports; the assertion is not changed.
+4. Side item under S67: the comments that still say "frontmatter number" in `shortLink.ts`, `ShortLinkShare.vue` and
+   `ChallengeList.vue` are corrected to the declaration's (`challenge.yaml`) number in the same pass. Approved;
+   comment-only, in files S67 already edits.
+
+### 2026-11-17 (segment 4d)
+
+- Rows done, each with the red line seen before its production change (or the reason it was green first):
+  - 4d-0 (explicit `P = 'en'` mocks in `ShortLinkShare.test.ts` and `ShortLinkShare.mode-default.test.ts`): green first,
+    the component did not read `P` yet (2 files, 86 tests). Purpose: no test depends on the `zh-TW` fallback once 4d-1 lands.
+  - 4d-1 (D68 / S52 / S54, pure-function half): existing X1-X5, F9, L11, L20 and none cases gained the explicit `'en'`
+    argument; new describe "challengeLink in page mode follows the primary locale". Red before the change (the 5th argument
+    was read as the origin): `expected { url: 'zh-TW/challenge/s/', ... } to deeply equal { ... }` ((en, P = zh-TW)),
+    `expected { url: 'en/challenge/s/', ... }`. 19 reds in the file before, including the signature-coupled existing cases.
+    Then `challengeLink(mode, n, slug, locale, primary, origin = SITE_ORIGIN)` building the page branch with
+    `challengePagePath`; the one caller `ShortLinkShare.vue` passes `primaryLocale()`.
+  - S54 (ShortLinkShare half): green first (4d-1 changes signature and caller together). Mutation: the call passing a fixed
+    `'en'` reds 4 cases (`Expected: "wxl.browserlab.online/en/challenge/door-is-open/"` / `Received: ".../challenge/door-is-open/"`,
+    and `Expected ".../challenge/selected-excerpts/"` / `Received ".../zh-TW/challenge/selected-excerpts/"`); restored.
+  - S53 (short mode x list locale x entry, both P): red before the change, 6 cases: mount `expected [] to have a length of 1
+    but got +0` (English list, borrowed zh-TW entry, both P; the rewritten E3 case and its P = zh-TW mirror too) and SSR
+    `expected '<div class="max-w-screen-xl mx-auto p...' to contain 'wxl.browserlab.online/en/c/007'`. The zh-TW list with a
+    borrowed en entry was green first (0008 F3 behaviour), as predicted. Then `hasCopyControl`, the template `v-if`, the `mode`
+    constant and the `linkMode` import were removed from `ChallengeList.vue` (D48). 8 new cases (2 P x 2 lists x mount/SSR).
+  - S54 (ChallengeList half, N04 non-root base): green first (4d-1 fixed the shared function). New it.each, 6 rows (P = en gains
+    a borrowed row; P = zh-TW both lists, both entries), plus the deferred page-mode assertion in the P = zh-TW E3 mirror
+    (`${DISPLAY_ORIGIN}/challenge/zh-only/`). Mutation (the old hard-coded `zh-TW` line in `shortLink.ts`): 9 reds across the
+    three component files; restored.
+  - S55 (MergedNav, P = zh-TW, localeIndex 'root' and 'en', both controls, page mode with a base): green first. Mutation 1
+    (`locale` ignores `P`): 7 reds (new S55 cases and four existing A27/A28 cases); mutation 2 (hard-coded page line):
+    2 reds (the page-mode rows). Both restored.
+  - S56 (built site, page mode): `WXL_SMOKE_PAGES=1 pnpm docs:build`, then `playwright test --config
+    playwright.site.config.ts tests/site-smoke/site-smoke.spec.ts -g "copy control"` with the OLD `expectedUrlFor`:
+    37 passed, 6 failed, all the Traditional Chinese list cases (5 viewport cases of the layout group, 1 S09 case):
+    `Expected: "wxl.browserlab.online/en/challenge/door-is-open/"` / `Received: "wxl.browserlab.online/challenge/door-is-open/"`.
+    Then `pageUrlOf` uses `challengePagePath(slug, locale, PRIMARY)` and `expectedUrlFor` takes the row's locale from the
+    translation prefix, else `PRIMARY`. New describe S56 (one control per numbered challenge, both lists; the count read from
+    `challenge.yaml` files with a `number`). The same command afterwards: 45 passed (43 + the 2 new S56 cases). Mutation:
+    the old `path.includes('/zh-TW/')` line reds the S56 Traditional Chinese list case with the same Expected/Received; restored.
+  - S08 measurement (the conditional of the parent's decision 3): with P = zh-TW the Traditional Chinese challenge page's
+    URL text is still cut at 375x812 (the S08 case passed, not skipped). Left as is; no retarget, assertion untouched.
+  - S67, S64, S65, S68: comment-only. `shortLink.ts` (ShortLinkLocale and `challengeLink` comments state D68 and the
+    `primary` parameter; two "frontmatter" wordings now say the declaration), `ChallengeList.vue` (D48 comment; "frontmatter
+    number" -> declared `challenge.yaml` number), `ShortLinkShare.vue` (entryLocale prop comment D68; "frontmatter number"
+    corrected), `generate-redirects.ts` (D67 on `includeSlug`, D64/D67 on `indexSlugs`; `numericRules` and `FORMS` already
+    cite D58 and D57), `challenge-numbers.ts` (header says `challenge.yaml` D62; `RETIRED_TREE`, `nextChallengeNumber`,
+    `readLegacyRetiredNumber` cite D63), `redirects.test.ts` (header: CAUGHT list, HOW TARGETS ARE RESOLVED, subset
+    paragraphs, frontmatter wording; assertions untouched). Greps: 'nothing for English', 'English list has no short link',
+    'frontmatter number' in `.vitepress`/`scripts`: no output; `redirects.test.ts`: no 'root-locale', 'English target prefix',
+    'frontmatter'. The S68 comment says "four rules" still: it is the true count per challenge (S-§4.1), left as is.
+- Not done: S66 (moved to segment 6 by the parent's decision 2).
+- Reading chosen: the S53 loop's unnumbered row has the list's own locale; the test's fixtures build `url` with the
+  list's P by literal template (the entries' `url` is only echoed in `href`).
+- Commands (counts): `pnpm vitest run tests/unit/components tests/unit/layouts tests/unit/theme tests/unit/i18n
+  tests/unit/challenge/shortLink.test.ts tests/unit/site/redirects.test.ts tests/unit/site/redirects-generated.test.ts`:
+  47 files, 2215 tests passed. `pnpm vitest run tests/unit/site/redirects.test.ts tests/unit/site/redirects-generated.test.ts`:
+  165 passed (count unchanged). The site-smoke run above is Playwright chromium against `vitepress preview` of the
+  `WXL_SMOKE_PAGES=1` production build (the real built page, list and nav).
+- git add by this segment: none (no file created, nothing changed under `platform/`; `docs:build` left the tracked tree
+  unchanged).
+
+  - Deferred to stage 6 (P2, frozen rubric):
+    - `tests/site-smoke/site-smoke.spec.ts:986` (P2, confidence high): the new S56 describe was inserted between the S06 comment and the S06 describe, so the S06 comment now sits above the S56 block (S06 describe starts at about line 1011)
+    - `.vitepress/theme/components/ChallengeList.vue:111` (P2, confidence high): removing `hasCopyControl` and `mode` left their JSDoc block (the copy control's link, F3, F6, D48, D68) attached to nothing, directly before the next function's JSDoc, and one clause reads awkwardly
+    - `tests/site-smoke/site-smoke.spec.ts:1004` (P2, confidence medium): S56 asserts the row count equals the number of numbered declarations, so it assumes every challenge in the tree is numbered, stronger than the row's "one control per numbered challenge" (an unnumbered challenge shows a row with no control, E10, but would fail the rows assertion); upstream's tree is fully numbered, so it passes
+    - `scripts/generate-redirects.ts:147` (P2, confidence low): S64 lists the PARAMETERISED comment among those that must cite their D-number, but the `PARAMETERISED_SECTION` constant has no code comment citing D59 (only the slug-rules loop comment at line 310 does); the string is `_redirects` content, so the row's intent may already be met
+    - `tests/unit/site/redirects.test.ts:120` (P2, confidence medium): the S68 header rewrite still ends by attributing the per-challenge rule set to spec 0008 ("the four rules spec 0008 gives it (G1–G3)"); under 0010 D58 decides the rule set (inverting 0008 G8/G9); the count of four is right, the citation is stale; comment only, no assertion affected
+    - `tests/site-smoke/site-smoke.spec.ts:992` (P2, confidence medium): the S56 count `NUMBERED` keeps any declaration whose number has `typeof 'number'` (0, 1.5 and -1 included) instead of `isChallengeNumber`, the predicate that decides whether a control renders; test-strength hardening beyond the row's AC, the upstream tree holds only valid numbers
+    - `tests/site-smoke/site-smoke.spec.ts:1036` (P2, confidence low): the pre-existing S08 case skips through `realUpstreamDecision` with its own reason string, not through `upstreamOnlySkipReason` (D124 helper); untouched by this segment (measured only, per the parent's decision 3), noted for whoever owns B93/D124; it passed (not skipped) in the re-run
+  - Full suite (parallel run, JSON reporter): 804 suites, 6451 tests: 6330 passed, 9 failed, 112 skipped/pending; 8 failed suites (7 test files with failing tests plus `tests/pre-commit-sh.test.ts` failing at collection). All failures match allowed entries, so the non-parallel re-run was not needed and no flakes were observed. `tests/site-smoke` (Playwright) was not part of this vitest run.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
