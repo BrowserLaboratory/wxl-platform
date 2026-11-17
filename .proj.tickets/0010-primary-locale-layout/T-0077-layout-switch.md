@@ -3335,7 +3335,11 @@ Reviewed on 2026-11-17 with the project `security-review` skill (`.claude/skills
   `wrangler pages dev` (wrangler 4.123.0, the Pages runtime in local workerd; **not** Cloudflare's edge): the literal
   `//` forms and the raw backslash forms redirect off-site; the percent-encoded forms stay same-origin. Whether the
   edge normalises the path first is still unobserved (S61, stage 8).
-- **Not fixed in this stage.** D118 leaves the choice to the user ("no rule is changed without that choice"), so the
+- **Fixed after the user's choice** (commit `de88bfb`, segment SR1; D154, traceability revision 2.5): the user chose the
+  safe-by-construction rules in person on 2026-11-17. The parent re-ran S61's inputs and S60's addresses against the
+  fixed build under `wrangler pages dev`: no input gives an off-site `Location`; the old addresses still answer 302 to
+  their root pages; full suite 7268 passed, 0 failed. S61 is still to be run on the real preview at stage 8.
+- **How the choice was put.** D118 leaves the choice to the user ("no rule is changed without that choice"), so the
   parent stopped before stage 8 and put the three options to the user: the safe-by-construction rule set D118 names
   (the parent's recommendation), dropping the Cloudflare rule and relying on the not-found page's client-side strip
   (D28), or keeping R22 as written and letting S61 decide on the preview.
