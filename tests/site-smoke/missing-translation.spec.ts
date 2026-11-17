@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { PRIMARY, localePath } from './localePath'
+import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
 import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
 import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson } from '../__helpers__/upstreamDecision'
 
@@ -13,6 +13,9 @@ import { upstreamOnlySkipReason, readManifest, isGitWorkTree, hasRootRangeJson }
 // are published by a test build only (D49); the `beforeAll` below says so when they are not.
 
 const ROOT = process.cwd()
+
+/** T: the translation locale this suite drives (the first listed locale that is not the primary one). */
+const T: Locale = TRANSLATIONS[0]
 
 // L37 (D49, L-§4.5): the two smoke fixtures exist only in a test build, `WXL_SMOKE_PAGES=1 pnpm
 // docs:build`. Their URLs follow the build's primary locale (D54).
@@ -180,10 +183,14 @@ for (const { name, subject, requested, lands } of FALLBACKS) {
   }
 }
 
+// L-§4.7 last sentence (A17): a path under the translation locale's prefix with no page and no
+// counterpart is the not-found page, recognised by VitePress's NotFound component.
+const NO_PAGE = localePath(T, 'no-such-page')
+
 test('a path with no counterpart shows the not-found page, with no line', async ({ page }) => {
   await storeLocale(page, null)
-  await page.goto('/zh-TW/no-such-page')
-  await expect(page.getByText('PAGE NOT FOUND')).toBeVisible()
+  await page.goto(NO_PAGE)
+  await expect(page.locator('.NotFound')).toBeVisible()
   await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
   expect(await storedLocale(page)).toBeNull()
 })
@@ -242,15 +249,16 @@ test('the HTML as served already hides the built-in translation dropdown', async
 })
 
 test('a choice in the custom locale switcher on an article is stored, and Back returns (B1)', async ({ page }) => {
+  const start = localePath('zh-TW', 'guide/python')
   await storeLocale(page, 'zh-TW')
-  await page.goto('/zh-TW/guide/python')
+  await page.goto(start)
   await page.locator('[data-locale-switcher-toggle]').click()
   await page.locator('[data-locale-option="en"]').click()
-  await expect(page).toHaveURL(/\/guide\/python$/)
+  await expect.poll(() => pathnameOf(page)).toBe(localePath('en', 'guide/python'))
   expect(await storedLocale(page)).toBe('en')
   // A switcher navigation is a push (spec 0008, B1): the page it left is one Back away.
   await page.evaluate(() => history.back())
-  await expect(page).toHaveURL(/\/zh-TW\/guide\/python$/)
+  await expect.poll(() => pathnameOf(page)).toBe(start)
 })
 
 // Spec 0008, B2, B4, B5: on a page with no version in the chosen locale, the switcher stays — no
@@ -295,32 +303,32 @@ for (const { width, height } of BUILT_IN_MENUS) {
     const context = await browser.newContext({ viewport: { width, height } })
     const page = await context.newPage()
     await storeLocale(page, 'en')
-    await page.goto('/challenge/selected-excerpts/')
+    await page.goto(localePath('en', 'challenge/selected-excerpts/'))
     await hydrated(page)
     await page.locator('[data-locale-switcher-toggle]:visible').click()
     await page.locator('[data-locale-option="zh-TW"]:visible').click()
-    await expect(page).toHaveURL(/\/zh-TW\/challenge\/selected-excerpts\/$/)
+    await expect.poll(() => pathnameOf(page)).toBe(localePath('zh-TW', 'challenge/selected-excerpts/'))
     expect(await storedLocale(page)).toBe('zh-TW')
     await context.close()
   })
 }
 
 test('on the not-found page a choice with no counterpart is written and stays, with no line (B7)', async ({ page }) => {
-  await storeLocale(page, 'zh-TW')
-  await page.goto('/zh-TW/no-such-page')
+  await storeLocale(page, T)
+  await page.goto(NO_PAGE)
   await hydrated(page)
   await page.locator('[data-locale-switcher-toggle]:visible').click()
-  await page.locator('[data-locale-option="en"]:visible').click()
+  await page.locator(`[data-locale-option="${PRIMARY}"]:visible`).click()
   // "Stays" is an absence; give a navigation the time it would take before checking for it.
   await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
   await page.waitForTimeout(500)
-  expect(new URL(page.url()).pathname).toBe('/zh-TW/no-such-page')
+  expect(pathnameOf(page)).toBe(NO_PAGE)
   await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
-  expect(await storedLocale(page)).toBe('en')
+  expect(await storedLocale(page)).toBe(PRIMARY)
 })
 
 // Spec 0008, T-0054: the cold-load redirect goes only to a translation that exists, and names it
-// by its page-list entry; only a cold load of a published /zh-TW/ page writes the preference,
+// by its page-list entry; only a cold load of a published translation page writes the preference,
 // decided once the router has rendered it.
 
 /** Records every URL the page's own script puts in the address bar. */
@@ -379,33 +387,72 @@ for (const { name, url, pageLocale, stored } of COLD_LOADS) {
 }
 
 test('a cold load of an alias goes to the counterpart\'s list entry, and writes nothing', async ({ page }) => {
-  await storeLocale(page, null)
+  // The learner has stored the translation locale T explicitly (A8): the alias is the primary
+  // locale's list page, so its counterpart is T's list.
+  await storeLocale(page, T)
   // `/challenges.html` renders `challenges.md`; the target is its counterpart's entry. A guard,
   // not a red-before case: the router drops `.html` when it navigates, so the old URL-text target
   // looked the same here. A letter-case alias (`/Challenges`) is the not-found page on the built
   // site, not a page. The unit cases in initial-locale-redirect.test.ts tell the two targets apart.
-  await page.goto('/challenges.html')
-  await expect(page).toHaveURL(/\/zh-TW\/challenges$/)
+  await page.goto(`${localePath(PRIMARY, 'challenges')}.html`)
+  await expect.poll(() => pathnameOf(page)).toBe(localePath(T, 'challenges'))
   await hydrated(page)
-  expect(await storedLocale(page)).toBeNull()
+  expect(await storedLocale(page)).toBe(T)
 })
 
-test('a cold load of a published /zh-TW/ page stores zh-TW', async ({ page }) => {
-  await storeLocale(page, 'en')
-  await page.goto('/zh-TW/guide/')
+test('a cold load of a published translation page stores its locale', async ({ page }) => {
+  await storeLocale(page, PRIMARY)
+  await page.goto(localePath(T, 'guide/'))
   await hydrated(page)
-  await expect.poll(() => storedLocale(page)).toBe('zh-TW')
+  await expect.poll(() => storedLocale(page)).toBe(T)
+})
+
+// A15 (D29): the primary locale's pages are served without a prefix, so a path under `/<P>/` is
+// not a page; the arrival is a not-found one, and the page that exists at `/X` replaces it, with no
+// line, nothing written, and no second redirect after it.
+for (const stored of [null, T] as const) {
+  test(`a primary-locale page asked for under its own prefix lands on the page, with no line, stored ${stored ?? 'none'}`, async ({ page }) => {
+    await storeLocale(page, stored)
+    await recordNavigations(page)
+    await page.goto(`/${PRIMARY}/guide/python`)
+    const landed = localePath(PRIMARY, 'guide/python')
+    await expect.poll(() => pathnameOf(page)).toBe(landed)
+    await hydrated(page)
+    await page.waitForTimeout(500)
+    expect(pathnameOf(page)).toBe(landed)
+    await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+    expect(await storedLocale(page)).toBe(stored)
+  })
+}
+
+// A3: a cold load of a primary-locale page with a translation stored goes to its counterpart's
+// entry, and the query and the hash survive the trip.
+test('a cold load of a primary-locale page with a translation stored goes to its counterpart, query and hash kept', async ({ page }) => {
+  await storeLocale(page, T)
+  await page.goto(`${localePath(PRIMARY, 'guide/python')}?q=1#h`)
+  await expect
+    .poll(() => page.evaluate(() => location.pathname + location.search + location.hash))
+    .toBe(`${localePath(T, 'guide/python')}?q=1#h`)
+  await hydrated(page)
+  await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
+  expect(await storedLocale(page)).toBe(T)
 })
 
 // S-2: the not-found page for a path that is a published page — its chunk did not arrive — is a
-// failed load. The URL names a /zh-TW/ page, so only a decision taken after the router has
-// rendered can tell it is not one.
-test('a failed load of a /zh-TW/ page shows the not-found page and stores nothing', async ({ page }) => {
-  await storeLocale(page, 'en')
-  await page.route(/\/assets\/zh-TW_challenges\.md\.[^/]*\.js$/, (route) => route.abort())
-  await page.goto('/zh-TW/challenges')
-  await expect(page.getByText('PAGE NOT FOUND')).toBeVisible()
+// failed load. The URL names a translation page, so only a decision taken after the router has
+// rendered can tell it is not one (A5, A19, A25). VitePress names a chunk `<dir>_<page>.md.<hash>.js`.
+test('a failed load of a translation page shows the not-found page and stores nothing', async ({ page }) => {
+  await storeLocale(page, PRIMARY)
+  let intercepted = 0
+  await page.route(new RegExp(`/assets/${T}_challenges\\.md\\.[^/]*\\.js$`), (route) => {
+    intercepted += 1
+    return route.abort()
+  })
+  await page.goto(localePath(T, 'challenges'))
+  await expect(page.locator('.NotFound')).toBeVisible()
   await hydrated(page)
+  expect(intercepted).toBeGreaterThan(0)
   await expect(page.locator('[data-missing-translation]')).toHaveCount(0)
-  expect(await storedLocale(page)).toBe('en')
+  expect(await storedLocale(page)).toBe(PRIMARY)
+  expect(pathnameOf(page)).toBe(localePath(T, 'challenges'))
 })
