@@ -1,6 +1,6 @@
 ---
 name: wxl-verify
-description: Use when running the release-blocking gate for a wxl challenge (L1 frontmatter/structure, L2 content analysis + wasm-tools validate, L3 Playwright e2e) and auto-fixing failures. Shared by wxl-create and wxl-mutate as their hand-off target, and usable standalone after manual edits. Not for the L4 blind cross-check (use wxl-crosscheck).
+description: Use when running the release-blocking gate for a wxl challenge (L1 declaration/brief/structure lint, L2 content analysis + wasm-tools validate, L3 Playwright e2e) and auto-fixing failures. Shared by wxl-create and wxl-mutate as their hand-off target, and usable standalone after manual edits. Not for the L4 blind cross-check (use wxl-crosscheck).
 ---
 
 Run the layered `pnpm challenge:verify` gate for a challenge and, on failure, drive a bounded auto-fix loop with plain-text confirmation. This skill is the shared verification target that `wxl-create` and `wxl-mutate` hand off to, and it can be invoked directly after any manual edit. It uses only `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `WebFetch`, and confirms fixes through plain-text question blocks.
@@ -9,7 +9,7 @@ Run the layered `pnpm challenge:verify` gate for a challenge and, on failure, dr
 
 ## Overview
 
-`wxl-verify` owns the **Verify** verb: it runs the release-blocking gate and repairs failures. The gate has three layers — L1 (frontmatter / structure lint), L2 (content analysis + keygen + `wasm-tools validate`), L3 (Playwright e2e exploit). L4 (blind solve) is NOT run here — it belongs to `wxl-crosscheck`, which runs once at pipeline stage 8 before the challenge lands.
+`wxl-verify` owns the **Verify** verb: it runs the release-blocking gate and repairs failures. The gate has three layers — L1 (declaration / brief / structure lint), L2 (content analysis + keygen + `wasm-tools validate`), L3 (Playwright e2e exploit). L4 (blind solve) is NOT run here — it belongs to `wxl-crosscheck`, which runs once at pipeline stage 8 before the challenge lands.
 
 The skill activates when the user asks to verify a challenge, or when `wxl-create` / `wxl-mutate` hand off after generating or mutating a challenge.
 
@@ -38,7 +38,7 @@ digraph verify {
   pnpm challenge:verify <slug>
   ```
 
-  `challenge:verify` orchestrates L1 (delegates to the frontmatter/structure lint), L2 (content analysis + keygen + `wasm-tools validate`), and L3 (Playwright e2e). Never pass `--blind` from this skill.
+  `challenge:verify` orchestrates L1 (delegates to the declaration/brief/structure lint), L2 (content analysis + keygen + `wasm-tools validate`), and L3 (Playwright e2e). Never pass `--blind` from this skill.
 - **Verification**:
   - Exit 0 → display a success message listing the layers that passed; the challenge is gate-clean; stop.
   - Exit 1 → display the layered output verbatim and go to Step 2.
@@ -77,7 +77,7 @@ digraph fixloop {
      ```
   2. **Parse** the layered output; identify which layer failed (L1 / L2 / L3) and why; address all issues in one combined fix.
   3. **Propose fixes** (all issues at once):
-     - Missing/invalid frontmatter fields → add/correct via Edit.
+     - Missing/invalid declaration keys → add/correct in `challenge.yaml` via Edit; missing/invalid brief keys → add/correct in the brief's frontmatter via Edit.
      - Wrong file type for backend → fix the mismatch.
      - Flag not matching `FLAG{...}` / `CTF{...}` → rewrite `flag.txt`.
      - Hardcoded `localhost` / `127.0.0.1` / `0.0.0.0` in app code → remove/replace.

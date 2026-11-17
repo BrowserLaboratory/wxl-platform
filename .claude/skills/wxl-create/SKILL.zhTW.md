@@ -91,7 +91,7 @@ Please reply with a number, the option name, or a custom value.
 
 - **What**：透過既有 scaffold CLI 建立題目骨架（prose 不重複 scaffold 邏輯）。
 - **How**：以 Bash 執行 `pnpm create:challenge --name "<slug>" --backend "<backend>" --difficulty "<difficulty>" --flag "<flag>" --title "<title>"`。要自動產生 flag 就省略 `--flag`。接著依 exit status 分流：
-  - **exit status 0**：繼續 Step 3。
+  - **exit status 0**：繼續 Step 3。brief 的路徑取 `create:challenge` 在 `✓ Scaffold created:` 之後印出的第一行，不要自己推算主語系資料夾。
   - **exit status 1**：沒有寫入任何檔案；錯誤訊息會指出已存在的 slug 或不合法的引數。顯示錯誤，並以純文字區塊請使用者回覆 `change`（修改）或 `cancel`（取消）。回 `change` 就重問錯誤訊息指出的參數（題目已存在時是 slug）並重跑；回 `cancel` 就停止。只有 exit status 1 會重問參數。
   - **exit status 2**：題目已建立，但 `platform/public/_redirects` 沒有重新產生。把 stderr 的訊息轉述給使用者（訊息說明 commit 這道題目時會重新產生這個檔案），然後用同一個 slug 繼續 Step 3。保留 `platform/challenge/<slug>/`。
   - **exit status 3**：骨架已寫入並帶有永久編號，但 keygen 失敗。把 stderr 的訊息（含 keygen 的輸出）轉述給使用者，然後停止。請使用者修好原因後執行 `pnpm challenge:keygen <slug>`，再用同一個 slug 從 Step 3 接續這個 skill；和 exit status 2 一樣，commit 這道題目時會重新產生 `platform/public/_redirects`。保留 `platform/challenge/<slug>/`。
@@ -117,13 +117,13 @@ Please reply with a number, the option name, or a custom value.
 
   Backend 提示 —— Flask：`from flask import Flask, request, Response`、`@app.route()`。FastAPI：`from fastapi import FastAPI`、`from fastapi.responses import HTMLResponse`、`@app.get()` / `@app.post()`。PHP：`<?php`、`$_GET`/`$_POST`、`file_get_contents('/flag.txt')`。
 
-### Step 4：更新 frontmatter 並撰寫委託書
+### Step 4：更新 brief 與 `challenge.yaml` 並撰寫委託書
 
-- **What**：填 `index.md` 的 frontmatter，並把 body 的佔位字串換成**滲透測試委託書**——把題目寫成一份解題者受託執行的滲透測試委託。
+- **What**：填 brief 的 `description` 與 `challenge.yaml` 的各鍵，並把 body 的佔位字串換成**滲透測試委託書**——把題目寫成一份解題者受託執行的滲透測試委託。
 - **How**：
-  1. 讀 `platform/challenge/<slug>/index.md` 並 Edit frontmatter，設 `description`（1–2 句，點名標的與它對自己的宣稱）、`tags`（漏洞關鍵字＋backend，如 `[sql, injection, flask, sqlite]`）、`source_visible: false`、`packages`（額外 Python 套件，否則 `[]`）。`title`、`layout`、`difficulty`、`category`、`backend`、`app`、`date` 維持 scaffold 設定的值。其中 `backend`、`difficulty`、`tags`、`category` 四個屬於 `pnpm challenge:retype`，由 `wxl-mutate` 階段執行；其餘各鍵只由 scaffold 設定。
-  2. 讀 canonical prose reference `platform/challenge/door-is-open/index.md`，照它的**必備**段落結構寫。**那個檔案是「委託書必須有哪些段落」的唯一定義。** 本步驟在第 4 點列出的是選用段落，從不列出必備段落，因此必備結構只住在一個地方。
-  3. 把委託書寫在 `TODO: Write challenge description here.` 的位置。目標段要陳述一個**解題者受託去證明的命題**——標的對自己宣稱了什麼，以及推翻它會長什麼樣。攻擊手法、有問題的參數、利用步驟留給 Step 5 的 exploit spec；委託書帶的是委託內容，不是解法。
+  1. 讀 brief（`platform/<P>/challenge/<slug>/index.md`）並 Edit 它的 frontmatter，設 `description`（1–2 句，點名標的與它對自己的宣稱）。讀 `platform/challenge/<slug>/challenge.yaml` 並 Edit，設 `tags`（漏洞關鍵字＋backend，如 `[sql, injection, flask, sqlite]`）、`source_visible: false`、`packages`（額外 Python 套件，否則 `[]`）。`title`、`layout` 留在 brief，`difficulty`、`category`、`backend`、`app`、`date` 留在 `challenge.yaml`，都維持 scaffold 設定的值。其中 `backend`、`difficulty`、`tags`、`category` 四個屬於 `pnpm challenge:retype`，由 `wxl-mutate` 階段執行；其餘各鍵只由 scaffold 設定。
+  2. 讀 canonical prose reference——新 brief 所在語系資料夾裡的 `door-is-open` brief，照它的**必備**段落結構寫。**那個檔案是「委託書必須有哪些段落」的唯一定義。** 本步驟在第 4 點列出的是選用段落，從不列出必備段落，因此必備結構只住在一個地方。
+  3. 把委託書寫在 `TODO` 佔位文字的位置。目標段要陳述一個**解題者受託去證明的命題**——標的對自己宣稱了什麼，以及推翻它會長什麼樣。攻擊手法、有問題的參數、利用步驟留給 Step 5 的 exploit spec；委託書帶的是委託內容，不是解法。
   4. 選用段落只在觸發條件成立時才寫：
 
      | 選用段落 | 何時寫 |
@@ -134,13 +134,13 @@ Please reply with a number, the option name, or a custom value.
      | Prior findings | 題目建立在前一題的結果上 |
      | Constraints | 題目排除特定手法，例如暴力破解 |
 
-  5. 有三件事讓介面自己說：頁面已經顯示工具分頁（來自 `tools`）、難度徽章與分類徽章。委託書描述的是委託，那三項描述的是平台。這是一份封閉的三項清單——其餘 frontmatter 欄位都可以寫，委託書本來就該把 `description` 概述的情境展開，也該點名 `tags` 分類的那個標的。
+  5. 有三件事讓介面自己說：頁面已經顯示工具分頁（來自 `tools`）、難度徽章與分類徽章。委託書描述的是委託，那三項描述的是平台。這是一份封閉的三項清單——其餘宣告鍵與 brief 鍵都可以寫，委託書本來就該把 `description` 概述的情境展開，也該點名 `tags` 分類的那個標的。
 
      這條擋掉的是**一句在告訴讀者**可用哪些工具、題目多難、屬於哪個分類的句子。它不擋那些值恰好拼成的普通英文字：委託書可以稱標的為 web application，也可以說本次沒有釋出 source code，即使 `category` 是 `web`、`tools` 含 `code`。對 body 做子字串搜尋是錯的測法，而且在 canonical reference 自己身上就會產生這兩個假陽性。
-  6. 題目若有語系鏡像（`platform/<locale>/challenge/<slug>/index.md`），給它**數量相同、順序相同**的 `##` 標題，每一個都是對應根語系標題的在地化版本，事實一致。在地化過的標題本來就不是根語系那個字串，因此鏡像的標題集合永遠不會等於根語系的集合——要比對的是**位置**，不是字串相等。
+  6. 題目若有翻譯（另一個語系資料夾下的同一路徑），給它**數量相同、順序相同**的 `##` 標題，每一個都是對應主語系標題的在地化版本，事實一致。在地化過的標題本來就不是主語系那個字串，因此翻譯的標題集合永遠不會等於主語系的集合——要比對的是**位置**，不是字串相等。
 - **Verification**：
-  - `index.md` 的 frontmatter 含 `description`、`tags`、`source_visible: false`，且 body 不再含 TODO 佔位字串。
-  - **根語系** body 的 `##` 標題集合是 canonical reference 的超集。鏡像則改以標題數量與順序對根語系 body 比對。
+  - brief 的 frontmatter 含 `description`，`challenge.yaml` 含 `tags`、`source_visible: false`、`packages`，且 body 不再含 TODO 佔位字串。
+  - **主語系** brief 的 `##` 標題集合是 canonical reference 的超集。翻譯則改以標題數量與順序對主語系 brief 比對。
   - 由審查者逐句讀過委託書，確認沒有任何一句在告訴讀者可用工具、題目難度或所屬分類。**執行者是審查者，出口是那份逐句確認**——這一項沒有 grep 可用，理由寫在第 5 點。
 
 ### Step 5：寫 Playwright exploit spec
@@ -151,7 +151,7 @@ Please reply with a number, the option name, or a custom value.
 ### Step 6：best-effort self-test（chrome-devtools-mcp）
 
 - **What**：以真實 Chromium best-effort 確認漏洞可利用。此步**永不 halt** —— 失敗就 degrade 並續 Step 7。
-- **How**：`chrome-devtools-mcp` 不可用 → 印 `MCP unavailable; please run pnpm challenge:verify <slug> manually after dev server is up.` 並續行。`pnpm docs:dev` 在 `http://localhost:5173` 不可達 → 印 `dev server not running; please start pnpm docs:dev and run pnpm challenge:verify <slug> manually.` 並續行。否則最多三次嘗試（navigate、等 Service Worker、送 exploit、比對 `FLAG_REGEX`）；失敗一次可改一次 `platform/challenge/<slug>/src/<app>`（最多兩次修改、三次嘗試）。三次都失敗 → 印 `self-test inconclusive after 3 attempts; please run pnpm challenge:verify <slug> manually and inspect.` 並續行。此步勿動 spec、frontmatter、`flag.txt`。
+- **How**：`chrome-devtools-mcp` 不可用 → 印 `MCP unavailable; please run pnpm challenge:verify <slug> manually after dev server is up.` 並續行。`pnpm docs:dev` 在 `http://localhost:5173` 不可達 → 印 `dev server not running; please start pnpm docs:dev and run pnpm challenge:verify <slug> manually.` 並續行。否則最多三次嘗試（navigate、等 Service Worker、送 exploit、比對 `FLAG_REGEX`）；失敗一次可改一次 `platform/challenge/<slug>/src/<app>`（最多兩次修改、三次嘗試）。三次都失敗 → 印 `self-test inconclusive after 3 attempts; please run pnpm challenge:verify <slug> manually and inspect.` 並續行。此步勿動 spec、brief、`challenge.yaml`、`flag.txt`。改過 `challenge.yaml` 後要重啟 `pnpm dev`。
 
 ### Step 7：交棒 wxl-verify
 
@@ -160,7 +160,8 @@ Please reply with a number, the option name, or a custom value.
 
   ```
   ✓ Challenge "<slug>" 建立完成！
-    platform/challenge/<slug>/index.md
+    platform/<P>/challenge/<slug>/index.md
+    platform/challenge/<slug>/challenge.yaml
     platform/challenge/<slug>/src/<app-file>
     platform/challenge/<slug>/src/flag.txt
     tests/challenges/<slug>.spec.ts
@@ -182,6 +183,6 @@ Please reply with a number, the option name, or a custom value.
 
 ## Verification
 
-- 檔案存在：`platform/challenge/<slug>/index.md`、`platform/challenge/<slug>/src/<app>`、`platform/challenge/<slug>/src/flag.txt`、`tests/challenges/<slug>.spec.ts`。
+- 檔案存在：`platform/<P>/challenge/<slug>/index.md`、`platform/challenge/<slug>/challenge.yaml`、`platform/challenge/<slug>/src/<app>`、`platform/challenge/<slug>/src/flag.txt`、`tests/challenges/<slug>.spec.ts`。
 - `pnpm challenge:verify <slug>` exit 0（經 `wxl-verify`）。
 - `SKILL.md` 與 `SKILL.zhTW.md` 的 registry table 逐列一致。

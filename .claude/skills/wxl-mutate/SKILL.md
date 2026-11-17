@@ -43,7 +43,7 @@ digraph mutate {
   - **1** → user input error (unknown slug or invalid flag value). Surface stderr and stop.
   - **2** (`manual retype required`) → the script could not preserve the vuln body automatically (typically a cross-language backend swap such as `python` ↔ `php`). Surface the reason verbatim, explain a manual rewrite is required, and abort without retrying.
   - **3** → internal error (IO / keygen). Surface stderr; the maintainer needs to debug.
-- **Verification**: `pnpm challenge:retype` exited 0 (or the non-zero case was surfaced and the stage aborted as specified). Skill prose did not edit frontmatter or rename source files directly.
+- **Verification**: `pnpm challenge:retype` exited 0 (or the non-zero case was surfaced and the stage aborted as specified). Skill prose did not edit the four retype-owned keys of `challenge.yaml` directly or rename source files.
 
 ### Step 3: Hand off to wxl-verify
 
@@ -53,10 +53,10 @@ digraph mutate {
 
 ## Anti-patterns
 
-- ❌ **Editing `backend`, `difficulty`, `tags`, or `category` in `index.md`, or renaming `src/app.py` / `src/index.php`, by hand.**
+- ❌ **Editing `backend`, `difficulty`, `tags`, or `category` in `challenge.yaml`, or renaming `src/app.py` / `src/index.php`, by hand.**
   - ✅ Route those four fields through `pnpm challenge:retype` exclusively — its `--backend`, `--difficulty`, `--tags`, and `--category` flags are the only entry point that also runs keygen and spec-sync.
   - ✅ Edit `description` and the markdown body directly. `challenge:retype` supports no flag for either and passes the body through untouched, so a hand edit is the supported path for them — writing the engagement brief is `wxl-create` Step 4's job, not a mutation.
-  - **Why**: Hand-editing a retype-owned field skips keygen and spec-sync, leaving the challenge inconsistent. Extending that ban to the whole of frontmatter would leave `description` with no way to change at all.
+  - **Why**: Hand-editing a retype-owned field skips keygen and spec-sync, leaving the challenge inconsistent. `description` lives in the brief, so editing the brief by hand is the supported path; extending the ban to the brief would leave `description` with no way to change at all.
 - ❌ **Retrying after exit code 2.**
   - ✅ Surface the `manual retype required` reason and abort; a cross-language swap needs a manual rewrite.
   - **Why**: The script cannot auto-preserve the vuln body across language families.
