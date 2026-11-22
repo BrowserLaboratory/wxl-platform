@@ -131,7 +131,7 @@ Area S
   it, with a test each, on both `P`; a slug equal to its own padded number does not; the hook and CI
   report the same refusal (AC-32; S50 is T-0078's)
 - [x] S52–S56: `challengePagePath` and the copy control (AC-33)
-- [ ] S57–S63: end-to-end redirect rows on the previews (AC-58's matrix rows; V-S1–V-S7 are run here
+- [x] S57–S63: end-to-end redirect rows on the previews (AC-58's matrix rows; V-S1–V-S7 are run here
   and claimed by T-0078, the last ticket of area S)
 - [x] S64–S72: comments, README passages, GLOSSARY short link, skill sentences (AC-34)
 
@@ -153,7 +153,7 @@ Area U (the switch's part)
   locale-list copy, the shared page-predicate table, the skip in a range, T9's checkouts (AC-53)
 
 Stage 8 and the rest
-- [ ] VA1a–VA1m, VA2a–VA2l, VA3a–VA3e, VA4 (AC-56) and V-Y1–V-Y8 (AC-59), as below
+- [x] VA1a–VA1m, VA2a–VA2l, VA3a–VA3e, VA4 (AC-56) and V-Y1–V-Y8 (AC-59), as below
 - [x] "Overridden contracts" of areas B, A, L, S and Y, and area U's `ANCHOR_PATHS` and
   `PLATFORM_HOME_RELS` rows, change only as the table states; area L's toolbar, dates and home-string
   rows, LW1 and LH1's list-title row are T-0079's; the D31 first step's list of flipped tests is in
@@ -3246,6 +3246,68 @@ Deferred to stage 6 (P2, frozen rubric):
 - `.proj.tickets/0010-primary-locale-layout/T-0077-layout-switch.md:3231` (P2, confidence medium): the coverage table's AC column names 44 of the ticket's 46 AC ids; AC-56 (VA1a-VA4) and AC-59 (V-Y1-V-Y8) appear only as row ids in the "Not covered" list, without their AC labels, and the executor says some AC mappings are presumed. The stage-8 rows are listed under "Not covered by this table's commands", so nothing is lost, but stage 6 has to reconcile the presumed AC mapping.
 - `tests/unit/scripts/upstream-guard.test.ts:1045` (P2, confidence medium): wave 9's suite skips the env-gated case "WXL_EXPECT_UPSTREAM, when set, matches the upstream decision" (runIf on WXL_EXPECT_UPSTREAM); the segment 8b run counted 6976 passed and 0 pending. The difference comes from the environment, not a regression, but this run did not exercise that case (vitest.json mtime 18:53, after commit e2ba837 at 18:50:13; test lines 1042-1044 say the skip is by design when the variable is unset; the segment did not change the test).
 
+### 2026-11-22 (parent, new session; standing authorization renewed for revision 2.5)
+
+- The user, in chat on 2026-11-22, quoted: 「授權：所有建議我都同意，權限都授權到兩個 epic 完成，範圍照
+  .proj.handoffs/2026-11-15-0034-primary-locale-epics.md 的「已核准的決定與授權」。每一項核准仍要列給我看。
+  executor 要我決定的事，請在票的 Comments 引用我這段話並寫明範圍。」
+- Scope: this ticket's stages 8 and 9, then T-0078–T-0081, epic 0010's close-out and epic 0011 (stages 1–9), under
+  spec revision 2.5 (D1–D154), and the decisions an executor would otherwise refer to the user inside them, provided
+  the decision follows the approved test plan, the spec and the agent's recommendation, and is listed to the user.
+- Not in scope, still stopped for the user in person (the user's words, same message): creating or deleting a GitHub
+  repository, including stage 8's F-3 temporary range; pushing the stage 8 fixture branches (`stage8/T-0077`,
+  `stage8/T-0077-en`) and deleting them afterwards; any release (`v*` tag); RP2; RP5; any step that needs the user's
+  npm login.
+- Resumed from `.proj.handoffs/2026-11-17-2157-t0077-stage8-onward.md` (not expired: `sessions_used` 0 of 1, now 1).
+  HEAD `d880e51`, pushed, equal to `origin/tickets/T-0077/layout-switch`, tree clean. Mismatches listed to the user:
+  four orphaned `wrangler pages dev` processes from 2026-11-17 still on `127.0.0.1:8799` (the parent's `kill` was
+  refused by the host's permission check; the user was asked to stop them); the ticket branch's own preview had
+  already built (`Cloudflare Pages` check run on `d880e51`, success, 2026-11-17T14:00:43Z); `s61_local.sh` lacks
+  revision 2.5's two `/zh-TW/guide/…` inputs and uses GET; the handoff's test environment (`GITHUB_REPOSITORY` set)
+  cannot be used for V-B7 or a created range (`tests/__helpers__/upstreamDecision.ts:23-25`); six P2 items of segment
+  SR1's fix round (below, "Stage 7 security review") had no disposition.
+- Re-run before stage 8 on HEAD `d880e51` (2026-11-22 12:52–12:57 CST, env as above): create-wxl 890 passed, 1
+  skipped (Windows only); `WXL_SMOKE_PAGES=1 pnpm build` exit 0, `pnpm test:smoke` 112 passed; `pnpm test:challenges`
+  4 passed; `git status --porcelain` empty afterwards.
+
+### 2026-11-22 (parent, stage 8 items confirmed by the user in person)
+
+The user, in chat on 2026-11-22, after every item was listed to them: 「全部照建議」. The items and what each
+recommendation was:
+
+1. Push `stage8/T-0077` (F-1) and `stage8/T-0077-en` (F-2): approved; the parent pushes them.
+2. F-3: `CXPhoenix/wxl-e2e-0010-t0077`, public (0007's naming; the name returned 404 before creation). Creating the
+   repository, setting Pages to GitHub Actions, the first push and the first `workflow_dispatch` wait for one more
+   stop with the user immediately before creation.
+3. Afterwards: the remote stage 8 branches are deleted only after asking again at close-out; the F-3 repository is
+   deleted by the user (the token has no `delete_repo`); the local branch `stage8-fixture/english-only` (`41b9dc7`,
+   epic 0008) is deleted by the parent; `CXPhoenix/wxl-e2e-0007` and the Cloudflare preview deployments stay the
+   user's to decide.
+4. `cxphoenix.github.io` storage (OQ-018): the values are recorded before F-3's rows and restored after, not cleared.
+5. Deviations from the stage 8 plan: V-B5 runs on an F-6 copy (`65de8c0`'s tree plus this epic's `.vitepress/`,
+   `scripts/`, `platform/shared/`, `package.json` and HEAD's `pnpm-lock.yaml`), since F-5 belongs to T-0081; VL6's
+   build half runs on F-6 and its request half on F-1's preview; V-S1 adds `curl -sI` for `/en/c/door-is-open` and
+   `/en/c/zh-only` (S58's first hop); the S61 script gets the two `/zh-TW/guide/…` inputs and records that it uses
+   GET; V-B7 gains a supplement, `pnpm install && pnpm test --run` in F-3's local tree with `GITHUB_REPOSITORY` and
+   `WXL_EXPECT_UPSTREAM` unset (F-3 is the only fixture without `create-wxl/`); both F-3 deploys use
+   `workflow_dispatch`, no `v*` tag; the fixture challenges keep `src/` and get numbers 999 and 998 by hand; V-B4's
+   prefix swap also swaps the stored values; copy controls are read by their visible text, not by clicking (the
+   host's clipboard is the user's).
+6. On F-3, a wrong interface-string language alone is recorded as an OQ-030 observation, not a failure of this
+   ticket; a wrong route or address is a failure. After F-3's second deploy, `curl` confirms `lang="en-US"` and the
+   rows wait out `max-age=600` before running.
+7. Ticket records stay in English per `docs/agents/language.md` (the previous session's precedent); commits, PRs and
+   the zh-TW section are Traditional Chinese.
+8. SR1's six undisposed P2 items are disposed under the standing authorization: the comment, JSDoc, header and
+   line-length items and the README edge case are fixed; K1/D61's capacity wording gets a revision note;
+   `tests/unit/site/redirects.test.ts:383` stays (approved S31 rewrite).
+9. The five items left for the user at the previous close-out: D151–D153 stay approved; no `v*` tag before T-0080 and
+   T-0081 land (and T-0074 first, T-0075's meaning confirmed before a release); OQ-030 is observed on F-3, then gets a
+   test-first ticket of its own with a decision summary (its fix changes A29); SR1's wide hook trigger stays (it is the
+   faster one: the exact trigger would start Node on every commit, item 3 of "SR-1" below); the 82 Dependabot alerts
+   (recorded already in `.proj.specs/0006-range-upgrade/retrospective.md:64`) get a dependency-maintenance epic
+   later, with `.github/dependabot.yml` (security review C5-07).
+
 ## Stage 6 review
 
 Reviewed on 2026-11-17 with the project `code-review` skill. Full findings:
@@ -3492,6 +3554,76 @@ Command: `pnpm vitest run tests/unit/site/redirects.test.ts`: 62 passed.
 - `scripts/pre-commit.sh` (line 13): the header says it was reflowed, but this line is 128 characters while the other header lines stay within 100.
 
 **Full suite (suite step).** Full suite green: 7268 passed, 0 failed, 0 pending, 0 todo (7268 tests, 154 files, 908 suites, 0 failed suites, success=true). Report: `/private/tmp/claude-501/-Users-phoenix-dev-browserlab-wxl-platform/be8467cf-f0f1-4ec4-9cbb-85aa30f4095d/scratchpad/SR1-report.json`, mtime 2026-11-17 21:54:47 (epoch 1794923687), written after run start (epoch 1794923346; old file deleted first). HEAD sha 939ce5e unchanged before and after. The `keygen-*-probe` glob matched nothing before or after, so no probes existed to remove. The first attempt aborted on the zsh no-match error before running anything and was re-run under bash.
+
+## Stage 8 end-to-end
+
+Report (Traditional Chinese, with the S61 and short-link raw output inline):
+`.proj.specs/0010-primary-locale-layout/review/stage8-T-0077.md`. Ticket HEAD under test `d880e51`, 2026-11-22.
+
+### 2026-11-22 (parent, F-3 created by the parent with the user's approval in person)
+
+The user, in chat on 2026-11-22, after the four commands were listed: 「由你建立」. The parent ran `gh repo create
+CXPhoenix/wxl-e2e-0010-t0077 --public`, `gh api -X POST repos/CXPhoenix/wxl-e2e-0010-t0077/pages -f
+build_type=workflow`, pushed F-3's `main` (`5f14451`) and dispatched `deploy.yml` (run 44993436230, success). The
+second deploy (`2986e7c`: `range.json` adds `"primaryLocale": "en"`, `zh-only` deleted; hook-regenerated
+`_redirects`) was pushed and dispatched under the standing authorization (run 44994140903, success); `curl` showed
+`<html lang="en-US">` at the root before its rows ran. The repository's deletion is the user's.
+
+### Fixtures and results
+
+- F-1 `stage8/T-0077` = `d880e51` + `010f23b`, preview `https://stage8-t-0077.wxl-platform.pages.dev`; F-2
+  `stage8/T-0077-en` = `d880e51` + `b5496ee`, preview `https://stage8-t-0077-en.wxl-platform.pages.dev`; F-3 as above,
+  made with the tarball packed at `010f23b` (`dist/source.json` commit `010f23b`); F-6 scratch clones of `d880e51`.
+  Both fixture commits were pushed by the parent with the user's approval in person (「全部照建議」, item 1).
+- Surfaces: terminal (`curl`, `pnpm`) and agent-browser (headless Chromium over CDP) in isolated sessions; every
+  challenge page had its in-page Browser tab opened and the app loaded (hard rule 4). Each group was run by an
+  executor and checked by an independent agent against the raw logs and screenshots.
+- S61 (V-S2), the gate: 19 inputs on F-1's alias and deployment hosts, no off-origin `Location` (GET with
+  `--path-as-is`; the script adds revision 2.5's two `/zh-TW/guide/…` inputs).
+- Passed: V-B1–V-B7, VA1a–VA1m, VA2a–VA2l, VA3a–VA3e, VA4, VL3, VL5–VL8, V-S1–V-S7, V-Y1–V-Y8, and the approved
+  supplement to V-B7 (`pnpm test --run` in F-3's tree, which has no `create-wxl/`: 7082 passed, 74 skipped, 0 failed).
+  Not run here: VL1, VL2, VL4, VL9 (T-0079's rows) and V-U1–V-U5 (T-0081).
+- Recorded with their row: V-B3's `/challenges` h1 and subtitle are English (CS1, CS2; L24 is T-0079's; literal on
+  `040a5ec` too); V-S5's grid view has no copy control (list rows only, as on `040a5ec`); VA1c (stored `en`) saw no
+  session gate because the origin held no work; V-Y6's Source list shows `app.py` before the 10 `source_files`.
+- OQ-030 observed in a browser for the first time, on F-3 only, under the approved rule (interface-string language
+  alone is an observation): first deploy, `/en/` and `/en/challenges` turn their `$t` strings and dates Traditional
+  Chinese after hydration; second deploy, the `/zh-TW/` pages turn them English; F-1 (base `/`) does not flip. Every
+  route, address and landing was correct. A test-first ticket follows, as decided.
+
+### Findings and dispositions (standing authorization; listed to the user)
+
+1. Pre-existing on `040a5ec`: `pnpm create:challenge --backend flask` writes `app.run(host='0.0.0.0', port=8000)`
+   (`scripts/create-challenge.ts:205-206`), which the analyzer flags and the hook refuses
+   (`scripts/challenge-lint-staged.ts:111-113`), so a fresh flask challenge cannot be committed as scaffolded. Out of
+   this ticket; proposed as a ticket of its own. The fixtures drop those two lines.
+2. vitest's `describe.skipIf(upstreamOnlySkipReason(…))` uses the reason only as a condition, so D124's "reports
+   skipped, with the decision's reason" holds in Playwright and in titles that carry the reason, not in vitest's
+   output. Passed to T-0080, which runs V-B7 again (AC-61).
+3. Pre-existing since T-0000 (`72327e2`): `tests/unit/workflows/challenge-verify-timeout.test.ts` imports
+   `playwright.config` under happy-dom, and a child process prints an unhandled `ECONNREFUSED` to `localhost:3000`
+   (reproduced alone: 12 passed, exit 0; not outside vitest). The suite's verdict is unaffected. Cleanup candidate
+   (`// @vitest-environment node` on that file).
+4. A push to F-3's `main` started no Quality Gates run on the new repository (as recorded in 0007's retrospective);
+   the release and publish workflows are gated on `github.repository`.
+5. SR1 fix round's six undisposed P2 items: disposed in `2d7fb3e` as the user approved (item 8 of the 2026-11-22
+   confirmation): README.md and README.en.md name the file whose path equals a top-level page's name; the
+   generator's header names the page-predicate exclusion; `scripts/pre-commit.sh`'s header is reflowed within 100
+   characters; `runStaged`'s JSDoc matches its `change` callback; traceability revision 2.6 notes D61/K1's capacity
+   for `P = zh-TW` and S69/S-O7; `tests/unit/site/redirects.test.ts:383` stays. Checks:
+   `pnpm vitest run tests/pre-commit-sh.test.ts tests/unit/site/redirects.test.ts tests/unit/site/redirects-generated.test.ts tests/unit/site/sentence-map.test.ts tests/unit/site/glossary.test.ts tests/unit/site/source-layout.test.ts tests/unit/i18n/page-list.test.ts`
+   (1089 passed), `python3 scripts/verify-project.py` (pass), `bash -n scripts/pre-commit.sh`. Comment and
+   documentation only; the executor's change was checked by an independent agent against the diff.
+
+### Incident: the data disk filled
+
+Between 13:39 and 13:55 CST concurrent clones, builds and full suites filled the data disk (128 MiB free at the
+lowest). The vitest runs of that window (VA4, V-B7, the F-3 supplement) failed with `ENOSPC` in
+`tests/pre-commit-sh.test.ts` and `scripts/challenge-keygen.test.ts`; they were discarded and re-run one at a time
+with 12 GiB free (14:16–14:31): VA4 7267 passed, 1 skipped, 0 failed, exit 0; V-B7 7082 passed, 74 skipped, 0 failed,
+exit 0; F-3 supplement the same. V-B6 and V-Y7 were re-run with full logging after the checker found their logs
+ambiguous; V-B1's two evidence gaps (B74's built href under `en`, PL-E08 on stderr under dev and preview) were filled
+by a targeted re-run.
 
 ## Test plan (stage 5)
 
