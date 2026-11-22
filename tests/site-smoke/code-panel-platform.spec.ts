@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { STDLIB_MODULES } from '../../.vitepress/theme/composables/pythonCompletions'
+import { localePath } from './localePath'
 
 /**
  * Platform-level checks for the Code panel, run against the *built* site.
@@ -25,7 +26,7 @@ const BOOT_TIMEOUT = 180_000
 
 /** Open the Code tab and wait until its runtime is ready to execute. */
 async function openCodePanel(page: Page): Promise<void> {
-  await page.goto(`/challenge/${CHALLENGE}/`)
+  await page.goto(localePath('en', `challenge/${CHALLENGE}/`))
   await page.locator('[data-tab="code"]').click()
   // Run stays disabled until the challenge runtime, the service worker, and the
   // panel's own Pyodide are all up. First load compiles WASM, so this is slow.
@@ -217,7 +218,7 @@ test.describe('Code Editor Panel loading overlay is confined to the panel', () =
   // The overlay is sampled while the challenge runtime is still booting, so
   // these run in seconds and never wait for Pyodide.
   async function overlayGeometry(page: Page) {
-    await page.goto(`/challenge/${CHALLENGE}/`)
+    await page.goto(localePath('en', `challenge/${CHALLENGE}/`))
     await page.locator('[data-tab="code"]').click()
     const overlay = page.locator('[data-runtime-overlay]')
     await expect(overlay).toBeVisible()
@@ -265,7 +266,7 @@ test.describe('Code Editor Panel loading overlay is confined to the panel', () =
   })
 
   test('the rest of the page stays usable while the overlay is shown', async ({ page }) => {
-    await page.goto(`/challenge/${CHALLENGE}/`)
+    await page.goto(localePath('en', `challenge/${CHALLENGE}/`))
     await page.locator('[data-tab="code"]').click()
     await expect(page.locator('[data-runtime-overlay]')).toBeVisible()
 

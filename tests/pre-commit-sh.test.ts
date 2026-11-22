@@ -4,8 +4,10 @@
  * Every case runs this checkout's real hook, by its absolute path, with `bash`
  * at the top level of a temporary repository whose path holds a space and
  * non-ASCII characters: directly, or through a real `git commit` whose
- * installed `.git/hooks/pre-commit` runs that file. The fixture is described in
- * `tests/__helpers__/preCommitRepo.ts`.
+ * installed `.git/hooks/pre-commit` runs that file. The fixtures are described in
+ * `tests/__helpers__/preCommitRepo.ts`: the default is the `en` one (`range.json` names `en`);
+ * a case that also runs under `P = zh-TW` swaps in the `zh-TW` one (no `range.json`) with
+ * `useFixture`, and the cases of spec 0010 that say "both P" run under both.
  *
  * The oracle for "the expected `_redirects`" is `generateRedirects` over
  * `git checkout-index --all` of the staged snapshot, taken before the hook
@@ -25,6 +27,9 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { generateRedirects } from '../scripts/generate-redirects'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { LOCALES, LOCALE_ENGLISH_NAMES, type Locale } from '../.vitepress/locales'
+import { nextChallengeNumber } from '../scripts/challenge-numbers'
+import { jsonStringifyEscaped } from '../.vitepress/layout-error'
 import {
   HOOK,
   REDIRECTS,
@@ -32,7 +37,7 @@ import {
   blockingGenerator,
   buildFirstCommitFixture,
   buildFixture,
-  challengeIndex,
+  declarationText,
   commit,
   cloneFixture,
   expectedRedirects,
@@ -112,22 +117,84 @@ const FIXTURE_RULES = [...TEST_CHALL_RULES, ...DOOR_RULES, ...PARAMETERISED_RULE
 /** W3: the hook replaced a version of `_redirects` the teacher made. */
 const W3 = /platform\/public\/_redirects[^\n]*replaced|replaced[^\n]*platform\/public\/_redirects/
 
+/** The two fixtures: `en` (the default: a `range.json` naming `en`) and `zh-TW` (no `range.json`). */
 let fixture: Fixture
+let fixtureZh: Fixture
 let repo: Fixture
 let real: RealState
 
 beforeAll(() => {
-  fixture = buildFixture()
+  fixture = buildFixture('en')
+  fixtureZh = buildFixture('zh-TW')
 }, TIMEOUT)
 
 afterAll(() => {
   if (fixture) removeRepo(fixture)
+  if (fixtureZh) removeRepo(fixtureZh)
 })
 
 beforeEach(() => {
   real = realRepoState()
   repo = cloneFixture(fixture)
 })
+
+/** Swap this case's repository for a copy of the fixture whose primary locale is `P`. */
+function useFixture(P: Locale): void {
+  if (repo.primary === P) return
+  removeRepo(repo)
+  repo = cloneFixture(P === 'en' ? fixture : fixtureZh)
+}
+
+/** `git add` challenge `slug`: its declaration folder and every brief folder that exists, in repository `r`. */
+function stageChallenge(slug: string, r: Repo = repo): void {
+  const dirs = ['platform/challenge', ...LOCALES.map((l) => `platform/${l}/challenge`)]
+    .map((tree) => `${tree}/${slug}`)
+    .filter((dir) => existsSync(join(r.dir, dir)))
+  git(r, ['add', '--', ...dirs])
+}
+
+/** The brief locale that is not `P`. */
+const OTHER: Record<Locale, Locale> = { en: 'zh-TW', 'zh-TW': 'en' }
+
+/** The numbered and slug rules of the fixture with primary locale `zh-TW` (test-chall: a `zh-TW` brief only). */
+const ZH_TEST_CHALL_RULES = [
+  '/c/001 /challenge/test-chall/',
+  '/en/c/001 /challenge/test-chall/',
+  '/zh/c/001 /challenge/test-chall/',
+  '/zh-TW/c/001 /challenge/test-chall/',
+]
+const ZH_DOOR_RULES = [
+  '/c/002 /challenge/door/',
+  '/en/c/002 /en/challenge/door/',
+  '/zh/c/002 /challenge/door/',
+  '/zh-TW/c/002 /challenge/door/',
+]
+const ZH_DOOR_RULES_AT_PRIMARY = [
+  '/c/002 /challenge/door/',
+  '/en/c/002 /challenge/door/',
+  '/zh/c/002 /challenge/door/',
+  '/zh-TW/c/002 /challenge/door/',
+]
+const ZH_PARAMETERISED_RULES = [
+  '/c/:slug /challenge/:slug/',
+  '/en/c/:slug /en/challenge/:slug/',
+  '/zh/c/:slug /challenge/:slug/',
+  '/zh-TW/c/:slug /challenge/:slug/',
+  '/zh-TW/ /',
+  '/zh-TW/challenge/* /challenge/:splat',
+  '/zh-TW/guide/* /guide/:splat',
+]
+const ZH_FIXTURE_RULES = [...ZH_TEST_CHALL_RULES, ...ZH_DOOR_RULES, ...ZH_PARAMETERISED_RULES]
+
+/** A challenge's four rules: `/c/<NNN>` at `/challenge/<slug>/`, `/en/c/<NNN>` at `at.en`, and `/zh/c/<NNN>` and `/zh-TW/c/<NNN>` at `at.zh`; the same four forms for each primary locale. */
+function fourRules(number: string, slug: string, at: { en: string; zh: string }): string[] {
+  return [
+    `/c/${number} /challenge/${slug}/`,
+    `/en/c/${number} ${at.en}`,
+    `/zh/c/${number} ${at.zh}`,
+    `/zh-TW/c/${number} ${at.zh}`,
+  ]
+}
 
 afterEach(() => {
   // A case that failed before its group's done() leaves no blocked process behind.
@@ -187,10 +254,8 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
   }, TIMEOUT)
 
   it('exits 0 when valid challenge files are staged', () => {
-    write(repo, 'platform/challenge/test-chall/index.md', [
-      '---', 'title: "Test Challenge Updated"', 'number: 1', 'backend: flask', 'app: app.py', '---', '', 'Updated content', '',
-    ].join('\n'))
-    git(repo, ['add', 'platform/challenge/test-chall/index.md'])
+    write(repo, 'platform/challenge/test-chall/challenge.yaml', `${declarationText(1)}# updated\n`)
+    git(repo, ['add', 'platform/challenge/test-chall/challenge.yaml'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -226,7 +291,7 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
   it('validates staged snapshot, not working tree (stash test)', () => {
     // flag.txt exists on disk but is not staged: the staged snapshot lacks it.
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall/index.md', 'platform/challenge/new-chall/src/app.py'])
+    git(repo, ['add', 'platform/challenge/new-chall/challenge.yaml', 'platform/challenge/new-chall/src/app.py', 'platform/en/challenge/new-chall/index.md'])
     const before = snapshot(repo)
     expect(before.untracked).toContain('?? platform/challenge/new-chall/src/flag.txt')
 
@@ -237,7 +302,7 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
   }, TIMEOUT)
 
   it('exits 0 when entire challenge directory is removed', () => {
-    git(repo, ['rm', '-rq', 'platform/challenge/test-chall'])
+    git(repo, ['rm', '-rq', 'platform/challenge/test-chall', 'platform/en/challenge/test-chall'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -249,8 +314,8 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
     expect(rulesOf(expected)).toEqual([...DOOR_RULES, ...PARAMETERISED_RULES])
   }, TIMEOUT)
 
-  it('exits 1 when only index.md is deleted (incomplete challenge)', () => {
-    git(repo, ['rm', '-q', 'platform/challenge/test-chall/index.md'])
+  it('exits 1 when only challenge.yaml is deleted (incomplete challenge, LS1)', () => {
+    git(repo, ['rm', '-q', 'platform/challenge/test-chall/challenge.yaml'])
     const before = snapshot(repo)
 
     const run = runHook(repo)
@@ -265,7 +330,7 @@ describe('pre-commit.sh: today’s cases (H15)', () => {
 /** Unstaged and untracked challenge files, which a run that does not trigger leaves alone. */
 function addUnrelatedWork(): void {
   write(repo, 'platform/challenge/door/src/app.py', 'from flask import Flask\napp = Flask("unstaged")\n')
-  write(repo, 'platform/challenge/draft/index.md', '---\ntitle: draft\n---\n')
+  write(repo, 'platform/en/challenge/draft/index.md', '---\ntitle: draft\n---\n')
 }
 
 function validatorLog(): string {
@@ -274,8 +339,9 @@ function validatorLog(): string {
   return log
 }
 
-describe('pre-commit.sh: trigger (H06)', () => {
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: trigger (H06; P = %s)', (P) => {
   it('ends in O1 when only README.md is staged', () => {
+    useFixture(P)
     addUnrelatedWork()
     write(repo, 'README.md', '# Changed\n')
     git(repo, ['add', 'README.md'])
@@ -288,6 +354,7 @@ describe('pre-commit.sh: trigger (H06)', () => {
   }, TIMEOUT)
 
   it('ends in O1 when only another file under platform/public/ is staged', () => {
+    useFixture(P)
     addUnrelatedWork()
     write(repo, 'platform/public/other.txt', 'other, changed\n')
     git(repo, ['add', 'platform/public/other.txt'])
@@ -300,18 +367,127 @@ describe('pre-commit.sh: trigger (H06)', () => {
   }, TIMEOUT)
 })
 
+describe('pre-commit.sh: the validator’s list (S37)', () => {
+  it('a staged brief goes to the validator: its argv holds the brief’s path', () => {
+    const log = validatorLog()
+    write(repo, 'platform/en/challenge/door/index.md', `${read(repo, 'platform/en/challenge/door/index.md')}\nmore\n`)
+    git(repo, ['add', 'platform/en/challenge/door/index.md'])
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expect(readRecord(log).flatMap((r) => r.argv)).toEqual(['platform/en/challenge/door/index.md'])
+  }, TIMEOUT)
+
+  it('a staged declaration-folder file goes to the validator: its argv is exactly that path', () => {
+    const log = validatorLog()
+    stageDoorChange()
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expect(readRecord(log).flatMap((r) => r.argv)).toEqual([DOOR_APP])
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: only the locale list’s folders trigger the hook (S80)', () => {
+  it.each([
+    'platform/public/challenge/x/notes.txt',
+    'platform/shared/challenge/x.ts',
+    'platform/ja/challenge/s/index.md',
+    'platform/constructor/challenge/s/index.md',
+    'platform/__proto__/challenge/s/index.md',
+  ])('%s staged alone: O1, and neither the validator nor the generator runs', (path) => {
+    const validator = validatorLog()
+    const generator = join(repo.base, 'generator.log')
+    recordScript(repo, 'generate-redirects.ts', generator)
+    write(repo, path, 'a path outside the challenge trees\n')
+    git(repo, ['add', '--', path])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expectNothingChanged(before, snapshot(repo))
+    expect(readRecord(validator)).toEqual([])
+    expect(readRecord(generator)).toEqual([])
+  }, TIMEOUT)
+
+  it('an untracked folder under a folder that is not on the list gets no W4 line, and no W4b line holds `undefined` or a function’s text', () => {
+    write(repo, 'platform/ja/challenge/s/index.md', '---\ntitle: s\n---\n')
+    write(repo, 'platform/constructor/challenge/s/index.md', '---\ntitle: s\n---\n')
+    stageDoorChange()
+    // A version of the teacher's own, so that W3, and with it W4, is printed.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}/c/999  /challenge/hand-edit/  302\n`)
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).not.toContain('platform/ja/challenge/s/')
+    expect(run.stderr).not.toContain('platform/constructor/challenge/s/')
+    expect(run.stderr).not.toMatch(/undefined|function|=>/)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: an untracked folder without index.md is no brief (Y111, D127)', () => {
+  it('a zh-TW fixture’s untracked platform/zh-TW/challenge/t/ holding only diagram.png is not named by W4, while an untracked brief folder is', () => {
+    useFixture('zh-TW')
+    write(repo, 'platform/zh-TW/challenge/t/diagram.png', Buffer.from([137, 80, 78, 71]))
+    write(repo, 'platform/zh-TW/challenge/t2/index.md', '---\ntitle: t2\n---\n')
+    stageDoorChange()
+    // A version of the teacher's own, forced by another path, so that W3, and with it W4, is printed.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}/c/999  /challenge/hand-edit/  302\n`)
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).not.toMatch(/platform\/zh-TW\/challenge\/t\//)
+    expect(run.stderr).toMatch(w4('platform/zh-TW/challenge/t2/'))
+  }, TIMEOUT)
+})
+
+/** What S36 stages for each watched path: a change that must trigger the hook (D65, D66). */
+const TRIGGERS: Array<[string, (P: Locale) => void]> = [
+  ['a zh-TW brief', () => write(repo, 'platform/zh-TW/challenge/door/index.md', `${read(repo, 'platform/zh-TW/challenge/door/index.md')}\nmore\n`)],
+  ['an en brief', () => write(repo, 'platform/en/challenge/door/index.md', `${read(repo, 'platform/en/challenge/door/index.md')}\nmore\n`)],
+  ['range.json, its upstream key only', (P) => write(repo, 'range.json', P === 'en' ? '{"primaryLocale":"en","upstream":"example/range"}\n' : '{"upstream":"example/range"}\n')],
+  ['a file of a declaration folder', () => write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, staged")\n')],
+]
+
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: trigger on every watched path (S36; P = %s)', (P) => {
+  it.each(TRIGGERS)('%s staged: the hook runs, and the run does not end in O1', (_name, change) => {
+    useFixture(P)
+    const generator = join(repo.base, 'generator.log')
+    recordScript(repo, 'generate-redirects.ts', generator)
+    change(P)
+    git(repo, ['add', '-A', '--', 'platform/'])
+    if (existsSync(join(repo.dir, 'range.json'))) git(repo, ['add', '--', 'range.json'])
+
+    const run = runHook(repo)
+
+    // O2 (status 0) or O4 (status 1), never O1: the generator's --staged ran once.
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged')), run.stderr).toHaveLength(1)
+  }, TIMEOUT)
+})
+
 /** H02, H14: the outcome, with the hook run directly by the given bash (H45 runs it with `/bin/bash`). */
 function expectH02H14(bash: string): void {
-  const log = validatorLog()
-  writeBrief(repo, 'test-chall', 1)
+  writeBrief(repo, 'zh-TW', 'test-chall')
   git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
+  const head = rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
   const expected = expectedRedirects(repo)
   const before = snapshot(repo)
 
   const run = runHook(repo, {}, bash)
 
   expectO2(run, before, snapshot(repo), expected)
-  // Re-pointed from the English page, not added (G2, G3).
+  // Re-pointed from the primary page, not added (G2, G3, S39).
   expect(rulesOf(expected)).toEqual([
     '/c/001 /challenge/test-chall/',
     '/en/c/001 /challenge/test-chall/',
@@ -320,13 +496,13 @@ function expectH02H14(bash: string): void {
     ...DOOR_RULES,
     ...PARAMETERISED_RULES,
   ])
-  expect(readRecord(log)).toEqual([])
+  expect(rulesOf(expected)).toHaveLength(head.length)
 }
 
 describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
   it('H01: a new challenge gains its four rules, the Traditional Chinese ones at its English page, with no W3', () => {
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall')
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -347,7 +523,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
 
   it('H01: a new challenge, with the working tree’s _redirects already the expected one (after pnpm dev), prints no W3', () => {
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall')
     const expected = expectedRedirects(repo)
     write(repo, REDIRECTS, expected)
     const before = snapshot(repo)
@@ -359,12 +535,53 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     expectNoW3W4(run)
   }, TIMEOUT)
 
-  it('H02, H14: only a Traditional Chinese brief re-points its two Traditional Chinese rules at it, and the validator never runs', () => {
+  it('S38 (zh-TW twin): a new challenge with a zh-TW brief gains its four rules, all at /challenge/new-chall/, with no W3', () => {
+    useFixture('zh-TW')
+    writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
+    stageChallenge('new-chall')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual([
+      ...ZH_TEST_CHALL_RULES,
+      ...ZH_DOOR_RULES,
+      ...fourRules('004', 'new-chall', { en: '/challenge/new-chall/', zh: '/challenge/new-chall/' }),
+      ...ZH_PARAMETERISED_RULES,
+    ])
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it('H02, H14: only a Traditional Chinese brief re-points its two Traditional Chinese rules at it', () => {
     expectH02H14('bash')
   }, TIMEOUT)
 
+  it('S39 (zh-TW twin): only an en brief re-points /en/c/001 at it and changes no other rule', () => {
+    useFixture('zh-TW')
+    writeBrief(repo, 'en', 'test-chall')
+    git(repo, ['add', 'platform/en/challenge/test-chall/index.md'])
+    const head = rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual([
+      '/c/001 /challenge/test-chall/',
+      '/en/c/001 /en/challenge/test-chall/',
+      '/zh/c/001 /challenge/test-chall/',
+      '/zh-TW/c/001 /challenge/test-chall/',
+      ...ZH_DOOR_RULES,
+      ...ZH_PARAMETERISED_RULES,
+    ])
+    expect(rulesOf(expected)).toHaveLength(head.length)
+  }, TIMEOUT)
+
   it('H03: deleting a challenge in both trees loses all four of its rules', () => {
-    git(repo, ['rm', '-rq', 'platform/challenge/door', 'platform/zh-TW/challenge/door'])
+    git(repo, ['rm', '-rq', 'platform/challenge/door', 'platform/en/challenge/door', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -377,6 +594,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
   it('H04: renaming a challenge in both trees points all four of its rules at the new slug', () => {
     const log = validatorLog()
     git(repo, ['mv', 'platform/challenge/door', 'platform/challenge/gate'])
+    git(repo, ['mv', 'platform/en/challenge/door', 'platform/en/challenge/gate'])
     git(repo, ['mv', 'platform/zh-TW/challenge/door', 'platform/zh-TW/challenge/gate'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
@@ -389,10 +607,11 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
       ...DOOR_RULES.map((r) => r.replace('/door/', '/gate/')),
       ...PARAMETERISED_RULES,
     ])
-    expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/gate/index.md')
+    expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/gate/challenge.yaml')
   }, TIMEOUT)
 
   it('H40: deleting only the Traditional Chinese brief keeps all four rules and re-points the Traditional Chinese ones at the English page', () => {
+    const head = rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
     git(repo, ['rm', '-rq', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
@@ -401,22 +620,43 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
 
     expectO2(run, before, snapshot(repo), expected)
     expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...DOOR_RULES_AT_ENGLISH, ...PARAMETERISED_RULES])
+    expect(rulesOf(expected)).toHaveLength(head.length)
   }, TIMEOUT)
 
-  it('0008 G3: a Traditional Chinese brief left untracked keeps its challenge’s four rules, the Traditional Chinese ones at the English page', () => {
-    git(repo, ['rm', '-rq', '--cached', 'platform/zh-TW/challenge/door'])
-    // With the removal from the index as the only staged change, the hook's stash push stops
-    // partway and the run ends in O5, before generation (a hook defect predating spec 0008,
-    // recorded in T-0056). An English change staged beside it reaches generation.
-    stageDoorChange()
+  it('S39 (zh-TW twin of H40): deleting only door’s en brief keeps all four rules and re-points /en/c/002 at the zh-TW page', () => {
+    useFixture('zh-TW')
+    const head = rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
+    git(repo, ['rm', '-rq', 'platform/en/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
-    expect(before.untracked).toContain('?? platform/zh-TW/challenge/door/index.md')
 
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual([...TEST_CHALL_RULES, ...DOOR_RULES_AT_ENGLISH, ...PARAMETERISED_RULES])
+    expect(rulesOf(expected)).toEqual([...ZH_TEST_CHALL_RULES, ...ZH_DOOR_RULES_AT_PRIMARY, ...ZH_PARAMETERISED_RULES])
+    expect(rulesOf(expected)).toHaveLength(head.length)
+  }, TIMEOUT)
+
+  it.each(['en', 'zh-TW'] as const)('0008 G3, S40 (P = %s): a translation brief left untracked keeps its challenge’s four rules, the translation’s two at the primary page', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
+    git(repo, ['rm', '-rq', '--cached', `platform/${T}/challenge/door`])
+    // With the removal from the index as the only staged change, the hook's stash push stops
+    // partway and the run ends in O5, before generation (a hook defect predating spec 0008,
+    // recorded in T-0056). A change staged beside it reaches generation.
+    stageDoorChange()
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    expect(before.untracked).toContain(`?? platform/${T}/challenge/door/index.md`)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(
+      P === 'en'
+        ? [...TEST_CHALL_RULES, ...DOOR_RULES_AT_ENGLISH, ...PARAMETERISED_RULES]
+        : [...ZH_TEST_CHALL_RULES, ...ZH_DOOR_RULES_AT_PRIMARY, ...ZH_PARAMETERISED_RULES],
+    )
     expectNoW3W4(run)
   }, TIMEOUT)
 
@@ -434,7 +674,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
   }, TIMEOUT)
 
   it('H43: an unstaged number edit keeps HEAD’s bytes, and the unstaged number is back afterwards', () => {
-    write(repo, 'platform/challenge/test-chall/index.md', read(repo, 'platform/challenge/test-chall/index.md').replace('number: 1', 'number: 7'))
+    write(repo, 'platform/challenge/test-chall/challenge.yaml', read(repo, 'platform/challenge/test-chall/challenge.yaml').replace('number: 1', 'number: 7'))
     write(repo, 'platform/challenge/door/src/app.py', 'from flask import Flask\napp = Flask("door")\n')
     git(repo, ['add', 'platform/challenge/door/src/app.py'])
     const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
@@ -443,16 +683,16 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), head)
-    expect(read(repo, 'platform/challenge/test-chall/index.md')).toContain('number: 7')
+    expect(read(repo, 'platform/challenge/test-chall/challenge.yaml')).toContain('number: 7')
   }, TIMEOUT)
 
-  it('H24: a type change of index.md to a link keeps HEAD’s bytes, and is not validated', () => {
+  it('H24: a type change of a brief’s index.md to a link keeps HEAD’s bytes, and is not validated', () => {
     const log = validatorLog()
-    const index = 'platform/challenge/test-chall/index.md'
-    write(repo, 'platform/challenge/test-chall/brief.md', read(repo, index))
+    const index = 'platform/en/challenge/test-chall/index.md'
+    write(repo, 'platform/en/challenge/test-chall/brief.md', read(repo, index))
     unlinkSync(join(repo.dir, index))
     symlinkSync('brief.md', join(repo.dir, index))
-    git(repo, ['add', 'platform/challenge/test-chall'])
+    git(repo, ['add', 'platform/en/challenge/test-chall'])
     expect(git(repo, ['diff', '--cached', '--name-status'])).toContain(`T\t${index}`)
     const head = git(repo, ['show', `HEAD:${REDIRECTS}`])
     const before = snapshot(repo)
@@ -461,26 +701,8 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
 
     expectO2(run, before, snapshot(repo), head)
     const argv = readRecord(log).flatMap((r) => r.argv)
-    expect(argv).toContain('platform/challenge/test-chall/brief.md')
+    expect(argv).toContain('platform/en/challenge/test-chall/brief.md')
     expect(argv).not.toContain(index)
-  }, TIMEOUT)
-
-  it('H23: un-retiring a challenge brings its four rules back, the Traditional Chinese ones at its English page', () => {
-    const log = validatorLog()
-    git(repo, ['mv', '.archive/challenge/old-chall', 'platform/challenge/old-chall'])
-    const expected = expectedRedirects(repo)
-    const before = snapshot(repo)
-
-    const run = runHook(repo)
-
-    expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected).filter((r) => r.includes('/003 '))).toEqual([
-      '/c/003 /challenge/old-chall/',
-      '/en/c/003 /challenge/old-chall/',
-      '/zh/c/003 /challenge/old-chall/',
-      '/zh-TW/c/003 /challenge/old-chall/',
-    ])
-    expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/old-chall/index.md')
   }, TIMEOUT)
 
   it('H18: with no _redirects in HEAD, the expected one is staged as added, with no W3', () => {
@@ -500,13 +722,16 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
     expectNoW3W4(run)
   }, TIMEOUT)
 
-  it('H20: an ignored directory gets no rule, and a page counts only where its own tree lists its slug', () => {
+  it.each(['en', 'zh-TW'] as const)('H20, S40 (P = %s): an ignored directory gets no rule, and a page counts only where its own tree lists its slug', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
     // logs/ is ignored and carries door's number: counting it would make generation refuse.
-    write(repo, 'platform/challenge/logs/index.md', challengeIndex('logs', 2))
-    // tmp/ is ignored too; the English page is force-added, the brief stays ignored.
-    writeChallenge(repo, 'platform/challenge', 'tmp', 6)
-    writeBrief(repo, 'tmp', 6)
-    git(repo, ['add', '-f', 'platform/challenge/tmp'])
+    write(repo, 'platform/challenge/logs/challenge.yaml', declarationText(2))
+    // tmp/ is ignored too; the declaration and the primary brief are force-added, the other brief stays ignored.
+    writeChallenge(repo, 'platform/challenge', 'tmp', 6, { briefs: [] })
+    writeBrief(repo, P, 'tmp')
+    writeBrief(repo, T, 'tmp')
+    git(repo, ['add', '-f', 'platform/challenge/tmp', `platform/${P}/challenge/tmp`])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -514,7 +739,7 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
 
     expectO2(run, before, snapshot(repo), expected)
     const rules = rulesOf(expected)
-    // tmp's ignored brief does not count: its Traditional Chinese rules open the English page.
+    // tmp's ignored brief does not count: the other locale's rules open the primary page.
     expect(rules.filter((r) => r.includes('/006 '))).toEqual([
       '/c/006 /challenge/tmp/',
       '/en/c/006 /challenge/tmp/',
@@ -522,6 +747,29 @@ describe('pre-commit.sh: the expected _redirects (AC-12)', () => {
       '/zh-TW/c/006 /challenge/tmp/',
     ])
     expect(rules.filter((r) => r.includes('logs'))).toEqual([])
+    expect(run.stderr).not.toContain('logs')
+    expectNoW3W4(run)
+  }, TIMEOUT)
+
+  it.each(['en', 'zh-TW'] as const)('S40 (P = %s), with W3 forced: W4 names neither the ignored logs/ nor the ignored translation brief folder', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
+    write(repo, 'platform/challenge/logs/challenge.yaml', declarationText(2))
+    writeChallenge(repo, 'platform/challenge', 'tmp', 6, { briefs: [] })
+    writeBrief(repo, P, 'tmp')
+    writeBrief(repo, T, 'tmp')
+    git(repo, ['add', '-f', 'platform/challenge/tmp', `platform/${P}/challenge/tmp`])
+    // An unstaged hand edit of _redirects makes the hook say W3, so W4 is asked to name untracked folders.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a hand edit\n`)
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(run.stderr).toMatch(W3)
+    expect(run.stderr).not.toContain('logs')
+    expect(run.stderr).not.toContain(`platform/${T}/challenge/tmp/`)
   }, TIMEOUT)
 })
 
@@ -540,12 +788,20 @@ function w4(dir: string): RegExp {
 
 /** W4's wording for an untracked English directory: left out of the file. */
 function w4LeftOut(dir: string): RegExp {
-  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects leaves it out\\.`)
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects leaves it out\\. To include it, git add it and commit again\\.$`, 'm')
 }
 
-/** W4's wording for an untracked Traditional Chinese directory (spec 0008, H1a): its rules open the English page. */
+/**
+ * W4b's wording (S-§4.5) for an untracked brief directory of locale `L` when the primary locale is `P`:
+ * the challenge's `L` short links open the `P` page.
+ */
+function w4Opens(dir: string, L: Locale, P: Locale): RegExp {
+  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects does not use it: its challenge's ${LOCALE_ENGLISH_NAMES[L]} short links open the ${LOCALE_ENGLISH_NAMES[P]} page, if there is one\\. To include it, git add it and commit again\\.$`, 'm')
+}
+
+/** W4b's wording for an untracked Traditional Chinese directory on `P = en` (spec 0008, H1a; today's sentence). */
 function w4EnglishPage(dir: string): RegExp {
-  return new RegExp(`${escapeRe(dir)} is untracked, so _redirects does not use it: its challenge's Traditional Chinese short links open the English page, if there is one\\.`)
+  return w4Opens(dir, 'zh-TW', 'en')
 }
 
 const DOOR_APP = 'platform/challenge/door/src/app.py'
@@ -645,7 +901,7 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     write(repo, 'README.md', '# Unstaged outside platform/\n')
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
-    expect(before.untracked).toContain('?? platform/challenge/draft/index.md')
+    expect(before.untracked).toContain('?? platform/challenge/draft/challenge.yaml')
 
     const run = runHook(repo)
 
@@ -696,11 +952,14 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     expectNoW3W4(run)
   }, TIMEOUT)
 
-  it('H10: an unstaged _redirects holding an untracked challenge’s rule is replaced (D3), with W3 and W4', () => {
-    writeChallenge(repo, 'platform/challenge', 'draft', 5)
-    writeBrief(repo, 'draft', 5)
+  it.each(['en', 'zh-TW'] as const)('H10, S47 (P = %s): an unstaged _redirects holding an untracked challenge’s rule is replaced (D3), with W3 and W4a for the declaration and primary brief folders and W4b for the translation', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
+    writeChallenge(repo, 'platform/challenge', 'draft', 5, { briefs: [P, T] })
     // An ignored directory, which W4 does not name.
     write(repo, 'platform/challenge/logs/run.log', 'ignored\n')
+    // An untracked file directly under the tree is no folder, so W4 does not name it.
+    write(repo, 'platform/challenge/stray.md', 'x\n')
     stageDoorChange()
     // As after pnpm dev: generated over the whole working tree, draft included.
     write(repo, REDIRECTS, generateRedirects(repo.dir))
@@ -711,20 +970,25 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    expect(rulesOf(expected)).toEqual(P === 'en' ? FIXTURE_RULES : ZH_FIXTURE_RULES)
     expect(run.stderr).toMatch(W3)
-    expect(run.stderr).toMatch(w4('platform/challenge/draft/'))
-    expect(run.stderr).toMatch(w4('platform/zh-TW/challenge/draft/'))
-    // W4 says what each tree's untracked directory does to the file (spec 0008, H1a).
-    expect(run.stderr).toMatch(w4LeftOut('platform/challenge/draft/'))
-    expect(run.stderr).toMatch(w4EnglishPage('platform/zh-TW/challenge/draft/'))
+    for (const dir of ['platform/challenge/draft/', `platform/${P}/challenge/draft/`]) {
+      expect(run.stderr).toMatch(w4(dir))
+      expect(run.stderr).toMatch(w4LeftOut(dir))
+    }
+    expect(run.stderr).toMatch(w4(`platform/${T}/challenge/draft/`))
+    expect(run.stderr).toMatch(w4Opens(`platform/${T}/challenge/draft/`, T, P))
+    expect(run.stderr).not.toMatch(w4LeftOut(`platform/${T}/challenge/draft/`))
     expect(run.stderr).not.toContain('logs')
+    expect(run.stderr).not.toContain('stray.md')
   }, TIMEOUT)
 
-  it('H10, Traditional Chinese tree: an untracked brief beside a tracked English page is named as re-pointing to the English page, with W3', () => {
-    // test-chall's brief, never added; door's stays tracked, so git names the directory
-    // rather than the whole Traditional Chinese tree.
-    writeBrief(repo, 'test-chall', 1)
+  it.each(['en', 'zh-TW'] as const)('H10, translation tree (P = %s): an untracked translation brief beside a tracked page is named as re-pointing to the primary page, with W3', (P) => {
+    useFixture(P)
+    const T = OTHER[P]
+    // test-chall's translation brief, never added; door's stays tracked, so git names the directory
+    // rather than the whole translation tree.
+    writeBrief(repo, T, 'test-chall')
     stageDoorChange()
     // A version of the teacher's own, so that W3, and with it W4, is printed.
     write(repo, REDIRECTS, `${read(repo, REDIRECTS)}/c/999  /challenge/hand-edit/  302\n`)
@@ -734,11 +998,11 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    expect(rulesOf(expected)).toEqual(P === 'en' ? FIXTURE_RULES : ZH_FIXTURE_RULES)
     expect(run.stderr).toMatch(W3)
-    expect(run.stderr).toMatch(w4('platform/zh-TW/challenge/test-chall/'))
-    expect(run.stderr).toMatch(w4EnglishPage('platform/zh-TW/challenge/test-chall/'))
-    expect(run.stderr).not.toMatch(w4LeftOut('platform/zh-TW/challenge/test-chall/'))
+    expect(run.stderr).toMatch(w4(`platform/${T}/challenge/test-chall/`))
+    expect(run.stderr).toMatch(w4Opens(`platform/${T}/challenge/test-chall/`, T, P))
+    expect(run.stderr).not.toMatch(w4LeftOut(`platform/${T}/challenge/test-chall/`))
   }, TIMEOUT)
 
   it('H19: a staged hunk with an overlapping unstaged change comes back with its unstaged bytes', () => {
@@ -759,9 +1023,9 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
     expect(git(repo, ['show', `:${DOOR_APP}`])).toBe('line 1\nline 2, staged\nline 3\n')
   }, TIMEOUT)
 
-  it('H13: a Traditional Chinese number that differs from the English one ends in O4 with W5', () => {
-    const log = validatorLog()
-    writeBrief(repo, 'test-chall', 9)
+  it('H13, S48: a brief whose frontmatter carries `number` ends in O3 with the validator’s message, no number-locales text, and no --staged call', () => {
+    const generator = generatorLog()
+    write(repo, 'platform/zh-TW/challenge/test-chall/index.md', ['---', 'title: "test-chall"', 'layout: challenge', 'number: 9', '---', '', 'content', ''].join('\n'))
     git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
     write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a hand edit\n`)
     write(repo, 'platform/public/other.txt', 'other, unstaged\n')
@@ -769,18 +1033,19 @@ describe('pre-commit.sh: W3, W4 and unstaged work', () => {
 
     const run = runHook(repo)
 
-    expect(run.status).toBe(1)
-    expect(run.stderr).toContain('carries different numbers across locale trees')
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain('platform/zh-TW/challenge/test-chall/index.md carries key(s) number that a brief may not carry')
+    expect(run.stderr).not.toContain('carries different numbers across locale trees')
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
     expectNothingChanged(before, snapshot(repo))
-    expect(readRecord(log)).toEqual([])
   }, TIMEOUT)
 })
 
-// ─── Orphan briefs (D12, AC-15) ─────────────────────────────────────────────
+// ─── Brief faults (D12 moved to Node, D64, D121; AC-15) ─────────────────────
 
 function generatorLog(): string {
   const log = join(repo.base, 'generator.log')
-  recordScript(repo, 'generate-redirects.ts', log)
+  recordScript(repo, 'generate-redirects.ts', log, false, true)
   return log
 }
 
@@ -791,202 +1056,715 @@ function addTeacherWork(): void {
   write(repo, 'platform/notes/untracked.txt', 'untracked notes\n')
 }
 
+/** The article before a locale's English name: `an` before a vowel letter, `a` otherwise (D151). */
+const article = (L: Locale): string => (/^[AEIOU]/.test(LOCALE_ENGLISH_NAMES[L]) ? 'an' : 'a')
+
+/** The W6 lines of S-§4.5, each as the hook prints it (without the newline). */
+const W6 = {
+  a: (L: Locale, slug: string, P: Locale) =>
+    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is ${article(L)} ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no ${LOCALE_ENGLISH_NAMES[P]} brief platform/${P}/challenge/${slug}/index.md, the primary locale's, so CI would fail this commit.`,
+  b: (slug: string, P: Locale) =>
+    `[pre-commit] ✗ platform/challenge/${slug}/challenge.yaml declares a challenge, but the index holds no ${LOCALE_ENGLISH_NAMES[P]} brief platform/${P}/challenge/${slug}/index.md, the primary locale's, so CI would fail this commit.`,
+  c: (L: Locale, slug: string) =>
+    `[pre-commit] ✗ platform/${L}/challenge/${slug}/ is ${article(L)} ${LOCALE_ENGLISH_NAMES[L]} brief, but the index holds no challenge declaration platform/challenge/${slug}/challenge.yaml, so CI would fail this commit.`,
+  d: (path: string) =>
+    `[pre-commit] ✗ ${path} is outside the locale folders (PL-E08), so CI would fail this commit; move it as README.en.md describes in "Moving to the locale folders".`,
+}
+
+/** W6r's five fragments, in the order S-§4.5 gives them. */
+const W6R = [
+  'A challenge is platform/challenge/<slug>/ and its briefs under platform/<locale>/challenge/<slug>/',
+  'delete, rename or retire them together',
+  'move platform/challenge/<slug>/ to .archive/challenge/<slug>/ and delete its briefs in the same commit (git rm -r platform/<locale>/challenge/<slug>/)',
+  'If a part exists but is not staged yet, git add it.',
+  'Nothing was changed.',
+]
+
 /**
- * O4 with W6 for each orphan slug, refused before generating: exit 1, both
- * paths of each slug and D12's three ways out on stderr, no `--staged` call
- * and no W5 text.
+ * O4 with W6 for each brief fault the index holds (S44): exit 1; the W6 lines are exactly `lines`
+ * (verbatim, in order); W6r's fragments each once, in order; one `--staged` call of the generator,
+ * which wrote nothing to stdout; no W5 and no number text.
  */
-function expectW6(run: Run, slugs: string[], generator: string): void {
+function expectW6(run: Run, lines: string[], generator: string): void {
   expect(run.status, run.stderr).toBe(1)
-  for (const slug of slugs) {
-    expect(run.stderr).toContain(`platform/zh-TW/challenge/${slug}/`)
-    expect(run.stderr).toContain(`platform/challenge/${slug}/`)
+  expect(run.stderr.split('\n').filter((l) => l.startsWith('[pre-commit] ✗'))).toEqual(lines)
+  let at = -1
+  for (const fragment of W6R) {
+    const first = run.stderr.indexOf(fragment)
+    expect(first, `${fragment}\n${run.stderr}`).toBeGreaterThan(at)
+    expect(run.stderr.indexOf(fragment, first + 1), `${fragment} twice`).toBe(-1)
+    at = first
   }
-  expect(run.stderr).toMatch(/delete/i)
-  expect(run.stderr).toMatch(/rename/i)
-  expect(run.stderr).toMatch(/retire/i)
-  expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
+  const calls = readRecord(generator).filter((r) => r.argv.includes('--staged'))
+  expect(calls).toHaveLength(1)
+  expect(calls[0].stdoutBytes).toBe(0)
   expect(run.stderr).not.toContain('held by more than one challenge')
+  expect(run.stderr).not.toContain('so no number')
   expect(run.stderr).not.toContain('carries different numbers')
 }
 
-describe('pre-commit.sh: orphan briefs (D12)', () => {
-  it('H17: retiring door while its brief stays ends in O4 with W6 naming door, and nothing changes', () => {
+/** Commit what is staged with `--no-verify`: a fault that HEAD then holds, as a commit made before the hook existed would. */
+function commitFault(): void {
+  git(repo, ['commit', '-q', '--no-verify', '-m', 'a fault, bypassing the hook'])
+}
+
+/** Stage a change to `slug`'s `src/app.py`, unrelated to the fault: the commit then reaches the brief check. */
+function stageSrcChange(slug: string, r: Repo = repo): void {
+  const path = `platform/challenge/${slug}/src/app.py`
+  write(r, path, `from flask import Flask\napp = Flask("${slug}, unrelated")\n`)
+  git(r, ['add', path])
+}
+
+interface BriefFault {
+  name: string
+  /** Stage the fault's change (the caller commits it with `--no-verify`). */
+  stage(P: Locale, T: Locale): void
+  /** The challenge whose `src/` the unrelated change touches. */
+  other: string
+  /** The W6 lines, in the order S-§4.5 sorts them. */
+  lines(P: Locale, T: Locale): string[]
+}
+
+const BRIEF_FAULTS: BriefFault[] = [
+  {
+    name: 'W6c: door’s declaration moved to .archive/ while both briefs stay (H17)',
+    stage: () => git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door']),
+    other: 'test-chall',
+    lines: () => [W6.c('en', 'door'), W6.c('zh-TW', 'door')],
+  },
+  {
+    name: 'W6a: door’s primary brief deleted (H21)',
+    stage: (P) => git(repo, ['rm', '-rq', `platform/${P}/challenge/door`]),
+    other: 'test-chall',
+    lines: (P, T) => [W6.a(T, 'door', P)],
+  },
+  {
+    name: 'W6b: untranslated test-chall’s primary brief deleted',
+    stage: (P) => git(repo, ['rm', '-rq', `platform/${P}/challenge/test-chall`]),
+    other: 'door',
+    lines: (P) => [W6.b('test-chall', P)],
+  },
+  {
+    name: 'W6a and W6c: door’s primary brief folder renamed to gate (H22)',
+    stage: (P) => git(repo, ['mv', `platform/${P}/challenge/door`, `platform/${P}/challenge/gate`]),
+    other: 'test-chall',
+    lines: (P, T) => [W6.a(T, 'door', P), W6.c(P, 'gate')],
+  },
+  {
+    name: 'W6a and W6c: door’s translation folder renamed to gate (H41)',
+    stage: (P, T) => git(repo, ['mv', `platform/${T}/challenge/door`, `platform/${T}/challenge/gate`]),
+    other: 'test-chall',
+    lines: (P, T) => [W6.a(T, 'gate', P), W6.c(T, 'gate')],
+  },
+  {
+    name: 'W6d: an old-layout platform/challenge/x/index.md',
+    stage: () => {
+      write(repo, 'platform/challenge/x/index.md', '---\ntitle: x\n---\n')
+      git(repo, ['add', 'platform/challenge/x/index.md'])
+    },
+    other: 'test-chall',
+    lines: () => [W6.d('platform/challenge/x/index.md')],
+  },
+]
+
+/** S44's first case (W6c), as a function so that H45 runs it under /bin/bash 3.2 too. */
+function expectS44First(bash: string): void {
+  const generator = generatorLog()
+  BRIEF_FAULTS[0].stage('en', 'zh-TW')
+  commitFault()
+  stageSrcChange('test-chall')
+  addTeacherWork()
+  const before = snapshot(repo)
+
+  const run = runHook(repo, {}, bash)
+
+  expectW6(run, BRIEF_FAULTS[0].lines('en', 'zh-TW'), generator)
+  expectNothingChanged(before, snapshot(repo))
+}
+
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: brief faults the index holds (S44, D121; P = %s)', (P) => {
+  const T = OTHER[P]
+
+  it.each(BRIEF_FAULTS)('$name: exit 1, W6 line(s) verbatim, W6r once, nothing changed', (fault) => {
+    useFixture(P)
     const generator = generatorLog()
-    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    fault.stage(P, T)
+    commitFault()
+    stageSrcChange(fault.other)
     addTeacherWork()
     const before = snapshot(repo)
 
     const run = runHook(repo)
 
-    expectW6(run, ['door'], generator)
-    expectNothingChanged(before, snapshot(repo))
-  }, TIMEOUT)
-
-  it('H21: deleting only door’s English directory ends in O4 with W6 naming door, and nothing changes', () => {
-    const generator = generatorLog()
-    git(repo, ['rm', '-rq', 'platform/challenge/door'])
-    addTeacherWork()
-    const before = snapshot(repo)
-
-    const run = runHook(repo)
-
-    expectW6(run, ['door'], generator)
-    expectNothingChanged(before, snapshot(repo))
-  }, TIMEOUT)
-
-  it('H22: renaming only door’s English directory to gate ends in O4 with W6 naming door, and nothing changes', () => {
-    const generator = generatorLog()
-    git(repo, ['mv', 'platform/challenge/door', 'platform/challenge/gate'])
-    addTeacherWork()
-    const before = snapshot(repo)
-
-    const run = runHook(repo)
-
-    expectW6(run, ['door'], generator)
-    expect(run.stderr).not.toContain('platform/zh-TW/challenge/gate/')
-    expectNothingChanged(before, snapshot(repo))
-  }, TIMEOUT)
-
-  it('H41: renaming only door’s Traditional Chinese directory to gate ends in O4 with W6 naming gate, and the validator never runs', () => {
-    const generator = generatorLog()
-    const validator = validatorLog()
-    git(repo, ['mv', 'platform/zh-TW/challenge/door', 'platform/zh-TW/challenge/gate'])
-    addTeacherWork()
-    const before = snapshot(repo)
-
-    const run = runHook(repo)
-
-    expectW6(run, ['gate'], generator)
-    expect(readRecord(validator)).toEqual([])
+    expectW6(run, fault.lines(P, T), generator)
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
   it('H17 through git commit -m: refused with W6, no commit is made, and nothing changes', () => {
+    useFixture(P)
     const generator = generatorLog()
-    git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
+    BRIEF_FAULTS[0].stage(P, T)
+    commitFault()
+    stageSrcChange('test-chall')
     addTeacherWork()
     const head = git(repo, ['rev-parse', 'HEAD'])
     const before = snapshot(repo)
 
-    const run = commit(repo, ['-m', 'retire door'])
+    const run = commit(repo, ['-m', 'a change beside the fault'])
 
-    expectW6(run, ['door'], generator)
+    expectW6(run, BRIEF_FAULTS[0].lines(P, T), generator)
     expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
-  it('H21 through git commit -a -m: the orphan exists only in the index.lock git hands the hook; refused with W6, no commit is made, and nothing changes', () => {
-    const generator = generatorLog()
-    rmSync(join(repo.dir, 'platform/challenge/door'), { recursive: true })
-    addTeacherWork()
-    const head = git(repo, ['rev-parse', 'HEAD'])
-    const before = snapshot(repo)
-    // The deletion is in the working tree only: .git/index still holds door's English page.
-    expect(before.index.some((l) => l.endsWith('\tplatform/challenge/door/index.md'))).toBe(true)
-
-    const run = commit(repo, ['-a', '-m', 'delete door'])
-
-    expectW6(run, ['door'], generator)
-    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
-    expectNothingChanged(before, snapshot(repo))
-  }, TIMEOUT)
-
-  it('K-17: an English page on disk but not in the index backs no brief, and two orphans are each named', () => {
+  it('H21 through git commit -a -m: the unrelated change exists only in the index.lock git hands the hook, which the hook reads; refused with W6, no commit, and nothing changes', () => {
+    useFixture(P)
     const generator = generatorLog()
     const validator = validatorLog()
-    writeChallenge(repo, 'platform/challenge', 'fresh', 4)
-    writeBrief(repo, 'fresh', 4)
-    writeBrief(repo, 'ghost', 5)
-    git(repo, ['add', 'platform/zh-TW/challenge/fresh/index.md', 'platform/zh-TW/challenge/ghost/index.md'])
+    BRIEF_FAULTS[1].stage(P, T)
+    commitFault()
+    const path = 'platform/challenge/test-chall/src/app.py'
+    write(repo, path, 'from flask import Flask\napp = Flask("lock only")\n')
+    addTeacherWork()
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+    // The change is in the working tree only: .git/index does not hold it.
+    expect(git(repo, ['diff', '--cached', '--name-only'])).toBe('')
+
+    const run = commit(repo, ['-a', '-m', 'commit -a beside the fault'])
+
+    expectW6(run, BRIEF_FAULTS[1].lines(P, T), generator)
+    // The validator saw the change, so the hook read the lock git handed it.
+    expect(readRecord(validator).flatMap((r) => r.argv)).toContain(path)
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+})
+
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: the brief check reads the index only (S45; P = %s)', (P) => {
+  const T = OTHER[P]
+
+  it('K-17: a declaration and a primary brief on disk but not in the index back no translation, and two such challenges are each named', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    writeChallenge(repo, 'platform/challenge', 'fresh', 4, { briefs: [P] })
+    writeBrief(repo, T, 'fresh')
+    writeBrief(repo, T, 'ghost')
+    git(repo, ['add', `platform/${T}/challenge/fresh/index.md`, `platform/${T}/challenge/ghost/index.md`])
+    commitFault()
+    stageSrcChange('test-chall')
     addTeacherWork()
     const before = snapshot(repo)
-    expect(before.untracked).toContain('?? platform/challenge/fresh/index.md')
+    expect(before.untracked).toContain('?? platform/challenge/fresh/challenge.yaml')
+    expect(before.untracked).toContain(`?? platform/${P}/challenge/fresh/index.md`)
 
     const run = runHook(repo)
 
-    expectW6(run, ['fresh', 'ghost'], generator)
-    expect(readRecord(validator)).toEqual([])
+    expectW6(run, [W6.a(T, 'fresh', P), W6.c(T, 'fresh'), W6.a(T, 'ghost', P), W6.c(T, 'ghost')], generator)
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
-  it('K-17 boundary: ignored directories, which stay on disk through the hook’s stash, neither back a brief nor make one', () => {
+  it('K-17 boundary: ignored directories, which stay on disk through the hook’s stash, neither back a brief nor make a fault', () => {
+    useFixture(P)
     const generator = generatorLog()
-    // logs/ and tmp/ are ignored. The English logs page stays on disk; its brief is force-added.
-    writeChallenge(repo, 'platform/challenge', 'logs', 4)
-    writeBrief(repo, 'logs', 4)
-    git(repo, ['add', '-f', 'platform/zh-TW/challenge/logs/index.md'])
-    // An ignored brief with no English page at all is not in the index slugs.
-    writeBrief(repo, 'tmp', 5)
+    // logs/ and tmp/ are ignored. logs' declaration and primary brief stay on disk; its translation is force-added.
+    writeChallenge(repo, 'platform/challenge', 'logs', 4, { briefs: [P] })
+    writeBrief(repo, T, 'logs')
+    git(repo, ['add', '-f', `platform/${T}/challenge/logs/index.md`])
+    // An ignored translation with no declaration and no primary brief is not in the index.
+    writeBrief(repo, T, 'tmp')
+    commitFault()
+    stageSrcChange('test-chall')
     addTeacherWork()
     const before = snapshot(repo)
+    expect(before.files.has('platform/challenge/logs/challenge.yaml')).toBe(true)
 
     const run = runHook(repo)
 
-    expectW6(run, ['logs'], generator)
-    expect(run.stderr).not.toContain('platform/zh-TW/challenge/tmp/')
+    expectW6(run, [W6.a(T, 'logs', P), W6.c(T, 'logs')], generator)
+    expect(run.stderr).not.toContain(`platform/${T}/challenge/tmp/`)
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
-  it('D12: an orphan HEAD already holds refuses a commit whose own change creates none', () => {
-    git(repo, ['rm', '-rq', 'platform/challenge/door'])
-    git(repo, ['commit', '-q', '--no-verify', '-m', 'an orphan, bypassing the hook'])
+  it('D12-HEAD: a fault HEAD already holds refuses a commit whose own change creates none', () => {
+    useFixture(P)
+    git(repo, ['rm', '-rq', 'platform/challenge/door', `platform/${P}/challenge/door`])
+    commitFault()
     const generator = generatorLog()
-    write(repo, 'platform/challenge/test-chall/src/app.py', 'from flask import Flask\napp = Flask("test-chall")\n')
-    git(repo, ['add', 'platform/challenge/test-chall/src/app.py'])
+    stageSrcChange('test-chall')
     addTeacherWork()
     const before = snapshot(repo)
 
     const run = runHook(repo)
 
-    expectW6(run, ['door'], generator)
+    expectW6(run, [W6.a(T, 'door', P), W6.c(T, 'door')], generator)
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 
-  it('no English index slug at all: with every English challenge deleted, door’s brief still ends in O4 with W6 (an empty English list is not expanded under bash 3.2 set -u)', () => {
+  it('no primary-locale index slug at all: with every primary brief deleted, the faults are still named (an empty list is not expanded under bash 3.2 set -u)', () => {
+    useFixture(P)
     const generator = generatorLog()
-    git(repo, ['rm', '-rq', 'platform/challenge/test-chall', 'platform/challenge/door'])
+    git(repo, ['rm', '-rq', `platform/${P}/challenge`])
+    commitFault()
+    // No challenge has a primary brief left, so a staged src change would be refused by the validator
+    // first: the change that triggers the hook is a hand edit of _redirects, which is not validated.
+    write(repo, REDIRECTS, `${read(repo, REDIRECTS)}# a staged edit\n`)
+    git(repo, ['add', REDIRECTS])
     addTeacherWork()
     const before = snapshot(repo)
-    expect(before.index.some((l) => l.includes('\tplatform/challenge/'))).toBe(false)
+    expect(before.index.some((l) => l.includes(`\tplatform/${P}/challenge/`))).toBe(false)
 
     const run = runHook(repo)
 
-    expectW6(run, ['door'], generator)
+    expectW6(run, [W6.a(T, 'door', P), W6.b('test-chall', P)], generator)
     expect(run.stderr).not.toContain('unbound variable')
     expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
+})
 
-  /** The rule lines once door is retired with its brief: all four of door's rules are gone. */
-  const RETIRED_DOOR_RULES = [...TEST_CHALL_RULES, ...PARAMETERISED_RULES]
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: retiring and un-retiring (S46; P = %s)', (P) => {
+  /** The rule lines once door is retired with its briefs: all four of door's rules are gone. */
+  const retired = () => (P === 'en' ? [...TEST_CHALL_RULES, ...PARAMETERISED_RULES] : [...ZH_TEST_CHALL_RULES, ...ZH_PARAMETERISED_RULES])
 
-  it('H39: retiring door together with its brief ends in O2, and all four of its rules go', () => {
+  it('H39: retiring door together with its briefs ends in O2, all four of its rules go, and its number is never given again', () => {
+    useFixture(P)
     git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
-    git(repo, ['rm', '-rq', 'platform/zh-TW/challenge/door'])
+    git(repo, ['rm', '-rq', 'platform/en/challenge/door', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(RETIRED_DOOR_RULES)
+    expect(rulesOf(expected)).toEqual(retired())
     expectNoW3W4(run)
-    expect(run.stderr).not.toContain('platform/zh-TW/challenge/door/')
+    expect(run.stderr).not.toContain('challenge/door/')
+    // Numbers 1 and 3 are in use and 2 is retired: the next one is 4, never door's 2.
+    expect(nextChallengeNumber(repo.dir)).toBe(4)
   }, TIMEOUT)
 
-  it('H39 boundary: a brief removed only from the index stays on disk untracked, is no orphan, and all four of its rules go', () => {
+  it('H39 boundary: briefs removed only from the index stay on disk untracked, are no fault, and all four of door’s rules go', () => {
+    useFixture(P)
     git(repo, ['mv', 'platform/challenge/door', '.archive/challenge/door'])
-    git(repo, ['rm', '-rq', '--cached', 'platform/zh-TW/challenge/door'])
+    git(repo, ['rm', '-rq', '--cached', 'platform/en/challenge/door', 'platform/zh-TW/challenge/door'])
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
+    expect(before.untracked).toContain('?? platform/en/challenge/door/index.md')
     expect(before.untracked).toContain('?? platform/zh-TW/challenge/door/index.md')
 
     const run = runHook(repo)
 
     expectO2(run, before, snapshot(repo), expected)
-    expect(rulesOf(expected)).toEqual(RETIRED_DOOR_RULES)
+    expect(rulesOf(expected)).toEqual(retired())
     expectNoW3W4(run)
-    expect(run.stderr).not.toContain('platform/zh-TW/challenge/door/')
+    expect(run.stderr).not.toContain('challenge/door/')
+    expect(nextChallengeNumber(repo.dir)).toBe(4)
+  }, TIMEOUT)
+
+  it('H23: un-retiring old-chall (its declaration folder back, with a primary brief) brings its four rules back', () => {
+    useFixture(P)
+    const log = validatorLog()
+    git(repo, ['mv', '.archive/challenge/old-chall', 'platform/challenge/old-chall'])
+    writeBrief(repo, P, 'old-chall')
+    git(repo, ['add', `platform/${P}/challenge/old-chall/index.md`])
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected).filter((r) => r.includes('/003 '))).toEqual([
+      '/c/003 /challenge/old-chall/',
+      '/en/c/003 /challenge/old-chall/',
+      '/zh/c/003 /challenge/old-chall/',
+      '/zh-TW/c/003 /challenge/old-chall/',
+    ])
+    expect(readRecord(log).flatMap((r) => r.argv)).toContain(`platform/${P}/challenge/old-chall/index.md`)
+    expect(readRecord(log).flatMap((r) => r.argv)).toContain('platform/challenge/old-chall/challenge.yaml')
+  }, TIMEOUT)
+})
+
+// ─── The real validator through the hook (Y90, S48, S73) ─────────────────────
+
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: briefs reach the real validator (Y90, S73; P = %s)', (P) => {
+  const T = OTHER[P]
+
+  it.each([P, T])('Y90: a brief in %s that carries a banned key (difficulty) is refused through git commit with VM6, and nothing changes', (L) => {
+    useFixture(P)
+    write(repo, `platform/${L}/challenge/door/index.md`, ['---', 'title: "door"', 'layout: challenge', 'difficulty: easy', '---', '', 'content', ''].join('\n'))
+    git(repo, ['add', `platform/${L}/challenge/door/index.md`])
+    const head = git(repo, ['rev-parse', 'HEAD'])
+    const before = snapshot(repo)
+
+    const run = commit(repo, ['-m', 'a brief with a banned key'])
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(`platform/${L}/challenge/door/index.md carries key(s) difficulty that a brief may not carry`)
+    expect(git(repo, ['rev-parse', 'HEAD'])).toBe(head)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('S48 (H13): a brief whose frontmatter carries `number` is refused by the validator (R26), with nothing changed and no --staged call', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    write(repo, `platform/${T}/challenge/door/index.md`, ['---', 'title: "door"', 'layout: challenge', 'number: 9', '---', '', 'content', ''].join('\n'))
+    git(repo, ['add', `platform/${T}/challenge/door/index.md`])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(`platform/${T}/challenge/door/index.md carries key(s) number that a brief may not carry`)
+    expect(run.stderr).not.toContain('carries different numbers across locale trees')
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  /** The refusal is the validator's: no W6 line, and the generator is never called. */
+  function expectValidatorRefusal(run: Run, generator: string, line: string, before: Snapshot): void {
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(line)
+    expect(run.stderr).not.toMatch(/\[pre-commit\] ✗ platform\/[^\n]*brief, but the index holds/)
+    expect(readRecord(generator)).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }
+
+  it('S73 (1): deleting door’s primary brief alone is refused with VM10 naming the primary brief', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    git(repo, ['rm', '-q', `platform/${P}/challenge/door/index.md`])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectValidatorRefusal(run, generator, `platform/${P}/challenge/door/index.md not found; every challenge has a brief in the primary locale (${P})`, before)
+  }, TIMEOUT)
+
+  it('S73 (2): a translation brief of a slug with no challenge.yaml is refused with VM1', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    writeBrief(repo, T, 'ghost')
+    git(repo, ['add', `platform/${T}/challenge/ghost/index.md`])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectValidatorRefusal(run, generator, 'platform/challenge/ghost/challenge.yaml not found', before)
+  }, TIMEOUT)
+
+  it('S73 (3): a brief at platform/challenge/door/index.md is refused with VM13', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    write(repo, 'platform/challenge/door/index.md', '---\ntitle: door\n---\n')
+    git(repo, ['add', 'platform/challenge/door/index.md'])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectValidatorRefusal(run, generator, 'platform/challenge/door/ holds index.md; a challenge directory holds only src/ and challenge.yaml', before)
+  }, TIMEOUT)
+})
+
+// ─── range.json: the primary locale is the index's (S41–S43, S74–S79; D67, D114, D122) ──
+
+/** `range.json`'s staged content, as git adds it. */
+function stageRange(content: string): void {
+  write(repo, 'range.json', content)
+  git(repo, ['add', '--', 'range.json'])
+}
+
+/** The range.json faults S43 and S76 (c) stage: a content or a staged mode, and the PL line each ends with. */
+const RANGE_FAULTS: Array<[string, () => void, string]> = [
+  ['PL-E03: not JSON', () => stageRange('{'), 'PL-E03: range.json is not valid JSON.'],
+  ['PL-E04: not an object', () => stageRange('[]'), 'PL-E04: range.json does not hold a JSON object.'],
+  ['PL-E05: primaryLocale is not a string', () => stageRange('{"primaryLocale":1}'), 'PL-E05: "primaryLocale" in range.json is not a string: 1.'],
+  ['PL-E06: primaryLocale is not on the list', () => stageRange('{"primaryLocale":"fr"}'), 'PL-E06: "primaryLocale" in range.json is "fr", which is not on the locale list: en, zh-TW.'],
+  [
+    'PL-E01: a staged symbolic link (120000)',
+    () => {
+      rmSync(join(repo.dir, 'range.json'), { force: true })
+      symlinkSync('elsewhere.json', join(repo.dir, 'range.json'))
+      git(repo, ['add', '--', 'range.json'])
+    },
+    'PL-E01: range.json is not a regular file',
+  ],
+  [
+    'PL-E01: a staged gitlink (160000)',
+    () => git(repo, ['update-index', '--add', '--cacheinfo', `160000,${git(repo, ['rev-parse', 'HEAD']).trim()},range.json`]),
+    'PL-E01: range.json is not a regular file',
+  ],
+]
+
+describe('pre-commit.sh: the primary locale is the index’s (S42, S43, S76)', () => {
+  it('S42: an unstaged range.json naming zh-TW does not change the file: it is generated for the index’s P = en', () => {
+    write(repo, 'range.json', '{"primaryLocale":"zh-TW"}\n')
+    stageDoorChange()
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    const rangeBytes = readFileSync(join(repo.dir, 'range.json'))
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toEqual(FIXTURE_RULES)
+    // P = en: no old-address rule, whatever sits under platform/zh-TW/ (D154).
+    expect(rulesOf(expected).filter((r) => r.startsWith('/zh-TW/') && !r.startsWith('/zh-TW/c/'))).toEqual([])
+    expect(readFileSync(join(repo.dir, 'range.json'))).toEqual(rangeBytes)
+  }, TIMEOUT)
+
+  it.each([
+    ...RANGE_FAULTS,
+    [
+      'PL-E02: the index’s range.json cannot be read',
+      () => stageRange('{"primaryLocale":"en","upstream":"example/range"}\n'),
+      'PL-E02: range.json could not be read (unknown).',
+    ],
+  ] as Array<[string, () => void, string]>)('S43, %s: exit 1 with that line, and nothing changes (the generator is the one that refuses)', (name, stage, line) => {
+    const generator = generatorLog()
+    const validator = validatorLog()
+    stage()
+    const wrapper = name.startsWith('PL-E02') ? gitWrapper(repo, 'show :range.json', 'fail') : null
+    const before = snapshot(repo)
+
+    const run = runHook(repo, wrapper?.env ?? {})
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(line)
+    if (wrapper) expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged')), run.stderr).toHaveLength(1)
+    expect(readRecord(validator)).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('S76 (a): the en fixture with an unstaged range.json naming zh-TW: a new challenge is validated and generated for P = en', () => {
+    write(repo, 'range.json', '{"primaryLocale":"zh-TW"}\n')
+    writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
+    stageChallenge('new-chall')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    const rangeBytes = readFileSync(join(repo.dir, 'range.json'))
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(run.stderr).not.toContain('not found; every challenge has a brief in the primary locale')
+    expect(rulesOf(expected)).toContain('/c/004 /challenge/new-chall/')
+    // P = en: no old-address rule, whatever sits under platform/zh-TW/ (D154).
+    expect(rulesOf(expected).filter((r) => r.startsWith('/zh-TW/') && !r.startsWith('/zh-TW/c/'))).toEqual([])
+    expect(readFileSync(join(repo.dir, 'range.json'))).toEqual(rangeBytes)
+  }, TIMEOUT)
+
+  it.each([
+    ['an untracked range.json naming en', () => write(repo, 'range.json', '{"primaryLocale":"en"}\n')],
+    [
+      'a range.json naming en that the index holds without a primaryLocale',
+      () => {
+        write(repo, 'range.json', '{"upstream":"example/range"}\n')
+        git(repo, ['add', '--', 'range.json'])
+        git(repo, ['commit', '-q', '--no-verify', '-m', 'range.json without primaryLocale'])
+        write(repo, 'range.json', '{"primaryLocale":"en","upstream":"example/range"}\n')
+      },
+    ],
+  ])('S76 (b): the zh-TW fixture with %s in the working tree: an en-only new challenge is refused with VM10 for the zh-TW brief, nothing changes', (_name, prepare) => {
+    useFixture('zh-TW')
+    prepare()
+    const generator = generatorLog()
+    writeChallenge(repo, 'platform/challenge', 'new-chall', 4, { briefs: ['en'] })
+    stageChallenge('new-chall')
+    const before = snapshot(repo)
+    const rangeBytes = readFileSync(join(repo.dir, 'range.json'))
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain('platform/zh-TW/challenge/new-chall/index.md not found; every challenge has a brief in the primary locale (zh-TW)')
+    expect(run.stderr).not.toMatch(/\[pre-commit\] ✗ platform\/[^\n]*brief, but the index holds/)
+    expect(readRecord(generator)).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+    expect(readFileSync(join(repo.dir, 'range.json'))).toEqual(rangeBytes)
+  }, TIMEOUT)
+
+  it.each([
+    ...RANGE_FAULTS,
+    [
+      'PL-E02: the index’s range.json cannot be read',
+      () => stageRange('{"primaryLocale":"en","upstream":"example/range"}\n'),
+      'PL-E02: range.json could not be read (unknown).',
+    ],
+  ] as Array<[string, () => void, string]>)('S76 (c), %s, with a staged challenge path: exit 1 with that line, no --staged call (no W5), nothing changes', (name, stage, line) => {
+    const generator = generatorLog()
+    stage()
+    stageDoorChange()
+    const wrapper = name.startsWith('PL-E02') ? gitWrapper(repo, 'show :range.json', 'fail') : null
+    const before = snapshot(repo)
+
+    const run = runHook(repo, wrapper?.env ?? {})
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(line)
+    if (wrapper) expect(wrapper.matched(), 'wrapper never matched').toBe(true)
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toEqual([])
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: changing the primary locale (S41, S74, S77, S78, S79)', () => {
+  it('S41: range.json en → zh-TW, once every challenge has a zh-TW brief, regenerates the file for P = zh-TW and ends it with the old-address section', () => {
+    writeBrief(repo, 'zh-TW', 'test-chall')
+    git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'test-chall’s zh-TW brief'])
+    stageRange('{"primaryLocale":"zh-TW"}\n')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    // The fixture's platform/zh-TW/ holds only challenge/, so that folder's rule is the section's last.
+    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/challenge/* /challenge/:splat')
+    expect(rulesOf(expected)).not.toEqual(FIXTURE_RULES)
+  }, TIMEOUT)
+
+  it('S74: range.json en → zh-TW while test-chall has no zh-TW brief is refused with W6a, once W6r, and nothing changes', () => {
+    const generator = generatorLog()
+    stageRange('{"primaryLocale":"zh-TW"}\n')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, [W6.a('en', 'test-chall', 'zh-TW')], generator)
+    expect(run.stderr).toContain('platform/zh-TW/challenge/test-chall/index.md')
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('S77: range.json {"primaryLocale":"en"} added on the zh-TW fixture while test-chall has only its zh-TW brief is refused with W6a, once W6r, and nothing changes', () => {
+    useFixture('zh-TW')
+    const generator = generatorLog()
+    stageRange('{"primaryLocale":"en"}\n')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, [W6.a('zh-TW', 'test-chall', 'en')], generator)
+    expect(run.stderr).toContain('platform/en/challenge/test-chall/index.md')
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('S78 (a): git rm range.json (en → absent → zh-TW) once every challenge has a zh-TW brief regenerates the file for P = zh-TW', () => {
+    writeBrief(repo, 'zh-TW', 'test-chall')
+    git(repo, ['add', 'platform/zh-TW/challenge/test-chall/index.md'])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'test-chall’s zh-TW brief'])
+    git(repo, ['rm', '-q', 'range.json'])
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    // The fixture's platform/zh-TW/ holds only challenge/, so that folder's rule is the section's last.
+    expect(rulesOf(expected).at(-1)).toBe('/zh-TW/challenge/* /challenge/:splat')
+  }, TIMEOUT)
+
+  it('S78 (b): git rm range.json while test-chall has no zh-TW brief is refused with W6a, once W6r, and nothing changes', () => {
+    const generator = generatorLog()
+    git(repo, ['rm', '-q', 'range.json'])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, [W6.a('en', 'test-chall', 'zh-TW')], generator)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it.each([
+    ['en', '{"primaryLocale":"en","upstream":"example/range"}\n'],
+    ['zh-TW', '{"upstream":"example/range"}\n'],
+  ] as const)('S79 (P = %s): a range.json change to its upstream key alone commits, regenerating the file to HEAD’s bytes', (P, content) => {
+    useFixture(P)
+    const generator = generatorLog()
+    write(repo, 'range.json', content)
+    git(repo, ['add', '--', 'range.json'])
+    const head = git(repo, ['rev-parse', 'HEAD']).trim()
+
+    const run = commit(repo, ['-q', '-m', 'upstream only'])
+
+    expect(run.status, run.stderr).toBe(0)
+    expect(readRecord(generator).filter((r) => r.argv.includes('--staged'))).toHaveLength(1)
+    expect(git(repo, ['diff', '--name-only', head, 'HEAD'])).toBe('range.json\n')
+    expect(git(repo, ['diff', head, 'HEAD', '--', REDIRECTS])).toBe('')
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+})
+
+// ─── Slug names (S51 hook half; D150) ───────────────────────────────────────
+
+const SLUG_RULE = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+
+describe.each(['en', 'zh-TW'] as const)('pre-commit.sh: slug names the generator refuses (S51, D150; P = %s)', (P) => {
+  /** Commit a complete challenge `slug` (number `number`) with `--no-verify`: a name HEAD already holds. */
+  function commitChallenge(slug: string, number: number): void {
+    writeChallenge(repo, 'platform/challenge', slug, number)
+    git(repo, ['add', '-A', '--', 'platform/'])
+    commitFault()
+  }
+
+  it.each(['A B', 'a_b', '-a', 'a-', 'a\nb'])('the name %j is refused with the D150 line, and nothing changes', (name) => {
+    useFixture(P)
+    commitChallenge(name, 4)
+    stageSrcChange('door')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(`redirects: challenge slug ${jsonStringifyEscaped(name)} is outside ${SLUG_RULE}`)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it.each([
+    ['005', 5],
+    ['1234', 1234],
+  ] as const)('the name %s, while that number belongs to another challenge, is refused, and nothing changes', (name, held) => {
+    useFixture(P)
+    commitChallenge(name, 4)
+    commitChallenge('holder', held)
+    stageSrcChange('door')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(1)
+    expect(run.stderr).toContain(`redirects: challenge slug ${jsonStringifyEscaped(name)} equals challenge ${name}'s padded number`)
+    expectNothingChanged(before, snapshot(repo))
+  }, TIMEOUT)
+
+  it('the name 005 holding number 5 itself is accepted: O2', () => {
+    useFixture(P)
+    commitChallenge('005', 5)
+    stageSrcChange('door')
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(expected)).toContain('/c/005 /challenge/005/')
+  }, TIMEOUT)
+
+  it('a bad name that only a brief folder holds (no declaration) is named by W6c first, and the D150 line does not appear (D64)', () => {
+    useFixture(P)
+    const generator = generatorLog()
+    writeBrief(repo, P, 'Bad Name')
+    git(repo, ['add', '-A', '--', 'platform/'])
+    commitFault()
+    stageSrcChange('door')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectW6(run, [W6.c(P, 'Bad Name')], generator)
+    expect(run.stderr).not.toContain(`is outside ${SLUG_RULE}`)
+    expectNothingChanged(before, snapshot(repo))
   }, TIMEOUT)
 })
 
@@ -1096,7 +1874,7 @@ describe('pre-commit.sh: commit forms', () => {
 
   it('H33: a direct run with GIT_INDEX_FILE=.git/index (relative) is on the hook’s own index', () => {
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall')
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -1113,7 +1891,7 @@ describe('pre-commit.sh: commit forms', () => {
     git(repo, ['commit', '-q', '--no-verify', '-m', 'a range from before 0007'])
     expect(git(repo, ['show', `HEAD:${REDIRECTS}`]).startsWith(A54E917_HEADER)).toBe(true)
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall')
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
 
@@ -1225,7 +2003,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     git(repo, ['commit', '-q', '--no-verify', '-m', 'door change'])
     const parent = git(repo, ['rev-parse', 'HEAD~1'])
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall')
     addUnstagedWork(repo)
     const stashLog = stashLogOf(repo)
     const shim = recordingShim(repo)
@@ -1236,7 +2014,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     const expected = expectCommitO2(run, shim, repo, before, '.git/index')
     expect(git(repo, ['rev-parse', 'HEAD~1'])).toBe(parent)
     expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(amended)
-    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/index.md'])).toBe(challengeIndex('new-chall', 4))
+    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/challenge.yaml'])).toBe(declarationText(4))
     expect(rulesOf(expected)).toEqual(expect.arrayContaining([...FIXTURE_RULES, '/c/004 /challenge/new-chall/']))
     expectHookEntryOnTop(stashLog, before)
     expectNoW3W4(run)
@@ -1253,7 +2031,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     expect(rulesOf(read(repo, REDIRECTS))).toContain('/c/004 /challenge/draft/')
     const shim = recordingShim(repo)
     const before = snapshot(repo)
-    expect(before.untracked).toContain('?? platform/challenge/draft/index.md')
+    expect(before.untracked).toContain('?? platform/challenge/draft/challenge.yaml')
 
     const run = commit(repo, ['-q', '-m', 'repair _redirects'])
 
@@ -1273,12 +2051,14 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     git(repo, ['switch', '-q', '-c', 'side'])
     writeChallenge(repo, 'platform/challenge', 'alpha', 4)
     write(repo, REDIRECTS, generateRedirects(repo.dir))
-    git(repo, ['add', 'platform/challenge/alpha', REDIRECTS])
+    stageChallenge('alpha')
+    git(repo, ['add', REDIRECTS])
     git(repo, ['commit', '-q', '--no-verify', '-m', 'alpha'])
     git(repo, ['switch', '-q', 'main'])
     writeChallenge(repo, 'platform/challenge', 'beta', 5)
     write(repo, REDIRECTS, generateRedirects(repo.dir))
-    git(repo, ['add', 'platform/challenge/beta', REDIRECTS])
+    stageChallenge('beta')
+    git(repo, ['add', REDIRECTS])
     git(repo, ['commit', '-q', '--no-verify', '-m', 'beta'])
     const tips = { main: git(repo, ['rev-parse', 'main']).trim(), side: git(repo, ['rev-parse', 'side']).trim() }
 
@@ -1337,7 +2117,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     git(repo, ['add', LONG])
     git(repo, ['commit', '-q', '--no-verify', '-m', 'long notes'])
     const door = git(repo, ['show', `HEAD:${DOOR_APP}`])
-    write(repo, 'platform/challenge/test-chall/index.md', challengeIndex('Test Challenge', 6))
+    write(repo, 'platform/challenge/test-chall/challenge.yaml', declarationText(6))
     write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not selected")\n')
     const firstOnly = ['line 1, selected\n', ...long.slice(1)]
     write(repo, LONG, [...firstOnly.slice(0, 19), 'line 20, not selected\n'].join(''))
@@ -1346,11 +2126,11 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     const shim = recordingShim(repo)
     const before = snapshot(repo)
 
-    // Hunk order: door/src/app.py, test-chall/index.md, then long.txt's two hunks.
+    // Hunk order: door/src/app.py, test-chall/challenge.yaml, then long.txt's two hunks.
     const run = gitRun(repo, ['commit', '-q', '-p', '-m', 'commit -p'], {}, 'n\ny\ny\nn\n')
 
     const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
-    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/index.md'])).toBe(challengeIndex('Test Challenge', 6))
+    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/challenge.yaml'])).toBe(declarationText(6))
     expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(door)
     expect(git(repo, ['show', `HEAD:${LONG}`])).toBe(firstOnly.join(''))
     expect(git(repo, ['diff', '--name-only', '--', 'platform/'])).toBe(`${DOOR_APP}\n${LONG}\n`)
@@ -1363,17 +2143,17 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
   it('H37: git commit -i <path> commits the staged challenge and the named file, with the expected file, and the other edit stays unstaged', () => {
     const door = git(repo, ['show', `HEAD:${DOOR_APP}`])
     writeChallenge(repo, 'platform/challenge', 'new-chall', 4)
-    git(repo, ['add', 'platform/challenge/new-chall'])
-    write(repo, 'platform/challenge/test-chall/index.md', challengeIndex('Test Challenge', 7))
+    stageChallenge('new-chall')
+    write(repo, 'platform/challenge/test-chall/challenge.yaml', declarationText(7))
     write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not named")\n')
     const shim = recordingShim(repo)
     const before = snapshot(repo)
 
-    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall/index.md', '-m', 'commit -i'])
+    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall/challenge.yaml', '-m', 'commit -i'])
 
     const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
-    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/index.md'])).toBe(challengeIndex('new-chall', 4))
-    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/index.md'])).toBe(challengeIndex('Test Challenge', 7))
+    expect(git(repo, ['show', 'HEAD:platform/challenge/new-chall/challenge.yaml'])).toBe(declarationText(4))
+    expect(git(repo, ['show', 'HEAD:platform/challenge/test-chall/challenge.yaml'])).toBe(declarationText(7))
     expect(git(repo, ['show', `HEAD:${DOOR_APP}`])).toBe(door)
     expect(git(repo, ['diff', '--name-only'])).toBe(`${DOOR_APP}\n`)
     expect(rulesOf(expected)).toEqual(expect.arrayContaining(['/c/004 /challenge/new-chall/', '/c/007 /challenge/test-chall/']))
@@ -1383,14 +2163,15 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
 
   it('H37 boundary: git commit -i of a challenge directory removed from the working tree commits its deletion, and its rules go', () => {
     rmSync(join(repo.dir, 'platform/challenge/test-chall'), { recursive: true })
+    rmSync(join(repo.dir, 'platform/en/challenge/test-chall'), { recursive: true })
     write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("door, not named")\n')
     const shim = recordingShim(repo)
     const before = snapshot(repo)
 
-    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall', '-m', 'commit -i'])
+    const run = commit(repo, ['-q', '-i', 'platform/challenge/test-chall', 'platform/en/challenge/test-chall', '-m', 'commit -i'])
 
     const expected = expectCommitO2(run, shim, repo, before, '.git/index.lock')
-    expect(git(repo, ['ls-tree', '-r', '--name-only', 'HEAD', 'platform/challenge/test-chall'])).toBe('')
+    expect(git(repo, ['ls-tree', '-r', '--name-only', 'HEAD', 'platform/challenge/test-chall', 'platform/en/challenge/test-chall'])).toBe('')
     expect(git(repo, ['diff', '--name-only'])).toBe(`${DOOR_APP}\n`)
     expect(rulesOf(expected)).toEqual([...DOOR_RULES, ...PARAMETERISED_RULES])
     expectNoW3W4(run)
@@ -1404,7 +2185,7 @@ describe('pre-commit.sh: commit forms through git commit (AC-22)', () => {
     const mainTip = git(repo, ['rev-parse', 'main']).trim()
     const mainBefore = snapshot(repo)
     writeChallenge(wt, 'platform/challenge', 'new-chall', 4)
-    git(wt, ['add', 'platform/challenge/new-chall'])
+    stageChallenge('new-chall', wt)
     addUnstagedWork(wt)
     const stashLog = stashLogOf(wt)
     const shim = recordingShim(repo)
@@ -1439,7 +2220,7 @@ describe('pre-commit.sh: the hook’s stash entry', () => {
     write(repo, REDIRECTS, `${head}# unstaged edit\n`)
     write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("unstaged")\n')
     write(repo, 'platform/public/other.txt', 'other, unstaged\n')
-    write(repo, 'platform/challenge/draft/index.md', '---\ntitle: draft\n---\n')
+    write(repo, 'platform/en/challenge/draft/index.md', '---\ntitle: draft\n---\n')
     const expected = expectedRedirects(repo)
     const before = snapshot(repo)
     const ids = before.stash.map((l) => l.split(' ')[0])
@@ -1459,7 +2240,7 @@ describe('pre-commit.sh: the hook’s stash entry', () => {
     expect(git(repo, ['diff', '--name-only', `${entry}^2`, entry]).split('\n').filter(Boolean).sort())
       .toEqual([DOOR_APP, 'platform/public/other.txt'])
     expect(git(repo, ['ls-tree', '-r', '--name-only', `${entry}^3`]).split('\n').filter(Boolean))
-      .toEqual(['platform/challenge/draft/index.md'])
+      .toEqual(['platform/en/challenge/draft/index.md'])
     // The entry's index commit holds the staged _redirects, and its working-tree
     // commit the same: the unstaged edit never entered the entry.
     expect(git(repo, ['show', `${entry}:${REDIRECTS}`])).toBe(`${head}# staged edit\n`)
@@ -1484,7 +2265,7 @@ describe('pre-commit.sh: pathspec variables in the environment', () => {
       git(repo, ['add', REDIRECTS])
       write(repo, REDIRECTS, `${head}# unstaged edit\n`)
       write(repo, DOOR_APP, 'from flask import Flask\napp = Flask("unstaged")\n')
-      write(repo, 'platform/challenge/draft/index.md', '---\ntitle: draft\n---\n')
+      write(repo, 'platform/en/challenge/draft/index.md', '---\ntitle: draft\n---\n')
       write(repo, 'platform/notes/staged-then-deleted.txt', 'staged\n')
       git(repo, ['add', 'platform/notes/staged-then-deleted.txt'])
       unlinkSync(join(repo.dir, 'platform/notes/staged-then-deleted.txt'))
@@ -1505,7 +2286,7 @@ describe('pre-commit.sh: pathspec variables in the environment', () => {
 describe('pre-commit.sh: the restore writes nothing outside platform/ (B2)', () => {
   it('S2: newly staged files behind a directory replaced by a link to outside the repository are left alone, and the outside files keep their bytes', () => {
     writeChallenge(repo, 'platform/challenge', 'linked', 4)
-    git(repo, ['add', 'platform/challenge/linked'])
+    stageChallenge('linked')
     // The teacher moves src/ out of the repository and links it back.
     const src = 'platform/challenge/linked/src'
     const outside = join(repo.base, 'outside src')
@@ -1767,6 +2548,8 @@ describe('pre-commit.sh: a git failure before the stash (H46)', () => {
 })
 
 const REST = `platform/ :(exclude)${REDIRECTS}`
+/** The hook's challenge-tree pathspecs, as the generator lists them (D126). */
+const TREES = 'platform/challenge/ platform/en/challenge/ platform/zh-TW/challenge/'
 /** The hook's stash push, as the git wrapper matches it. */
 const PUSH = `-c core.safecrlf=false stash push --keep-index --include-untracked --quiet -m pre-commit: stash unstaged changes -- ${REST}`
 
@@ -1774,15 +2557,15 @@ describe('pre-commit.sh: a git command that fails where set -e cannot see it (O5
   it.each([
     ['the stash push, which saved its entry and then exits 1', PUSH, 'run-then-fail'],
     ['the stash push, which fails before saving anything (the teacher’s entry stays on top of refs/stash)', PUSH, 'fail'],
-    ['the untracked-directory listing (W4)', 'ls-files -z --others --exclude-standard --directory --no-empty-directory -- platform/challenge/ platform/zh-TW/challenge/', 'fail'],
+    ['the untracked-directory listing (W4)', `ls-files -z --others --exclude-standard --directory --no-empty-directory -- ${TREES}`, 'fail'],
     ['the deleted-paths listing', `diff -z --name-only --diff-filter=D -- ${REST}`, 'fail'],
     ['the raw-copy listing of modified files', `diff -z --name-only --diff-filter=MT -- ${REST}`, 'fail'],
     ['the raw-copy listing of untracked files', `ls-files -z --others --exclude-standard -- ${REST}`, 'fail'],
     ['the check for unstaged files under platform/', `diff --quiet -- ${REST}`, 'fail'],
     ['refs/stash read before the push', 'rev-parse -q --verify refs/stash', 'fail'],
-    ['the validator’s ACMRD list', 'diff --cached --name-only -z --diff-filter=ACMRD -- platform/challenge/', 'fail'],
-    ['the English index slugs’ git ls-files', 'ls-files -z -- platform/challenge/', 'fail'],
-    ['the Traditional Chinese index slugs’ git ls-files', 'ls-files -z -- platform/zh-TW/challenge/', 'fail'],
+    ['the validator’s ACMRD list', `diff --cached --name-only -z --diff-filter=ACMRD -- ${TREES}`, 'fail'],
+    ['the index path read of --staged (the brief check and the index slugs)', 'ls-files -z -- platform/', 'fail'],
+    ['the index’s range.json read (D114)', 'ls-files -s -- range.json', 'fail'],
   ] as const)('%s: O5, exact', (_name, args, mode) => {
     addFailureWork(false)
     // A challenge file in the validator's list, so the ACMRD listing has a path to give.
@@ -2267,6 +3050,10 @@ describe.skipIf(!BASH_3)('pre-commit.sh: under macOS’s /bin/bash 3.2 (H45)', (
     expectH02H14('/bin/bash')
   }, TIMEOUT)
 
+  it('H45: S44’s first case (a brief fault the index holds) with /bin/bash running the hook directly gives its outcome', () => {
+    expectS44First('/bin/bash')
+  }, TIMEOUT)
+
   it('H45: H07 through git commit with /bin first on PATH gives its outcome', () => {
     expectBinBash()
     expectH07(env())
@@ -2275,5 +3062,195 @@ describe.skipIf(!BASH_3)('pre-commit.sh: under macOS’s /bin/bash 3.2 (H45)', (
   it('H45: H34 through git commit with /bin first on PATH gives its outcome', () => {
     expectBinBash()
     expectH34(env())
+  }, TIMEOUT)
+})
+
+// ─── The old-address section is derived from the index (D154) ───────────────
+
+describe('generate-redirects --staged: the old-address section comes from the index (D154)', () => {
+  /** A staged page, an untracked folder of pages, and an ignored one (`tmp/`), under the primary folder. */
+  function stagePagesAndLeaveOthers(): void {
+    write(repo, 'platform/zh-TW/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    write(repo, 'platform/zh-TW/drafts/x.md', '# untracked\n')
+    write(repo, 'platform/zh-TW/tmp/x.md', '# ignored\n')
+  }
+
+  it('prints what the index generates: the staged top-level page has a rule, an untracked and an ignored folder have none', () => {
+    useFixture('zh-TW')
+    stagePagesAndLeaveOthers()
+    const expected = expectedRedirects(repo)
+
+    const run = spawnSync(
+      process.execPath,
+      ['--experimental-strip-types', 'scripts/generate-redirects.ts', '--staged', '--root', repo.dir],
+      { cwd: repo.dir, env: repo.env, encoding: 'utf8' },
+    )
+
+    expect(run.status, run.stderr).toBe(0)
+    const got = rulesOf(run.stdout)
+    expect(got).toEqual(rulesOf(expected))
+    expect(got).toContain('/zh-TW/about /about')
+    expect(got).not.toContain('/zh-TW/drafts/* /drafts/:splat')
+    expect(got).not.toContain('/zh-TW/tmp/* /tmp/:splat')
+  }, TIMEOUT)
+
+  it('the hook writes the same section: the ignored tmp/ stays on disk and gets no rule', () => {
+    useFixture('zh-TW')
+    stagePagesAndLeaveOthers()
+    // A staged challenge change is what makes the hook run (the trigger of D154 is SR1-5's).
+    stageDoorChange()
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toContain('/zh-TW/about /about')
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(rulesOf(stagedRedirects(repo) ?? '')).not.toContain('/zh-TW/tmp/* /tmp/:splat')
+    expect(existsSync(join(repo.dir, 'platform/zh-TW/tmp/x.md'))).toBe(true)
+  }, TIMEOUT)
+})
+
+describe('pre-commit.sh: the primary folder’s top-level entries (D154)', () => {
+  const NOTES = 'platform/zh-TW/guide/notes.md'
+  const generatorLog = (): string => join(repo.base, 'generator.log')
+  const stagedCalls = (): number => readRecord(generatorLog()).filter((r) => r.argv.includes('--staged')).length
+  const head = (): string[] => rulesOf(git(repo, ['show', `HEAD:${REDIRECTS}`]))
+  const added = (expected: string): string[] => rulesOf(expected).filter((r) => !head().includes(r))
+  const removed = (expected: string): string[] => head().filter((r) => !rulesOf(expected).includes(r))
+
+  /**
+   * Run `change` (which edits and stages), compute the oracle's `_redirects`, run the hook, and
+   * check an O2 whose `_redirects` is the oracle's. Returns the oracle text and the run.
+   */
+  function runStaged(change: () => void): { expected: string; run: Run } {
+    change()
+    const expected = expectedRedirects(repo)
+    const before = snapshot(repo)
+    const run = runHook(repo)
+    expectO2(run, before, snapshot(repo), expected)
+    return { expected, run }
+  }
+
+  it('a. a new top-level page regenerates, and the new rule line is the page’s', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => {
+      write(repo, 'platform/zh-TW/about.md', '# about\n')
+      git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    })
+    expect(added(expected)).toEqual(['/zh-TW/about /about'])
+    expect(removed(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('b. a new top-level folder of pages regenerates, and its rule is the folder’s', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => {
+      write(repo, 'platform/zh-TW/handbook/intro.md', '# intro\n')
+      git(repo, ['add', '--', 'platform/zh-TW/handbook/intro.md'])
+    })
+    expect(added(expected)).toEqual(['/zh-TW/handbook/* /handbook/:splat'])
+    expect(removed(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('c. deleting a folder’s last page regenerates, and the folder’s rule goes', () => {
+    useFixture('zh-TW')
+    const { expected } = runStaged(() => git(repo, ['rm', '-q', '--', NOTES]))
+    expect(removed(expected)).toEqual(['/zh-TW/guide/* /guide/:splat'])
+    expect(added(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('d. deleting a committed top-level page regenerates, and its rule goes', () => {
+    useFixture('zh-TW')
+    write(repo, 'platform/zh-TW/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/zh-TW/about.md'])
+    write(repo, REDIRECTS, expectedRedirects(repo))
+    git(repo, ['add', '--', REDIRECTS])
+    git(repo, ['commit', '-q', '--no-verify', '-m', 'about'])
+    expect(head()).toContain('/zh-TW/about /about')
+
+    const { expected } = runStaged(() => git(repo, ['rm', '-q', '--', 'platform/zh-TW/about.md']))
+    expect(removed(expected)).toEqual(['/zh-TW/about /about'])
+    expect(added(expected)).toEqual([])
+  }, TIMEOUT)
+
+  it('e. editing an existing page’s content stays O1: the generator is not called', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, NOTES, '# Notes, edited\n')
+    git(repo, ['add', '--', NOTES])
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expectNothingChanged(before, snapshot(repo))
+    expect(readRecord(generatorLog())).toEqual([])
+  }, TIMEOUT)
+
+  it('f. a new page in an existing folder triggers a regeneration that changes nothing (exit 0, no diff)', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, 'platform/zh-TW/guide/more.md', '# more\n')
+    git(repo, ['add', '--', 'platform/zh-TW/guide/more.md'])
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('g. P = en: a new page triggers a regeneration that changes nothing, the section being absent', () => {
+    useFixture('en')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    write(repo, 'platform/en/about.md', '# about\n')
+    git(repo, ['add', '--', 'platform/en/about.md'])
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('i. a page changed to a symbolic link (type change) triggers a regeneration that changes nothing', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    unlinkSync(join(repo.dir, NOTES))
+    symlinkSync('../index.md', join(repo.dir, NOTES))
+    git(repo, ['add', '--', NOTES])
+    expect(git(repo, ['diff', '--cached', '--name-status', '--', NOTES])).toContain(`T\t${NOTES}`)
+    const expected = expectedRedirects(repo)
+    expect(rulesOf(expected)).toEqual(head())
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expectO2(run, before, snapshot(repo), expected)
+    expect(stagedCalls()).toBe(1)
+    expect(git(repo, ['diff', '--cached', '--', REDIRECTS])).toBe('')
+  }, TIMEOUT)
+
+  it('h. a page under a folder that is not on the list, or under platform/public/, stays O1: no regeneration', () => {
+    useFixture('zh-TW')
+    recordScript(repo, 'generate-redirects.ts', generatorLog())
+    for (const path of ['platform/ja/about.md', 'platform/public/zh-TW/x.md']) {
+      write(repo, path, '# a page\n')
+      git(repo, ['add', '--', path])
+    }
+    const before = snapshot(repo)
+
+    const run = runHook(repo)
+
+    expect(run.status, run.stderr).toBe(0)
+    expectNothingChanged(before, snapshot(repo))
+    expect(stagedCalls()).toBe(0)
   }, TIMEOUT)
 })

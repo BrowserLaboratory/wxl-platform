@@ -1,7 +1,62 @@
 import { test, expect, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-import { SITE_ORIGIN } from '../../.vitepress/challenge/shortLink'
-import { realUpstreamDecision } from '../__helpers__/upstreamDecision'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { parse as parseYaml } from 'yaml'
+import { PRIMARY, TRANSLATIONS, localePath } from './localePath'
+import { LOCALES, type Locale } from '../../.vitepress/locales.ts'
+import { SITE_ORIGIN, challengePagePath } from '../../.vitepress/challenge/shortLink'
+import { realUpstreamDecision, readManifest, isGitWorkTree, hasRootRangeJson, upstreamOnlySkipReason } from '../__helpers__/upstreamDecision'
+
+/** `.vitepress/dist/<relPath>`, read as text. Used by the output-layout rows (B48, B59, B61, B70
+ *  smoke half) that name a built file path directly rather than a rendered page. */
+const distFile = (relPath: string) => readFileSync(join(process.cwd(), '.vitepress/dist', relPath), 'utf8')
+
+/** The one set of raw inputs `upstreamOnlySkipReason` (D124/B93) takes, read once per process.
+ *  The upstream-only rows B48, B59, B70 (smoke half), both B81 cases, B79 and the Y39 existence case
+ *  call the helper directly with these, rather than writing its own
+ *  `test.skip` reason, so B93's stage-6 grep finds each. */
+const UPSTREAM_DECISION_INPUTS = {
+  githubRepository: process.env.GITHUB_REPOSITORY,
+  manifest: readManifest(process.cwd()),
+  isWorkTree: isGitWorkTree(process.cwd()),
+  hasRangeJson: hasRootRangeJson(process.cwd()),
+}
+
+/** The page's own document region, `<main>…</main>`, excluding the inlined `__VP_SITE_DATA__`
+ *  script: that script repeats every page's static nav/sidebar label text (including strings
+ *  such as "Code 面板"/"Code Panel") regardless of which page's body built the file, so asserting
+ *  against the whole document would pass even if the two language bodies were swapped (B48). */
+const mainContent = (html: string) => html.match(/<main[^>]*>([\s\S]*?)<\/main>/)?.[1] ?? ''
+
+/** The HTML of `<div class="actions">…</div>`, VitePress's hero-actions block (`VPHero.vue`),
+ *  searched in the whole document: a `layout: home` page renders no `<main>` (only `VPDoc.vue`
+ *  does), and the inlined `__VP_SITE_DATA__` is JSON, which holds no such tag. Returns '' when no
+ *  such block exists. Brace-balanced (not a non-greedy regex) because the block nests further
+ *  `<div>`s (one `<div class="action">` per hero action). */
+function heroActionsHtml(html: string): string {
+  const main = html
+  const start = main.indexOf('<div class="actions"')
+  if (start === -1) return ''
+  let depth = 1 // the "actions" div's own, still-open, tag
+  let i = main.indexOf('>', start) + 1
+  while (depth > 0) {
+    const nextOpen = main.indexOf('<div', i)
+    const nextClose = main.indexOf('</div>', i)
+    if (nextClose === -1) return main.slice(start)
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      depth++
+      i = nextOpen + '<div'.length
+    } else {
+      depth--
+      i = nextClose + '</div>'.length
+    }
+  }
+  return main.slice(start, i)
+}
+
+/** The hrefs of a home page's hero actions only (B70 smoke half): isolating the `.VPHero`/
+ *  `.actions` block first means a nav-bar link to the same URL cannot satisfy this assertion. */
+const heroActionHrefs = (html: string) => Array.from(heroActionsHtml(html).matchAll(/href="([^"]+)"/g)).map((m) => m[1])
 
 // Site-smoke runs against the built site served by `vitepress preview` (4173,
 // configured in playwright.site.config.ts). It asserts the production bundle
@@ -14,7 +69,7 @@ test('homepage renders', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
 
-  await page.goto('/')
+  await page.goto(localePath('en'))
 
   // Hero action + a feature card prove the home layout and HomeContent mounted.
   await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
@@ -24,7 +79,7 @@ test('homepage renders', async ({ page }) => {
 })
 
 test('reference challenge page mounts', async ({ page }) => {
-  await page.goto('/challenge/door-is-open/')
+  await page.goto(localePath('en', 'challenge/door-is-open/'))
 
   // The ChallengeLayout shell renders the description panel and markdown body
   // immediately, independent of the WASM runtime boot (which is out of scope
@@ -51,7 +106,7 @@ test('reference challenge page mounts', async ({ page }) => {
 // the host serves the extensionless form is the host's behaviour, verified by
 // request against production, not by this file.
 test('client-side navigation leaves an extensionless URL in the address bar', async ({ page }) => {
-  await page.goto('/')
+  await page.goto(localePath('en'))
 
   // Wait for hydration before clicking. The URL correction lives in the client
   // router's `loadPage`, so it only runs when the click is intercepted as an SPA
@@ -83,10 +138,187 @@ test('client-side navigation leaves an extensionless URL in the address bar', as
     .poll(() => new URL(page.url()).pathname, {
       message: 'the client router never corrected the address bar',
     })
-    .toBe('/challenges')
+    .toBe(localePath('en', 'challenges'))
 
   const pathname = new URL(page.url()).pathname
   expect(pathname, `address bar kept an .html form: ${pathname}`).not.toMatch(/\.html$/)
+})
+
+// ─── D108's layout switch: the built-site rows that need no smoke fixture (wave 1(g)) ──────────
+//
+// B48, B59 and B70's smoke half read dist/ directly (as B44 does in missing-translation.spec.ts)
+// because their own acceptance criteria name file paths under dist/, not rendered page state; B61
+// names neither technique in traceability.md, so the dist-file form is kept for consistency with
+// its neighbours.
+
+test('output: primary pages at the output root, others under /en/ (B48, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Scoped to <main>, not the whole document: the inlined __VP_SITE_DATA__ sidebar carries both
+  // 'Code 面板' and 'Code Panel' as static per-locale nav text on every page, so a whole-document
+  // match would pass even if the two bodies below were swapped.
+  const primary = mainContent(distFile('guide/python.html'))
+  expect(primary).toContain('Code 面板')
+  const translation = mainContent(distFile('en/guide/python.html'))
+  expect(translation).toContain('Code Panel')
+  expect(existsSync(join(process.cwd(), '.vitepress/dist/zh-TW'))).toBe(false)
+})
+
+test('<html lang> follows the page locale (B59, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  expect(distFile('index.html')).toMatch(/<html[^>]*\slang="zh-TW"/)
+  expect(distFile('guide/notes.html')).toMatch(/<html[^>]*\slang="zh-TW"/)
+  expect(distFile('en/index.html')).toMatch(/<html[^>]*\slang="en-US"/)
+  expect(distFile('en/guide/notes.html')).toMatch(/<html[^>]*\slang="en-US"/)
+})
+
+test('the nav title links to the page locale\'s home (B61)', () => {
+  const navTitleHref = (html: string) => html.match(/<a class="title" href="([^"]*)"/)?.[1]
+  // Only upstream is guaranteed to publish the guide/notes article in every locale; a range may
+  // publish a different set of guide pages, so it checks the locales that have this one.
+  const built = LOCALES.filter((locale) =>
+    existsSync(join(process.cwd(), '.vitepress/dist', `${localePath(locale, 'guide/notes').slice(1)}.html`)))
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  if (skipReason === undefined) expect(built).toEqual([...LOCALES])
+  test.skip(built.length === 0, 'this tree publishes no guide/notes page')
+  // D54: each locale's page and the home it links to both come from P through `localePath`.
+  for (const locale of built) {
+    expect(navTitleHref(distFile(`${localePath(locale, 'guide/notes').slice(1)}.html`))).toBe(localePath(locale))
+  }
+})
+
+test('upstream\'s home pages, smoke half (B70, upstream-only)', () => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Isolated to the hero's own .VPHero/.actions block (heroActionHrefs), not the whole document:
+  // the nav bar links to the same /challenges/ and /guide/ URLs, so a whole-document `toContain`
+  // would pass even if the hero's own href were wrong (for example '/zh-TW/challenges/').
+  const zhHrefs = heroActionHrefs(distFile('index.html'))
+  expect(zhHrefs).toEqual(['/challenges/', '/guide/'])
+  const enHrefs = heroActionHrefs(distFile('en/index.html'))
+  expect(enHrefs).toEqual(['/en/challenges/', '/en/guide/'])
+})
+
+test('upstream\'s root language shows 開始挑戰 with zh-TW stored (B81, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Overrides playwright.site.config.ts's global pinned `en`, which every other spec in this file
+  // relies on (B82's comment explains why that pin is `en`).
+  await page.addInitScript(() => window.localStorage.setItem('wxl-locale', 'zh-TW'))
+  await page.goto('/')
+  await expect(page.getByRole('link', { name: '開始挑戰' })).toBeVisible()
+  // D24: a cold load of a primary-locale page redirects client-side only when the stored value is
+  // the *translation* locale; a stored value that already matches the primary locale (zh-TW here)
+  // never does. Asserting the pathname proves this fails on the pre-switch layout, where '/' served
+  // English and a zh-TW-stored visitor would have been redirected away from '/'.
+  // The redirect, when it wrongly runs, runs after mount behind an async gate evaluation, so wait
+  // for the page to settle before sampling the URL rather than reading it right after hydration.
+  await page.waitForFunction(() => '__vue_app__' in (document.getElementById('app') ?? {}))
+  await page.waitForLoadState('networkidle')
+  expect(new URL(page.url()).pathname).toBe('/')
+})
+
+test('upstream\'s /en/ shows Start Challenge with en stored (B81, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  // Set per test rather than relying on playwright.site.config.ts's global pin, as the test plan's
+  // boundary condition for B81 says ("stored value set per test with addInitScript").
+  await page.addInitScript(() => window.localStorage.setItem('wxl-locale', 'en'))
+  await page.goto('/en/')
+  await expect(page.getByRole('link', { name: 'Start Challenge' })).toBeVisible()
+})
+
+test('the English list renders the four challenges (B79, upstream-only)', async ({ page }) => {
+  const skipReason = upstreamOnlySkipReason(
+    UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+    UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+  )
+  test.skip(skipReason !== undefined, skipReason ?? '')
+  await page.goto(localePath('en', 'challenges'))
+  await expect(page.locator('a.ch-list-row')).toHaveCount(4)
+})
+
+// Y39 (D37, D38): a challenge with a brief in two locale folders shares ONE declaration, so its page
+// in the primary locale and its page in a translation show the same difficulty, category and number
+// control, the same tool tabs, a Source tab exactly when `source_visible: true`, and each loads its
+// runtime. The slugs and URLs come from the tree and from `P`, never from a literal list.
+const platformDir = (...parts: string[]) => join(process.cwd(), 'platform', ...parts)
+const briefSlugs = (locale: string) =>
+  existsSync(platformDir(locale, 'challenge'))
+    ? readdirSync(platformDir(locale, 'challenge'), { withFileTypes: true })
+        .filter((d) => d.isDirectory() && existsSync(platformDir(locale, 'challenge', d.name, 'index.md')))
+        .map((d) => d.name)
+    : []
+const TRANSLATED_SLUGS = briefSlugs(PRIMARY).filter((slug) => TRANSLATIONS.some((code) => briefSlugs(code).includes(slug)))
+
+/** What a challenge page shows that the shared declaration decides (Y39). */
+async function declaredView(page: Page, locale: 'en' | 'zh-TW', slug: string) {
+  await page.addInitScript((code) => window.localStorage.setItem('wxl-locale', code), locale)
+  const wasm = page.waitForResponse((response) => response.url().includes(`/challenge/${slug}/runtime.wasm`))
+  await page.goto(localePath(locale, `challenge/${slug}/`))
+  const wasmStatus = (await wasm).status()
+  await expect(page.locator('[data-panel="browser"] input').first()).toBeEnabled({ timeout: 30_000 })
+  const text = async (selector: string) => (await page.locator(selector).first().textContent())?.trim() ?? null
+  const tabs = await page.locator('[data-tab]').evaluateAll((els) => els.map((el) => el.getAttribute('data-tab')))
+  // The number control's text without the locale segment of its address, which differs by design.
+  const numberControl = (await text('[data-short-link]'))?.replace(/\/(en|zh-TW)\//, '/') ?? null
+  // The hydrated page's own frontmatter number: both pages must assemble it from the one declaration.
+  const number = await page.evaluate(
+    () => (document.querySelector('#app') as any)?.__vue_app__?.config.globalProperties.$frontmatter?.number ?? null,
+  )
+  return {
+    wasmStatus,
+    number,
+    difficulty: await text('[data-badge="difficulty"]'),
+    category: await text('[data-badge="category"]'),
+    numberControl,
+    tools: tabs.filter((id) => id !== 'source').sort(),
+    hasSource: tabs.includes('source'),
+  }
+}
+
+test.describe('translated challenges share one declaration (Y39)', () => {
+  test('there is at least one challenge with a brief in two locale folders (Y39, upstream-only)', () => {
+    const skipReason = upstreamOnlySkipReason(
+      UPSTREAM_DECISION_INPUTS.githubRepository, UPSTREAM_DECISION_INPUTS.manifest,
+      UPSTREAM_DECISION_INPUTS.isWorkTree, UPSTREAM_DECISION_INPUTS.hasRangeJson,
+    )
+    test.skip(skipReason !== undefined, skipReason ?? '')
+    expect(TRANSLATED_SLUGS.length).toBeGreaterThan(0)
+  })
+
+  for (const slug of TRANSLATED_SLUGS) {
+    test(`${slug}: the primary page and the translation page agree (Y39)`, async ({ browser }) => {
+      const declaration = parseYaml(readFileSync(platformDir('challenge', slug, 'challenge.yaml'), 'utf8')) as Record<string, unknown>
+      for (const translation of TRANSLATIONS.filter((code) => briefSlugs(code).includes(slug))) {
+        const primaryView = await declaredView(await (await browser.newContext()).newPage(), PRIMARY, slug)
+        const translatedView = await declaredView(await (await browser.newContext()).newPage(), translation, slug)
+        expect(translatedView, `${slug}: ${translation} page differs from the ${PRIMARY} page`).toEqual(primaryView)
+        expect(primaryView.number, `${slug}: the page's number is the declaration's`).toBe(declaration.number)
+        expect(primaryView.wasmStatus).toBe(200)
+        expect(primaryView.hasSource, `${slug}: Source tab iff source_visible: true`).toBe(declaration.source_visible === true)
+      }
+    })
+  }
 })
 
 // ─── The copy control in page mode (spec 0007, seam 0007-S3) ──────────────────────────────────
@@ -96,15 +328,14 @@ test('client-side navigation leaves an extensionless URL in the address bar', as
 // the imported SITE_ORIGIN with plain string operations. Short mode in a built site is checked on
 // the Cloudflare preview at stage 8 (V01), the only surface whose build sets CF_PAGES.
 
-type Locale = 'en' | 'zh-TW'
 interface SitePage { name: string; path: string; locale: Locale; challenge: boolean }
 
 // "Each page" of traceability.md's built-site rows.
 const SITE_PAGES: SitePage[] = [
-  { name: 'English list', path: '/challenges', locale: 'en', challenge: false },
-  { name: 'Traditional Chinese list', path: '/zh-TW/challenges', locale: 'zh-TW', challenge: false },
-  { name: 'English selected-excerpts', path: '/challenge/selected-excerpts/', locale: 'en', challenge: true },
-  { name: 'Traditional Chinese selected-excerpts', path: '/zh-TW/challenge/selected-excerpts/', locale: 'zh-TW', challenge: true },
+  { name: 'English list', path: localePath('en', 'challenges'), locale: 'en', challenge: false },
+  { name: 'Traditional Chinese list', path: localePath('zh-TW', 'challenges'), locale: 'zh-TW', challenge: false },
+  { name: 'English selected-excerpts', path: localePath('en', 'challenge/selected-excerpts/'), locale: 'en', challenge: true },
+  { name: 'Traditional Chinese selected-excerpts', path: localePath('zh-TW', 'challenge/selected-excerpts/'), locale: 'zh-TW', challenge: true },
 ]
 const VIEWPORTS = [
   { width: 360, height: 740 },
@@ -114,9 +345,13 @@ const VIEWPORTS = [
   { width: 1280, height: 800 },
 ]
 
-/** The page URL of a challenge: SITE_ORIGIN followed by the page's path, no base added. */
+/**
+ * The page URL of a challenge: SITE_ORIGIN followed by the page's path, no base added. The path is
+ * `challengePagePath`'s, the rule the control itself follows (D68, S56): the primary locale's
+ * pages have no locale segment, every other locale's carry theirs.
+ */
 function pageUrlOf(locale: Locale, slug: string): string {
-  return `${SITE_ORIGIN}${locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/${slug}/`
+  return `${SITE_ORIGIN}${challengePagePath(slug, locale, PRIMARY)}`
 }
 const withoutScheme = (url: string) => url.replace(/^https?:\/\//, '')
 
@@ -209,13 +444,16 @@ async function shownUrlTexts(page: Page) {
 /**
  * The copied URL a shown URL text has to carry: the row's challenge in a list, else this page's.
  * A row's page is in the locale its own link names, which for an untranslated challenge is not the
- * list's (spec 0008, F6), so the locale is read from the link, not from the list.
+ * list's (spec 0008, F6), so the locale is read from the link, not from the list: the translation
+ * locale whose `/<code>/` segment starts the link, else the primary locale, whose pages have none
+ * (D54, D68).
  */
 function expectedUrlFor(target: SitePage, rowHref: string | null): string {
   if (!target.challenge && rowHref) {
     const path = rowHref.replace(/\.html$/, '').replace(/\/+$/, '')
     const slug = path.split('/').pop() ?? ''
-    return pageUrlOf(path.includes('/zh-TW/') ? 'zh-TW' : 'en', slug)
+    const entryLocale = TRANSLATIONS.find((code) => path.startsWith(`/${code}/`)) ?? PRIMARY
+    return pageUrlOf(entryLocale, slug)
   }
   return pageUrlOf(target.locale, 'selected-excerpts')
 }
@@ -761,6 +999,30 @@ test.describe('copy control in page mode: the desktop nav with the brief collaps
 
 // S06: a click elsewhere in a list row still opens that challenge. The plain click on the URL text
 // first is the control for S03: the same observation that sees no navigation there sees this one.
+// S56: a list shows one control per numbered challenge, whichever locale the row's entry is in:
+// the count is the number of declarations that carry a `number`, read from the tree, and each
+// row's text is its own entry's page URL without the scheme.
+test.describe('copy control in page mode: one control per numbered challenge (S56)', () => {
+  const NUMBERED = readdirSync(platformDir('challenge'), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(platformDir('challenge', d.name, 'challenge.yaml')))
+    .filter((d) => {
+      const declaration = parseYaml(readFileSync(platformDir('challenge', d.name, 'challenge.yaml'), 'utf8')) as Record<string, unknown> | null
+      return typeof declaration?.number === 'number'
+    }).length
+
+  for (const target of SITE_PAGES.filter((p) => !p.challenge)) {
+    test(`${target.name}: each row shows its own page URL (S56)`, async ({ page }) => {
+      expect(NUMBERED, 'the tree has numbered challenges').toBeGreaterThan(0)
+      await openSitePage(page, target)
+      const rows = await page.locator('a.ch-list-row').count()
+      const texts = await shownUrlTexts(page)
+      expect(rows, `${target.name}: rows`).toBe(NUMBERED)
+      expect(texts.length, `${target.name}: shown controls`).toBe(NUMBERED)
+      for (const t of texts) expect(t.text).toBe(withoutScheme(expectedUrlFor(target, t.rowHref)))
+    })
+  }
+})
+
 test.describe('copy control in page mode: the rest of a list row opens the challenge (S06)', () => {
   for (const target of SITE_PAGES.filter((p) => !p.challenge)) {
     for (const viewport of [{ width: 375, height: 812 }, { width: 1280, height: 800 }]) {
@@ -772,7 +1034,7 @@ test.describe('copy control in page mode: the rest of a list row opens the chall
 
         const pushesBefore = await pushStates(page)
         await row.locator('[data-row-title]').click()
-        const path = `${target.locale === 'zh-TW' ? '/zh-TW' : ''}/challenge/selected-excerpts/`
+        const path = localePath(target.locale, 'challenge/selected-excerpts/')
         await expect.poll(() => new URL(page.url()).pathname).toBe(path)
         expect(await pushStates(page)).toBeGreaterThan(pushesBefore)
         await expect(page.locator('nav.merged-nav [data-short-link]:visible')).toHaveText(withoutScheme(pageUrlOf(target.locale, 'selected-excerpts')))

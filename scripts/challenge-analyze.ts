@@ -3,19 +3,27 @@
  *
  * CLI tool for challenge validation + content analysis.
  *
+ * A challenge is a folder under platform/challenge/ holding challenge.yaml; its title is the
+ * primary-locale brief's (platform/<P>/challenge/<slug>/index.md). P comes from range.json at the
+ * repository root, which is read first: an unusable one ends the run with its PL line.
+ *
  * Usage:
  *   pnpm challenge:analyze              # analyze all challenges
  *   pnpm challenge:analyze door-is-open # analyze one challenge
  *
- * Exit code 0 on success, 1 on validation failure.
+ * Exit code 0 on success, 1 on validation failure or an unusable range.json.
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
 import { resolve, dirname, join, basename, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseDocument } from 'yaml'
-import { VALID_TOOLS, validateChallengeConfig } from '../.vitepress/challenge/config.ts'
+import { VALID_TOOLS, validateChallengeDeclaration, type ChallengeDeclaration } from '../.vitepress/challenge/config.ts'
 import { scanSrcDirectory } from './challenge-utils.ts'
+import { parseYamlStrict } from './challenge-validate.ts'
+import type { Locale } from '../.vitepress/locales.ts'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { SiteLayoutError } from '../.vitepress/layout-error.ts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,42 +75,68 @@ function parseMd(content: string): { fmRaw: string; body: string } | null {
 
 export interface ChallengeFile {
   slug: string
-  mdPath: string
-  isPerFolder: boolean
+  /** platform/challenge/<slug>/challenge.yaml: the declaration (D73). */
+  declarationPath: string
+  /** platform/<primary>/challenge/<slug>/index.md: the primary-locale brief; it may not exist. */
+  briefPath: string
 }
 
 /**
- * Discover all challenge markdown files.
- * Supports both per-folder (slug/index.md) and legacy (slug.md) structures.
+ * Discover the challenges under `root` (Y69, D89): every folder of `platform/challenge/` that
+ * holds a `challenge.yaml`. A flat .md, a folder with only src/, or a brief with no folder is not
+ * a challenge. `briefPath` is the primary locale's brief and is returned whether or not it exists.
  */
-export function discoverChallenges(challengesDir: string, targetSlug?: string): ChallengeFile[] {
+export function discoverChallenges(root: string, primary: Locale, targetSlug?: string): ChallengeFile[] {
+  const challengesDir = join(root, 'platform', 'challenge')
   if (!existsSync(challengesDir)) return []
 
-  // New pattern: challengesDir/<slug>/index.md
-  const newPatternFiles: ChallengeFile[] = readdirSync(challengesDir, { withFileTypes: true })
+  return readdirSync(challengesDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
-    .filter((d) => existsSync(join(challengesDir, d.name, 'index.md')))
+    .filter((d) => existsSync(join(challengesDir, d.name, 'challenge.yaml')))
     .filter((d) => !targetSlug || d.name === targetSlug)
     .map((d) => ({
       slug: d.name,
-      mdPath: join(challengesDir, d.name, 'index.md'),
-      isPerFolder: true,
+      declarationPath: join(challengesDir, d.name, 'challenge.yaml'),
+      briefPath: join(root, 'platform', primary, 'challenge', d.name, 'index.md'),
     }))
+}
 
-  // Legacy pattern: challengesDir/<slug>.md (fallback)
-  const newSlugs = new Set(newPatternFiles.map((f) => f.slug))
-  const legacyFiles: ChallengeFile[] = readdirSync(challengesDir)
-    .filter((f) => f.endsWith('.md') && f !== 'index.md')
-    .map((f) => f.replace(/\.md$/, ''))
-    .filter((slug) => !newSlugs.has(slug))
-    .filter((slug) => !targetSlug || slug === targetSlug)
-    .map((slug) => ({
-      slug,
-      mdPath: join(challengesDir, `${slug}.md`),
-      isPerFolder: false,
-    }))
+// ─── Declaration ────────────────────────────────────────────────────────────
 
-  return [...newPatternFiles, ...legacyFiles]
+// The declaration is parsed by `challenge:validate`'s parser (D79, D129), so both tools reject the same files.
+
+/**
+ * Read challenge.yaml as a whole file (D73). Absent and unparsable files come back as the
+ * error text validateChallenge reports (Y68); a root that is not a mapping is left to
+ * validateChallengeDeclaration. A file with several documents is unparsable (the parser says so).
+ */
+function readDeclaration(declarationPath: string): { value: unknown } | { error: string } {
+  let raw: string
+  try {
+    raw = readFileSync(declarationPath, 'utf-8')
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { error: 'No challenge.yaml found' }
+    return { error: `Cannot read file: ${declarationPath}` }
+  }
+  const parsed = parseYamlStrict(raw)
+  if (!parsed.ok) return { error: `Invalid YAML in challenge.yaml: ${parsed.message}` }
+  return { value: parsed.value }
+}
+
+/** The brief's string `title`, or undefined when the brief is unreadable, has no frontmatter or no such key (Y67). */
+function readBriefTitle(briefPath: string): string | undefined {
+  let raw: string
+  try {
+    raw = readFileSync(briefPath, 'utf-8')
+  } catch {
+    return undefined
+  }
+  const parsed = parseMd(raw)
+  if (!parsed) return undefined
+  const doc = parseDocument(parsed.fmRaw)
+  if (doc.errors.length > 0) return undefined
+  const title = (doc.toJS() as Record<string, unknown> | null)?.title
+  return typeof title === 'string' ? title : undefined
 }
 
 // ─── Validation ─────────────────────────────────────────────────────────────
@@ -113,64 +147,39 @@ export function discoverChallenges(challengesDir: string, targetSlug?: string): 
  */
 export function validateChallenge(challenge: ChallengeFile): string[] {
   const errors: string[] = []
-  let raw: string
 
-  try {
-    raw = readFileSync(challenge.mdPath, 'utf-8')
-  } catch {
-    errors.push(`Cannot read file: ${challenge.mdPath}`)
+  const read = readDeclaration(challenge.declarationPath)
+  if ('error' in read) {
+    errors.push(read.error)
     return errors
   }
 
-  const parsed = parseMd(raw)
-  if (!parsed) {
-    errors.push('No YAML frontmatter found')
-    return errors
-  }
-
-  let fm: Record<string, unknown>
+  let declaration: ChallengeDeclaration
   try {
-    const doc = parseDocument(parsed.fmRaw)
-    fm = doc.toJSON() as Record<string, unknown>
-  } catch (e) {
-    errors.push(`Invalid YAML frontmatter: ${(e as Error).message}`)
-    return errors
-  }
-
-  // Validate config shape
-  try {
-    validateChallengeConfig(fm)
+    declaration = validateChallengeDeclaration(read.value)
   } catch (e) {
     errors.push((e as Error).message)
     return errors
   }
 
-  const baseDir = dirname(challenge.mdPath)
-  const appRef = String(fm.app ?? 'app.py')
+  const baseDir = dirname(challenge.declarationPath)
+  const appRef = String(declaration.app ?? 'app.py')
 
-  if (challenge.isPerFolder) {
-    const srcDir = resolve(baseDir, 'src')
-    if (!existsSync(srcDir)) {
-      errors.push(`src/ directory not found: ${srcDir}`)
-      return errors
-    }
+  const srcDir = resolve(baseDir, 'src')
+  if (!existsSync(srcDir)) {
+    errors.push(`src/ directory not found: ${srcDir}`)
+    return errors
+  }
 
-    const appPath = resolve(srcDir, appRef)
-    if (!existsSync(appPath)) {
-      errors.push(`App file not found: ${appPath}`)
-    }
+  const appPath = resolve(srcDir, appRef)
+  if (!existsSync(appPath)) {
+    errors.push(`App file not found: ${appPath}`)
+  }
 
-    const flagRef = String(fm.flag ?? 'flag.txt')
-    const flagPath = resolve(srcDir, flagRef)
-    if (!existsSync(flagPath)) {
-      errors.push(`Flag file not found: ${flagPath}`)
-    }
-  } else {
-    // Legacy
-    const appPath = resolve(baseDir, appRef)
-    if (!existsSync(appPath)) {
-      errors.push(`App file not found: ${appPath}`)
-    }
+  const flagRef = String(declaration.flag ?? 'flag.txt')
+  const flagPath = resolve(srcDir, flagRef)
+  if (!existsSync(flagPath)) {
+    errors.push(`Flag file not found: ${flagPath}`)
   }
 
   return errors
@@ -182,52 +191,34 @@ export function validateChallenge(challenge: ChallengeFile): string[] {
  * Analyze a single challenge. Assumes validation has already passed.
  */
 export function analyzeChallenge(challenge: ChallengeFile): AnalysisResult {
-  const raw = readFileSync(challenge.mdPath, 'utf-8')
-  const parsed = parseMd(raw)!
-  const doc = parseDocument(parsed.fmRaw)
-  const fm = doc.toJSON() as Record<string, unknown>
+  const read = readDeclaration(challenge.declarationPath)
+  if ('error' in read) throw new Error(read.error)
+  const fm = read.value as Record<string, unknown>
 
-  const title = String(fm.title ?? challenge.slug)
+  // Y66 (D89): the title is the primary-locale brief's; the rest comes from challenge.yaml.
+  const title = readBriefTitle(challenge.briefPath) ?? challenge.slug
   const backend = String(fm.backend ?? 'unknown')
   const difficulty = String(fm.difficulty ?? 'unset')
   const category = String(fm.category ?? 'unset')
   const tags = Array.isArray(fm.tags) ? (fm.tags as string[]) : []
 
-  const baseDir = dirname(challenge.mdPath)
+  const baseDir = dirname(challenge.declarationPath)
   const warnings: string[] = []
 
   // ─── Collect files ─────────────────────────────────────────────────
 
   let files: FileInfo[] = []
 
-  if (challenge.isPerFolder) {
-    const srcDir = resolve(baseDir, 'src')
-    if (existsSync(srcDir)) {
-      const scanned = scanSrcDirectory(srcDir)
-      files = scanned.map((f) => {
-        const st = statSync(f.absolutePath)
-        return {
-          name: f.virtualPath.slice(1), // remove leading /
-          sizeBytes: st.size,
-        }
-      })
-    }
-  } else {
-    // Legacy: check for fs map or app file directly
-    const appRef = String(fm.app ?? '')
-    const appPath = resolve(baseDir, appRef)
-    if (existsSync(appPath)) {
-      const st = statSync(appPath)
-      files.push({ name: appRef, sizeBytes: st.size })
-    }
-    const fsMap = (fm.fs ?? {}) as Record<string, string>
-    for (const [, ref] of Object.entries(fsMap)) {
-      const p = resolve(baseDir, ref)
-      if (existsSync(p)) {
-        const st = statSync(p)
-        files.push({ name: ref, sizeBytes: st.size })
+  const srcDir = resolve(baseDir, 'src')
+  if (existsSync(srcDir)) {
+    const scanned = scanSrcDirectory(srcDir)
+    files = scanned.map((f) => {
+      const st = statSync(f.absolutePath)
+      return {
+        name: f.virtualPath.slice(1), // remove leading /
+        sizeBytes: st.size,
       }
-    }
+    })
   }
 
   const totalFiles = files.length
@@ -238,14 +229,7 @@ export function analyzeChallenge(challenge: ChallengeFile): AnalysisResult {
   // ─── Flag format check ────────────────────────────────────────────
 
   const flagRef = String(fm.flag ?? 'flag.txt')
-  let flagPath: string
-  if (challenge.isPerFolder) {
-    flagPath = resolve(baseDir, 'src', flagRef)
-  } else {
-    const fsMap = (fm.fs ?? {}) as Record<string, string>
-    const flagEntry = Object.entries(fsMap).find(([vpath]) => vpath === '/flag.txt')
-    flagPath = flagEntry ? resolve(baseDir, flagEntry[1]) : resolve(baseDir, flagRef)
-  }
+  const flagPath = resolve(baseDir, 'src', flagRef)
 
   if (existsSync(flagPath)) {
     const flagContent = readFileSync(flagPath, 'utf-8').trim()
@@ -257,12 +241,7 @@ export function analyzeChallenge(challenge: ChallengeFile): AnalysisResult {
   // ─── Localhost check ──────────────────────────────────────────────
 
   for (const file of files) {
-    let filePath: string
-    if (challenge.isPerFolder) {
-      filePath = resolve(baseDir, 'src', file.name)
-    } else {
-      filePath = resolve(baseDir, file.name)
-    }
+    const filePath = resolve(baseDir, 'src', file.name)
     if (existsSync(filePath)) {
       try {
         const content = readFileSync(filePath, 'utf-8')
@@ -399,9 +378,20 @@ async function main(): Promise<void> {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = dirname(__filename)
   const root = resolve(__dirname, '..')
-  const challengesDir = resolve(root, 'platform', 'challenge')
 
-  const challenges = discoverChallenges(challengesDir, target)
+  // D123: range.json is read before anything else; an unusable one ends the run with its PL line.
+  let primary: Locale
+  try {
+    primary = readPrimaryLocale(join(root, 'range.json'))
+  } catch (err) {
+    if (err instanceof SiteLayoutError) {
+      console.error(err.message)
+      process.exit(1)
+    }
+    throw err
+  }
+
+  const challenges = discoverChallenges(root, primary, target)
 
   if (challenges.length === 0) {
     console.error(target ? `Challenge not found: ${target}` : 'No challenge files found')

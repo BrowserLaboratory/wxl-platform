@@ -4,8 +4,15 @@ import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { extractMarkdownBody } from './challenge/plugin'
-import { pageListFromDir } from './pageList'
+import { assembleChallengeFrontmatter } from './challenge/plugin'
+import { readChallengeDeclaration } from './challenge/declaration'
+import { pageListFromDir, rewrittenPath, SMOKE_FIXTURE_GLOBS } from './pageList'
+import { readPrimaryLocale } from './primary-locale'
+import { primaryFolderLinks } from './primary-folder-links'
+import { checkSourceLayout } from './source-layout'
+import { localesConfig } from './locales-config'
+import { localizeHomeLinks } from './home-links'
+import { LOCALES, isKnownLocale } from './locales'
 
 // A site served from a sub-path needs a matching base or every asset/JS/WASM
 // URL 404s. The base is read once, here, from SITE_BASE: the GitHub Pages deploy
@@ -22,21 +29,47 @@ if (!/^\/(?:(?!\.\.?\/)[A-Za-z0-9._~-]+\/)*$/.test(siteBase)) {
   throw new Error(`SITE_BASE must be "/" or a path like "/my-repo/", got ${JSON.stringify(siteBase)}`)
 }
 
-// The source directory, relative to the repository root. The page list below reads it too.
+// The source directory, relative to the repository root. The page list below reads it too, and
+// `rewrites` (`rewrittenPath`, D9) maps each source path in it to its URL.
 const SRC_DIR = 'platform'
+// `.vitepress` sits one level under the repository root (D5, D123): read before any challenge
+// and before the layout check.
+const REPO_ROOT = resolve(__dirname, '..')
+const primary = readPrimaryLocale(resolve(REPO_ROOT, 'range.json'))
+// D19/D123: the layout check runs first after P is read, before everything else this
+// configuration does with the source tree — so an old-layout tree fails this command with
+// PL-E08, the same as challenge:keygen, redirects:generate and challenge:validate (B38).
+checkSourceLayout(resolve(REPO_ROOT, SRC_DIR), primary)
+// The page list (B43): computed once, so the defines and `transformPageData`'s
+// `localizeHomeLinks` call below share the exact same list.
+// A test build publishes the smoke fixture pages (D49): only the exact value '1' does, read once.
+const smokePages = process.env.WXL_SMOKE_PAGES === '1'
+const pages = pageListFromDir(resolve(REPO_ROOT, SRC_DIR), primary, { smokePages })
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   srcDir: SRC_DIR,
   // See siteBase above.
   base: siteBase,
+  // A challenge's own application code, the copied-verbatim public assets and the data
+  // loaders are not pages (B24, B25); `pageListFromDir` applies the same exclusions.
+  // The smoke fixture pages are excluded too, unless this is a test build (D49).
+  srcExclude: ['challenge/*/src/**', 'public/**', 'shared/**', ...(smokePages ? [] : SMOKE_FIXTURE_GLOBS)],
+  // The primary locale's own folder serves without its prefix (D8, D9, BC3); every other
+  // locale keeps its folder as a URL segment.
+  rewrites: (id) => rewrittenPath(id, primary),
+  // A markdown link whose resolved URL names the primary locale's folder is an error: that
+  // folder's pages are served without the prefix (D12, PL-E11).
+  markdown: {
+    config: (md) => primaryFolderLinks(md, primary),
+  },
   // Cloudflare Pages serves this site's pages without the extension:
-  // `/zh-TW/challenges` answers 200, while `/zh-TW/challenges.html` and
-  // `/zh-TW/challenges/` both 308 to it. Left at VitePress's default (false),
+  // `/<code>/challenges` answers 200, while `/<code>/challenges.html` and
+  // `/<code>/challenges/` both 308 to it. Left at VitePress's default (false),
   // the client router does the opposite — after every SPA navigation
   // `loadPage` recomputes the pathname from the page's `relativePath`, appends
   // `.html`, and `replaceState`s to it. So clicking a nav link whose href is
-  // `/zh-TW/challenges/` parked the address bar on `/zh-TW/challenges.html`:
+  // `/<code>/challenges/` parked the address bar on `/<code>/challenges.html`:
   // a shape the server redirects away from on the next reload.
   //
   // With this true, the router's computed pathname is extensionless for page
@@ -78,10 +111,14 @@ export default defineConfig({
       // so the HTML as served and the hydrated page agree and nothing set at run time
       // switches it. The site base does not depend on it.
       __WXL_SHORT_LINKS__: process.env.CF_PAGES === '1' ? 'true' : 'false',
-      // The page list (spec 0008, seam S2): every published page as a base-less path, read
-      // from the source tree when this configuration is evaluated. The locale decisions
-      // consult it to ask whether a translation exists, instead of asking the network.
-      __WXL_PAGES__: JSON.stringify(pageListFromDir(resolve(__dirname, '..', SRC_DIR))),
+      // The page list (spec 0008, seam S2; B43): every published page as a base-less path,
+      // the primary folder's own segment stripped (D9), read from the source tree when this
+      // configuration is evaluated. The locale decisions consult it to ask whether a
+      // translation exists, instead of asking the network.
+      __WXL_PAGES__: JSON.stringify(pages),
+      // The primary locale (D31, D21): comes only from the root range.json, never from an
+      // environment variable, so it reaches the client bundle as a fixed, build-time string.
+      __WXL_PRIMARY_LOCALE__: JSON.stringify(primary),
     },
   },
 
@@ -97,56 +134,22 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/png', href: `${siteBase}favicon.png` }],
     ['link', { rel: 'apple-touch-icon', href: `${siteBase}apple-touch-icon.png` }],
   ],
-  locales: {
-    root: {
-      label: 'English',
-      lang: 'en-US',
-      themeConfig: {
-        nav: [
-          { text: 'Home', link: '/' },
-          { text: 'Challenges', link: '/challenges/' },
-          { text: 'Guide', link: '/guide/' },
-        ],
-        sidebar: {
-          '/guide/': [
-            { text: 'Getting Started', link: '/guide/' },
-            { text: 'Code Panel', link: '/guide/python' },
-            { text: 'Network & Repeater', link: '/guide/network' },
-            { text: 'Browser Panel', link: '/guide/browser' },
-            { text: 'Pentest Notes', link: '/guide/notes' },
-            { text: 'Troubleshooting', link: '/guide/troubleshooting' },
-          ],
-        },
-      },
-    },
-    'zh-TW': {
-      label: '繁體中文',
-      lang: 'zh-TW',
-      link: '/zh-TW/',
-      themeConfig: {
-        nav: [
-          { text: '首頁', link: '/zh-TW/' },
-          { text: '挑戰', link: '/zh-TW/challenges/' },
-          { text: '使用手冊', link: '/zh-TW/guide/' },
-        ],
-        sidebar: {
-          '/zh-TW/guide/': [
-            { text: '快速開始', link: '/zh-TW/guide/' },
-            { text: 'Code 面板', link: '/zh-TW/guide/python' },
-            { text: 'Network 與 Repeater', link: '/zh-TW/guide/network' },
-            { text: 'Browser 面板', link: '/zh-TW/guide/browser' },
-            { text: 'Pentest Notes', link: '/zh-TW/guide/notes' },
-            { text: '疑難排解', link: '/zh-TW/guide/troubleshooting' },
-          ],
-        },
-      },
-    },
-  },
+  locales: localesConfig(primary),
 
+  // Assembly at build time (D78, 0010-S33; B50–B52): decided by the page's *source* path
+  // (`pageData.filePath`, never `relativePath`, which `rewrites` above has already changed).
+  // A brief path with `layout: challenge` reads its slug's `challenge.yaml` and assembles
+  // brief ∪ declaration ∪ markdownBody; anything else is returned untouched (Y48). Every page
+  // then passes through `localizeHomeLinks` (B62+), which itself only touches `layout: home`.
   transformPageData(pageData, ctx) {
-    if (pageData.frontmatter.layout !== 'challenge') return
-    const filePath = resolve(ctx.siteConfig.srcDir, pageData.relativePath)
-    const raw = readFileSync(filePath, 'utf-8')
-    pageData.frontmatter.markdownBody = extractMarkdownBody(raw)
+    const sourcePath = pageData.filePath
+    const raw = readFileSync(resolve(ctx.siteConfig.srcDir, sourcePath), 'utf-8')
+    const readDeclaration = (slug: string) => readChallengeDeclaration(resolve(ctx.siteConfig.srcDir, '..'), slug)
+    const assembled = assembleChallengeFrontmatter(sourcePath, pageData.frontmatter, raw, readDeclaration, LOCALES)
+    if (assembled !== null) pageData.frontmatter = assembled
+    const pageLocale = sourcePath.split('/')[0]
+    if (isKnownLocale(pageLocale)) {
+      pageData.frontmatter = localizeHomeLinks(pageData.frontmatter, pageLocale, primary, pages)
+    }
   },
 })

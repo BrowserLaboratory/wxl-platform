@@ -18,17 +18,19 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:4173',
-    // Pin the locale. Without a stored preference the site sends an unprefixed path to
-    // its default visiting locale, so every `page.goto('/...')` here would land on the
-    // Traditional Chinese tree — and these specs assert English strings ('Challenges',
-    // 'Start Challenge', 'Browser Emulator'). Before this was pinned, two of them passed
-    // only because they asserted before the redirect ran; the one that waited for
-    // hydration first timed out looking for a nav link that had become 「挑戰」.
+    // Pin the locale. After D108's layout switch, English moved off the root to `/en/`
+    // and Traditional Chinese is the primary locale (upstream has no `range.json`). A cold
+    // load of a primary-locale page whose stored preference is the *translation* locale
+    // redirects client-side to that translation's counterpart (D24); with the preference
+    // pinned to `en` here, a `page.goto('/...')` with no locale segment therefore lands on
+    // `/en/...` once that redirect runs — and most specs here assert English strings
+    // ('Challenges', 'Start Challenge', 'Browser Emulator'). English assertions therefore go to
+    // an explicit path derived from the primary locale through `tests/site-smoke/localePath.ts`
+    // (D54), not to a literal prefix and not to the redirect's own timing; the pinned `en` stays.
     //
     // What is tested here is the production bundle and the URL shape after client-side
     // routing, not which locale a fresh visitor gets — that has its own unit coverage in
-    // tests/unit/i18n/initial-locale-redirect.test.ts. So the locale is stated rather
-    // than left to the default.
+    // tests/unit/i18n/initial-locale-redirect.test.ts.
     //
     // The key must match LOCALE_STORAGE_KEY in .vitepress/theme/i18n/index.ts. It is
     // written out rather than imported because this config loads outside the Vue

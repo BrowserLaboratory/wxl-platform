@@ -1,19 +1,7 @@
 ---
 title: 只是預覽而已
-number: 8
 layout: challenge
-difficulty: easy
-category: web
-backend: fastapi
-app: app.py
-packages: []
-tools: [ browser, network, repeater, code ]
-source_visible: true
-source_files: [ /templates/layout.html, /templates/index.html, /templates/detail.html, /templates/preview.html, /templates/_editor.html, /templates/missing.html, /static/app.css ]
-date: 2026-09-06T09:23:32.337Z
-tags: [ ssti, template-injection, jinja2, fastapi ]
 description: 針對 Corvid Labs 內部 prompt 樣板庫的白箱滲透測試委託。樣板編輯器告訴撰寫者，算繪預覽是在一個受限的環境裡進行的。
-wasmModule: /challenge/just-a-preview/runtime.wasm
 ---
 
 # 只是預覽而已

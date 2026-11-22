@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
@@ -6,6 +6,13 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 import ShortLinkShare from '../../../.vitepress/theme/components/ShortLinkShare.vue'
 import { linkMode } from '../../../.vitepress/theme/linkMode'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
+
+// `P` (D31): 'en' unless a case sets it (the page URL follows it, D68); reset before each case.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+beforeEach(() => {
+  mockPrimaryLocale.value = 'en'
+})
 
 // L19. Its own file because ShortLinkShare.test.ts replaces the mode module for every test in it
 // (`vi.mock` is hoisted per file). Here nothing replaces it, and vitest does not define the
@@ -31,5 +38,22 @@ describe('the link mode with the build constant undefined (L19)', () => {
     await wrapper.find('[data-copy-link]').trigger('click')
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/challenge/door-is-open/`)
+  })
+
+  it('under P = zh-TW shows and copies an English entry\'s page URL with its /en segment (S54, D68)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mount(ShortLinkShare, {
+      props: { number: 1, slug: 'door-is-open', locale: 'en', entryLocale: 'en' },
+      global: {
+        plugins: [createI18n({ legacy: false, locale: 'en', messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false })],
+      },
+    })
+
+    expect(wrapper.find('[data-short-link]').text()).toBe(`${SITE_ORIGIN.replace(/^https:\/\//, '')}/en/challenge/door-is-open/`)
+    await wrapper.find('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/challenge/door-is-open/`)
   })
 })

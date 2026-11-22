@@ -1,49 +1,37 @@
 import { describe, it, expect } from 'vitest'
 import {
-  validateChallengeConfig,
   validateChallengeDeclaration,
+  validateChallengeBrief,
   LEGACY_FIELDS,
   VALID_TOOLS,
 } from '../../../.vitepress/challenge/config'
 
-describe('ChallengeConfig validation', () => {
+describe('ChallengeDeclaration validation', () => {
   const minimal = {
-    title: 'SQL Injection Basic',
     backend: 'flask' as const,
     app: './app.py',
-    fs: { '/flag.txt': './flag.txt' },
   }
 
   it('accepts a valid config with all required fields', () => {
-    expect(() => validateChallengeConfig(minimal)).not.toThrow()
-  })
-
-  it('throws when title is missing', () => {
-    const { title: _, ...rest } = minimal
-    expect(() => validateChallengeConfig(rest as any)).toThrow(/title/)
+    expect(() => validateChallengeDeclaration(minimal)).not.toThrow()
   })
 
   it('throws when backend is missing', () => {
     const { backend: _, ...rest } = minimal
-    expect(() => validateChallengeConfig(rest as any)).toThrow(/backend/)
+    expect(() => validateChallengeDeclaration(rest as any)).toThrow(/backend/)
   })
 
   it('throws when app is missing', () => {
     const { app: _, ...rest } = minimal
-    expect(() => validateChallengeConfig(rest as any)).toThrow(/app/)
-  })
-
-  it('accepts config without fs (fs is now optional/deprecated)', () => {
-    const { fs: _, ...rest } = minimal
-    expect(() => validateChallengeConfig(rest as any)).not.toThrow()
+    expect(() => validateChallengeDeclaration(rest as any)).toThrow(/app/)
   })
 
   it('throws when backend is an invalid value', () => {
-    expect(() => validateChallengeConfig({ ...minimal, backend: 'django' as any })).toThrow(/backend/)
+    expect(() => validateChallengeDeclaration({ ...minimal, backend: 'django' as any })).toThrow(/backend/)
   })
 
   it('defaults source_visible to false when omitted', () => {
-    const config = validateChallengeConfig(minimal)
+    const config = validateChallengeDeclaration(minimal)
     expect(config.source_visible).toBe(false)
   })
 
@@ -51,11 +39,11 @@ describe('ChallengeConfig validation', () => {
   // alone" — the empty array, not `undefined` — so the build step never has to ask
   // whether the author meant "nothing extra" or "field missing".
   it('defaults source_files to an empty array when omitted', () => {
-    expect(validateChallengeConfig(minimal).source_files).toEqual([])
+    expect(validateChallengeDeclaration(minimal).source_files).toEqual([])
   })
 
   it('accepts source_files as an array of virtual paths', () => {
-    const config = validateChallengeConfig({
+    const config = validateChallengeDeclaration({
       ...minimal,
       source_visible: true,
       source_files: ['/templates/cart.html', '/flag.txt'],
@@ -69,36 +57,36 @@ describe('ChallengeConfig validation', () => {
   // step an author runs that can say why.
   it('rejects source_files when source_visible is false', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_visible: false, source_files: ['/a.html'] }),
+      validateChallengeDeclaration({ ...minimal, source_visible: false, source_files: ['/a.html'] }),
     ).toThrow(/source_visible/)
   })
 
   it('rejects source_files when source_visible is omitted', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_files: ['/a.html'] }),
+      validateChallengeDeclaration({ ...minimal, source_files: ['/a.html'] }),
     ).toThrow(/source_visible/)
   })
 
   it('accepts an empty source_files alongside a false source_visible', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_visible: false, source_files: [] }),
+      validateChallengeDeclaration({ ...minimal, source_visible: false, source_files: [] }),
     ).not.toThrow()
   })
 
   it('rejects a source_files that is a string rather than an array', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_files: '/templates/cart.html' } as never),
+      validateChallengeDeclaration({ ...minimal, source_files: '/templates/cart.html' } as never),
     ).toThrow(/source_files/)
   })
 
   it('rejects a source_files array holding a non-string entry', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_files: ['/a.html', 7] } as never),
+      validateChallengeDeclaration({ ...minimal, source_files: ['/a.html', 7] } as never),
     ).toThrow(/source_files/)
   })
 
   it('accepts source_visible: true for white-box challenges', () => {
-    const config = validateChallengeConfig({ ...minimal, source_visible: true })
+    const config = validateChallengeDeclaration({ ...minimal, source_visible: true })
     expect(config.source_visible).toBe(true)
   })
 
@@ -107,13 +95,13 @@ describe('ChallengeConfig validation', () => {
   // one step that runs early enough to say so.
   it('rejects source_visible given as the string "true"', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_visible: 'true' } as never),
+      validateChallengeDeclaration({ ...minimal, source_visible: 'true' } as never),
     ).toThrow(/source_visible must be a boolean.*string/)
   })
 
   it('rejects source_visible given as a number, without the quoting hint', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_visible: 1 } as never),
+      validateChallengeDeclaration({ ...minimal, source_visible: 1 } as never),
     ).toThrow(/^source_visible must be a boolean, got number: 1$/)
   })
 
@@ -121,87 +109,91 @@ describe('ChallengeConfig validation', () => {
   // `?? false`; it now fails, and the message says what the author actually wrote.
   it('rejects a bare source_visible line and names the null', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, source_visible: null } as never),
+      validateChallengeDeclaration({ ...minimal, source_visible: null } as never),
     ).toThrow(/got null: null \(a bare `source_visible:` line/)
   })
 
   it('accepts optional wasmModule field', () => {
-    const config = validateChallengeConfig({ ...minimal, wasmModule: '/challenge/sqli-demo/runtime.wasm' })
+    const config = validateChallengeDeclaration({ ...minimal, wasmModule: '/challenge/sqli-demo/runtime.wasm' })
     expect(config.wasmModule).toBe('/challenge/sqli-demo/runtime.wasm')
   })
 
   it('does not require wasmModule (auto-populated by build pipeline)', () => {
-    const config = validateChallengeConfig(minimal)
+    const config = validateChallengeDeclaration(minimal)
     expect(config.wasmModule).toBeUndefined()
   })
 
   it('does not require flag_verifier or fs_key (now in WASM)', () => {
     // These fields should NOT be required — they are embedded in per-challenge WASM
-    expect(() => validateChallengeConfig(minimal)).not.toThrow()
+    expect(() => validateChallengeDeclaration(minimal)).not.toThrow()
+  })
+
+  it('D75, D76: the returned declaration carries no fs and no description key', () => {
+    for (const input of [minimal, { ...minimal, fs: { '/a': 'b' } }]) {
+      const keys = Object.keys(validateChallengeDeclaration(input as never))
+      expect(keys).not.toContain('fs')
+      expect(keys).not.toContain('description')
+    }
   })
 })
 
-describe('ChallengeConfig packages field', () => {
+describe('ChallengeDeclaration packages field', () => {
   const minimal = {
-    title: 'Test',
     backend: 'flask' as const,
     app: './app.py',
-    fs: { '/flag.txt': './flag.txt' },
   }
 
   it('defaults packages to [] when omitted', () => {
-    const config = validateChallengeConfig(minimal)
+    const config = validateChallengeDeclaration(minimal)
     expect(config.packages).toEqual([])
   })
 
   it('parses packages array when provided', () => {
-    const config = validateChallengeConfig({ ...minimal, packages: ['requests', 'pyjwt'] })
+    const config = validateChallengeDeclaration({ ...minimal, packages: ['requests', 'pyjwt'] })
     expect(config.packages).toEqual(['requests', 'pyjwt'])
   })
 
   it('accepts empty packages array', () => {
-    const config = validateChallengeConfig({ ...minimal, packages: [] })
+    const config = validateChallengeDeclaration({ ...minimal, packages: [] })
     expect(config.packages).toEqual([])
   })
 
   it('accepts fastapi backend with packages', () => {
-    const config = validateChallengeConfig({ ...minimal, backend: 'fastapi', packages: ['fastapi', 'anyio'] })
+    const config = validateChallengeDeclaration({ ...minimal, backend: 'fastapi', packages: ['fastapi', 'anyio'] })
     expect(config.packages).toEqual(['fastapi', 'anyio'])
     expect(config.backend).toBe('fastapi')
   })
 })
 
-describe('ChallengeConfig tools field', () => {
+describe('ChallengeDeclaration tools field', () => {
   const minimal = {
-    title: 'Test',
     backend: 'flask' as const,
     app: './app.py',
-    fs: { '/flag.txt': './flag.txt' },
   }
 
   it('accepts config with no tools and leaves it undefined for the layout to resolve', () => {
-    expect(() => validateChallengeConfig(minimal)).not.toThrow()
-    expect(validateChallengeConfig(minimal).tools).toBeUndefined()
+    expect(() => validateChallengeDeclaration(minimal)).not.toThrow()
+    expect(validateChallengeDeclaration(minimal).tools).toBeUndefined()
   })
 
   it('accepts valid tools: [browser, code]', () => {
-    const config = validateChallengeConfig({ ...minimal, tools: ['browser', 'code'] })
+    const config = validateChallengeDeclaration({ ...minimal, tools: ['browser', 'code'] })
     expect(config.tools).toEqual(['browser', 'code'])
   })
 
   it('throws when tools contains an invalid value', () => {
     expect(() =>
-      validateChallengeConfig({ ...minimal, tools: ['browser', 'invalid'] }),
+      validateChallengeDeclaration({ ...minimal, tools: ['browser', 'invalid'] }),
     ).toThrow(/invalid tool/)
   })
 
   it('accepts empty tools array and preserves it verbatim (layout resolves it to browser alone)', () => {
-    const config = validateChallengeConfig({ ...minimal, tools: [] })
+    const config = validateChallengeDeclaration({ ...minimal, tools: [] })
     expect(config.tools).toEqual([])
   })
 
   it('rejects terminal as a tab ID', () => {
-    expect(() => validateChallengeConfig({ ...minimal, tools: ['terminal'] })).toThrow(
+    expect(() => validateChallengeDeclaration({ ...minimal, tools: ['terminal'] })).toThrow(
       /invalid tools entry: terminal/,
     )
   })
@@ -213,7 +205,7 @@ describe('ChallengeConfig tools field', () => {
     // "Must be one of") keeps this from passing vacuously if the wording changes.
     let message = ''
     try {
-      validateChallengeConfig({ ...minimal, tools: ['nosuchtool'] })
+      validateChallengeDeclaration({ ...minimal, tools: ['nosuchtool'] })
     } catch (err) {
       message = (err as Error).message
     }
@@ -222,22 +214,20 @@ describe('ChallengeConfig tools field', () => {
   })
 
   it('accepts all valid tool values', () => {
-    const config = validateChallengeConfig({ ...minimal, tools: [...VALID_TOOLS] })
+    const config = validateChallengeDeclaration({ ...minimal, tools: [...VALID_TOOLS] })
     expect(config.tools).toEqual([...VALID_TOOLS])
   })
 })
 
-describe('ChallengeConfig tools field combinations', () => {
+describe('ChallengeDeclaration tools field combinations', () => {
   const minimal = {
-    title: 'Test',
     backend: 'flask' as const,
     app: './app.py',
-    fs: { '/flag.txt': './flag.txt' },
   }
 
   it('accepts config with a flag field alongside tools', () => {
     expect(() =>
-      validateChallengeConfig({
+      validateChallengeDeclaration({
         ...minimal,
         tools: ['browser', 'code'],
         // flag is an existing optional concept in challenge configs
@@ -246,12 +236,12 @@ describe('ChallengeConfig tools field combinations', () => {
   })
 
   // A leftover `commands` key from before the field was retired is IGNORED, not
-  // rejected: validateChallengeConfig inspects named fields one at a time and has no
+  // rejected: validateChallengeDeclaration inspects named fields one at a time and has no
   // unknown-key rejection path. Asserted rather than left implicit, because "the
   // validator will catch it" is the assumption a reader would otherwise make.
   it('ignores a leftover commands key rather than rejecting it', () => {
-    const config = validateChallengeConfig({ ...minimal, tools: ['browser'], commands: ['sqlmap'] } as never)
-    expect(() => validateChallengeConfig({ ...minimal, commands: 'all' } as never)).not.toThrow()
+    const config = validateChallengeDeclaration({ ...minimal, tools: ['browser'], commands: ['sqlmap'] } as never)
+    expect(() => validateChallengeDeclaration({ ...minimal, commands: 'all' } as never)).not.toThrow()
     expect(config).not.toHaveProperty('commands')
   })
 
@@ -264,8 +254,8 @@ describe('ChallengeConfig tools field combinations', () => {
     ['a name the removed allowlist rejected', { commands: ['notatool'] }],
     ['a scalar the removed allowlist rejected', { commands: 'something' }],
   ])('accepts and drops %s', (_label, extra) => {
-    let config!: ReturnType<typeof validateChallengeConfig>
-    expect(() => { config = validateChallengeConfig({ ...minimal, ...extra } as never) }).not.toThrow()
+    let config!: ReturnType<typeof validateChallengeDeclaration>
+    expect(() => { config = validateChallengeDeclaration({ ...minimal, ...extra } as never) }).not.toThrow()
     expect(config).not.toHaveProperty('commands')
   })
 })
@@ -279,6 +269,104 @@ describe('VALID_TOOLS constant', () => {
     expect(VALID_TOOLS).not.toContain('terminal')
   })
 
+})
+
+describe('validateChallengeDeclaration (Y9): backend is required', () => {
+  it('throws when backend is absent', () => {
+    expect(() => validateChallengeDeclaration({ app: 'app.py' })).toThrow(
+      /^missing required field: backend$/,
+    )
+  })
+
+  it('throws when backend is null', () => {
+    expect(() => validateChallengeDeclaration({ backend: null, app: 'app.py' })).toThrow(
+      /^missing required field: backend$/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y12): app must be a string', () => {
+  it.each([
+    ['number', 3, 'number'],
+    ['boolean', true, 'boolean'],
+    ['object', [], 'object'],
+  ])('throws VM12 for app: %s', (_label, app, typeofLabel) => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app })).toThrow(
+      new RegExp(`^app must be a string, got ${typeofLabel}$`),
+    )
+  })
+
+  it('does not crash the backend check first', () => {
+    expect(() => validateChallengeDeclaration({ backend: 'flask', app: 3 })).not.toThrow(
+      /backend must be one of/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y14): title, description and layout are brief keys', () => {
+  it('throws VM5 naming title alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', title: 'x' }),
+    ).toThrow(
+      /^challenge\.yaml carries brief key\(s\) title; title, description and layout belong in each brief's frontmatter$/,
+    )
+  })
+
+  it('throws VM5 naming description alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', description: 'x' }),
+    ).toThrow(/^challenge\.yaml carries brief key\(s\) description;/)
+  })
+
+  it('throws VM5 naming layout alone', () => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', layout: 'challenge' }),
+    ).toThrow(/^challenge\.yaml carries brief key\(s\) layout;/)
+  })
+
+  it('throws VM5 listing all three in file order', () => {
+    const obj: Record<string, unknown> = {}
+    obj.backend = 'flask'
+    obj.app = 'app.py'
+    obj.layout = 'challenge'
+    obj.title = 'x'
+    obj.description = 'y'
+    expect(() => validateChallengeDeclaration(obj)).toThrow(
+      /^challenge\.yaml carries brief key\(s\) layout, title, description;/,
+    )
+  })
+})
+
+describe('validateChallengeDeclaration (Y19): unknown keys pass through', () => {
+  it.each([
+    ['id', 7],
+    ['commands', []],
+    ['author', 'x'],
+  ])('does not throw for an unknown key %s', (key, value) => {
+    expect(() =>
+      validateChallengeDeclaration({ backend: 'flask', app: 'app.py', [key]: value }),
+    ).not.toThrow()
+  })
+})
+
+describe('validateChallengeDeclaration (Y21): every optional key absent gives defaults', () => {
+  it('returns the documented defaults', () => {
+    const result = validateChallengeDeclaration({ backend: 'flask', app: 'app.py' })
+    expect(result.source_visible).toBe(false)
+    expect(result.source_files).toEqual([])
+    expect(result.packages).toEqual([])
+    expect(result.tools).toBeUndefined()
+    expect(result.flag).toBeUndefined()
+  })
+})
+
+describe('validateChallengeBrief (Y23): title and layout only', () => {
+  it('returns description: undefined', () => {
+    const result = validateChallengeBrief({ title: 'x', layout: 'challenge' })
+    expect(result.description).toBeUndefined()
+    expect(result.title).toBe('x')
+    expect(result.layout).toBe('challenge')
+  })
 })
 
 describe('validateChallengeDeclaration (Y10): app is required', () => {
@@ -411,9 +499,17 @@ describe('validateChallengeDeclaration (Y18): non-string flag', () => {
 
 describe('Legacy field detection', () => {
   it('exports LEGACY_FIELDS constant', () => {
+    expect(LEGACY_FIELDS).toContain('fs')
     expect(LEGACY_FIELDS).toContain('fs_key')
     expect(LEGACY_FIELDS).toContain('fsKeyParts')
     expect(LEGACY_FIELDS).toContain('encryptedFs')
     expect(LEGACY_FIELDS).toContain('flag_verifier')
+  })
+})
+
+describe('Y-q1 (D75): the single-schema validator is gone', () => {
+  it('no longer exports validateChallengeConfig', async () => {
+    const mod = await import('../../../.vitepress/challenge/config')
+    expect(Object.keys(mod)).not.toContain('validateChallengeConfig')
   })
 })

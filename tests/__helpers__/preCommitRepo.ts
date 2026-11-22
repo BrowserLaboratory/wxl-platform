@@ -3,12 +3,18 @@
  * `scripts/pre-commit.sh`, plus the snapshots its cases compare.
  *
  * The repository sits at `<mkdtemp>/暫存 repo`, so its path holds a space and
- * non-ASCII characters. It holds:
- * - `platform/challenge/test-chall/` (#1, English only), today's fixture challenge;
- * - `platform/challenge/door/` (#2) with a Traditional Chinese brief;
- * - `.archive/challenge/old-chall/` (#3), a valid retired challenge;
+ * non-ASCII characters. It is built in the layout of spec 0010: a challenge is a
+ * declaration `platform/challenge/<slug>/{challenge.yaml,src/}` plus one brief
+ * `platform/<L>/challenge/<slug>/index.md` per locale `L` it is translated into
+ * (`writeChallenge`, `writeBrief`). `buildFixture(variant)` makes one of two:
+ * - `en`: `range.json` `{"primaryLocale":"en"}`; test-chall (#1) has only an `en`
+ *   brief, door (#2) has both an `en` and a `zh-TW` brief;
+ * - `zh-TW`: no `range.json` (the default primary locale is `zh-TW`); test-chall
+ *   has only a `zh-TW` brief, door has both;
+ * and in both `.archive/challenge/old-chall/` (#3), a valid retired challenge, and a page
+ * `platform/<variant>/guide/notes.md` (the old-address section of a `zh-TW` primary names its folder, D154). Each holds:
  * - `platform/public/` with a `_redirects` that matches the tree, and one other file;
- * - copies of the scripts the hook calls and the `.vitepress/challenge/` modules they import;
+ * - copies of the scripts the hook calls and every module they import (`COPIED_FILES`);
  * - a `node_modules` link to this checkout's packages, excluded through `.git/info/exclude`;
  * - a `.gitignore` holding `logs/` and `tmp/`, and this checkout's `.gitattributes`
  *   (`* text=auto eol=lf`), so git normalizes line endings as it does in a range;
@@ -22,8 +28,8 @@
  * The first-commit fixture (H27, H28, `buildFirstCommitFixture`) is a new
  * repository at the same kind of path with no commit and no stash entry. It
  * holds the copied scripts, the `node_modules` link, `.gitignore`,
- * `.gitattributes`, `test-chall` (#1) and `platform/public/other.txt`, and no
- * `_redirects`.
+ * `.gitattributes`, the `en` `range.json`, `test-chall` (#1, an `en` brief) and
+ * `platform/public/other.txt`, and no `_redirects`.
  *
  * Child processes get the test's environment with every inherited `GIT_*`
  * variable removed, `HOME` set to a temporary directory and `GIT_CONFIG_GLOBAL`
@@ -52,12 +58,16 @@ import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { spawn, spawnSync } from 'node:child_process'
 import { generateRedirects } from '../../scripts/generate-redirects'
+import type { Locale } from '../../.vitepress/locales'
 
 export const PROJECT_ROOT = resolve(import.meta.dirname, '../..')
 export const HOOK = join(PROJECT_ROOT, 'scripts/pre-commit.sh')
 export const REDIRECTS = 'platform/public/_redirects'
 
-/** The scripts the hook calls, and every module they import. */
+/** The primary locale's home page, which the layout check of the full generator mode requires (PL-E10). */
+const HOME = '---\ntitle: Home\n---\n'
+
+/** The scripts the hook calls, and every module they import (the closure of the hook's two Node entry points). */
 const COPIED_FILES = [
   'scripts/pre-commit.sh',
   'scripts/challenge-lint-staged.ts',
@@ -71,9 +81,16 @@ const COPIED_FILES = [
   '.vitepress/challenge/config.ts',
   '.vitepress/challenge/shortLink.ts',
   '.vitepress/challenge/reserved-keys.ts',
+  '.vitepress/challenge/declaration.ts',
+  '.vitepress/locales.ts',
+  '.vitepress/primary-locale.ts',
+  '.vitepress/layout-error.ts',
+  '.vitepress/source-layout.ts',
 ]
 
 export interface Repo {
+  /** The fixture's primary locale, when it is one of the fixtures (`writeChallenge`'s default brief locale). */
+  primary?: Locale
   /** The temporary directory holding the repository, its home and its logs. */
   base: string
   /** The repository's top level, as a physical path. */
@@ -148,23 +165,33 @@ export interface ChallengeOptions {
   app?: boolean
   /** Write `src/flag.txt`; true by default. */
   flag?: boolean
+  /** The locales whose brief is written; the fixture's primary locale by default. `[]` writes none (a retired challenge). */
+  briefs?: Locale[]
 }
 
-/** A complete English challenge, as the validator accepts it. */
+/** The text of a `challenge.yaml` the validator accepts. */
+export function declarationText(number: number): string {
+  return [`number: ${number}`, 'backend: flask', 'app: app.py', ''].join('\n')
+}
+
+/**
+ * A complete challenge, as the validator accepts it: its declaration and `src/` under `tree`
+ * (`platform/challenge` or `.archive/challenge`) and, for a tree under `platform/`, one brief per
+ * locale of `options.briefs` (the fixture's primary locale by default).
+ */
 export function writeChallenge(repo: Repo, tree: string, slug: string, number: number, options: ChallengeOptions = {}): void {
   const dir = `${tree}/${slug}`
-  write(repo, `${dir}/index.md`, challengeIndex(options.title ?? slug, number))
+  write(repo, `${dir}/challenge.yaml`, declarationText(number))
   if (options.app !== false) write(repo, `${dir}/src/app.py`, 'from flask import Flask\napp = Flask(__name__)\n')
   if (options.flag !== false) write(repo, `${dir}/src/flag.txt`, `FLAG{${slug}-flag}`)
+  if (tree.startsWith('platform/')) {
+    for (const locale of options.briefs ?? [repo.primary ?? 'en']) writeBrief(repo, locale, slug, options.title ?? slug)
+  }
 }
 
-export function challengeIndex(title: string, number: number): string {
-  return ['---', `title: "${title}"`, `number: ${number}`, 'backend: flask', 'app: app.py', '---', '', `${title} content`, ''].join('\n')
-}
-
-/** A Traditional Chinese brief: a directory holding only `index.md`. */
-export function writeBrief(repo: Repo, slug: string, number: number): void {
-  write(repo, `platform/zh-TW/challenge/${slug}/index.md`, ['---', `title: "${slug} 中文"`, `number: ${number}`, '---', '', '說明', ''].join('\n'))
+/** A brief: a directory `platform/<locale>/challenge/<slug>/` holding only `index.md`. */
+export function writeBrief(repo: Repo, locale: Locale, slug: string, title = `${slug} ${locale}`): void {
+  write(repo, `platform/${locale}/challenge/${slug}/index.md`, ['---', `title: "${title}"`, 'layout: challenge', '---', '', `${title} content`, ''].join('\n'))
 }
 
 /** A new repository at `<mkdtemp>/暫存 repo` holding the copied scripts, the `node_modules` link and the attributes. */
@@ -193,24 +220,33 @@ function installHook(repo: Repo): void {
   chmodSync(hook, 0o755)
 }
 
-/** The first-commit fixture (H27, H28): no commit, no stash entry, nothing staged yet, no `_redirects`. */
+/** The first-commit fixture (H27, H28): no commit, no stash entry, nothing staged yet, no `_redirects`. Primary locale `en`. */
 export function buildFirstCommitFixture(): Fixture {
-  const repo = initRepo()
+  const repo: Repo = { ...initRepo(), primary: 'en' }
+  write(repo, 'range.json', '{"primaryLocale":"en"}\n')
+  write(repo, 'platform/en/index.md', HOME)
   writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge' })
   write(repo, 'platform/public/other.txt', 'other\n')
   installHook(repo)
   return { ...repo, preexisting: null }
 }
 
-/** Build the fixture once; cases start from a copy (`cloneFixture`). */
-export function buildFixture(): Fixture {
-  const repo = initRepo()
+/** The two fixtures' primary locales: `en` through its `range.json`, `zh-TW` as the default (no `range.json`). */
+export type FixtureVariant = 'en' | 'zh-TW'
+
+/** Build a fixture once; cases start from a copy (`cloneFixture`). */
+export function buildFixture(variant: FixtureVariant = 'en'): Fixture {
+  const repo: Repo = { ...initRepo(), primary: variant }
   const { dir } = repo
   write(repo, 'README.md', '# Fixture\n')
+  if (variant === 'en') write(repo, 'range.json', '{"primaryLocale":"en"}\n')
+  write(repo, `platform/${variant}/index.md`, HOME)
+  // A top-level folder of pages besides `challenge/`: with `zh-TW` primary it gives an old-address rule (D154).
+  write(repo, `platform/${variant}/guide/notes.md`, '# Notes\n')
 
-  writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge' })
-  writeChallenge(repo, 'platform/challenge', 'door', 2)
-  writeBrief(repo, 'door', 2)
+  // test-chall has only the primary locale's brief; door has both.
+  writeChallenge(repo, 'platform/challenge', 'test-chall', 1, { title: 'Test Challenge', briefs: [variant] })
+  writeChallenge(repo, 'platform/challenge', 'door', 2, { briefs: ['en', 'zh-TW'] })
   writeChallenge(repo, '.archive/challenge', 'old-chall', 3)
   write(repo, 'platform/public/other.txt', 'other\n')
   write(repo, REDIRECTS, generateRedirects(dir))
@@ -234,7 +270,7 @@ export function cloneFixture(fixture: Fixture): Fixture {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'wxl-pre-commit-')))
   cpSync(fixture.base, base, { recursive: true, verbatimSymlinks: true })
   const home = join(base, 'home')
-  return { base, dir: join(base, '暫存 repo'), env: isolatedEnv(home), preexisting: fixture.preexisting }
+  return { base, dir: join(base, '暫存 repo'), env: isolatedEnv(home), preexisting: fixture.preexisting, primary: fixture.primary }
 }
 
 export function removeRepo(repo: Repo): void {
@@ -364,16 +400,28 @@ const STASH_IDS = `spawnSync('git', ['stash', 'list', '--format=%H'], { encoding
  * the copy's own direct-run check passes. `prelude` sees `args`, and the
  * imports `appendFileSync`, `writeFileSync` and `spawnSync`.
  */
-function wrapScript(repo: Repo, script: string, prelude: string): void {
+function wrapScript(repo: Repo, script: string, prelude: string, afterChild = '', captureStdout = false): void {
   const path = join(repo.dir, 'scripts', script)
   renameSync(path, join(repo.dir, 'scripts', `real-${script}`))
+  // With `captureStdout` the child's stdout is read here and written on, so that `afterChild`
+  // can see its byte count as `stdoutBytes`.
+  // The hook also asks the generator for its challenge-tree list (`--challenge-trees`, S80, before
+  // anything else) and for W4's wording (`--describe-untracked`, S47, after generation). Those are
+  // no runs of the generation, so every stub passes them straight to the real script, unrecorded,
+  // and its prelude and epilogue never see them.
   writeFileSync(path, `import { appendFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
-${prelude}
 const real = fileURLToPath(new URL('./real-${script}', import.meta.url))
-const r = spawnSync(process.execPath, ['--experimental-strip-types', real, ...args], { stdio: 'inherit' })
+if (args.includes('--challenge-trees') || args.includes('--describe-untracked')) {
+  const listing = spawnSync(process.execPath, ['--experimental-strip-types', real, ...args], { stdio: 'inherit' })
+  process.exit(listing.status ?? 1)
+}
+${prelude}
+const r = spawnSync(process.execPath, ['--experimental-strip-types', real, ...args], { stdio: ['inherit', '${captureStdout ? 'pipe' : 'inherit'}', 'inherit'] })
+${captureStdout ? 'if (r.stdout) process.stdout.write(r.stdout)\nconst stdoutBytes = r.stdout ? r.stdout.length : 0' : ''}
+${afterChild}
 process.exit(r.status ?? 1)
 `)
 }
@@ -382,9 +430,15 @@ process.exit(r.status ?? 1)
  * Put a stub at a script the hook calls that appends a JSON line to `log`
  * (outside the repository), then runs the real script (`wrapScript`).
  *
- * `recordStash` also records `git stash list` while the stub runs.
+ * `recordStash` also records `git stash list` while the stub runs. `recordStdout`
+ * records the number of bytes the real script wrote to stdout (`stdoutBytes`),
+ * in a line written once the real script has ended.
  */
-export function recordScript(repo: Repo, script: string, log: string, recordStash = false): void {
+export function recordScript(repo: Repo, script: string, log: string, recordStash = false, recordStdout = false): void {
+  if (recordStdout) {
+    wrapScript(repo, script, '', `appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: args, stdoutBytes }) + '\\n')`, true)
+    return
+  }
   wrapScript(repo, script, `const entry: Record<string, unknown> = { argv: args }
 if (${recordStash}) entry.stash = ${STASH_IDS}
 appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n')`)
@@ -393,6 +447,8 @@ appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n')`)
 export interface Recorded {
   argv: string[]
   stash?: string[]
+  /** The bytes the real script wrote to stdout, when `recordScript` was asked for them. */
+  stdoutBytes?: number
 }
 
 export function readRecord(log: string): Recorded[] {
@@ -455,7 +511,7 @@ export function addWorktree(repo: Repo): Repo {
   const path = join(repo.base, '連結 worktree')
   git(repo, ['worktree', 'add', '-q', '-b', 'wt', path])
   symlinkSync(join(PROJECT_ROOT, 'node_modules'), join(path, 'node_modules'))
-  return { base: repo.base, dir: realpathSync(path), env: repo.env }
+  return { base: repo.base, dir: realpathSync(path), env: repo.env, primary: repo.primary }
 }
 
 // ─── Interruption and failure stubs (H25, H26, H46–H49, H52) ────────────────
@@ -578,8 +634,17 @@ export interface BlockingRecord {
  * (`setInterval`). node dies of SIGINT, SIGTERM and SIGHUP by default.
  */
 export function blockingGenerator(repo: Repo, options: BlockingOptions): void {
-  writeFileSync(join(repo.dir, 'scripts/generate-redirects.ts'), `import { rmSync, writeFileSync } from 'node:fs'
+  const path = join(repo.dir, 'scripts/generate-redirects.ts')
+  renameSync(path, join(repo.dir, 'scripts/real-generate-redirects.ts'))
+  writeFileSync(path, `import { rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+// The hook's challenge-tree listing (S80) and W4's wording (S47) are no runs of the generation: they go to the real script.
+if (process.argv.includes('--challenge-trees') || process.argv.includes('--describe-untracked')) {
+  const real = fileURLToPath(new URL('./real-generate-redirects.ts', import.meta.url))
+  const listing = spawnSync(process.execPath, ['--experimental-strip-types', real, ...process.argv.slice(2)], { stdio: 'inherit' })
+  process.exit(listing.status ?? 1)
+}
 const options = ${JSON.stringify(options)}
 const indexFile = process.env.GIT_INDEX_FILE ?? null
 if (options.record) writeFileSync(options.record, JSON.stringify({ stash: ${STASH_IDS}, indexFile }))

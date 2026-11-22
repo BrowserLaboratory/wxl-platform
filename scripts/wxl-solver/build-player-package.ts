@@ -4,7 +4,9 @@
  * Assemble the ephemeral player-package for L4 blind solve.
  *
  * Output (under `tmp/wxl-verify/<slug>/player-package/`):
- *   - description.md   H1 + first paragraph of platform/challenge/<slug>/index.md,
+ *   - description.md   H1 + first paragraph of the primary locale's brief,
+ *                      platform/<primary>/challenge/<slug>/index.md (the primary
+ *                      locale is read from range.json; absent means zh-TW),
  *                      stripped of maintainer-only frontmatter and trailing
  *                      sections (everything after the first paragraph after H1).
  *   - META.yaml        base_url / flag_regex / turn_budget / verification_run_id
@@ -17,7 +19,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { readPrimaryLocale } from '../../.vitepress/primary-locale.ts'
 
 export interface PlayerPackageMeta {
   base_url: string
@@ -82,9 +85,11 @@ function renderMetaYaml(meta: PlayerPackageMeta): string {
 }
 
 export function buildPlayerPackage(opts: BuildPlayerPackageOptions): PlayerPackagePaths {
-  const indexPath = resolve(opts.projectRoot, 'platform', 'challenge', opts.slug, 'index.md')
+  // D123: the primary locale is read before anything is created or read.
+  const primary = readPrimaryLocale(join(opts.projectRoot, 'range.json'))
+  const indexPath = resolve(opts.projectRoot, 'platform', primary, 'challenge', opts.slug, 'index.md')
   if (!existsSync(indexPath)) {
-    throw new Error(`buildPlayerPackage: index.md not found for slug ${opts.slug} (${indexPath})`)
+    throw new Error(`buildPlayerPackage: brief not found for slug ${opts.slug} (${indexPath})`)
   }
 
   const indexMd = readFileSync(indexPath, 'utf8')

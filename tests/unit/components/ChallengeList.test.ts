@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import type { ChallengeData } from '../../../platform/shared/challenges.data'
+import type { ChallengeData, ChallengeLists } from '../../../platform/shared/challenges.data'
+import { mergeLocaleChallenges } from '../../../platform/shared/mergeChallenges'
 import { SITE_ORIGIN } from '../../../.vitepress/challenge/shortLink'
 import { createI18n } from 'vue-i18n'
 import en from '../../../.vitepress/theme/i18n/messages/en.json'
@@ -19,7 +20,7 @@ const DISPLAY_ORIGIN = SITE_ORIGIN.replace(/^https:\/\//, '')
 // Mutable so a test can put the component on a zh-TW page while the vue-i18n runtime
 // instance says something else — which is the only way to see which of the two the
 // rendered strings actually follow.
-const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
+const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' | 'en' }
 // Identity by default. The N04 cases make it prefix a non-root base, so a base wrongly added to
 // the copied URL shows up there while every other case keeps today's hrefs.
 const mockWithBase = vi.hoisted(() => ({ prefix: '' }))
@@ -37,6 +38,12 @@ vi.mock('vitepress', () => ({
 // mode.
 const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
 vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
+
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which sets
+// `mockLocaleIndex` directly assuming 'root' means English) keeps its meaning unchanged (T1).
+// Cases that gain `P = zh-TW` expectations set this explicitly (A28, A32, BC14).
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 // Progress is read through the persistence layer, and the list is the only thing
 // under test here. Mocked at that boundary so a test that is about markers is not
@@ -82,6 +89,22 @@ const CHINESE_ONLY: ChallengeData[] = [
   { id: 7, number: 7, title: '只有中文', url: '/zh-TW/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
 ]
 
+// S1-8/A32, under P = zh-TW (T = en): the same two fixtures, with URLs re-spelled for the
+// flipped primary — an `en`-locale entry's URL now carries the `/en/` prefix (it is the
+// translation tree), and a `zh-TW`-locale entry's URL has none (it is the primary tree).
+const BORROWED_ZH: ChallengeData[] = [
+  { id: 1, number: 1, title: '知的必要', url: '/challenge/door-is-open/', locale: 'zh-TW', difficulty: 'easy', category: 'web', description: '繁中摘要' },
+  { id: 5, number: 5, title: 'PHP Check', url: '/en/challenge/v05-php-check/', locale: 'en', difficulty: 'hard', category: '綜合', description: 'Checks a PHP form', tags: ['php'] },
+  { id: 6, title: 'Unnumbered', url: '/en/challenge/unnumbered/', locale: 'en', difficulty: 'easy', category: '綜合' },
+]
+const CHINESE_ONLY_ZH: ChallengeData[] = [
+  { id: 1, number: 1, title: 'Need to Know', url: '/en/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
+  { id: 7, number: 7, title: '只有中文', url: '/challenge/zh-only/', locale: 'zh-TW', difficulty: 'mystery', category: 'General', description: '中文摘要' },
+]
+
+/** A list as the loader's output: the same array under every locale, so whichever locale the page is in gets it. */
+const listsOf = (list: ChallengeData[]): ChallengeLists => ({ en: list, 'zh-TW': list })
+
 let ChallengeList: typeof import('../../../.vitepress/theme/components/ChallengeList.vue').default
 
 beforeEach(async () => {
@@ -97,13 +120,14 @@ beforeEach(async () => {
   mockLocaleIndex.value = 'root'
   mockMode.value = 'short'
   mockWithBase.prefix = ''
+  mockPrimaryLocale.value = 'en'
   const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
   ChallengeList = mod.default
 })
 
 describe('ChallengeList', () => {
   it('renders a card for each challenge', async () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     // Switch to grid view (default is now list)
     await wrapper.find('button[title="格線模式"]').trigger('click')
     const cards = wrapper.findAll('[data-challenge-card]')
@@ -111,19 +135,19 @@ describe('ChallengeList', () => {
   })
 
   it('renders challenge title in each card', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('SQL Injection Demo')
     expect(wrapper.text()).toContain('PHP File Inclusion Demo')
   })
 
   it('renders difficulty and category badges', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('easy')
     expect(wrapper.text()).toContain('web')
   })
 
   it('each card contains a link to the challenge page', async () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     // Switch to grid view (default is now list)
     await wrapper.find('button[title="格線模式"]').trigger('click')
     const links = wrapper.findAll('a[data-challenge-link]')
@@ -134,14 +158,14 @@ describe('ChallengeList', () => {
   })
 
   it('renders zero-padded id number for each card', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.text()).toContain('#001')
     expect(wrapper.text()).toContain('#002')
     expect(wrapper.text()).toContain('#003')
   })
 
   it('applies semantic difficulty badge class for hard difficulty', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const hardBadge = wrapper.findAll('.ch-badge-hard')
     expect(hardBadge.length).toBeGreaterThan(0)
   })
@@ -152,7 +176,7 @@ describe('ChallengeList', () => {
 // copyable — and copying must not take them off the page they were copying from.
 describe('ChallengeList short links', () => {
   it('shows each row its own short link', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const links = wrapper.findAll('[data-short-link]').map((el) => el.text())
     expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/001`)
     expect(links).toContain(`${DISPLAY_ORIGIN}/en/c/003`)
@@ -161,7 +185,7 @@ describe('ChallengeList short links', () => {
   it('gives the Traditional Chinese list its own locale-coded links, whatever the runtime locale (0008 F2, F9)', () => {
     mockLocaleIndex.value = 'zh-TW'
     const wrapper = mount(ChallengeList, {
-      props: { challenges: mockChallenges },
+      props: { lists: listsOf(mockChallenges) },
       // The runtime locale is English, so only the page's locale can explain a zh-TW link.
       global: { plugins: [runtimeI18n('en')] },
     })
@@ -179,7 +203,7 @@ describe('ChallengeList short links', () => {
       writable: true,
     })
 
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const row = wrapper.findAll('a').find((a) => a.find('[data-copy-link]').exists())
     expect(row).toBeDefined()
 
@@ -216,7 +240,7 @@ describe.each(['short', 'page'] as const)('ChallengeList URL text clicks in %s m
     mockLocaleIndex.value = localeIndex
     const writeText = vi.fn(() => Promise.resolve())
     Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges }, attachTo: document.body })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) }, attachTo: document.body })
     mounted.push(wrapper)
     const row = wrapper.findAll('a.ch-list-row')[0]
     const seen: boolean[] = []
@@ -262,7 +286,7 @@ describe('ChallengeList copy controls', () => {
   ] as const)('pass number, row slug and page locale with localeIndex %s (N01, N02)', async (localeIndex, locale) => {
     mockLocaleIndex.value = localeIndex
     const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const controls = wrapper.findAllComponents(ShortLinkShare)
 
     expect(controls.map((c) => c.props())).toEqual([
@@ -287,9 +311,9 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
     })
   })
 
-  async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' = 'root') {
+  async function copiedFrom(challenges: ChallengeData[], locale: 'root' | 'zh-TW' | 'en' = 'root') {
     mockLocaleIndex.value = locale
-    const wrapper = mount(ChallengeList, { props: { challenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(challenges) } })
     const row = wrapper.findAll('a.ch-list-row')[0]
     await row.find('[data-copy-link]').trigger('click')
     await flushPromises()
@@ -312,6 +336,122 @@ describe('ChallengeList in page mode with a non-root base (N04)', () => {
     expect(copied).toBe(`${SITE_ORIGIN}/zh-TW/challenge/selected-excerpts/`)
     expect(href).toBe('/my-range/zh-TW/challenge/selected-excerpts/')
   })
+
+  // S54: the page URL follows P (D68): the primary locale's pages have no segment, the other
+  // locale's carry theirs. (P, list's localeIndex, entry locale, entry url, copied path)
+  it.each([
+    ['en', 'root', 'zh-TW', '/zh-TW/challenge/zh-only/', '/zh-TW/challenge/zh-only/'],
+    ['en', 'zh-TW', 'en', '/challenge/sqli-demo/', '/challenge/sqli-demo/'],
+    ['zh-TW', 'en', 'zh-TW', '/challenge/zh-only/', '/challenge/zh-only/'],
+    ['zh-TW', 'en', 'en', '/en/challenge/sqli-demo/', '/en/challenge/sqli-demo/'],
+    ['zh-TW', 'root', 'zh-TW', '/challenge/zh-only/', '/challenge/zh-only/'],
+    ['zh-TW', 'root', 'en', '/en/challenge/sqli-demo/', '/en/challenge/sqli-demo/'],
+  ] as const)('P = %s, list %s, a %s entry: copies, shows and links %s (S54, D68)', async (P, index, entryLocale, url, path) => {
+    mockPrimaryLocale.value = P
+    const { copied, href, shown } = await copiedFrom(
+      [{ id: 7, number: 7, title: 'Entry', url, locale: entryLocale, difficulty: 'easy', category: 'web' }],
+      index,
+    )
+    expect(copied).toBe(`${SITE_ORIGIN}${path}`)
+    expect(shown).toBe(`${DISPLAY_ORIGIN}${path}`)
+    expect(href).toBe(`/my-range${url}`)
+  })
+})
+
+// L22 (D7): an entry's `url` is base-less, and the component adds the site base exactly once, in
+// the row of the list view and in the card of the grid view. The lists are the merge's own output
+// (0010-S17), for either primary locale and either page.
+describe.each(['en', 'zh-TW'] as const)('ChallengeList hrefs under P = %s (L22)', (P) => {
+  const T = P === 'en' ? 'zh-TW' : 'en'
+  const lists = mergeLocaleChallenges({
+    briefs: ['door-is-open', 'staff-only'].flatMap((slug) =>
+      ([P, T] as const).map((locale) => ({
+        locale, slug, url: locale === P ? `/challenge/${slug}/` : `/${locale}/challenge/${slug}/`,
+        frontmatter: { title: `${slug} in ${locale}`, description: 'd' },
+      })),
+    ),
+    declarations: new Map([
+      ['door-is-open', { ok: true, value: { number: 1, category: 'web' } }],
+      ['staff-only', { ok: true, value: { number: 4, category: 'web' } }],
+    ]),
+    locales: ['en', 'zh-TW'],
+    primary: P,
+  })
+
+  beforeEach(() => {
+    mockWithBase.prefix = '/repo'
+    mockPrimaryLocale.value = P
+  })
+
+  it.each([['the primary page', P], ['the translation page', T]] as const)('every row and card href on %s carries the base once', async (_name, page) => {
+    mockLocaleIndex.value = page === P ? 'root' : page
+    const wrapper = mount(ChallengeList, { props: { lists } })
+    const expected = lists[page].map((entry) => `/repo${entry.url}`)
+    expect(expected).toHaveLength(2)
+    expect(wrapper.findAll('a.ch-list-row').map((a) => a.attributes('href'))).toEqual(expected)
+    await wrapper.find('button[title="格線模式"]').trigger('click')
+    expect(wrapper.findAll('[data-challenge-card]').map((a) => a.attributes('href'))).toEqual(expected)
+  })
+})
+
+// S53 (D48, A28): in short mode every numbered row has exactly one control, in the LIST's locale,
+// whether its entry is translated or borrowed; an unnumbered row has none (0008 E10). The list's
+// localeIndex is 'root' for the primary locale's list and the locale's own code for the other.
+describe.each(['en', 'zh-TW'] as const)('ChallengeList short-mode controls by list locale and entry, P = %s (S53, A28)', (P) => {
+  const entry = (locale: 'en' | 'zh-TW', n: number | undefined, slug: string, title: string): ChallengeData => ({
+    id: n ?? 9, number: n, title, url: locale === P ? `/challenge/${slug}/` : `/${locale}/challenge/${slug}/`,
+    locale, difficulty: 'easy', category: 'web',
+  })
+
+  describe.each(['en', 'zh-TW'] as const)('the %s list', (L) => {
+    const other = L === 'en' ? 'zh-TW' : 'en'
+    const list = [
+      entry(L, 1, 'translated', 'Translated'),
+      entry(other, 7, 'borrowed', 'Borrowed'),
+      entry(L, undefined, 'plain', 'Plain'),
+    ]
+    const index = L === P ? 'root' : L
+
+    beforeEach(() => {
+      mockPrimaryLocale.value = P
+      mockLocaleIndex.value = index
+      mockMode.value = 'short'
+    })
+
+    it('renders one control per numbered row, in the list\'s locale, and none on the unnumbered row (mount)', async () => {
+      const writeText = vi.fn(() => Promise.resolve())
+      Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+      const wrapper = mount(ChallengeList, { props: { lists: listsOf(list) } })
+      const rows = wrapper.findAll('a.ch-list-row')
+      const rowOf = (title: string) => rows.find((r) => r.text().includes(title))!
+      for (const [title, n] of [['Translated', '001'], ['Borrowed', '007']]) {
+        const row = rowOf(title)
+        expect(row.findAll('[data-short-link]')).toHaveLength(1)
+        expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/${L}/c/${n}`)
+        await row.get('[data-copy-link]').trigger('click')
+        await flushPromises()
+        expect(writeText).toHaveBeenLastCalledWith(`${SITE_ORIGIN}/${L}/c/${n}`)
+      }
+      expect(rowOf('Plain').find('[data-short-link]').exists()).toBe(false)
+      expect(rowOf('Plain').find('[data-copy-link]').exists()).toBe(false)
+      expect(wrapper.findAll('[data-short-link]')).toHaveLength(2)
+    })
+
+    it('ships the same controls in the server-rendered HTML (renderToString)', async () => {
+      const { createSSRApp, h } = await import('vue')
+      const { renderToString } = await import('@vue/server-renderer')
+      const app = createSSRApp({ render: () => h(ChallengeList, { lists: listsOf(list) }) })
+      app.use(createI18n({
+        legacy: false, locale: other, fallbackLocale: 'en', globalInjection: true,
+        messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false,
+      }))
+      const html = await renderToString(app)
+      expect(html).toContain(`${DISPLAY_ORIGIN}/${L}/c/001`)
+      expect(html).toContain(`${DISPLAY_ORIGIN}/${L}/c/007`)
+      expect(html).not.toContain(`/${other}/c/`)
+      expect(html.match(/data-short-link/g)).toHaveLength(2)
+    })
+  })
 })
 
 // N05, N06: the #NNN badge and the grid view do not change with the mode.
@@ -321,14 +461,14 @@ describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mo
   })
 
   it('keeps the #NNN badge on every row (N05)', () => {
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     const badges = wrapper.findAll('a.ch-list-row').map((row) => row.find('span.font-mono').text())
     expect(badges).toEqual(['#001', '#002', '#003'])
   })
 
   it('renders no copy control in grid view (N06)', async () => {
     const { default: ShortLinkShare } = await import('../../../.vitepress/theme/components/ShortLinkShare.vue')
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await wrapper.find('button[title="格線模式"]').trigger('click')
     expect(wrapper.findAll('[data-challenge-card]')).toHaveLength(3)
     expect(wrapper.find('[data-short-link]').exists()).toBe(false)
@@ -344,7 +484,7 @@ describe.each(['short', 'page'] as const)('ChallengeList badge and grid in %s mo
 describe('ChallengeList completion markers', () => {
   async function mounted(records: any[] = [], props: Record<string, unknown> = {}) {
     mockListAllProgress.mockResolvedValue(records)
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges, ...props } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges), ...props } })
     await flushPromises()
     return wrapper
   }
@@ -459,7 +599,7 @@ describe('ChallengeList completion markers', () => {
   // renders one challenge and so cannot tell the two apart.
   it('reads the progress store once, not once per challenge', async () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
-    mount(ChallengeList, { props: { challenges: mockChallenges } })
+    mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     expect(mockChallenges.length).toBeGreaterThan(1)
     expect(mockListAllProgress).toHaveBeenCalledTimes(1)
@@ -467,14 +607,14 @@ describe('ChallengeList completion markers', () => {
 
   it('shows no marker before progress has been read', () => {
     mockListAllProgress.mockResolvedValue([progress('sqli-demo', 1756000000000)])
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.findAll('[data-challenge-done]')).toHaveLength(0)
   })
 
   // Progress decorates the entries the search, filter and sort state already chose. It
   // is not allowed to add one, remove one, or move one.
   it('does not change which challenges are rendered or their order', async () => {
-    const before = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const before = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     const orderWithout = before.findAll('a.ch-list-row').map(a => a.attributes('href'))
 
@@ -486,7 +626,7 @@ describe('ChallengeList completion markers', () => {
 describe('ChallengeList progress summary', () => {
   async function summaryOf(records: any[], challenges = mockChallenges) {
     mockListAllProgress.mockResolvedValue(records)
-    const wrapper = mount(ChallengeList, { props: { challenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(challenges) } })
     await flushPromises()
     return { wrapper, text: wrapper.get('[data-progress-summary]').text() }
   }
@@ -507,13 +647,13 @@ describe('ChallengeList progress summary', () => {
   // stated as a number.
   it('shows no summary at all until a read has come back', () => {
     mockListAllProgress.mockReturnValue(new Promise(() => {}))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     expect(wrapper.find('[data-progress-summary]').exists()).toBe(false)
   })
 
   it('shows a read error instead of a summary after failure', async () => {
     mockListAllProgress.mockRejectedValue(new Error('blocked'))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     expect(wrapper.find('[data-progress-summary]').exists()).toBe(false)
     expect(wrapper.get('[data-progress-error]').text()).toContain('Unable to read')
@@ -560,7 +700,7 @@ describe('ChallengeList progress summary', () => {
 describe('ChallengeList when progress cannot be read', () => {
   async function afterRejection() {
     mockListAllProgress.mockRejectedValue(new Error('challenge-tools is blocked by another tab'))
-    const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     return wrapper
   }
@@ -579,7 +719,7 @@ describe('ChallengeList when progress cannot be read', () => {
 
   it('distinguishes unreadable progress from a successful empty read', async () => {
     mockListAllProgress.mockResolvedValue([])
-    const ok = mount(ChallengeList, { props: { challenges: mockChallenges } })
+    const ok = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     const failed = await afterRejection()
@@ -608,7 +748,7 @@ describe('ChallengeList server rendering', () => {
   async function ssr(challenges: ChallengeData[] = mockChallenges, runtime: 'en' | 'zh-TW' = 'zh-TW') {
     const { createSSRApp, h } = await import('vue')
     const { renderToString } = await import('@vue/server-renderer')
-    const app = createSSRApp({ render: () => h(ChallengeList, { challenges }) })
+    const app = createSSRApp({ render: () => h(ChallengeList, { lists: listsOf(challenges) }) })
     app.use(createI18n({
       legacy: false, locale: runtime, fallbackLocale: 'en', globalInjection: true,
       messages: { en, 'zh-TW': zhTW }, missingWarn: false, fallbackWarn: false,
@@ -627,6 +767,33 @@ describe('ChallengeList server rendering', () => {
   it('ships the English list\'s mark in the page\'s locale with a Traditional Chinese runtime (0008 E6)', async () => {
     mockLocaleIndex.value = 'root'
     const html = await ssr(CHINESE_ONLY, 'zh-TW')
+    expect(html).toContain('Traditional Chinese only')
+    expect(html).not.toContain('只有英文')
+  })
+
+  // B3-9/A32, under P = zh-TW (T = en): the same two SSR properties, mirrored.
+  it('under P = zh-TW, ships the mark of a borrowed entry in the page\'s locale, whatever the runtime locale (A28, A32, 0008 E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "Chinese list" under this P is localeIndex 'root' (the primary tree, zh-TW's own) —
+    // matching the mounted-component mirror's own comment above (A32) — not 'en' (the English
+    // list), where PHP Check would be native, not borrowed.
+    mockLocaleIndex.value = 'root'
+    const html = await ssr(BORROWED_ZH, 'en')
+    expect(html).toContain('只有英文')
+    expect(html).not.toContain('Traditional Chinese only')
+    expect(html).toMatch(/lang="en"[^>]*>PHP Check</)
+    // A28's link half, the row's real requirement, not a fixture echo: `pageLocale` (localeIndex
+    // 'root' + P = zh-TW) is 'zh-TW', so the copy control's short link (`shortLinkPath`, not
+    // the page-mode URL, which `challengePagePath` gives, D68) is `/zh-TW/c/005` — not the fixture's own
+    // `c.url`, which the anchor's `href` merely echoes and this case does not test.
+    expect(html).toContain(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
+  })
+
+  it('under P = zh-TW, ships the English list\'s mark in the page\'s locale with a Traditional Chinese runtime (A28, A32, 0008 E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "English list" under this P is localeIndex 'en', not 'root'.
+    mockLocaleIndex.value = 'en'
+    const html = await ssr(CHINESE_ONLY_ZH, 'zh-TW')
     expect(html).toContain('Traditional Chinese only')
     expect(html).not.toContain('只有英文')
   })
@@ -674,10 +841,10 @@ describe('ChallengeList progress keys', () => {
     mockListAllProgress.mockResolvedValue([progress('door-is-open', 1756000000000)])
     const wrapper = mount(ChallengeList, {
       props: {
-        challenges: [
+        lists: listsOf([
           { id: 1, number: 1, title: 'The Door Is Open', url: '/challenge/door-is-open/', locale: 'en', difficulty: 'easy', category: 'web' },
           { id: 2, number: 2, title: 'Staff Only', url: '/challenge/staff-only/', locale: 'en', difficulty: 'easy', category: 'web' },
-        ] as ChallengeData[],
+        ] as ChallengeData[]),
       },
     })
     await flushPromises()
@@ -691,7 +858,7 @@ describe('ChallengeList progress keys', () => {
 
 it('retries progress after a failure and renders the recovered completion count', async () => {
   mockListAllProgress.mockRejectedValueOnce(new Error('blocked'))
-  const wrapper = mount(ChallengeList, { props: { challenges: mockChallenges } })
+  const wrapper = mount(ChallengeList, { props: { lists: listsOf(mockChallenges) } })
   await flushPromises()
   mockListAllProgress.mockResolvedValue([{ challengeSlug: 'sqli-demo', firstCompletedAt: 1 }])
   await wrapper.get('[data-progress-retry]').trigger('click')
@@ -728,7 +895,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     const gate = await import('../../../.vitepress/theme/composables/useSessionGate')
     if (answered) await gate.useSessionGate().evaluate()
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
     return wrapper
   }
@@ -763,7 +930,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     await g.evaluate()
     await g.keepExistingData()
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     expect(wrapper.find('[data-progress-blocked]').exists()).toBe(false)
@@ -779,7 +946,7 @@ describe('ChallengeList while the shared-machine choice is unanswered', () => {
     sessionStorage.setItem('wxl-session-gate', 'decided')
     mockListAllProgress.mockRejectedValue(new Error('challenge-tools is blocked by another tab'))
     const mod = await import('../../../.vitepress/theme/components/ChallengeList.vue')
-    const wrapper = mount(mod.default, { props: { challenges: mockChallenges } })
+    const wrapper = mount(mod.default, { props: { lists: listsOf(mockChallenges) } })
     await flushPromises()
 
     expect(wrapper.get('[data-progress-error]').exists()).toBe(true)
@@ -801,9 +968,9 @@ describe('ChallengeList with an untranslated entry', () => {
     const titles = [en.challenge_list.view_mode_grid, zhTW.challenge_list.view_mode_grid]
     await wrapper.findAll('button').find((b) => titles.includes(b.attributes('title') ?? ''))!.trigger('click')
   }
-  const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW', runtime: 'en' | 'zh-TW') => {
+  const mountList = (challenges: ChallengeData[], page: 'root' | 'zh-TW' | 'en', runtime: 'en' | 'zh-TW') => {
     mockLocaleIndex.value = page
-    return mount(ChallengeList, { props: { challenges }, global: { plugins: [runtimeI18n(runtime)] } })
+    return mount(ChallengeList, { props: { lists: listsOf(challenges) }, global: { plugins: [runtimeI18n(runtime)] } })
   }
 
   it('marks a borrowed entry 只有英文 in list and grid view, with lang="en", and opens the English page (E2, E6)', async () => {
@@ -851,14 +1018,19 @@ describe('ChallengeList with an untranslated entry', () => {
     mockMode.value = 'short'
   })
 
-  it('marks a Traditional Chinese-only entry in the English list, with no short link, and its page in page mode (E3)', () => {
+  it('marks a Traditional Chinese-only entry in the English list, gives it /en/c/007 in short mode, and its page in page mode (E3, S53, D48)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
     mockMode.value = 'short'
     const row = rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文')
     expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
     expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
     expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
-    expect(row.find('[data-short-link]').exists()).toBe(false)
-    expect(row.text()).not.toContain('/en/c/007')
+    expect(row.findAll('[data-short-link]')).toHaveLength(1)
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/007`)
+    await row.get('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/007`)
     mockMode.value = 'page'
     expect(rowOf(mountList(CHINESE_ONLY, 'root', 'zh-TW'), '只有中文').get('[data-short-link]').text())
       .toBe(`${DISPLAY_ORIGIN}/zh-TW/challenge/zh-only/`)
@@ -867,6 +1039,59 @@ describe('ChallengeList with an untranslated entry', () => {
 
   it('marks a Traditional Chinese-only entry in the English list\'s grid view too (E3, E6)', async () => {
     const wrapper = mountList(CHINESE_ONLY, 'root', 'zh-TW')
+    await toGrid(wrapper)
+    expect(cardOf(wrapper, '只有中文').get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+  })
+
+  // S1-8/A32, under P = zh-TW (T = en): representative mirrors of the two marking properties
+  // above, both P × localeIndex {'root', T's code}.
+  it('under P = zh-TW, marks a borrowed entry 只有英文 in list and grid view, with lang="en", and opens the English page (A32, E2, E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "Chinese list" under this P is localeIndex 'root' (the primary tree, zh-TW's own),
+    // not 'en' — mounting at 'en' would put the entry's own locale on its own list page,
+    // where it is native, not borrowed.
+    const wrapper = mountList(BORROWED_ZH, 'root', 'en')
+    const row = rowOf(wrapper, 'PHP Check')
+    expect(row.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('en')
+    expect(row.findAll('[lang="en"]').map((e) => e.text())).toContain('Checks a PHP form')
+    // A28's link half, the row's real requirement, not a fixture echo: same reasoning as the
+    // SSR mirror above — `pageLocale` is 'zh-TW' here (localeIndex 'root' + P = zh-TW), so the
+    // copy control's short link is `/zh-TW/c/005`, not the fixture's own `c.url` (which `href`
+    // only echoes and is not computed from `primaryLocale()` at all).
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/zh-TW/c/005`)
+    await toGrid(wrapper)
+    const card = cardOf(wrapper, 'PHP Check')
+    expect(card.get('[data-locale-mark]').text()).toBe('只有英文')
+    expect(card.findAll('[lang="en"]').map((e) => e.text())).toEqual(expect.arrayContaining(['PHP Check', 'Checks a PHP form']))
+  })
+
+  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list, gives it /en/c/007 in short mode, and its page in page mode (A32, E3, S53, S54, D48)', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    mockMode.value = 'short'
+    mockPrimaryLocale.value = 'zh-TW'
+    // The "English list" under this P is localeIndex 'en', not 'root' (which is zh-TW, the
+    // primary, here).
+    const row = rowOf(mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW'), '只有中文')
+    expect(row.get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
+    expect(row.get('[data-row-title]').attributes('lang')).toBe('zh-TW')
+    expect(row.findAll('[lang="zh-TW"]').map((e) => e.text())).toContain('中文摘要')
+    expect(row.findAll('[data-short-link]')).toHaveLength(1)
+    expect(row.get('[data-short-link]').text()).toBe(`${DISPLAY_ORIGIN}/en/c/007`)
+    await row.get('[data-copy-link]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(`${SITE_ORIGIN}/en/c/007`)
+    // Page mode: the entry is zh-TW's, the primary locale's, so its page has no locale segment (D68).
+    mockMode.value = 'page'
+    expect(rowOf(mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW'), '只有中文').get('[data-short-link]').text())
+      .toBe(`${DISPLAY_ORIGIN}/challenge/zh-only/`)
+    mockMode.value = 'short'
+  })
+
+  it('under P = zh-TW, marks a Traditional Chinese-only entry in the English list\'s grid view too (A32, E3, E6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    const wrapper = mountList(CHINESE_ONLY_ZH, 'en', 'zh-TW')
     await toGrid(wrapper)
     expect(cardOf(wrapper, '只有中文').get('[data-locale-mark]').text()).toBe('Traditional Chinese only')
   })

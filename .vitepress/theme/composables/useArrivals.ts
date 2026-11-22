@@ -1,7 +1,7 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
-  DEFAULT_VISITING_LOCALE,
   detectLocaleFromPath,
+  otherLocale,
   persistLocale,
   readStoredLocale,
   redirectTargetForStoredLocale,
@@ -9,8 +9,18 @@ import {
   shouldPersistOnColdLoad,
   type Locale,
 } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 import { publishedPages } from '../i18n/publishedPages'
-import { classifyArrival, createCarry, isArrival, lineLocale, notFoundRedirect, switcherDecision, targetPath } from '../i18n/arrival'
+import {
+  classifyArrival,
+  createCarry,
+  isArrival,
+  lineLocale,
+  notFoundRedirect,
+  requestedLocaleForPageArrival,
+  switcherDecision,
+  targetPath,
+} from '../i18n/arrival'
 import type { ChoiceOutcome } from '../i18n/missingTranslation'
 
 /**
@@ -20,9 +30,10 @@ import type { ChoiceOutcome } from '../i18n/missingTranslation'
  *
  * - **Cold load.** `recordColdLoad` notes the first arrival when the Layout mounts, which is
  *   after VitePress's router has rendered it. `release` runs once the session gate lets the
- *   page go (A6, C11): a not-found arrival is replaced by its counterpart (C1, C2); a page is
- *   sent to its counterpart's list entry only when that counterpart is published, and
- *   otherwise stays with the line (A1–A4); a failed load is left alone (C8). Either redirect
+ *   page go (A6, C11): a not-found arrival is replaced by its counterpart (C1, C2); a page whose
+ *   stored preference is `T` is sent to its counterpart's list entry when that counterpart is
+ *   published, and otherwise stays with the line in `T` (A3, A4); with no preference, or with
+ *   `P` stored, it stays and shows no line (A1, A2, D25); a failed load is left alone (C8). Either redirect
  *   carries the arrival's requested locale to its landing (L6).
  * - **Later arrivals.** A change of path — not of hash or query alone (L8) — is classified
  *   again; a not-found one is replaced the same way, once the first arrival has been released
@@ -37,7 +48,7 @@ import type { ChoiceOutcome } from '../i18n/missingTranslation'
  *
  * **The stored preference.** Written by the learner's explicit acts only: a switcher choice
  * (W1; kept in memory for the tab when storage refuses, D14), and the cold load of a published
- * page under `/zh-TW/` — also through a short link's redirect or a reload (W2, D13) — decided
+ * translation page (under `/<T>/`), which stores `T` — also through a short link's redirect or a reload (W2, D13) — decided
  * from the page the router rendered (D16), not from the URL, and without waiting for the gate:
  * the gate's clear leaves `wxl-locale` alone. Nothing else here writes it: the redirects and
  * later arrivals are the site's doing, not the learner's choices (D5, W3–W5).
@@ -56,6 +67,7 @@ export function useArrivals(deps: {
   holdLine: () => boolean
 }) {
   const { route, router, page, base, holdLine } = deps
+  const P = primaryLocale()
   const pages = publishedPages()
   const carry = createCarry()
   const entry = ref<string | null>(null)
@@ -74,9 +86,10 @@ export function useArrivals(deps: {
       base: base(),
     }, pages)
 
-  // Records an arrival: its page and the locale it asked for — the locale a redirect carried
-  // to it, else, on a cold load of a prefixed page, that prefix, else the stored preference or
-  // the default (the requested-locale table).
+  // Records an arrival: its page and the locale it asked for — the locale a redirect carried to
+  // it, else, on a cold load of a prefixed page, that prefix, else the stored preference, else
+  // the page's own locale, or T when the page is a cold-load-prefixed page
+  // (`requestedLocaleForPageArrival`, A-§4.1's Requested column).
   const record = (coldLoad: boolean) => {
     lineAtOnce.value = false
     const arrival = current()
@@ -87,9 +100,11 @@ export function useArrivals(deps: {
       return arrival
     }
     entry.value = arrival.entry
-    const prefixed = detectLocaleFromPath(arrival.entry) === 'zh-TW'
-    requested.value = carry.take(arrival.entry)
-      ?? (coldLoad && prefixed ? 'zh-TW' : readStoredLocale() ?? DEFAULT_VISITING_LOCALE)
+    const prefixed = detectLocaleFromPath(arrival.entry, P) === otherLocale(P)
+    requested.value = requestedLocaleForPageArrival(
+      { coldLoad, prefixed, stored: readStoredLocale(), carried: carry.take(arrival.entry) },
+      P,
+    )
     return arrival
   }
 
@@ -104,7 +119,7 @@ export function useArrivals(deps: {
   // C1–C3: a not-found arrival is replaced by its counterpart, or left as it is.
   const replaceNotFound = (): boolean => {
     if (current().kind !== 'not-found') return false
-    const decision = notFoundRedirect(window.location, base(), pages)
+    const decision = notFoundRedirect(window.location, base(), pages, P)
     if (!decision) return false
     redirect(decision.target, decision.requested)
     return true
@@ -121,7 +136,7 @@ export function useArrivals(deps: {
     if (!replaceNotFound() && coldLoadCurrent && window.location.pathname === coldLoadPathname) {
       // Recorded again, so the redirect and the line both use the stored value current now,
       // not the one read when the gate began to ask (A1–A4).
-      const target = redirectTargetForStoredLocale(window.location, base(), pages, record(true))
+      const target = redirectTargetForStoredLocale(window.location, base(), pages, record(true), P)
       if (target) redirect(target, requested.value)
     }
     released.value = true
@@ -144,7 +159,7 @@ export function useArrivals(deps: {
     requested.value === null || (!lineAtOnce.value && holdLine())
       ? null
       // A choice that stayed counts as released for its own line.
-      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value || lineAtOnce.value }))
+      : lineLocale({ requested: requested.value, entry: entry.value, pages, released: released.value || lineAtOnce.value, P }))
 
   // A locale switcher choice (B1–B7) is an arrival of its own, asking for the chosen locale. It
   // is written (W1, kept for the tab when storage refuses: D14), and it ends the cold load's claim
@@ -155,7 +170,7 @@ export function useArrivals(deps: {
     rememberChoice(locale)
     coldLoadCurrent = false
     const arrival = current()
-    const decision = switcherDecision({ chosen: locale, arrival, location: window.location, base: base(), pages })
+    const decision = switcherDecision({ chosen: locale, arrival, location: window.location, base: base(), pages, P })
     // Whatever it does, a choice is the newest request: a redirect's carry still waiting for its
     // landing must not outrank it (L6).
     carry.discard()
@@ -176,7 +191,7 @@ export function useArrivals(deps: {
     coldLoadCurrent = true
     coldLoadPathname = window.location.pathname
     const arrival = record(true)
-    if (shouldPersistOnColdLoad(arrival)) persistLocale('zh-TW')
+    if (shouldPersistOnColdLoad(arrival, P)) persistLocale(otherLocale(P))
   }
 
   return {

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
-import { entryForSourcePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
+import { join, dirname, resolve } from 'node:path'
+import { entryForRelativePath, isPublishedPath } from '../../../.vitepress/theme/i18n/pages'
 import { lookupNotFound } from '../../../.vitepress/theme/i18n/lookup'
-import { pageListFromDir } from '../../../.vitepress/pageList'
+import { pageListFromDir, rewrittenPath, isSmokeFixturePage } from '../../../.vitepress/pageList'
+import { LOCALES } from '../../../.vitepress/locales'
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -27,7 +28,7 @@ function fixtureTree(files: string[]): string {
 // keeps its trailing slash, any other page file has none. The expectations below are
 // written out by hand, never derived by calling the code under test.
 
-describe('entryForSourcePath', () => {
+describe('entryForRelativePath', () => {
   it.each([
     ['index.md', '/'],
     ['guide/index.md', '/guide/'],
@@ -39,7 +40,7 @@ describe('entryForSourcePath', () => {
     ['zh-TW/challenges.md', '/zh-TW/challenges'],
     ['zh-TW/challenge/door-is-open/index.md', '/zh-TW/challenge/door-is-open/'],
   ])('maps %s to %s', (source, entry) => {
-    expect(entryForSourcePath(source)).toBe(entry)
+    expect(entryForRelativePath(source)).toBe(entry)
   })
 })
 
@@ -81,38 +82,84 @@ describe('pageListFromDir', () => {
 })
 
 describe('the page list the site configuration ships', () => {
-  // The oracle is built here, by its own walk and its own rule, independent of both the
-  // code under test and VitePress's page list.
-  function oracle(): string[] {
+  const REPO_ROOT = resolve(__dirname, '../../..')
+
+  // The oracle is built here, by its own walk, its own read of range.json and its own
+  // stripping/spelling rule (B43) — independent of both the code under test and VitePress's
+  // page list. `challenge/<slug>/src/**`, `public/**` and `shared/**` are excluded the same
+  // way `pageListFromDir` excludes them (B24, B25), which is not this row's own subject.
+  /** The primary locale, read from range.json by the test itself (absent or keyless: zh-TW). */
+  function ownPrimary(): string {
+    let text: string
+    try {
+      text = readFileSync(resolve(REPO_ROOT, 'range.json'), 'utf8')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'zh-TW'
+      throw err
+    }
+    const parsed = JSON.parse(text) as Record<string, unknown>
+    return Object.prototype.hasOwnProperty.call(parsed, 'primaryLocale') ? String(parsed.primaryLocale) : 'zh-TW'
+  }
+
+  function oracle(primary: string, smoke: boolean): string[] {
     const srcDir = join(__dirname, '../../../platform')
     const found: string[] = []
-    const walk = (dir: string, rel: string) => {
+    const walk = (dir: string, top: boolean, rel: string) => {
       for (const item of readdirSync(dir, { withFileTypes: true })) {
         const childRel = rel ? `${rel}/${item.name}` : item.name
         if (item.name.startsWith('.')) continue
         if (item.isDirectory()) {
-          if (rel === '' && (item.name === 'public' || item.name === 'shared')) continue
-          walk(join(dir, item.name), childRel)
+          if (top && (item.name === 'public' || item.name === 'shared')) continue
+          // L35: a test build publishes the fixtures, a production build does not. The rule is
+          // written here, not borrowed from the code under test.
+          if (!smoke && item.name === 'smoke-fixtures' && (LOCALES as readonly string[]).includes(rel)) continue
+          if (/^challenge\/[^/]+\/src$/.test(childRel)) continue
+          walk(join(dir, item.name), false, childRel)
         } else if (item.name.endsWith('.md')) {
-          if (childRel === 'index.md') found.push('/')
-          else if (childRel.endsWith('/index.md')) found.push(`/${childRel.slice(0, -'index.md'.length)}`)
-          else found.push(`/${childRel.slice(0, -'.md'.length)}`)
+          const prefix = `${primary}/`
+          const stripped = childRel.startsWith(prefix) ? childRel.slice(prefix.length) : childRel
+          if (stripped === 'index.md') found.push('/')
+          else if (stripped.endsWith('/index.md')) found.push(`/${stripped.slice(0, -'index.md'.length)}`)
+          else found.push(`/${stripped.slice(0, -'.md'.length)}`)
         }
       }
     }
-    walk(srcDir, '')
+    walk(srcDir, true, '')
     return found
   }
 
-  it('equals every page of the real source tree, each once', async () => {
+  const originalSmoke = process.env.WXL_SMOKE_PAGES
+  afterEach(() => {
+    if (originalSmoke === undefined) delete process.env.WXL_SMOKE_PAGES
+    else process.env.WXL_SMOKE_PAGES = originalSmoke
+  })
+
+  async function shippedPages(): Promise<string[]> {
     vi.resetModules()
     const config = (await import('../../../.vitepress/config.mts')).default as {
       vite?: { define?: Record<string, string> }
     }
-    const shipped = JSON.parse(config.vite!.define!.__WXL_PAGES__) as string[]
+    return JSON.parse(config.vite!.define!.__WXL_PAGES__) as string[]
+  }
+
+  it('equals every page of the real source tree, each once, under the real range.json primary', async () => {
+    const primary = ownPrimary()
+    delete process.env.WXL_SMOKE_PAGES
+    const shipped = await shippedPages()
     expect(new Set(shipped).size).toBe(shipped.length)
-    expect(new Set(shipped)).toEqual(new Set(oracle()))
+    expect(new Set(shipped)).toEqual(new Set(oracle(primary, false)))
     expect(shipped).not.toContain('/404')
+  })
+
+  it('with WXL_SMOKE_PAGES=1 it also holds the smoke fixtures (L35)', async () => {
+    const primary = ownPrimary()
+    process.env.WXL_SMOKE_PAGES = '1'
+    const shipped = await shippedPages()
+    expect(new Set(shipped).size).toBe(shipped.length)
+    expect(new Set(shipped)).toEqual(new Set(oracle(primary, true)))
+    const fixtures = (list: string[]) => list.filter((entry) => entry.includes('smoke-fixtures')).sort()
+    expect(fixtures(shipped)).toEqual(fixtures(oracle(primary, true)))
+    expect(fixtures(oracle(primary, false))).toEqual([])
   })
 })
 
@@ -140,7 +187,7 @@ describe('the not-found lookup', () => {
     ['/notice', '/zh-TW/notice'],
     ['/zh-TW/%E5%8F%83%E8%80%83', null],
   ])('finds the counterpart of %s: %s', (path, target) => {
-    expect(lookupNotFound(path, '/', PAGES)).toBe(target)
+    expect(lookupNotFound(path, '/', PAGES, 'en')).toBe(target)
   })
 
   it.each([
@@ -154,12 +201,12 @@ describe('the not-found lookup', () => {
     '/zh-TW/Reference/attack-log-export-format',
     '/zh-TW/no-such-page',
   ])('finds nothing for %s, and does not throw', (path) => {
-    expect(lookupNotFound(path, '/', PAGES)).toBeNull()
+    expect(lookupNotFound(path, '/', PAGES, 'en')).toBeNull()
   })
 
   it('strips the site base first, and returns the entry without it', () => {
-    expect(lookupNotFound('/repo/zh-TW/challenge/v05-php-check/', '/repo/', PAGES)).toBe('/challenge/v05-php-check/')
-    expect(lookupNotFound('/zh-TW/challenge/v05-php-check/', '/repo/', PAGES)).toBeNull()
+    expect(lookupNotFound('/repo/zh-TW/challenge/v05-php-check/', '/repo/', PAGES, 'en')).toBe('/challenge/v05-php-check/')
+    expect(lookupNotFound('/zh-TW/challenge/v05-php-check/', '/repo/', PAGES, 'en')).toBeNull()
   })
 
   it('tells whether a path itself is a published page, by the same normalisation', () => {
@@ -173,6 +220,250 @@ describe('the not-found lookup', () => {
 describe('the not-found lookup: a doubled prefix', () => {
   it('a path whose "counterpart" is still in its own locale has none', () => {
     const pages = ['/zh-TW/notice', '/notice']
-    expect(lookupNotFound('/zh-TW/zh-TW/notice', '/', pages)).toBeNull()
+    expect(lookupNotFound('/zh-TW/zh-TW/notice', '/', pages, 'en')).toBeNull()
+  })
+})
+
+// B39 (traceability.md "Source path → URL", revision 2.3): every source upstream holds after the
+// switch, and the file form `rewrittenPath` gives it under each primary. Typed from the table,
+// not computed: the `en` column strips exactly `en/`, the `zh-TW` column strips exactly `zh-TW/`.
+const SOURCE_TO_FILE_FORM: [string, string, string][] = [
+  ['en/index.md', 'index.md', 'en/index.md'],
+  ['en/challenges.md', 'challenges.md', 'en/challenges.md'],
+  ['en/guide/index.md', 'guide/index.md', 'en/guide/index.md'],
+  ['en/guide/python.md', 'guide/python.md', 'en/guide/python.md'],
+  ['en/guide/network.md', 'guide/network.md', 'en/guide/network.md'],
+  ['en/guide/browser.md', 'guide/browser.md', 'en/guide/browser.md'],
+  ['en/guide/notes.md', 'guide/notes.md', 'en/guide/notes.md'],
+  ['en/guide/troubleshooting.md', 'guide/troubleshooting.md', 'en/guide/troubleshooting.md'],
+  ['en/guide/workshop.md', 'guide/workshop.md', 'en/guide/workshop.md'],
+  [
+    'en/reference/attack-log-export-format.md',
+    'reference/attack-log-export-format.md',
+    'en/reference/attack-log-export-format.md',
+  ],
+  ['en/challenge/door-is-open/index.md', 'challenge/door-is-open/index.md', 'en/challenge/door-is-open/index.md'],
+  ['en/challenge/just-a-preview/index.md', 'challenge/just-a-preview/index.md', 'en/challenge/just-a-preview/index.md'],
+  [
+    'en/challenge/selected-excerpts/index.md',
+    'challenge/selected-excerpts/index.md',
+    'en/challenge/selected-excerpts/index.md',
+  ],
+  ['en/challenge/staff-only/index.md', 'challenge/staff-only/index.md', 'en/challenge/staff-only/index.md'],
+  ['zh-TW/index.md', 'zh-TW/index.md', 'index.md'],
+  ['zh-TW/challenges.md', 'zh-TW/challenges.md', 'challenges.md'],
+  ['zh-TW/guide/index.md', 'zh-TW/guide/index.md', 'guide/index.md'],
+  ['zh-TW/guide/python.md', 'zh-TW/guide/python.md', 'guide/python.md'],
+  ['zh-TW/guide/network.md', 'zh-TW/guide/network.md', 'guide/network.md'],
+  ['zh-TW/guide/browser.md', 'zh-TW/guide/browser.md', 'guide/browser.md'],
+  ['zh-TW/guide/notes.md', 'zh-TW/guide/notes.md', 'guide/notes.md'],
+  ['zh-TW/guide/troubleshooting.md', 'zh-TW/guide/troubleshooting.md', 'guide/troubleshooting.md'],
+  ['zh-TW/guide/workshop.md', 'zh-TW/guide/workshop.md', 'guide/workshop.md'],
+  [
+    'zh-TW/reference/attack-log-export-format.md',
+    'zh-TW/reference/attack-log-export-format.md',
+    'reference/attack-log-export-format.md',
+  ],
+  ['zh-TW/challenge/door-is-open/index.md', 'zh-TW/challenge/door-is-open/index.md', 'challenge/door-is-open/index.md'],
+  [
+    'zh-TW/challenge/just-a-preview/index.md',
+    'zh-TW/challenge/just-a-preview/index.md',
+    'challenge/just-a-preview/index.md',
+  ],
+  [
+    'zh-TW/challenge/selected-excerpts/index.md',
+    'zh-TW/challenge/selected-excerpts/index.md',
+    'challenge/selected-excerpts/index.md',
+  ],
+  ['zh-TW/challenge/staff-only/index.md', 'zh-TW/challenge/staff-only/index.md', 'challenge/staff-only/index.md'],
+]
+
+describe('rewrittenPath (B39): strips exactly the primary segment', () => {
+  it.each(SOURCE_TO_FILE_FORM)('%s, primary en -> %s', (source, enForm) => {
+    expect(rewrittenPath(source, 'en')).toBe(enForm)
+  })
+
+  it.each(SOURCE_TO_FILE_FORM)('%s, primary zh-TW -> %s', (source, _enForm, zhForm) => {
+    expect(rewrittenPath(source, 'zh-TW')).toBe(zhForm)
+  })
+
+  it('strips a whole segment only: english/x.md is unchanged under primary en', () => {
+    expect(rewrittenPath('english/x.md', 'en')).toBe('english/x.md')
+  })
+
+  it('leaves a non-primary-folder source unchanged', () => {
+    expect(rewrittenPath('zh-TW/x.md', 'en')).toBe('zh-TW/x.md')
+  })
+
+  it('strips the primary folder of a primary-folder source', () => {
+    expect(rewrittenPath('en/x.md', 'en')).toBe('x.md')
+  })
+})
+
+// B24 (page-list half): a `.md` under `challenge/<slug>/src/**` is not a page.
+describe('pageListFromDir omits challenge/<slug>/src/** (B24)', () => {
+  it('omits src/README.md and src/a/b/c.md', () => {
+    const root = fixtureTree([
+      'index.md',
+      'challenge/door-is-open/index.md',
+      'challenge/door-is-open/src/README.md',
+      'challenge/door-is-open/src/a/b/c.md',
+    ])
+    expect(pageListFromDir(root)).toEqual(['/', '/challenge/door-is-open/'])
+  })
+})
+
+// B41 (proof: traceability.md revision 2.3, "only primary-folder sources are rewritten"): no
+// fixture tree that passes 0010-S2 (checkSourceLayout) produces a duplicate page-list entry.
+describe('pageListFromDir: no duplicate entries on a passing tree (B41)', () => {
+  const VALID_FILES = ['en/index.md', 'zh-TW/index.md', 'challenge/x/challenge.yaml', 'challenge/x/src/app.py']
+
+  it.each(['en', 'zh-TW'] as const)('the valid tree has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree(VALID_FILES)
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+
+  it.each(['en', 'zh-TW'] as const)('a tree with deeper/unlisted-code entries has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree([...VALID_FILES, 'zh-TW/ja/a.md', 'en/guide/zh-TW/a.md'])
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+
+  it.each(['en', 'zh-TW'] as const)('a tree with a translation-only page has no duplicates (primary %s)', (primary) => {
+    const root = fixtureTree([...VALID_FILES, 'zh-TW/guide/only.md'])
+    const list = pageListFromDir(root, primary)
+    expect(new Set(list).size).toBe(list.length)
+  })
+})
+
+// B36 (page-list half): a translation-only page is in the list under its prefixed URL.
+describe('pageListFromDir: a translation-only page (B36)', () => {
+  it.each(['en', 'zh-TW'] as const)('lists the translation-only page under its own URL (primary %s)', (primary) => {
+    const root = fixtureTree(['en/index.md', 'zh-TW/index.md', 'zh-TW/guide/only.md'])
+    const list = pageListFromDir(root, primary)
+    if (primary === 'en') {
+      expect(list).toContain('/zh-TW/guide/only')
+      expect(list).not.toContain('/guide/only')
+    } else {
+      expect(list).toContain('/guide/only')
+      expect(list).not.toContain('/zh-TW/guide/only')
+    }
+  })
+})
+
+// B41 (trees built from B20-B36's cases) and B26/B28 (page-list half): no duplicate entry on any
+// of them under either primary locale, and an ignored path adds no entry.
+describe('pageListFromDir: every passing tree of B20-B36 (B41, B26, B28)', () => {
+  const VALID = ['en/index.md', 'zh-TW/index.md', 'challenge/x/challenge.yaml', 'challenge/x/src/app.py']
+  const TREES: Array<[string, string[]]> = [
+    ['B20 no zh-TW folder (no zh-TW home)', ['en/index.md', 'challenge/x/challenge.yaml']],
+    ['B20 en home only, with a translation folder holding no page', ['en/index.md', 'zh-TW/.keep']],
+    ['B24 a challenge src README', [...VALID, 'challenge/x/src/README.md']],
+    ['B25 public and shared pages', [...VALID, 'public/a.md', 'shared/b.md']],
+    ['B26 dot-prefixed, node_modules and dist', [...VALID, '.draft.md', 'en/.x/a.md', 'node_modules/p/README.md', 'en/dist/old.md']],
+    ['B27 non-page files', [...VALID, 'foo.txt', 'assets/logo.png', 'ja/.keep']],
+    ['B28 an upper-case extension', [...VALID, 'README.MD']],
+    ['B30 deeper locale-named folder', [...VALID, 'en/guide/zh-TW/a.md']],
+    ['B36 a translation-only page', [...VALID, 'zh-TW/guide/only.md']],
+  ]
+
+  describe.each(['en', 'zh-TW'] as const)('primary %s', (primary) => {
+    it.each(TREES)('%s has no duplicate', (_label, files) => {
+      const list = pageListFromDir(fixtureTree(files), primary)
+      expect(new Set(list).size).toBe(list.length)
+    })
+
+    it.each([
+      ['B26', ['.draft.md', 'en/.x/a.md', 'node_modules/p/README.md', 'en/dist/old.md']],
+      ['B28', ['README.MD']],
+    ])('%s: the ignored paths add no entry', (_label, extra) => {
+      const base = pageListFromDir(fixtureTree(VALID), primary)
+      expect(pageListFromDir(fixtureTree([...VALID, ...extra]), primary)).toEqual(base)
+    })
+  })
+})
+
+// B42: the page list of a fixture tree holding every source of the "Source path → URL" table.
+describe('pageListFromDir: the full-table fixture (B42)', () => {
+  const ALL_SOURCES = SOURCE_TO_FILE_FORM.map(([source]) => source)
+
+  it('pageListFromDir(root, "en") equals the en column, sorted', () => {
+    const root = fixtureTree(ALL_SOURCES)
+    const expected = [
+      '/', '/challenges', '/guide/', '/guide/python', '/guide/network', '/guide/browser', '/guide/notes',
+      '/guide/troubleshooting', '/guide/workshop', '/reference/attack-log-export-format',
+      '/challenge/door-is-open/', '/challenge/just-a-preview/', '/challenge/selected-excerpts/',
+      '/challenge/staff-only/',
+      '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/', '/zh-TW/guide/python', '/zh-TW/guide/network',
+      '/zh-TW/guide/browser', '/zh-TW/guide/notes', '/zh-TW/guide/troubleshooting', '/zh-TW/guide/workshop',
+      '/zh-TW/reference/attack-log-export-format',
+      '/zh-TW/challenge/door-is-open/', '/zh-TW/challenge/just-a-preview/', '/zh-TW/challenge/selected-excerpts/',
+      '/zh-TW/challenge/staff-only/',
+    ].sort()
+    expect(pageListFromDir(root, 'en')).toEqual(expected)
+  })
+
+  it('pageListFromDir(root, "zh-TW") equals the zh-TW column, sorted', () => {
+    const root = fixtureTree(ALL_SOURCES)
+    const expected = [
+      '/en/', '/en/challenges', '/en/guide/', '/en/guide/python', '/en/guide/network', '/en/guide/browser',
+      '/en/guide/notes', '/en/guide/troubleshooting', '/en/guide/workshop', '/en/reference/attack-log-export-format',
+      '/en/challenge/door-is-open/', '/en/challenge/just-a-preview/', '/en/challenge/selected-excerpts/',
+      '/en/challenge/staff-only/',
+      '/', '/challenges', '/guide/', '/guide/python', '/guide/network', '/guide/browser', '/guide/notes',
+      '/guide/troubleshooting', '/guide/workshop', '/reference/attack-log-export-format',
+      '/challenge/door-is-open/', '/challenge/just-a-preview/', '/challenge/selected-excerpts/',
+      '/challenge/staff-only/',
+    ].sort()
+    expect(pageListFromDir(root, 'zh-TW')).toEqual(expected)
+  })
+})
+
+// L35, predicate half (D49, L-q3): a smoke fixture is a page under `<locale code>/smoke-fixtures/`,
+// at any depth below it; the codes come from LOCALES, never from a literal list.
+describe('isSmokeFixturePage (L35)', () => {
+  it.each(LOCALES)('is true for %s/smoke-fixtures/x.md', (code) => {
+    expect(isSmokeFixturePage(`${code}/smoke-fixtures/x.md`)).toBe(true)
+  })
+
+  it('is true below a nested folder, as the ** glob is (L-q3)', () => {
+    expect(isSmokeFixturePage('en/smoke-fixtures/a/b.md')).toBe(true)
+  })
+
+  it.each(['smoke-fixtures/x.md', 'challenge/smoke-fixtures/x.md', 'xx/smoke-fixtures/x.md'])(
+    'is false for %s',
+    (source) => {
+      expect(isSmokeFixturePage(source)).toBe(false)
+    },
+  )
+})
+
+// L35, page-list half (L-q4): the flag is an argument; the module reads no environment variable.
+// Expected URLs are L-§4.5's, typed by hand.
+describe('pageListFromDir and the smoke fixtures (L35)', () => {
+  const FILES = [
+    'en/index.md',
+    'zh-TW/index.md',
+    'en/smoke-fixtures/english-only.md',
+    'zh-TW/smoke-fixtures/traditional-chinese-only.md',
+    'en/smoke-fixtures/a/b.md',
+  ]
+  const FIXTURE_URLS = {
+    'zh-TW': ['/en/smoke-fixtures/english-only', '/smoke-fixtures/traditional-chinese-only'],
+    en: ['/smoke-fixtures/english-only', '/zh-TW/smoke-fixtures/traditional-chinese-only'],
+  } as const
+
+  it.each(['en', 'zh-TW'] as const)('with primary %s, no fixture entry unless smokePages is true', (primary) => {
+    const root = fixtureTree(FILES)
+    for (const list of [pageListFromDir(root, primary), pageListFromDir(root, primary, { smokePages: false })]) {
+      expect(list.filter((entry) => entry.includes('smoke-fixtures'))).toEqual([])
+    }
+  })
+
+  it.each(['en', 'zh-TW'] as const)('with primary %s, smokePages true lists the two L-§4.5 URLs', (primary) => {
+    const root = fixtureTree(FILES)
+    const list = pageListFromDir(root, primary, { smokePages: true })
+    expect(list).toEqual(expect.arrayContaining([...FIXTURE_URLS[primary]]))
   })
 })

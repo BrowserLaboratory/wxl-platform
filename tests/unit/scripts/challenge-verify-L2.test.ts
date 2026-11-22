@@ -1,24 +1,42 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { tmpdir, platform } from 'node:os'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { makeDefaultRunners, formatHuman, runVerify, parseVerifyArgs } from '../../../scripts/challenge-verify'
 
-const INDEX = [
-  '---',
-  'title: "Door Is Open"',
-  'layout: challenge',
+const DECLARATION = [
   'difficulty: easy',
   'category: web',
   'backend: fastapi',
   'app: app.py',
   'packages: []',
   'source_visible: false',
+  '',
+].join('\n')
+
+const BRIEF = [
+  '---',
+  'title: "Door Is Open"',
+  'layout: challenge',
   '---',
   '',
   '# Door',
 ].join('\n')
+
+// Messages as in 5a's Y36 table (the text is `.vitepress/primary-locale.ts`'s own).
+const RANGE_FAULTS: Array<[string, (path: string) => void, string]> = [
+  ['PL-E01 range.json is a folder', (p) => mkdirSync(p), 'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.'],
+  ['PL-E03 not valid JSON', (p) => writeFileSync(p, '{'), 'PL-E03: range.json is not valid JSON.'],
+  ['PL-E04 not an object', (p) => writeFileSync(p, '[]'), 'PL-E04: range.json does not hold a JSON object.'],
+  ['PL-E05 not a string', (p) => writeFileSync(p, '{"primaryLocale":7}'), 'PL-E05: "primaryLocale" in range.json is not a string: 7.'],
+  ['PL-E06 not on the list', (p) => writeFileSync(p, '{"primaryLocale":"ja"}'), 'PL-E06: "primaryLocale" in range.json is "ja", which is not on the locale list: en, zh-TW.'],
+]
+const E02: [string, (path: string) => void, string] = [
+  'PL-E02 mode 000',
+  (p) => { writeFileSync(p, '{}'); chmodSync(p, 0o000) },
+  'PL-E02: range.json could not be read (EACCES).',
+]
 
 const FASTAPI_APP = `"""Door is open."""
 from fastapi import FastAPI
@@ -50,13 +68,28 @@ describe('L2 layer (task 4.3)', () => {
     projectRoot = mkdtempSync(join(tmpdir(), 'cv-L2-'))
     const slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open', 'src')
     mkdirSync(slugDir, { recursive: true })
-    writeFileSync(join(projectRoot, 'platform', 'challenge', 'door-is-open', 'index.md'), INDEX)
+    writeFileSync(join(projectRoot, 'platform', 'challenge', 'door-is-open', 'challenge.yaml'), DECLARATION)
+    mkdirSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open'), { recursive: true })
+    writeFileSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open', 'index.md'), BRIEF)
     writeFileSync(join(slugDir, 'app.py'), FASTAPI_APP)
     writeFileSync(join(slugDir, 'flag.txt'), 'FLAG{test}')
   })
 
   afterEach(() => {
+    try { chmodSync(join(projectRoot, 'range.json'), 0o600) } catch { /* absent or a folder */ }
     rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  it('Y87: challenge.yaml absent → VF1, keygen never spawned', async () => {
+    rmSync(join(projectRoot, 'platform', 'challenge', 'door-is-open', 'challenge.yaml'))
+    const { spawn, calls } = makeFakeSpawn({})
+    const runners = makeDefaultRunners({ projectRoot, spawn })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe(
+      `challenge.yaml not found: ${join(projectRoot, 'platform', 'challenge', 'door-is-open', 'challenge.yaml')}`,
+    )
+    expect(calls).toEqual([])
   })
 
   it('passes when keygen exits 0 and wasm-tools validate exits 0', async () => {
@@ -100,5 +133,38 @@ describe('L2 layer (task 4.3)', () => {
     const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
     expect(result.results[0].status).toBe('fail')
     expect(result.results[0].reason).toContain('wasm-tools validate exit 1')
+  })
+
+  it.each(RANGE_FAULTS)('Y109: %s → L2 fails with the PL line, keygen never spawned', async (_label, make, line) => {
+    make(join(projectRoot, 'range.json'))
+    const { spawn, calls } = makeFakeSpawn({})
+    const runners = makeDefaultRunners({ projectRoot, spawn })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe(line)
+    expect(calls).toEqual([])
+  })
+
+  it('Y109 (D123): range.json unusable and no challenge.yaml → the PL line, not VF1, keygen never spawned', async () => {
+    rmSync(join(projectRoot, 'platform', 'challenge', 'door-is-open', 'challenge.yaml'))
+    const [, make, line] = RANGE_FAULTS.find(([label]) => label.startsWith('PL-E03'))!
+    make(join(projectRoot, 'range.json'))
+    const { spawn, calls } = makeFakeSpawn({})
+    const runners = makeDefaultRunners({ projectRoot, spawn })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe('PL-E03: range.json is not valid JSON.')
+    expect(line).toBe('PL-E03: range.json is not valid JSON.')
+    expect(calls).toEqual([])
+  })
+
+  it.skipIf(platform() === 'win32' || process.getuid?.() === 0)('Y109: PL-E02 mode 000 → L2 fails with the PL line, keygen never spawned', async () => {
+    E02[1](join(projectRoot, 'range.json'))
+    const { spawn, calls } = makeFakeSpawn({})
+    const runners = makeDefaultRunners({ projectRoot, spawn })
+    const result = await runVerify(parseVerifyArgs(['door-is-open', '--layers', 'L2']), runners)
+    expect(result.results[0].status).toBe('fail')
+    expect(result.results[0].reason).toBe(E02[2])
+    expect(calls).toEqual([])
   })
 })

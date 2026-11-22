@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { withBase } from 'vitepress'
 import { localizePath, type Locale } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 /**
  * The missing-translation line (spec 0008, seam S3): one line saying the page has no version
@@ -18,7 +19,7 @@ import { localizePath, type Locale } from '../i18n'
 const props = defineProps<{ locale: Locale }>()
 const { t } = useI18n()
 const inRequestedLocale = (key: string) => t(key, {}, { locale: props.locale })
-const listPath = () => localizePath('/challenges', props.locale)
+const listPath = () => localizePath('/challenges', props.locale, primaryLocale())
 </script>
 
 <template>

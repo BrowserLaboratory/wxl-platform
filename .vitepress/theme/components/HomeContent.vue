@@ -2,34 +2,40 @@
 import { computed } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { useI18n } from 'vue-i18n'
-import type { ChallengeData, ChallengeLocale } from '../../../platform/shared/challenges.data'
+import type { ChallengeData, ChallengeLists } from '../../../platform/shared/challenges.data'
+import type { Locale } from '../../locales'
+import { pageLocaleOf } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
 
-// Spec 0008, S4: a latest-challenge card for a challenge borrowed from the other locale's brief
+// Spec 0008, S4: a latest-challenge card for a challenge borrowed from the primary locale's brief (D38)
 // carries the mark, resolved at the PAGE's locale — the runtime instance is `en` until hydration,
 // so reading it would ship the wrong word in the HTML as served — and its title and summary carry
 // the borrowed text's `lang`.
-const pageLocale = computed<ChallengeLocale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<Locale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 const markText = computed(() => t('missing_translation.mark', {}, { locale: pageLocale.value }))
 const isBorrowed = (c: ChallengeData) => c.locale !== pageLocale.value
 const langOf = (c: ChallengeData) => (isBorrowed(c) ? c.locale : undefined)
 
 const props = defineProps<{
-  challenges: ChallengeData[]
+  lists: ChallengeLists
 }>()
 
+/** This page's list: the list of the page's locale, from the one loader's per-locale lists (D40). */
+const challenges = computed<ChallengeData[]>(() => props.lists?.[pageLocale.value] ?? [])
+
 // Stats computation
-const totalCount = computed(() => props.challenges.length)
-const easyCount = computed(() => props.challenges.filter(c => c.difficulty === 'easy').length)
-const mediumCount = computed(() => props.challenges.filter(c => c.difficulty === 'medium').length)
-const hardCount = computed(() => props.challenges.filter(c => c.difficulty === 'hard').length)
-const mysteryCount = computed(() => props.challenges.filter(c => !['easy','medium','hard'].includes(c.difficulty ?? '')).length)
+const totalCount = computed(() => challenges.value.length)
+const easyCount = computed(() => challenges.value.filter(c => c.difficulty === 'easy').length)
+const mediumCount = computed(() => challenges.value.filter(c => c.difficulty === 'medium').length)
+const hardCount = computed(() => challenges.value.filter(c => c.difficulty === 'hard').length)
+const mysteryCount = computed(() => challenges.value.filter(c => !['easy','medium','hard'].includes(c.difficulty ?? '')).length)
 
 // Latest 3 challenges sorted by date desc
 const latestChallenges = computed(() => {
-  return [...props.challenges]
+  return [...challenges.value]
     .filter(c => c.date)
     .sort((a, b) => {
       const da = new Date(a.date!).getTime()

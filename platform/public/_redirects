@@ -8,8 +8,11 @@
 # Syntax: <from> <to> <status>. `:name` captures one path segment and is
 # substituted on the right. First matching rule wins, so put specific rules
 # above general ones. Cloudflare Pages allows 2,000 static and 100 dynamic
-# rules. Every numbered challenge takes four static rules and the slug links
-# are four dynamic ones, so a range holds at most 500 numbered challenges.
+# rules. Every numbered challenge takes one static rule per short-link form, 4
+# in all, so a range holds at most 500 numbered challenges. The slug links
+# take 4 dynamic rules, and old /zh-TW/ addresses take one more dynamic rule
+# for each top-level folder of pages and one static rule for each top-level
+# page and for /zh-TW/ itself.
 #
 # `platform/public/_redirects` is generated from the challenges; do not edit it
 # by hand. `pnpm create:challenge` and the pre-commit hook regenerate it when
@@ -20,38 +23,53 @@
 # `pnpm build` rewrites it too. The CI check is
 # tests/unit/site/redirects-generated.test.ts.
 
-# Numbered short links, four per challenge. A number is assigned once and
-# never reused, so a link printed on a handout keeps pointing at the same
-# challenge even after the challenge is renamed. The copy control gives
-# /en/c/NNN and /zh-TW/c/NNN; /c/NNN and /zh/c/NNN are kept so links already
-# handed out keep opening. The two Traditional Chinese rules open the English
-# page while the challenge has no Traditional Chinese page.
+# Numbered short links, 4 per challenge. A number is assigned once and never
+# reused, so a link printed on a handout keeps pointing at the same challenge
+# even after the challenge is renamed. The copy control gives each locale's
+# own form, /en/c/NNN and /zh-TW/c/NNN; /c/NNN, which opens the primary
+# locale's page, and /zh/c/NNN are kept so links already handed out keep
+# opening. A locale's rules open the Traditional Chinese page, the primary
+# locale's, while the challenge has no page in that locale, or, for a
+# challenge without a primary-locale page, the first locale's page that
+# exists.
 #
 # These come first on purpose: Cloudflare takes the first match and `/c/:slug`
 # matches any single segment, a number included. A numeric rule placed after it
 # would never run, and nothing about that would be visible at deploy time.
-/c/001          /challenge/door-is-open/             302
-/en/c/001       /challenge/door-is-open/             302
-/zh/c/001       /zh-TW/challenge/door-is-open/       302
-/zh-TW/c/001    /zh-TW/challenge/door-is-open/       302
-/c/002          /challenge/staff-only/               302
-/en/c/002       /challenge/staff-only/               302
-/zh/c/002       /zh-TW/challenge/staff-only/         302
-/zh-TW/c/002    /zh-TW/challenge/staff-only/         302
-/c/008          /challenge/just-a-preview/           302
-/en/c/008       /challenge/just-a-preview/           302
-/zh/c/008       /zh-TW/challenge/just-a-preview/     302
-/zh-TW/c/008    /zh-TW/challenge/just-a-preview/     302
-/c/010          /challenge/selected-excerpts/        302
-/en/c/010       /challenge/selected-excerpts/        302
-/zh/c/010       /zh-TW/challenge/selected-excerpts/  302
-/zh-TW/c/010    /zh-TW/challenge/selected-excerpts/  302
+/c/001              /challenge/door-is-open/          302
+/en/c/001           /en/challenge/door-is-open/       302
+/zh/c/001           /challenge/door-is-open/          302
+/zh-TW/c/001        /challenge/door-is-open/          302
+/c/002              /challenge/staff-only/            302
+/en/c/002           /en/challenge/staff-only/         302
+/zh/c/002           /challenge/staff-only/            302
+/zh-TW/c/002        /challenge/staff-only/            302
+/c/008              /challenge/just-a-preview/        302
+/en/c/008           /en/challenge/just-a-preview/     302
+/zh/c/008           /challenge/just-a-preview/        302
+/zh-TW/c/008        /challenge/just-a-preview/        302
+/c/010              /challenge/selected-excerpts/     302
+/en/c/010           /en/challenge/selected-excerpts/  302
+/zh/c/010           /challenge/selected-excerpts/     302
+/zh-TW/c/010        /challenge/selected-excerpts/     302
 
 # Slug short links for classroom use — students can be given /en/c/<slug> or
 # /zh-TW/c/<slug> to type or paste rather than the full /challenge/<slug>/ path;
 # /c/<slug> and /zh/c/<slug> keep working. Parameterised, so they follow a
 # rename; the numbered rules above are what survives one.
-/c/:slug        /challenge/:slug/                    302
-/en/c/:slug     /challenge/:slug/                    302
-/zh/c/:slug     /zh-TW/challenge/:slug/              302
-/zh-TW/c/:slug  /zh-TW/challenge/:slug/              302
+/c/:slug            /challenge/:slug/                 302
+/en/c/:slug         /en/challenge/:slug/              302
+/zh/c/:slug         /challenge/:slug/                 302
+/zh-TW/c/:slug      /challenge/:slug/                 302
+
+# Addresses under /zh-TW/ from when Traditional Chinese was a translation.
+# This range's primary locale is Traditional Chinese, so its pages are at the
+# root: /zh-TW/ goes to /, each top-level page /zh-TW/<name> goes to /<name>,
+# and each top-level folder of pages /zh-TW/<folder>/<path> goes to
+# /<folder>/<path>. Every target begins with a fixed name, never with text
+# from the request. The folder c is left out: /zh-TW/c/ belongs to the short
+# links above. An address no rule covers is handled by the not-found page.
+/zh-TW/             /                                 302
+/zh-TW/challenge/*  /challenge/:splat                 302
+/zh-TW/challenges   /challenges                       302
+/zh-TW/guide/*      /guide/:splat                     302

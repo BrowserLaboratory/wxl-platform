@@ -8,6 +8,7 @@ import { detectLocaleFromPath, type Locale } from '../../../.vitepress/theme/i18
 // as zh-TW" and Scenario "Pathological prefix `/zh-TWfoo` is treated as en".
 
 describe('detectLocaleFromPath', () => {
+  // P = en (today's build; T = zh-TW): every case unchanged (T1), with P passed explicitly.
   const cases: [string, Locale][] = [
     ['/', 'en'],
     ['/guide/', 'en'],
@@ -25,10 +26,37 @@ describe('detectLocaleFromPath', () => {
     ['/zh-TW#section', 'en'],
     // Empty string — defensive only; never produced by VitePress.
     ['', 'en'],
+    // A26: `P`'s own code is not a routing prefix at all, so it is ordinary path text — not
+    // terminated by a locale boundary the rule recognises as T's.
+    ['/en/x', 'en'],
+    // A26: a case mismatch on T's own code is not the prefix either (case-sensitive).
+    ['/zh-tw/x', 'en'],
   ]
 
   it.each(cases)('path %s → locale %s', (path, expected) => {
-    expect(detectLocaleFromPath(path)).toBe(expected)
+    expect(detectLocaleFromPath(path, 'en')).toBe(expected)
+  })
+
+  // A26: the same table, mirrored under P = zh-TW (T = en) — every expectation flips with the
+  // two codes swapped. Mapped to the actual mirrored path/locale pair up front, so the test
+  // title (and any failure) names what is really run, not the P = en row it was derived from.
+  const mirroredCases = cases.map(([path, expectedUnderEn]) => {
+    const mirrored = path.replaceAll('zh-TW', '\u0000').replaceAll('en', 'zh-TW').replaceAll('\u0000', 'en')
+    const expected: Locale = expectedUnderEn === 'en' ? 'zh-TW' : 'en'
+    return [mirrored, expected] as const
+  })
+
+  it.each(mirroredCases)('under P = zh-TW, path %s → locale %s (A26)', (mirrored, expected) => {
+    expect(detectLocaleFromPath(mirrored, 'zh-TW')).toBe(expected)
+  })
+
+  // A26: the mirrored table above cannot produce a case discriminating a case mismatch on T's
+  // own code (`en`, under P = zh-TW): the one existing case mismatch row (`/zh-tw/x` → `en`,
+  // under P = en) mirrors to `/zh-tw/x` unchanged (the mirror helper's `replaceAll` is itself
+  // case-sensitive, so it never touches a lower-cased `zh-TW`), which is unrelated to `en`'s own
+  // code and so does not exercise this. This is a dedicated case for the gap.
+  it('under P = zh-TW, a case mismatch on T\'s own code is not the prefix either (A26)', () => {
+    expect(detectLocaleFromPath('/EN/x', 'zh-TW')).toBe('zh-TW')
   })
 })
 

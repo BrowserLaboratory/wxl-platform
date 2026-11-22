@@ -8,8 +8,9 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 // Mock vitepress useData + useRouter (LocaleSwitcher inside MergedNav uses useRouter)
 const mockIsDark = ref(false)
 // VitePress resolves this per page from the page's own relativePath, so it is
-// already correct during SSR. `'root'` is what it reports for English.
-const mockLocaleIndex = ref<'root' | 'zh-TW'>('root')
+// already correct during SSR. `'root'` is what it reports for the primary
+// locale's pages (D32); a non-primary locale reports its own code.
+const mockLocaleIndex = ref<'root' | 'zh-TW' | 'en'>('root')
 // The production `withBase` is identity only because this site's base is '/'.
 // A non-identity double is what makes the localizePath-before-withBase
 // ordering testable at all — see the ordering test below.
@@ -40,6 +41,12 @@ vi.mock('vitepress', () => ({
 // mode.
 const mockMode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
 vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mockMode.value }))
+
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which sets
+// `mockLocaleIndex` directly to 'root'/'zh-TW' assuming 'root' means English) keeps its meaning
+// unchanged (T1). Cases that gain `P = zh-TW` expectations set this explicitly (A28, BC14).
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 import MergedNav from '../../../.vitepress/theme/components/MergedNav.vue'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from '../../../.vitepress/theme/i18n/missingTranslation'
@@ -108,6 +115,7 @@ beforeEach(() => {
   mockLocaleIndex.value = 'root'
   mockBase.value = ''
   mockMode.value = 'short'
+  mockPrimaryLocale.value = 'en'
 })
 
 const defaultProps = {
@@ -389,6 +397,105 @@ describe('MergedNav', () => {
     expect(internal.filter(h => !h.startsWith('/my-base/'))).toEqual([])
   })
 
+  // A27, under P = zh-TW: the same ordering property, mirrored. `mountOpened`/`mountIn` hard-
+  // code `P = en` (`localeIndex === 'root'` means English there), so this mounts directly,
+  // setting `mockPrimaryLocale` and `mockLocaleIndex` relative to the new primary itself.
+  it.each([
+    ['zh-TW', ['/my-base/challenges/', '/my-base/', '/my-base/guide/'], ['/en/my-base/challenges/']],
+    ['en', ['/my-base/en/challenges/', '/my-base/en/', '/my-base/en/guide/'], ['/en/my-base/challenges/']],
+  ] as const)('under P = zh-TW, in %s, ALL THREE links wrap the localised path in the site base (A27)', async (locale, wanted, unwanted) => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = locale === 'en' ? 'en' : 'root'
+    mockBase.value = '/my-base'
+    const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n(locale)] } })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    expect(wrapper.find('[data-hamburger-menu]').exists()).toBe(true)
+    for (const href of wanted) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
+    }
+    for (const href of unwanted) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(false)
+    }
+    const internal = wrapper.findAll('a')
+      .map(a => a.attributes('href') ?? '')
+      .filter(h => h.startsWith('/'))
+    expect(internal.length).toBe(3)
+    expect(internal.filter(h => !h.startsWith('/my-base/'))).toEqual([])
+  })
+
+  // S1-8 (A28/A32): the two main P = en groups above (nav links, nav labels), mirrored for both
+  // localeIndex values under P = zh-TW, mounted directly (not through mountOpened/mountIn, which
+  // hard-code P = en).
+  async function mountOpenedAt(P: 'en' | 'zh-TW', pageLocale: 'root' | 'en' | 'zh-TW') {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = pageLocale
+    const runtimeLocale: 'en' | 'zh-TW' = pageLocale === 'en' ? 'en' : pageLocale === 'zh-TW' ? 'zh-TW' : P
+    const wrapper = mount(MergedNav, { props: defaultProps, global: { plugins: [makeI18n(runtimeLocale)] } })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    expect(wrapper.find('[data-hamburger-menu]').exists()).toBe(true)
+    return wrapper
+  }
+
+  it.each([
+    ['root', '/challenges/', '/', '/guide/'],
+    ['en', '/en/challenges/', '/en/', '/en/guide/'],
+  ] as const)('under P = zh-TW, with localeIndex %s, nav links stay inside that locale tree (A28)', async (localeIndex, challenges, home, guide) => {
+    const wrapper = await mountOpenedAt('zh-TW', localeIndex)
+    for (const href of [challenges, home, guide]) {
+      expect(wrapper.find(`a[href="${href}"]`).exists()).toBe(true)
+    }
+  })
+
+  it.each([
+    ['root', [['/challenges/', '← 題目列表'], ['/', '首頁'], ['/guide/', '文件']]],
+    ['en', [['/en/challenges/', '← Challenges'], ['/en/', 'Home'], ['/en/guide/', 'Docs']]],
+  ] as const)('under P = zh-TW, with localeIndex %s, each nav label sits on its own href (A28)', async (localeIndex, pairs) => {
+    const wrapper = await mountOpenedAt('zh-TW', localeIndex)
+    for (const [href, label] of pairs) {
+      expect(labelOf(wrapper, href)).toBe(label)
+    }
+  })
+
+  it.each([
+    ['en', 'zh-TW', [['/en/challenges/', '← Challenges'], ['/en/', 'Home'], ['/en/guide/', 'Docs']]],
+    ['root', 'en', [['/challenges/', '← 題目列表'], ['/', '首頁'], ['/guide/', '文件']]],
+  ] as const)('under P = zh-TW, on a %s page, labels ignore the runtime locale %s (A28)', async (localeIndex, runtimeLocale, pairs) => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = localeIndex
+    const wrapper = mount(MergedNav, {
+      props: defaultProps,
+      global: { plugins: [makeI18n(runtimeLocale)] },
+    })
+    await wrapper.find('[data-hamburger]').trigger('click')
+    for (const [href, label] of pairs) {
+      expect(labelOf(wrapper, href)).toBe(label)
+    }
+  })
+
+  // A28 (AC-16), the server-rendered half: the page locale comes only from `localeIndex` and `P`,
+  // so the static HTML carries the right href and label while the runtime locale is still `en`
+  // (before hydration), under both P.
+  async function renderServer(P: 'en' | 'zh-TW', localeIndex: 'root' | 'en' | 'zh-TW') {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = localeIndex
+    const { createSSRApp, h } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const app = createSSRApp({ render: () => h(MergedNav, defaultProps) })
+    app.use(makeI18n('en'))
+    return renderToString(app)
+  }
+
+  it.each([
+    ['zh-TW', 'root', '/challenges/', '題目列表'],
+    ['zh-TW', 'en', '/en/challenges/', 'Challenges'],
+    ['en', 'root', '/challenges/', 'Challenges'],
+    ['en', 'zh-TW', '/zh-TW/challenges/', '題目列表'],
+  ] as const)('under P = %s, with localeIndex %s, the server-rendered HTML carries the list link and its label (A28)', async (P, localeIndex, href, label) => {
+    const html = await renderServer(P, localeIndex)
+    expect(html).toContain(`href="${href}"`)
+    expect(html).toContain(label)
+  })
+
   it('renders challenge title', () => {
     const wrapper = mount(MergedNav, { props: defaultProps })
     expect(wrapper.text()).toContain('SQL Injection Demo')
@@ -569,6 +676,52 @@ describe('MergedNav in page mode with a non-root base (N04)', () => {
     expect(texts.map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${path}`, `${DISPLAY_ORIGIN}${path}`])
     for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
     expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${path}`], [`${SITE_ORIGIN}${path}`]])
+    for (const [url] of writeText.mock.calls as unknown as [string][]) expect(url).not.toContain('/my-range')
+  })
+})
+
+// S55: under P = zh-TW the nav's two controls follow the page's locale and the primary locale's
+// pages have no segment (D68). The page's localeIndex is 'root' for zh-TW (P) and 'en' for the
+// translation; `mockLocaleIndex` is set directly, not through `mountIn`, which assumes P = en.
+// (localeIndex, props locale, short path, page path)
+describe.each([
+  ['root', 'zh-TW', '/zh-TW/c/001', '/challenge/door-is-open/'],
+  ['en', 'en', '/en/c/001', '/en/challenge/door-is-open/'],
+] as const)('MergedNav copy controls under P = zh-TW, localeIndex %s (S55, D68)', (localeIndex, locale, shortPath, pagePath) => {
+  const props = { ...defaultProps, number: 1, slug: 'door-is-open' }
+  const mountUnderZh = (runtime: 'en' | 'zh-TW') => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockLocaleIndex.value = localeIndex
+    return mount(MergedNav, { props, global: { plugins: [makeI18n(runtime)] } })
+  }
+
+  it('passes the page locale as both locale and entryLocale to both controls', () => {
+    const controls = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en').findAllComponents(ShortLinkShare)
+    expect(controls).toHaveLength(2)
+    for (const control of controls) {
+      expect(control.props()).toEqual({ number: 1, slug: 'door-is-open', locale, entryLocale: locale })
+    }
+  })
+
+  it('shows and copies the short link in the page\'s locale, from both controls', async () => {
+    mockMode.value = 'short'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en')
+    expect(wrapper.findAll('[data-short-link]').map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${shortPath}`, `${DISPLAY_ORIGIN}${shortPath}`])
+    for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
+    expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${shortPath}`], [`${SITE_ORIGIN}${shortPath}`]])
+  })
+
+  it('shows and copies the page URL under a non-root base, the base not in the copied value', async () => {
+    mockMode.value = 'page'
+    mockBase.value = '/my-range'
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(globalThis.navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true })
+    const wrapper = mountUnderZh(locale === 'en' ? 'zh-TW' : 'en')
+    expect(wrapper.findAll('[data-short-link]').map((t) => t.text())).toEqual([`${DISPLAY_ORIGIN}${pagePath}`, `${DISPLAY_ORIGIN}${pagePath}`])
+    for (const button of wrapper.findAll('[data-copy-link]')) await button.trigger('click')
+    expect(writeText.mock.calls).toEqual([[`${SITE_ORIGIN}${pagePath}`], [`${SITE_ORIGIN}${pagePath}`]])
     for (const [url] of writeText.mock.calls as unknown as [string][]) expect(url).not.toContain('/my-range')
   })
 })

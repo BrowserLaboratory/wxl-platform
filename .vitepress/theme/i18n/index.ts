@@ -3,37 +3,22 @@ import en from './messages/en.json'
 import zhTW from './messages/zh-TW.json'
 import type { Arrival } from './arrival'
 import { targetUrl } from './pages'
+import { LOCALES, isKnownLocale as isKnownLocaleOnList, type Locale } from '../../locales.ts'
 
-export type Locale = 'en' | 'zh-TW'
+export type { Locale }
 
 export const LOCALE_STORAGE_KEY = 'wxl-locale'
 
-/**
- * The locale a visitor sees when they have expressed no preference.
- *
- * Deliberately NOT the locale `createI18n` is configured with. Those two answer
- * different questions: this one is what to show someone who has not chosen, and
- * that one is what the server renders and what an unresolved message falls back
- * to. Sharing one value would make a change to either silently change the other.
- *
- * The readers this site is built for read Traditional Chinese. Before this
- * default existed, every one of them had to work the locale switcher once — and
- * on a shared classroom machine, once per learner.
- *
- * It does not override anything. A locale prefix in the URL outranks it, a
- * stored preference outranks it, and operating the switcher once stores that
- * preference — so a reader who wants English has an exit and needs it only once.
- */
-export const DEFAULT_VISITING_LOCALE: Locale = 'zh-TW'
-export const KNOWN_LOCALES: readonly Locale[] = ['en', 'zh-TW'] as const
-
 export function isKnownLocale(value: unknown): value is Locale {
-  return value === 'en' || value === 'zh-TW'
+  return isKnownLocaleOnList(value)
 }
 
-/** The other of the two locales. The primary-locale epic replaces this with a locale list. */
+/**
+ * The other locale of the two-locale list (D33). The Japanese (ja) epic parameterises it; the
+ * two-locale guard in `tests/unit/i18n/messages-shape.test.ts` (A31, GD1) fails at any other length.
+ */
 export function otherLocale(locale: Locale): Locale {
-  return locale === 'zh-TW' ? 'en' : 'zh-TW'
+  return LOCALES.find((code) => code !== locale) as Locale
 }
 
 export const i18n = createI18n({
@@ -55,40 +40,43 @@ export const i18n = createI18n({
 export default i18n
 
 /**
- * Pure-function locale detection from a URL pathname string. The rule:
- * a pathname equal to `/zh-TW`, equal to `/zh-TW/`, or starting with
- * `/zh-TW/` resolves to `'zh-TW'`; everything else resolves to `'en'`.
+ * Pure-function locale detection from a URL pathname string, relative to the
+ * primary locale `P` (D31). The rule: a pathname equal to `/<T>`, equal to
+ * `/<T>/`, or starting with `/<T>/` — where `T` is the OTHER of the two
+ * locales, `otherLocale(P)` — resolves to `T`; everything else resolves to
+ * `P`.
  *
  * Pathological inputs such as `/zh-TWfoo` (a hypothetical non-locale path
- * that happens to begin with the literal characters `zh-TW` but has no
- * separating slash) MUST resolve to `'en'` — the prefix rule requires the
+ * that happens to begin with the literal characters of a locale code but has
+ * no separating slash) MUST resolve to `P` — the prefix rule requires the
  * locale segment to be terminated by `/` or end-of-string.
  *
- * **Silent fallback to `'en'` is intentional.** Any unrecognised pathname
- * (typo like `/zh-tw` lowercase, future-but-unconfigured locale prefix,
- * deep link to a deleted page) resolves to `'en'` without warning. This
- * matches VitePress's own `locales` routing semantics (the `root` locale
- * catches everything not in another configured prefix). If a third locale
- * is ever added, this function MUST be updated to dispatch on an explicit
- * list — the current binary fallback rule will silently misclassify the
- * new locale as `'en'` otherwise.
+ * **Silent fallback to `P` is intentional.** Any unrecognised pathname (typo
+ * like `/zh-tw` lowercase, future-but-unconfigured locale prefix, deep link
+ * to a deleted page) resolves to `P` without warning. This matches
+ * VitePress's own `locales` routing semantics (the `root` locale catches
+ * everything not in another configured prefix). If a third locale is ever
+ * added, this function MUST be updated to dispatch on an explicit list — the
+ * current binary fallback rule will silently misclassify the new locale as
+ * `P` otherwise.
  *
- * SSR-safe: takes a plain string, touches no globals. Reused by both
+ * SSR-safe: takes plain strings, touches no globals. Reused by both
  * `detectInitialLocale()` (for cold loads) and the Layout's route watcher
  * (for SPA navigation), keeping the rule single-sourced.
  */
-export function detectLocaleFromPath(path: string): Locale {
-  if (path === '/zh-TW' || path === '/zh-TW/' || path.startsWith('/zh-TW/')) {
-    return 'zh-TW'
+export function detectLocaleFromPath(path: string, P: Locale): Locale {
+  const T = otherLocale(P)
+  if (path === `/${T}` || path === `/${T}/` || path.startsWith(`/${T}/`)) {
+    return T
   }
-  return 'en'
+  return P
 }
 
 /**
  * Pure-function locale prefixing, the inverse companion to
  * `detectLocaleFromPath()`. Returns `path` rewritten so that it belongs to
- * `locale`: the `/zh-TW` segment is added for `'zh-TW'` and removed for
- * `'en'`.
+ * `locale`: the `/<T>` segment is added when `locale` is the non-primary
+ * locale `T` (`otherLocale(P)`) and removed when `locale` is `P`.
  *
  * **The rule lives here and nowhere else.** The switcher's decision
  * (`switcherDecision` in `arrival.ts`), the not-found lookup and `MergedNav`
@@ -102,34 +90,51 @@ export function detectLocaleFromPath(path: string): Locale {
  * may already be localized.
  *
  * It is NOT idempotent outside that scope, and the signature does not enforce
- * it: `''` maps to `/zh-TW` and then to `/zh-TW/`, and `noleadingslash` maps to
- * `/zh-TWnoleadingslash` and then to `/zh-TW/zh-TWnoleadingslash`. Callers pass
+ * it: `''` maps to `/<T>` and then to `/<T>/`, and `noleadingslash` maps to
+ * `/<T>noleadingslash` and then to `/<T>/<T>noleadingslash`. Callers pass
  * a path beginning with `/`; the boundary is pinned by tests.
  *
  * **The prefix must be terminated by `/` or end-of-string**, matching
  * `detectLocaleFromPath()`. `/zh-TWfoo` carries no locale prefix.
  *
+ * **Never strips `P`'s own code**: only `T`'s segment is ever a prefix, so a
+ * path beginning `/<P>` (where `P`'s code happens to also look like a path
+ * segment) is left as ordinary path text.
+ *
  * **Takes a base-less path; callers wrap the OUTPUT with `withBase()`, never
- * the input.** Under a non-empty site base, `localizePath(withBase(p))` would
+ * the input.** Under a non-empty site base, `localizePath(withBase(p), …)` would
  * see `/my-base/challenges/`, fail the prefix comparison, and emit
- * `/zh-TW/my-base/challenges/` — the locale segment lands outside the base
+ * `/<T>/my-base/challenges/` — the locale segment lands outside the base
  * instead of inside it. This ordering is asserted by a test that supplies a
  * non-identity `withBase` double; the production default is identity, so the
  * bug would otherwise be invisible.
  *
  * SSR-safe: takes plain strings, touches no globals.
  */
-export function localizePath(path: string, locale: Locale): string {
+export function localizePath(path: string, locale: Locale, P: Locale): string {
+  const T = otherLocale(P)
   let basePath = path
-  if (path === '/zh-TW' || path === '/zh-TW/') {
+  if (path === `/${T}` || path === `/${T}/`) {
     basePath = '/'
-  } else if (path.startsWith('/zh-TW/')) {
-    basePath = path.slice('/zh-TW'.length)
+  } else if (path.startsWith(`/${T}/`)) {
+    basePath = path.slice(`/${T}`.length)
   }
-  if (locale === 'zh-TW') {
-    return basePath === '/' ? '/zh-TW/' : `/zh-TW${basePath}`
+  if (locale === P) {
+    return basePath
   }
-  return basePath
+  return basePath === '/' ? `/${T}/` : `/${T}${basePath}`
+}
+
+/**
+ * `localeIndex` (VitePress's `useData()`), translated to a `Locale` (D31, seam
+ * 0010-S11). `'root'` is the key of whichever locale has no `link` in the
+ * `locales` configuration — the primary locale, `P` — and `otherLocale(P)`'s
+ * own code is the key of the other. Any other value (an unknown key, a typo)
+ * answers `P`, the same silent-fallback rule `detectLocaleFromPath` uses.
+ */
+export function pageLocaleOf(localeIndex: string, P: Locale): Locale {
+  const T = otherLocale(P)
+  return localeIndex === T ? T : P
 }
 
 /**
@@ -147,11 +152,11 @@ export function localizePath(path: string, locale: Locale): string {
  * cold-load redirect in the Layout. Expressing it that way keeps the URL and the
  * page in agreement instead of putting them in conflict.
  *
- * SSR-safe: returns the default locale when there is no `window`.
+ * SSR-safe: returns `P` when there is no `window`.
  */
-export function detectInitialLocale(): Locale {
-  if (typeof window === 'undefined') return 'en'
-  return detectLocaleFromPath(window.location.pathname)
+export function detectInitialLocale(P: Locale): Locale {
+  if (typeof window === 'undefined') return P
+  return detectLocaleFromPath(window.location.pathname, P)
 }
 
 /**
@@ -181,12 +186,13 @@ export function readStoredLocale(): Locale | null {
 }
 
 /**
- * Whether a cold load writes `zh-TW` into the stored preference (spec 0008, W2–W4).
+ * Whether a cold load writes `T` (`otherLocale(P)`) into the stored preference
+ * (spec 0008, W2–W4; generalised to `P` by D31).
  *
  * **Only an explicit request does (D5).** A cold load of a published page under
- * `/zh-TW/` is one — also when a short link's server redirect or a reload
+ * `/<T>/` is one — also when a short link's server redirect or a reload
  * brought the learner there (D13). The unprefixed tree is the absence of a
- * request and leaves the preference alone: writing there would store the default
+ * request and leaves the preference alone: writing there would store `P`
  * on every cold load and wipe the very preference the cold-load redirect exists
  * to honour.
  *
@@ -197,8 +203,8 @@ export function readStoredLocale(): Locale | null {
  * page rendered from an alias URL counts as the page it is. The URL alone cannot
  * tell these apart, which is why this is no longer decided in `enhanceApp`.
  */
-export function shouldPersistOnColdLoad(arrival: Arrival): boolean {
-  return arrival.kind === 'page' && detectLocaleFromPath(arrival.entry) === 'zh-TW'
+export function shouldPersistOnColdLoad(arrival: Arrival, P: Locale): boolean {
+  return arrival.kind === 'page' && detectLocaleFromPath(arrival.entry, P) === otherLocale(P)
 }
 
 /**
@@ -234,17 +240,18 @@ export function redirectTargetForStoredLocale(
   base: string,
   pages: readonly string[],
   arrival: Arrival,
+  P: Locale,
 ): string | null {
   if (arrival.kind !== 'page') return null
-  // No preference is not "no opinion about where to send them" — it is the case the
-  // default exists for. An unreadable `localStorage` and a value naming no known locale
-  // both arrive here as `null` from `readStoredLocale`, and both mean the same thing:
-  // this visitor has expressed no preference the system can honour.
-  const wanted = readStoredLocale() ?? DEFAULT_VISITING_LOCALE
-  // A learner who wants English is already in the unprefixed tree (A4); a page under a locale
-  // prefix is an explicit request and stays (A5).
-  if (wanted === 'en' || detectLocaleFromPath(arrival.entry) !== 'en') return null
-  const counterpart = localizePath(arrival.entry, wanted)
+  // No stored preference asks for the page's own locale (D25). An unreadable `localStorage`
+  // and a value naming no known locale both arrive here as `null` from `readStoredLocale`
+  // and mean the same. Only a primary-locale page gets past the check below, so the page's
+  // own locale is `P`, and the cold load stays put with no line (A1).
+  const wanted = readStoredLocale() ?? P
+  // A learner who wants the primary locale is already in the unprefixed tree (A4); a page
+  // under a locale prefix is an explicit request and stays (A5).
+  if (wanted === P || detectLocaleFromPath(arrival.entry, P) !== P) return null
+  const counterpart = localizePath(arrival.entry, wanted, P)
   if (!pages.includes(counterpart)) return null
   return targetUrl(counterpart, base, location)
 }

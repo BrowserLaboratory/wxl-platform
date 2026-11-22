@@ -1,0 +1,130 @@
+[
+  {
+    "path": "platform/x.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/guide/x.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/s/notes.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/ZH-TW/x.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/s/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/s/src/README.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/public/x.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/shared/x.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/x.MD",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/postcss.config.mjs",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/zh-TW/x.md",
+    "class": "locale-page"
+  },
+  {
+    "path": "platform/en/x.md",
+    "class": "locale-page"
+  },
+  {
+    "path": "docs/x.md",
+    "class": "not-source"
+  },
+  {
+    "path": "Platform/x.md",
+    "class": "not-source"
+  },
+  {
+    "path": "platform/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenges.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/ja/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/zh-tw/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/EN/index.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/x.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/x/sub/a.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/src/a.md",
+    "class": "outside"
+  },
+  {
+    "path": "platform/challenge/s/src/a/b/c.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/.draft.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/en/.x/a.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/node_modules/p/README.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/en/dist/old.md",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/foo.txt",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/README.MD",
+    "class": "excluded"
+  },
+  {
+    "path": "platform/x.Md",
+    "class": "excluded"
+  },
+  {
+    "path": "postcss.config.mjs",
+    "class": "not-source"
+  }
+]

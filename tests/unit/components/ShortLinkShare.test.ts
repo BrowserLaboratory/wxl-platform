@@ -15,6 +15,10 @@ import { matchesOriginGrammar } from '../../../scripts/fork-init'
 const mode = vi.hoisted(() => ({ value: 'short' as 'short' | 'page' }))
 vi.mock('../../../.vitepress/theme/linkMode', () => ({ linkMode: () => mode.value }))
 
+// `P` (D31): the page-mode URL follows it (D68, S54). 'en' unless a case sets it; reset below.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 // Expectations are built here with plain string operations on the imported SITE_ORIGIN — never by
 // calling shortLinkDisplay/shortLinkUrl — so this file stays a test of the component's OWN output
 // against the real origin, not a tautology against the helper it happens to share with the
@@ -74,6 +78,7 @@ function stubClipboard(behaviour: 'resolve' | 'reject') {
 
 beforeEach(() => {
   mode.value = 'short'
+  mockPrimaryLocale.value = 'en'
 })
 
 describe('ShortLinkShare', () => {
@@ -217,13 +222,20 @@ describe('ShortLinkShare in page mode', () => {
     vi.restoreAllMocks()
   })
 
+  // (P, text locale, entry locale, n, slug, path): the primary locale's pages have no segment
+  // (D68, S54). The P = en rows keep 0008 F4-F6's literals.
   it.each([
-    ['en', 1, 'door-is-open', '/challenge/door-is-open/'],
-    ['zh-TW', 3, 'selected-excerpts', '/zh-TW/challenge/selected-excerpts/'],
-    ['en', 1234, 'staff-only', '/challenge/staff-only/'],
-  ] as const)('on a %s page, n = %i, %s: shows, titles and copies the page URL (L04-L08)', async (locale, n, slug, path) => {
+    ['en', 'en', 'en', 1, 'door-is-open', '/challenge/door-is-open/'],
+    ['en', 'zh-TW', 'zh-TW', 3, 'selected-excerpts', '/zh-TW/challenge/selected-excerpts/'],
+    ['en', 'en', 'en', 1234, 'staff-only', '/challenge/staff-only/'],
+    ['en', 'zh-TW', 'en', 1, 'door-is-open', '/challenge/door-is-open/'],
+    ['zh-TW', 'zh-TW', 'zh-TW', 3, 'selected-excerpts', '/challenge/selected-excerpts/'],
+    ['zh-TW', 'en', 'en', 1, 'door-is-open', '/en/challenge/door-is-open/'],
+    ['zh-TW', 'en', 'zh-TW', 3, 'selected-excerpts', '/challenge/selected-excerpts/'],
+  ] as const)('P = %s, on a %s page, entry %s, n = %i, %s: shows, titles and copies the page URL (L04-L08, S54)', async (primary, locale, entryLocale, n, slug, path) => {
+    mockPrimaryLocale.value = primary
     const writeText = stubClipboard('resolve')
-    const wrapper = mountShare(locale, n, slug)
+    const wrapper = mountShare(locale, n, slug, entryLocale)
     const text = wrapper.find('[data-short-link]')
 
     expect(text.text()).toBe(`${DISPLAY_ORIGIN}${path}`)

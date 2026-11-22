@@ -100,7 +100,7 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
 
   Omit `--flag` to let the script auto-generate. Then branch on the exit status:
 
-  - **Exit status 0**: continue to Step 3.
+  - **Exit status 0**: continue to Step 3. The brief's path is the first line `create:challenge` prints after `✓ Scaffold created:`; do not work out the primary locale folder yourself.
   - **Exit status 1**: nothing was written; the error names an existing slug or an invalid argument. Show the error and ask, in a plain-text block, for the reply `change` or `cancel`. On `change`, re-ask the parameter the error names (the slug when the challenge already exists) and re-run; on `cancel`, stop. Exit status 1 is the only status that re-asks a parameter.
   - **Exit status 2**: the challenge was created, but `platform/public/_redirects` was not regenerated. Show the user the message from stderr, which says that committing the challenge regenerates the file, then continue to Step 3 with the same slug. Keep `platform/challenge/<slug>/`.
   - **Exit status 3**: the scaffold was written with its number, but keygen failed. Show the user the message from stderr, which holds keygen's output, and stop. Tell the user to fix the cause, run `pnpm challenge:keygen <slug>`, and then resume this skill at Step 3 with the same slug; as with exit status 2, committing the challenge regenerates `platform/public/_redirects`. Keep `platform/challenge/<slug>/`.
@@ -127,13 +127,13 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
   Backend notes — Flask: `from flask import Flask, request, Response`, `@app.route()`. FastAPI: `from fastapi import FastAPI`, `from fastapi.responses import HTMLResponse`, `@app.get()` / `@app.post()`. PHP: `<?php`, `$_GET` / `$_POST`, `file_get_contents('/flag.txt')`.
 - **Verification**: The app file contains a `# Vulnerability:` marker and a clear exploitation path to the flag; no hardcoded `localhost` / `127.0.0.1` / `0.0.0.0` (the app runs in WASM).
 
-### Step 4: Update frontmatter and write the engagement brief
+### Step 4: Update the brief and `challenge.yaml`, and write the engagement brief
 
-- **What**: Fill `index.md` frontmatter, then replace the body placeholder with an **engagement brief** — the challenge described as a penetration-testing engagement the solver has been commissioned to carry out.
+- **What**: Fill the brief's `description` and the `challenge.yaml` keys, then replace the body placeholder with an **engagement brief** — the challenge described as a penetration-testing engagement the solver has been commissioned to carry out.
 - **How**:
-  1. Read `platform/challenge/<slug>/index.md` and Edit the frontmatter to set `description` (1–2 sentences naming the target and the promise it makes), `tags` (vuln keywords + backend, e.g. `[sql, injection, flask, sqlite]`), `source_visible: false`, and `packages` (extra Python packages, else `[]`). Leave `title`, `layout`, `difficulty`, `category`, `backend`, `app`, `date` as the scaffold set them. Four of those — `backend`, `difficulty`, `tags`, `category` — belong to `pnpm challenge:retype`, and `wxl-mutate` is the stage that runs it; the rest are scaffold-only.
-  2. Read the canonical prose reference `platform/challenge/door-is-open/index.md` and copy its **required** section structure. **That file is the only definition of which sections a brief must have.** This step names optional sections in item 4, but never the required ones, so the required structure lives in exactly one place.
-  3. Write the brief over `TODO: Write challenge description here.`. State the objective as a **proposition the solver is commissioned to prove** — what the target claims about itself, and what disproving it looks like. Keep the attack technique, the vulnerable parameter, and the exploitation steps for the exploit spec in Step 5; the brief carries the commission, not the walkthrough.
+  1. Read the brief (`platform/<P>/challenge/<slug>/index.md`) and Edit its frontmatter to set `description` (1–2 sentences naming the target and the promise it makes). Read `platform/challenge/<slug>/challenge.yaml` and Edit it to set `tags` (vuln keywords + backend, e.g. `[sql, injection, flask, sqlite]`), `source_visible: false`, and `packages` (extra Python packages, else `[]`). Leave `title` and `layout` in the brief, and `difficulty`, `category`, `backend`, `app`, `date` in `challenge.yaml`, as the scaffold set them. Four of those — `backend`, `difficulty`, `tags`, `category` — belong to `pnpm challenge:retype`, and `wxl-mutate` is the stage that runs it; the rest are scaffold-only.
+  2. Read the canonical prose reference, the `door-is-open` brief in the same locale folder as the new brief, and copy its **required** section structure. **That file is the only definition of which sections a brief must have.** This step names optional sections in item 4, but never the required ones, so the required structure lives in exactly one place.
+  3. Write the brief over the `TODO` placeholder. State the objective as a **proposition the solver is commissioned to prove** — what the target claims about itself, and what disproving it looks like. Keep the attack technique, the vulnerable parameter, and the exploitation steps for the exploit spec in Step 5; the brief carries the commission, not the walkthrough.
   4. Add an optional section only when its trigger fires:
 
      | Optional section | Write it when |
@@ -144,13 +144,13 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
      | Prior findings | the challenge builds on an earlier challenge's result |
      | Constraints | the challenge rules out a technique, such as brute force |
 
-  5. Let the interface speak for itself on three facts: the rendered page already shows the tool tabs (from `tools`), the difficulty badge, and the category badge. The brief describes the engagement; those describe the platform. This is a closed list of three — every other frontmatter field is fair game, and the brief is expected to develop the same scenario `description` summarises and to name the target that `tags` classifies.
+  5. Let the interface speak for itself on three facts: the rendered page already shows the tool tabs (from `tools`), the difficulty badge, and the category badge. The brief describes the engagement; those describe the platform. This is a closed list of three — every other declared key and brief key is fair game, and the brief is expected to develop the same scenario `description` summarises and to name the target that `tags` classifies.
 
      What this rules out is a **sentence that tells the reader** which tools are available, how hard the challenge is, or which taxonomy it sits in. It does not rule out the ordinary English words those values happen to be spelled with: a brief may call the target a web application and may say the source code was not released, even where `category` is `web` and `tools` contains `code`. A substring search over the body is the wrong test and produces exactly those two false positives on the canonical reference itself.
-  6. When the challenge has a locale mirror (`platform/<locale>/challenge/<slug>/index.md`), give it the same number of `##` headings in the same order, each one a localisation of the root-locale heading beside it, and the same facts. Localise the wording; keep the facts and the ordering identical. A localised heading is not the root-locale string, so the mirror's heading set never equals the root-locale set — position, not string equality, is what is checked.
+  6. When the challenge has a translation (the same path under another locale's folder), give it the same number of `##` headings in the same order, each one a localisation of the primary-locale heading beside it, and the same facts. Localise the wording; keep the facts and the ordering identical. A localised heading is not the primary-locale string, so the translation's heading set never equals the primary-locale set — position, not string equality, is what is checked.
 - **Verification**:
-  - `index.md` frontmatter contains `description`, `tags`, `source_visible: false`, and the body no longer contains the TODO placeholder.
-  - The **root-locale** body's set of `##` headings is a superset of the canonical reference's. The mirror is checked against the root-locale body by heading count and order instead.
+  - The brief's frontmatter contains `description`, `challenge.yaml` contains `tags`, `source_visible: false` and `packages`, and the body no longer contains the TODO placeholder.
+  - The **primary-locale** brief's set of `##` headings is a superset of the canonical reference's. A translation is checked against the primary-locale brief by heading count and order instead.
   - A reviewer reads the brief and confirms no sentence tells the reader which tools are available, how hard the challenge is, or what category it belongs to. The executor is the reviewer and the exit is that sentence-by-sentence confirmation — there is no grep for this, and item 5 says why.
 
 ### Step 5: Write the Playwright exploit spec
@@ -172,7 +172,7 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
 ### Step 6: Best-effort self-test via chrome-devtools-mcp
 
 - **What**: Best-effort confirm the vuln is exploitable through a real Chromium instance. **Never halt** on failure here — degrade and continue to Step 7.
-- **How**: If `chrome-devtools-mcp` is unavailable, emit `MCP unavailable; please run pnpm challenge:verify <slug> manually after dev server is up.` and continue. If `pnpm docs:dev` is not reachable at `http://localhost:5173`, emit `dev server not running; please start pnpm docs:dev and run pnpm challenge:verify <slug> manually.` and continue. Otherwise make up to three attempts (navigate to the challenge, wait for the Service Worker, send the exploit, match `FLAG_REGEX`); a failed attempt MAY revise `platform/challenge/<slug>/src/<app>` once (max two revisions, three attempts total). After three failures, emit `self-test inconclusive after 3 attempts; please run pnpm challenge:verify <slug> manually and inspect.` and continue. Do NOT touch the spec file, frontmatter, or `flag.txt` in this step.
+- **How**: If `chrome-devtools-mcp` is unavailable, emit `MCP unavailable; please run pnpm challenge:verify <slug> manually after dev server is up.` and continue. If `pnpm docs:dev` is not reachable at `http://localhost:5173`, emit `dev server not running; please start pnpm docs:dev and run pnpm challenge:verify <slug> manually.` and continue. Otherwise make up to three attempts (navigate to the challenge, wait for the Service Worker, send the exploit, match `FLAG_REGEX`); a failed attempt MAY revise `platform/challenge/<slug>/src/<app>` once (max two revisions, three attempts total). After three failures, emit `self-test inconclusive after 3 attempts; please run pnpm challenge:verify <slug> manually and inspect.` and continue. Do NOT touch the spec file, the brief, `challenge.yaml`, or `flag.txt` in this step. After any edit to `challenge.yaml`, restart `pnpm dev`.
 - **Verification**: Either a "self-test passed" message, or one of the degrade messages above — the workflow always continues.
 
 ### Step 7: Hand off to wxl-verify
@@ -182,7 +182,8 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
 
   ```
   ✓ Challenge "<slug>" 建立完成！
-    platform/challenge/<slug>/index.md
+    platform/<P>/challenge/<slug>/index.md
+    platform/challenge/<slug>/challenge.yaml
     platform/challenge/<slug>/src/<app-file>
     platform/challenge/<slug>/src/flag.txt
     tests/challenges/<slug>.spec.ts
@@ -210,6 +211,6 @@ After collecting, show a summary and a plain-text confirmation block (`1) 確認
 
 Acceptance criteria for the Create flow:
 
-- Files exist: `platform/challenge/<slug>/index.md`, `platform/challenge/<slug>/src/<app>`, `platform/challenge/<slug>/src/flag.txt`, `tests/challenges/<slug>.spec.ts`.
+- Files exist: `platform/<P>/challenge/<slug>/index.md`, `platform/challenge/<slug>/challenge.yaml`, `platform/challenge/<slug>/src/<app>`, `platform/challenge/<slug>/src/flag.txt`, `tests/challenges/<slug>.spec.ts`.
 - `pnpm challenge:verify <slug>` exits 0.
 - The registry table in `SKILL.md` and `SKILL.zhTW.md` contain the same rows.

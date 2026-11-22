@@ -1,18 +1,7 @@
 ---
 title: Staff Only
-number: 2
 layout: challenge
-difficulty: easy
-category: web
-backend: flask
-app: app.py
-packages: [ flask ]
-tools: [ browser, network, repeater, code ]
-source_visible: false
-date: 2026-08-17T16:21:14.557Z
-tags: [ sql, injection, flask, sqlite ]
 description: A black-box engagement against Corkboard, an intranet noticeboard whose admin console is meant to open only for accounts carrying the administrator flag.
-wasmModule: /challenge/staff-only/runtime.wasm
 ---
 
 # Staff Only

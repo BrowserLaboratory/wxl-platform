@@ -29,3 +29,16 @@ declare const __WXL_SHORT_LINKS__: boolean | undefined
  * it, as under vitest. Read it through `.vitepress/theme/i18n/publishedPages.ts` only.
  */
 declare const __WXL_PAGES__: readonly string[] | undefined
+
+/**
+ * The primary locale `P` (D31, seam 0010-S12), as `vite.define` in `.vitepress/config.mts`
+ * hands it to the site bundle: the locale `range.json` names, read at build time. Undefined
+ * where nothing replaces it, as under vitest. Read it through
+ * `.vitepress/theme/i18n/primaryLocale.ts` only.
+ *
+ * Written as the literal union, not an imported `Locale`, because this file has no import or
+ * export statement of its own: adding one would turn it into a module and scope every
+ * `declare const` above to that module instead of the global scope that `linkMode.ts` and
+ * `publishedPages.ts` read from.
+ */
+declare const __WXL_PRIMARY_LOCALE__: 'en' | 'zh-TW' | undefined

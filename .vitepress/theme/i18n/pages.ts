@@ -3,15 +3,16 @@
  * epic 0008's locale decisions ask of it (spec 0008, seam S2).
  *
  * **Spelling.** The one `cleanUrls` gives: a directory's `index.md` keeps its trailing
- * slash (`/`, `/guide/`, `/challenge/x/`, `/zh-TW/`), any other page file has none
+ * slash (`/`, `/guide/`, `/challenge/x/`, `/<code>/`), any other page file has none
  * (`/challenges`, `/guide/python`). Every entry is spelled this way, and a not-found
  * redirect is always given an entry as its target, never URL text.
  *
  * No imports: the site configuration loads this module in Node to build the list.
  */
 
-/** The page-list entry of a source file, given its path relative to the site's source directory. */
-export function entryForSourcePath(source: string): string {
+/** The page-list entry of a source file, given its rewritten path (the primary locale's prefix
+ *  already stripped, `rewrittenPath`), relative to the site's source directory. */
+export function entryForRelativePath(source: string): string {
   const path = source.replace(/\.md$/, '')
   if (path === 'index') return '/'
   if (path.endsWith('/index')) return `/${path.slice(0, -'index'.length)}`
@@ -39,6 +40,21 @@ export function targetUrl(entry: string, base: string, location: { search?: stri
 }
 
 /**
+ * Steps 2–5 of `pathCandidates` below, taking a path that is ALREADY decoded. Exported so a
+ * caller that has its own already-decoded path (`lookup.ts`'s D28 branch, after stripping the
+ * primary-code segment) can get the same candidates without decoding a second time — a doubly
+ * percent-encoded slash decodes to a real one only on the second pass, which would reveal a page
+ * the URL never actually named (TA1).
+ */
+export function candidatesFromDecodedPath(path: string): string[] {
+  if (!path.startsWith('/') || path.includes('//') || path.includes('\\')) return []
+  if (path.split('/').includes('..')) return []
+  path = path.replace(/\.html$/, '').replace(/\/index$/, '/')
+  const bare = path.length > 1 ? path.replace(/\/$/, '') : path
+  return bare === '/' ? ['/'] : [bare, `${bare}/`]
+}
+
+/**
  * The page-list spellings a pathname could be, for a path the router could not render
  * (spec 0008, "Schema: page list", the lookup algorithm). Nothing here throws:
  *
@@ -50,7 +66,8 @@ export function targetUrl(entry: string, base: string, location: { search?: stri
  *   5. a candidate matches when it equals a list entry exactly (case-sensitive) — see
  *      `firstListedEntry`.
  *
- * A page the router DID render is identified by its source file instead (`entryForSourcePath`).
+ * A page the router DID render is identified by its rewritten path (the primary locale's prefix
+ * already stripped) instead (`entryForRelativePath`).
  */
 export function pathCandidates(pathname: string, base: string): string[] {
   const local = withoutBase(pathname, base)
@@ -61,11 +78,7 @@ export function pathCandidates(pathname: string, base: string): string[] {
   } catch {
     return []
   }
-  if (!path.startsWith('/') || path.includes('//') || path.includes('\\')) return []
-  if (path.split('/').includes('..')) return []
-  path = path.replace(/\.html$/, '').replace(/\/index$/, '/')
-  const bare = path.length > 1 ? path.replace(/\/$/, '') : path
-  return bare === '/' ? ['/'] : [bare, `${bare}/`]
+  return candidatesFromDecodedPath(path)
 }
 
 /** The first of the spellings that is a list entry, or null. */

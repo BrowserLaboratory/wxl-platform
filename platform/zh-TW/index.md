@@ -12,10 +12,10 @@ hero:
   actions:
     - theme: brand
       text: 開始挑戰
-      link: /zh-TW/challenges/
+      link: /challenges/
     - theme: alt
       text: 使用指南
-      link: /zh-TW/guide/
+      link: /guide/
 
 features:
   - icon:
@@ -46,7 +46,7 @@ features:
 ---
 
 <script setup>
-import { data } from '../shared/challenges.zh-TW.data.ts'
+import { data } from '../shared/challenges.data.ts'
 </script>
 
-<HomeContent :challenges="data" />
+<HomeContent :lists="data" />

@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { challengeLink } from '../../../.vitepress/challenge/shortLink'
+import { challengeLink, challengePagePath } from '../../../.vitepress/challenge/shortLink'
 
 // Seam 0007-S8: the link helper, with the origin as an argument. Every expected value is a
 // literal from traceability.md's link forms (X1–X6), never recomputed the way the helper does.
@@ -9,28 +11,28 @@ const WXL = 'https://wxl.browserlab.online'
 describe('challengeLink in short mode', () => {
   // Spec 0008 F1, F2: the short link carries its locale code, `/en/c/` or `/zh-TW/c/`.
   it('gives X1: the English short link and its displayed text (L01; 0008 F1, F8)', () => {
-    expect(challengeLink('short', 1, 'door-is-open', 'en', WXL)).toEqual({
+    expect(challengeLink('short', 1, 'door-is-open', 'en', 'en', WXL)).toEqual({
       url: 'https://wxl.browserlab.online/en/c/001',
       display: 'wxl.browserlab.online/en/c/001',
     })
   })
 
   it('gives X2: the Traditional Chinese short link, 42 padded to 042 (L02, L03; 0008 F2, F8)', () => {
-    expect(challengeLink('short', 42, 'door-is-open', 'zh-TW', WXL)).toEqual({
+    expect(challengeLink('short', 42, 'door-is-open', 'zh-TW', 'en', WXL)).toEqual({
       url: 'https://wxl.browserlab.online/zh-TW/c/042',
       display: 'wxl.browserlab.online/zh-TW/c/042',
     })
   })
 
   it('leaves a number wider than three digits unchanged (L03)', () => {
-    expect(challengeLink('short', 1234, 'door-is-open', 'en', WXL)).toEqual({
+    expect(challengeLink('short', 1234, 'door-is-open', 'en', 'en', WXL)).toEqual({
       url: 'https://wxl.browserlab.online/en/c/1234',
       display: 'wxl.browserlab.online/en/c/1234',
     })
   })
 
   it.each([undefined, '', 'My Chall'])('needs no slug and ignores it: slug %j (L11)', (slug) => {
-    expect(challengeLink('short', 1, slug, 'en', WXL)).toEqual({
+    expect(challengeLink('short', 1, slug, 'en', 'en', WXL)).toEqual({
       url: 'https://wxl.browserlab.online/en/c/001',
       display: 'wxl.browserlab.online/en/c/001',
     })
@@ -41,7 +43,7 @@ describe('challengeLink never gives a short link without its locale code (0008 F
   it.each(['short', 'page'] as const)('in %s mode, in both locales, for 1, 42 and 1234', (mode) => {
     for (const locale of ['en', 'zh-TW'] as const) {
       for (const n of [1, 42, 1234]) {
-        const link = challengeLink(mode, n, 'door-is-open', locale, WXL)!
+        const link = challengeLink(mode, n, 'door-is-open', locale, 'en', WXL)!
         for (const text of [link.url, link.display]) {
           expect(text).not.toContain('/zh/c/')
           expect(text).not.toMatch(/^(?:https:\/\/)?[^/]+\/c\//)
@@ -53,21 +55,21 @@ describe('challengeLink never gives a short link without its locale code (0008 F
 
 describe('challengeLink in page mode', () => {
   it('gives X3: the English page URL and its displayed text (L04)', () => {
-    expect(challengeLink('page', 1, 'door-is-open', 'en', WXL)).toEqual({
+    expect(challengeLink('page', 1, 'door-is-open', 'en', 'en', WXL)).toEqual({
       url: 'https://wxl.browserlab.online/challenge/door-is-open/',
       display: 'wxl.browserlab.online/challenge/door-is-open/',
     })
   })
 
   it("gives X4: the Traditional Chinese page URL after a project site's origin, path kept (L05, L06)", () => {
-    expect(challengeLink('page', 3, 'selected-excerpts', 'zh-TW', 'https://teacher.github.io/my-range')).toEqual({
+    expect(challengeLink('page', 3, 'selected-excerpts', 'zh-TW', 'en', 'https://teacher.github.io/my-range')).toEqual({
       url: 'https://teacher.github.io/my-range/zh-TW/challenge/selected-excerpts/',
       display: 'teacher.github.io/my-range/zh-TW/challenge/selected-excerpts/',
     })
   })
 
   it('gives X5: the page path right after an origin with no path; the number appears nowhere (L07)', () => {
-    const link = challengeLink('page', 1234, 'staff-only', 'en', 'https://teacher.github.io')
+    const link = challengeLink('page', 1234, 'staff-only', 'en', 'en', 'https://teacher.github.io')
     expect(link).toEqual({
       url: 'https://teacher.github.io/challenge/staff-only/',
       display: 'teacher.github.io/challenge/staff-only/',
@@ -78,7 +80,7 @@ describe('challengeLink in page mode', () => {
   it('appends to the origin as given, without normalising it', () => {
     // A hand-edited origin with a trailing slash breaks links (spec B4); the helper does not
     // repair it, so the defect stays visible rather than half-fixed in one place.
-    expect(challengeLink('page', 1, 'door-is-open', 'en', 'https://teacher.github.io/my-range/')?.url).toBe(
+    expect(challengeLink('page', 1, 'door-is-open', 'en', 'en', 'https://teacher.github.io/my-range/')?.url).toBe(
       'https://teacher.github.io/my-range//challenge/door-is-open/',
     )
   })
@@ -94,17 +96,79 @@ describe('challengeLink returns none', () => {
     ['-a (L16)', '-a'],
     ['a- (the grammar ends on a letter or digit)', 'a-'],
   ])('in page mode for a slug that is %s', (_label, slug) => {
-    expect(challengeLink('page', 1, slug, 'en', 'https://teacher.github.io')).toBeNull()
+    expect(challengeLink('page', 1, slug, 'en', 'en', 'https://teacher.github.io')).toBeNull()
   })
 
   it('in page mode accepts the one-character slug a, the grammar\'s shortest', () => {
-    expect(challengeLink('page', 1, 'a', 'en', 'https://teacher.github.io')?.url).toBe(
+    expect(challengeLink('page', 1, 'a', 'en', 'en', 'https://teacher.github.io')?.url).toBe(
       'https://teacher.github.io/challenge/a/',
     )
   })
 
   it.each([undefined, 0, -1, 1.5])('in both modes for the number %j (L20)', (n) => {
-    expect(challengeLink('short', n, 'door-is-open', 'en', WXL)).toBeNull()
-    expect(challengeLink('page', n, 'door-is-open', 'en', WXL)).toBeNull()
+    expect(challengeLink('short', n, 'door-is-open', 'en', 'en', WXL)).toBeNull()
+    expect(challengeLink('page', n, 'door-is-open', 'en', 'en', WXL)).toBeNull()
+  })
+})
+
+// S54 (D68): in page mode the address is challengePagePath(slug, entryLocale, P), so P decides
+// which locale's pages carry no segment. Short mode does not look at P. Literals throughout.
+describe('challengeLink in page mode follows the primary locale (S54, D68)', () => {
+  it.each([
+    ['en', 'en', '/challenge/s/'],
+    ['zh-TW', 'en', '/zh-TW/challenge/s/'],
+    ['zh-TW', 'zh-TW', '/challenge/s/'],
+    ['en', 'zh-TW', '/en/challenge/s/'],
+  ] as const)('entry locale %s, P = %s gives %s', (entryLocale, primary, path) => {
+    expect(challengeLink('page', 1, 's', entryLocale, primary, WXL)).toEqual({
+      url: `https://wxl.browserlab.online${path}`,
+      display: `wxl.browserlab.online${path}`,
+    })
+  })
+
+  it.each([
+    ['zh-TW', 'zh-TW', '/challenge/s/'],
+    ['en', 'zh-TW', '/en/challenge/s/'],
+  ] as const)('after a project site origin (N04): entry %s, P = %s gives %s', (entryLocale, primary, path) => {
+    expect(challengeLink('page', 1, 's', entryLocale, primary, 'https://teacher.github.io/my-range')).toEqual({
+      url: `https://teacher.github.io/my-range${path}`,
+      display: `teacher.github.io/my-range${path}`,
+    })
+  })
+
+  it.each(['en', 'zh-TW'] as const)('in short mode gives the same link whatever P is: locale %s', (locale) => {
+    const expected = {
+      url: `https://wxl.browserlab.online/${locale}/c/007`,
+      display: `wxl.browserlab.online/${locale}/c/007`,
+    }
+    expect(challengeLink('short', 7, 's', locale, 'en', WXL)).toEqual(expected)
+    expect(challengeLink('short', 7, 's', locale, 'zh-TW', WXL)).toEqual(expected)
+  })
+})
+
+// S52 (0010-S26, D68): the page path of a challenge in a locale, given the primary locale. The
+// primary locale's pages have no segment; every other locale's carry theirs. Literals throughout.
+describe('challengePagePath (S52, 0010-S26, D68)', () => {
+  it.each([
+    ['s', 'en', 'en', '/challenge/s/'],
+    ['s', 'zh-TW', 'en', '/zh-TW/challenge/s/'],
+    ['s', 'zh-TW', 'zh-TW', '/challenge/s/'],
+    ['s', 'en', 'zh-TW', '/en/challenge/s/'],
+    [':slug', 'zh-TW', 'en', '/zh-TW/challenge/:slug/'],
+    [':slug', 'en', 'en', '/challenge/:slug/'],
+  ] as const)('(%s, %s, primary %s) is %s', (slug, locale, primary, expected) => {
+    expect(challengePagePath(slug, locale, primary)).toBe(expected)
+  })
+
+  // S-q4 (traceability S52, AC-33): the generator's page-path targets come from this helper.
+  it('scripts/generate-redirects.ts takes its page paths from challengePagePath (S-q4, AC-33)', () => {
+    const repoRoot = resolve(__dirname, '../../..')
+    const src = readFileSync(resolve(repoRoot, 'scripts/generate-redirects.ts'), 'utf8')
+    expect(src).toMatch(
+      /import\s*\{[^}]*\bchallengePagePath\b[^}]*\}\s*from\s*'\.\.\/\.vitepress\/challenge\/shortLink\.ts'/,
+    )
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(code).toMatch(/\bchallengePagePath\(/)
+    expect(code).not.toMatch(/\/challenge\/(\$\{|:slug)/)
   })
 })

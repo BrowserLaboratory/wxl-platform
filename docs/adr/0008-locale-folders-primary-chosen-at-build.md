@@ -13,6 +13,10 @@ goes to the root. A challenge's application and flag live outside the locale fol
 authored only in its range's primary locale is complete. Decided in the 2026-11-02 stage 1 interview
 for the epic that follows OQ-023.
 
+> **Note, 2026-11-15 (spec 0010):** "every page must exist in" the primary locale holds for challenge
+> briefs (a challenge must have its primary locale's brief) and for upstream's own pages. A range's own
+> article may exist in a single translation only.
+
 The deciding constraint is the charter's "easy to upgrade": `pnpm range:upgrade` merges three ways
 against pristine ranges built from upstream as it is, and a range whose files sit where upstream's do
 merges cleanly.
@@ -42,5 +46,13 @@ merges cleanly.
 - Relative links between locale folders resolve against URLs, not files (measured with VitePress
   2.0.0-alpha.16 `rewrites`). Whether such a link works therefore depends on which locale is primary.
   A dead link fails the build rather than shipping.
+
+> **Note, 2026-11-15 (spec 0010):** a link that names the primary locale's folder passes VitePress's
+> dead-link check, so the build adds the check PL-E11 for it. The build still lets three kinds of link
+> through unchecked: links written as raw HTML, links that components build, and a translation locale's
+> nav and sidebar links. The last are prefixed with the locale code but not matched against the page
+> list; a page missing there reaches the not-found lookup, which takes the learner to the primary
+> locale's page.
+
 - A file's path and its URL differ by one segment: the primary locale's folder name does not appear
   in the URL.

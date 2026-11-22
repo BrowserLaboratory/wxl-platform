@@ -417,7 +417,7 @@ export function useSessionGate() {
       //
       // `listLearnerEvidenceKeys` and not `listOwnedLocalStorageKeys`: ownership is the
       // clear's question, not this one. The platform writes the locale on every cold load
-      // of a published `/zh-TW/` page, as the Layout mounts and before this runs, and the panel keys are
+      // of a published translation page, as the Layout mounts and before this runs, and the panel keys are
       // written at their panels' setup at fixed defaults. Asking on the strength of those
       // told a brand-new visitor, on a machine holding nothing, that this browser already
       // held saved work — and offered only to inherit it or to delete it.
@@ -516,9 +516,11 @@ export function useSessionGate() {
    *
    * `reload` is passed in rather than called here so the caller decides where the page
    * lands — the site root, because the learner asked to start fresh and the root is where
-   * a first-time visitor starts. The stored locale is no longer part of that reasoning:
-   * it survives the clear, so the page the reload lands on is still in the language that
-   * was on screen.
+   * a first-time visitor starts. The stored locale is not part of that reasoning:
+   * `wxl-locale` is exempt from the clear, so the root's cold load is decided by the value
+   * that survived it, like any other cold load of the primary-locale home page (spec 0010,
+   * D35, A33): it redirects to `/<T>/` only for a valid stored translation locale `T` whose
+   * home page is published, and otherwise shows the primary locale `P`.
    *
    * A full page load and not an in-place update: the current attack session lives in a
    * closure variable inside `useAttackSession`, so it survives the database being

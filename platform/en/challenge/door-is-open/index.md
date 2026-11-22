@@ -1,18 +1,7 @@
 ---
 title: Need to Know
-number: 1
 layout: challenge
-difficulty: easy
-category: web
-backend: fastapi
-app: app.py
-packages: []
-tools: [ browser, network, repeater, code ]
-source_visible: false
-date: 2026-04-02T08:54:17.674Z
-tags: [ idor, access-control, fastapi, sqlite ]
 description: A black-box engagement against FileHub, a file-sharing service whose product page promises that a file uploaded by one account is readable only by that account.
-wasmModule: /challenge/door-is-open/runtime.wasm
 ---
 
 # Need to Know

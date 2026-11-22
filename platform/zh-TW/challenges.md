@@ -4,7 +4,7 @@ layout: page
 ---
 
 <script setup>
-    import { data } from '../shared/challenges.zh-TW.data.ts'
+    import { data } from '../shared/challenges.data.ts'
 </script>
 
-<ChallengeList :challenges="data" />
+<ChallengeList :lists="data" />

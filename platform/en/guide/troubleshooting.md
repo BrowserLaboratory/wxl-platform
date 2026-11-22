@@ -199,11 +199,11 @@ Any login or uploaded files from this challenge are gone.
 
 **What you see.** At the top of a page — on a challenge page, directly below the navigation bar — one line says the page has no version in your language and is shown in the other one, followed by a link to the challenge list in your language.
 
-**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — when a link takes you to a page that is only in the other language, when you open such a page directly while the site remembers the other language, or remembers none (it then assumes Traditional Chinese), and when you choose a language with the locale switcher on a page that has no version in it: the switcher then stays on the page instead of leaving it. It is not an error.
+**Why.** Not every page is translated: a teacher can publish a challenge or an article in one language only. When the site has no version of a page in your language, it shows the version it has and says so, instead of a page-not-found screen. That happens when you open an address for a translation that does not exist — a link in your language to a page that has none, an edited address, an old link, in which case the address bar changes to the page that exists — when a link takes you to a page that is only in the other language, when you open such a page directly while the site remembers the other language, and when you choose a language with the locale switcher on a page that has no version in it: the switcher then stays on the page instead of leaving it. It is not an error.
 
 **What to do.** Read the page as it is, or follow the link to the challenge list in your language. While the line shows, the locale switcher also offers the page's own language: choosing it removes the line and remembers that language. A tab left open while the site is updated keeps the list of pages it loaded: a translation added since then is still reported as missing until you reload, and a page removed since then shows the page-not-found screen; press Back to return.
 
-**Which language the site remembers.** Two things change it: choosing a language with the locale switcher, and opening a page under `/zh-TW/` directly — typing or pasting its address, a short link, or reloading it — which sets Traditional Chinese. Following a link, pressing Back or Forward, and the site taking you to another page by itself once a page has opened change nothing, and opening a page without `/zh-TW/` directly does not set English. So after a link has taken you to a page under `/zh-TW/`, reloading that page sets Traditional Chinese.
+**Which language the site remembers.** While the site remembers no language, a page is shown in the language of the address you opened, and the line does not appear; the one exception is an address for a translation that does not exist, where the page that exists is shown with the line. The remembered language changes in only two ways: choosing a language with the locale switcher, and opening directly — typing or pasting its address, a short link, or reloading it — a page whose address starts with a language code (`/en/` or `/zh-TW/`), which sets that language. An address without a language code sets nothing, including a short link or an old address that opens a page without one. Following a link, pressing Back or Forward, and the site taking you to another page by itself once a page has opened change nothing. So after a link has taken you to a page whose address starts with a language code, reloading that page sets that language.
 
 ### Panel text and tab names stay English {#hardcoded-english}
 
@@ -214,7 +214,7 @@ Any login or uploaded files from this challenge are gone.
 | Challenge page tool tabs | `Browser`, `Network`, `Repeater`, `Code` |
 | Challenge list header | `Challenges`, `Choose a challenge to begin` |
 | Difficulty filter | `Easy`, `Medium`, `Hard`, `Mystery` |
-| Difficulty badges | the raw frontmatter value — `easy`, `medium`, `hard`, `mystery` |
+| Difficulty badges | the value written in the challenge declaration — `easy`, `medium`, `hard`, `mystery` |
 | Network panel | all of it, starting with `Network Traffic` |
 | Code panel | `▶ Run`, `Running…`, `Loading…`, `■ Stop`, `History…`, `(stopped)`, `(no output)` |
 
@@ -224,5 +224,5 @@ Any login or uploaded files from this challenge are gone.
 
 Two things about the two languages' challenge lists are worth knowing:
 
-- Both challenge lists hold every challenge. A challenge written in only one language appears in the other list with its title and description in the language it has, a locale mark saying so — in the Traditional Chinese list, an English-only challenge is marked 只有英文 ("English only") — and a link to the page it has.
+- Both challenge lists are complete. Each list holds every challenge that has a primary-locale version. A challenge with no version in the list's language still appears there, with its title and description in the primary locale's language, a locale mark saying so — 只有英文 ("English only") in the Traditional Chinese list, "Traditional Chinese only" in the English list — and a link to the page it has.
 - The `#NNN` number in front of a challenge is its permanent number, which the author assigns once: it is the same in both lists and does not change when other challenges are added or a folder is renamed. A challenge that has none yet shows a provisional number instead, which is not permanent and can change or repeat another challenge's: do not refer to a challenge by it.

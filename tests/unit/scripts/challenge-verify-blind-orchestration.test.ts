@@ -26,7 +26,8 @@ describe('verifyBlind orchestration (task 5.5)', () => {
     workDirRoot = mkdtempSync(join(tmpdir(), 'cvb-work-'))
     const slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    writeFileSync(join(slugDir, 'index.md'), INDEX)
+    mkdirSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open'), { recursive: true })
+    writeFileSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open', 'index.md'), INDEX)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), CANONICAL_FLAG + '\n')
   })
 
@@ -115,7 +116,8 @@ describe('verifyBlind multi-runtime orchestration (l4-multi-agent-cross-check ta
     workDirRoot = mkdtempSync(join(tmpdir(), 'cvb-work-multi-'))
     const slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    writeFileSync(join(slugDir, 'index.md'), INDEX)
+    mkdirSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open'), { recursive: true })
+    writeFileSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open', 'index.md'), INDEX)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), CANONICAL_FLAG + '\n')
   })
 
@@ -235,7 +237,8 @@ describe('verifyBlind single-runtime regression (l4-multi-agent-cross-check task
     workDirRoot = mkdtempSync(join(tmpdir(), 'cvb-work-single-'))
     const slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    writeFileSync(join(slugDir, 'index.md'), INDEX)
+    mkdirSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open'), { recursive: true })
+    writeFileSync(join(projectRoot, 'platform', 'zh-TW', 'challenge', 'door-is-open', 'index.md'), INDEX)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), CANONICAL_FLAG + '\n')
   })
 

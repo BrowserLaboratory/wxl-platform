@@ -2,8 +2,11 @@
 import { ref, computed, inject, onMounted, onUnmounted, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useData } from 'vitepress'
-import { rememberChoice, otherLocale, type Locale } from '../i18n'
+import { rememberChoice, pageLocaleOf, type Locale } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE, type ChoiceOutcome } from '../i18n/missingTranslation'
+import { localeSwitcherLabelKey } from './localeSwitcherLabels'
+import { LOCALES } from '../../locales'
 
 const { t, locale } = useI18n()
 const { localeIndex } = useData()
@@ -27,7 +30,7 @@ const lineLocale = inject(MISSING_TRANSLATION_LOCALE, computed(() => null))
 // The runtime locale is ASSIGNED here only when a choice navigates (spec 0008, B2): the
 // interface follows the URL, and a choice that stays keeps both the URL and the interface in
 // the page's locale. Read from the page, write to the runtime.
-const pageLocale = computed<Locale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<Locale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 
 // Unique per mount: the heading's id is referenced by the listbox's
 // aria-labelledby, and a hard-coded id would collide the moment two switchers
@@ -39,17 +42,20 @@ const open = ref(false)
 const rootEl = ref<HTMLElement | null>(null)
 
 const tp = (key: string) => t(key, {}, { locale: pageLocale.value })
-const labelOf = (l: Locale) => (l === 'zh-TW' ? tp('locale_switcher.tw_label') : tp('locale_switcher.english_label'))
+// A22, D34: the label key comes from `LOCALES`, not a two-branch ternary that only knows two
+// literal codes — a locale list that grows throws here instead of silently mislabelling.
+const labelOf = (l: Locale) => tp(localeSwitcherLabelKey(l))
 
 const currentLabel = computed(() => labelOf(pageLocale.value))
 
-// The menu (spec 0008, B5): its title is always the page's locale. It offers the locale the
-// page is not in; while the missing-translation line shows, it also offers the page's own
-// locale, the way back, which removes the line without navigating. Every label derives from a
-// locale code, so no CJK literal enters the template.
-const options = computed<Locale[]>(() =>
-  lineLocale.value ? [otherLocale(pageLocale.value), pageLocale.value] : [otherLocale(pageLocale.value)],
-)
+// The menu (spec 0008, B5): its title is always the page's locale. It offers every OTHER
+// locale in `LOCALES` (today, exactly one); while the missing-translation line shows, it also
+// offers the page's own locale, the way back, which removes the line without navigating. Every
+// label derives from a locale code, so no CJK literal enters the template.
+const options = computed<Locale[]>(() => {
+  const others = LOCALES.filter((l) => l !== pageLocale.value)
+  return lineLocale.value ? [...others, pageLocale.value] : others
+})
 
 function select(target: Locale) {
   open.value = false

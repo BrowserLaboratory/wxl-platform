@@ -27,9 +27,9 @@ The Service Worker registration and the Pyodide download are the two things that
 
 ### Step 1: Pick a challenge
 
-1. Open the challenge list. Each row shows a zero-padded number such as `#003`, the title, a difficulty badge, a category badge and a date, with the description and tags on a second line. A challenge written only in the other language shows its title and description in that language and a locale mark; in the Traditional Chinese list, an English-only challenge is marked 只有英文 ("English only").
+1. Open the challenge list. Each row shows a zero-padded number such as `#003`, the title, a difficulty badge, a category badge and a date, with the description and tags on a second line. Every challenge that has a primary-locale version is listed; a challenge with no version in the list's language shows its title and description in the primary locale's language and a locale mark: 只有英文 ("English only") in the Traditional Chinese list, "Traditional Chinese only" in the English list.
 2. Filter with the toolbar. The search box matches the title, description and tags only — typing a difficulty or a date matches nothing. Results refresh 300 ms after you stop typing.
-3. The difficulty dropdown is a fixed set of four English options: Easy, Medium, Hard, Mystery. The category dropdown is built from the categories that actually occur in the list. Difficulty badges print the raw frontmatter string in lowercase, in English, in both interface languages.
+3. The difficulty dropdown is a fixed set of four English options: Easy, Medium, Hard, Mystery. The category dropdown is built from the categories that actually occur in the list. Difficulty badges print the value written in the challenge declaration, in lowercase, in English, in both interface languages.
 4. The count on the right of the toolbar is how many challenges survive the current filter. The button at the top right switches between the default list view and a grid view.
 5. Click a row to enter the challenge.
 

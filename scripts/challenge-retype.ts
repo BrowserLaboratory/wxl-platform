@@ -2,7 +2,7 @@
  * challenge-retype.ts
  *
  * Mutate an existing challenge's backend / difficulty / tags / category.
- * Skill prose calls this CLI instead of editing frontmatter or renaming
+ * Skill prose calls this CLI instead of editing challenge.yaml or renaming
  * source files by hand.
  *
  * Usage:
@@ -157,30 +157,9 @@ function formatHelp(): string {
   ].join('\n')
 }
 
-// ─── Frontmatter helpers ────────────────────────────────────────────────────
+// ─── Declaration helpers ────────────────────────────────────────────────────
 
-export interface ParsedIndex {
-  /** Editable YAML Document — preserves original key order, comments, collection style. */
-  doc: Document.Parsed
-  body: string
-}
-
-export function splitFrontmatter(indexMd: string): ParsedIndex {
-  const match = indexMd.match(/^---\n([\s\S]*?)\n---\n?/)
-  if (!match) {
-    throw new Error('index.md has no YAML frontmatter block')
-  }
-  const doc = parseDocument(match[1])
-  const body = indexMd.slice(match[0].length)
-  return { doc, body }
-}
-
-export function serializeIndex(parsed: ParsedIndex): string {
-  const yaml = parsed.doc.toString({ lineWidth: 0 }).trimEnd()
-  return `---\n${yaml}\n---\n${parsed.body}`
-}
-
-function getFrontmatterString(doc: Document.Parsed, key: string): string | undefined {
+function getDeclarationString(doc: Document.Parsed, key: string): string | undefined {
   const value = doc.get(key)
   return typeof value === 'string' ? value : undefined
 }
@@ -281,19 +260,19 @@ export function retypeChallenge(
 ): RetypeResult {
   const root = opts.projectRoot ?? PROJECT_ROOT
   const slugDir = resolve(root, 'platform', 'challenge', args.slug)
-  const indexPath = resolve(slugDir, 'index.md')
+  const declarationPath = resolve(slugDir, 'challenge.yaml')
 
-  if (!existsSync(indexPath)) {
+  if (!existsSync(declarationPath)) {
     return {
       exitCode: 1,
-      message: `Challenge ${args.slug} not found at ${indexPath}`,
+      message: `Challenge ${args.slug} not found at ${declarationPath}`,
       warnings: [],
     }
   }
 
-  const original = readFileSync(indexPath, 'utf8')
-  const parsed = splitFrontmatter(original)
-  const oldBackendRaw = getFrontmatterString(parsed.doc, 'backend')
+  // The declaration is the whole of challenge.yaml (D73); the briefs are never read or written.
+  const doc = parseDocument(readFileSync(declarationPath, 'utf8'))
+  const oldBackendRaw = getDeclarationString(doc, 'backend')
   const oldBackend = (
     oldBackendRaw && (VALID_BACKENDS as readonly string[]).includes(oldBackendRaw)
       ? (oldBackendRaw as Backend)
@@ -316,7 +295,7 @@ export function retypeChallenge(
     }
   }
 
-  // ── Same-family backend swap (app file rewrite + frontmatter) ──────────
+  // ── Same-family backend swap (app file rewrite + declaration) ──────────
   if (args.backend && oldBackend && args.backend !== oldBackend) {
     const oldAppFile = resolve(slugDir, appFileFor(oldBackend))
     const newAppFile = resolve(slugDir, appFileFor(args.backend))
@@ -348,8 +327,8 @@ export function retypeChallenge(
     }
     writeFileSync(newAppFile, rewritten, 'utf8')
 
-    parsed.doc.set('backend', args.backend)
-    parsed.doc.set('app', args.backend === 'php' ? 'index.php' : 'app.py')
+    doc.set('backend', args.backend)
+    doc.set('app', args.backend === 'php' ? 'index.php' : 'app.py')
 
     changesSummary.push(`backend ${oldBackend} → ${args.backend}`)
 
@@ -363,23 +342,23 @@ export function retypeChallenge(
     }
   }
 
-  // ── Frontmatter-only mutations ─────────────────────────────────────────
+  // ── Declaration-only mutations ─────────────────────────────────────────
   if (args.difficulty !== undefined) {
-    parsed.doc.set('difficulty', args.difficulty)
+    doc.set('difficulty', args.difficulty)
     changesSummary.push(`difficulty=${args.difficulty}`)
   }
 
   if (args.tags !== undefined) {
-    parsed.doc.set('tags', args.tags)
+    doc.set('tags', args.tags)
     changesSummary.push(`tags=[${args.tags.join(',')}]`)
   }
 
   if (args.category !== undefined) {
-    parsed.doc.set('category', args.category)
+    doc.set('category', args.category)
     changesSummary.push(`category=${args.category}`)
   }
 
-  writeFileSync(indexPath, serializeIndex(parsed), 'utf8')
+  writeFileSync(declarationPath, doc.toString({ lineWidth: 0 }), 'utf8')
 
   // ── Keygen rerun on backend change ─────────────────────────────────────
   if (args.backend && oldBackend && args.backend !== oldBackend) {

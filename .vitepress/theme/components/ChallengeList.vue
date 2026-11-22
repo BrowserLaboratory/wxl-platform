@@ -2,13 +2,14 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { useI18n } from 'vue-i18n'
-import type { ChallengeData } from '../../../platform/shared/challenges.data'
+import type { ChallengeData, ChallengeLists } from '../../../platform/shared/challenges.data'
 import ShortLinkShare from './ShortLinkShare.vue'
 import ChallengeDoneBadge from './ChallengeDoneBadge.vue'
 import { useChallengeProgress } from '../composables/useChallengeProgress'
 import { useProgressBlockReason } from '../composables/useSessionGate'
 import type { ShortLinkLocale } from '../../challenge/shortLink'
-import { linkMode } from '../linkMode'
+import { pageLocaleOf } from '../i18n'
+import { primaryLocale } from '../i18n/primaryLocale'
 
 const { locale, t } = useI18n()
 const { localeIndex } = useData()
@@ -20,7 +21,7 @@ const { localeIndex } = useData()
 // the wrong link for a reader who copies before that happens. The list gives the
 // short link in its own locale: `/en/c/NNN` or `/zh-TW/c/NNN`, never `/c/` or
 // `/zh/c/`, which are kept only so links already handed out keep opening.
-const pageLocale = computed<ShortLinkLocale>(() => (localeIndex.value === 'zh-TW' ? 'zh-TW' : 'en'))
+const pageLocale = computed<ShortLinkLocale>(() => pageLocaleOf(localeIndex.value, primaryLocale()))
 
 /**
  * Translate at the PAGE locale, the way the merged nav's `tp` does.
@@ -55,8 +56,11 @@ const tp = (key: string, named?: Record<string, unknown>) =>
   named ? t(key, named, { locale: pageLocale.value }) : t(key, {}, { locale: pageLocale.value })
 
 const props = defineProps<{
-  challenges: ChallengeData[]
+  lists: ChallengeLists
 }>()
+
+/** This page's list: the list of the page's locale, from the one loader's per-locale lists (D40). */
+const challenges = computed<ChallengeData[]>(() => props.lists?.[pageLocale.value] ?? [])
 
 // ─── Reactive state ─────────────────────────────────────────────────────────
 const searchQuery = ref('')
@@ -96,7 +100,7 @@ onMounted(() => { void loadProgress() })
 const progressBlockReason = useProgressBlockReason()
 
 /**
- * Spec 0008, S4: an entry borrowed from the other locale's brief (the list has none of its own).
+ * Spec 0008, S4: an entry borrowed from the primary locale's brief (D38) (the list has none of its own).
  * It carries the mark naming the locale it is in — resolved at the PAGE's locale, like every
  * string here, so the HTML as served already says it — and its title and summary carry that
  * locale's `lang`.
@@ -105,13 +109,13 @@ const isBorrowed = (c: ChallengeData) => c.locale !== pageLocale.value
 const langOf = (c: ChallengeData) => (isBorrowed(c) ? c.locale : undefined)
 
 /**
- * The copy control's link (F3, F6): in short mode the list's locale, `/<list locale>/c/NNN`, which
- * the redirect rules send to the page that exists; in page mode the entry's own page. The English
- * list has no short link for a challenge with only a Traditional Chinese brief: no `/en/c/NNN`
- * rule exists for it (E3, G9). Its page URL, in page mode, opens.
+ * The copy control's link (F3, F6, D48): every row gives one, numbered or not decided by the
+ * control itself, which renders nothing for a challenge without a number (E10). In short mode it is
+ * the list's locale, `/<list locale>/c/NNN` (`/en/c/007` for a Traditional Chinese-only entry in
+ * the English list, as for a translated one: the redirect rules send it to the page that exists);
+ * in page mode the entry's own page, which carries a locale segment unless the entry is in the
+ * range's primary locale (D68).
  */
-const mode = linkMode()
-const hasCopyControl = (c: ChallengeData) => !(mode === 'short' && pageLocale.value === 'en' && c.locale === 'zh-TW')
 
 /**
  * The key a challenge's progress is stored under, recovered from its URL.
@@ -134,7 +138,7 @@ function isCompleted(c: ChallengeData): boolean {
 /**
  * How many of the challenges on this page the learner has solved.
  *
- * Counted over `props.challenges`, not over `filteredChallenges`: the pair of numbers
+ * Counted over `challenges.value`, not over `filteredChallenges`: the pair of numbers
  * is about progress through the platform, and a total that moved while someone typed
  * in the search box would be reporting something else entirely.
  *
@@ -142,7 +146,7 @@ function isCompleted(c: ChallengeData): boolean {
  * a retired or renamed challenge leaves its progress behind, and counting those would
  * put the completed count above the total.
  */
-const completedCount = computed(() => props.challenges.filter(isCompleted).length)
+const completedCount = computed(() => challenges.value.filter(isCompleted).length)
 
 // ─── Inline debounce (300ms) ─────────────────────────────────────────────────
 let debounceTimer: ReturnType<typeof setTimeout>
@@ -153,13 +157,13 @@ watch(searchQuery, (val) => {
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 const categories = computed(() =>
-  [...new Set(props.challenges.map(c => c.category).filter(Boolean))] as string[]
+  [...new Set(challenges.value.map(c => c.category).filter(Boolean))] as string[]
 )
 
 const DIFFICULTY_ORDER = ['easy', 'medium', 'hard', 'mystery']
 
 const filteredChallenges = computed(() => {
-  let list = props.challenges
+  let list = challenges.value
 
   // Text search: title + description + tags
   const q = debouncedQuery.value.toLowerCase().trim()
@@ -225,7 +229,7 @@ const categoryBadge: Record<string, string> = {
 /**
  * The number shown on the row, `#001`.
  *
- * Prefers the frontmatter number so the badge and a short link below it, on a
+ * Prefers the declared (`challenge.yaml`) number so the badge and a short link below it, on a
  * Cloudflare Pages build, are the same number; on any other build the link is the
  * challenge page's URL, built from the slug. `id` remains the fallback for a
  * challenge that has not been numbered yet; that one shows a badge and no link.
@@ -463,7 +467,7 @@ function toggleSortDir(): void {
           on this line, which wraps so the failure message can take a line below when it needs one.
         -->
         <div class="flex flex-wrap items-center gap-x-1 gap-y-0.5 w-full">
-          <ShortLinkShare v-if="hasCopyControl(c)" :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="c.locale" />
+          <ShortLinkShare :number="c.number" :slug="slugOf(c)" :locale="pageLocale" :entry-locale="c.locale" />
         </div>
       </a>
     </div>

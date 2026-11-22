@@ -1,30 +1,68 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { generateRedirects, writeRedirects, indexSlugs } from '../../../scripts/generate-redirects'
+import { LOCALES } from '../../../.vitepress/locales'
+import {
+  generateRedirects,
+  writeRedirects,
+  indexSlugs,
+  redirectsHeader,
+} from '../../../scripts/generate-redirects'
 
 // `platform/public/_redirects` is a public commitment: the paths in it are printed on
 // handouts. It used to be hand-edited, and nothing kept it in step with the
 // challenge tree. It is now generated, and the last test in this file is what
 // makes that mean something — it fails when the committed file and the tree
 // disagree, whichever of the two moved.
+//
+// Every tree here is built under os.tmpdir() in the split layout (0010): a declaration
+// `platform/challenge/<slug>/challenge.yaml` carries the number, a brief
+// `platform/<locale>/challenge/<slug>/index.md` is a page. `P` is the primary locale.
 
-/** Write a challenge page carrying `number`, or none when it is undefined. */
-function writeChallenge(root: string, locale: 'root' | 'zh-TW', slug: string, number?: unknown): void {
-  const dir = locale === 'root'
-    ? join(root, 'platform', 'challenge', slug)
-    : join(root, 'platform', 'zh-TW', 'challenge', slug)
+type Primary = 'en' | 'zh-TW'
+const BOTH: Primary[] = ['en', 'zh-TW']
+
+/** Write a challenge declaration. `numberYaml` is the YAML text after `number: `; none writes no `number` key. */
+function writeDeclaration(root: string, slug: string, numberYaml?: string): void {
+  const dir = join(root, 'platform', 'challenge', slug)
   mkdirSync(dir, { recursive: true })
-  const lines = ['---', `title: ${slug}`, 'layout: challenge']
-  if (number !== undefined) lines.push(`number: ${number}`)
-  lines.push('---', '', `# ${slug}`)
+  const lines = [`title: x`]
+  if (numberYaml !== undefined) lines.push(`number: ${numberYaml}`)
+  writeFileSync(join(dir, 'challenge.yaml'), lines.join('\n') + '\n', 'utf-8')
+}
+
+/** Write a brief (a page); `extraFrontmatter` lines go into its frontmatter. */
+function writeBrief(root: string, locale: 'en' | 'zh-TW', slug: string, extraFrontmatter: string[] = []): void {
+  const dir = join(root, 'platform', locale, 'challenge', slug)
+  mkdirSync(dir, { recursive: true })
+  const lines = ['---', `title: ${slug}`, 'layout: challenge', ...extraFrontmatter, '---', '', `# ${slug}`]
   writeFileSync(join(dir, 'index.md'), lines.join('\n'), 'utf-8')
+}
+
+function writeRange(root: string, text: string): void {
+  writeFileSync(join(root, 'range.json'), text, 'utf-8')
+}
+
+function writeHome(root: string, primary: Primary): void {
+  mkdirSync(join(root, 'platform', primary), { recursive: true })
+  writeFileSync(join(root, 'platform', primary, 'index.md'), '# home\n', 'utf-8')
+}
+
+/** A challenge with its declaration and the briefs named. */
+function challenge(root: string, slug: string, number: number | string, briefs: Array<'en' | 'zh-TW'>): void {
+  writeDeclaration(root, slug, String(number))
+  for (const locale of briefs) writeBrief(root, locale, slug)
+}
+
+function setPrimary(root: string, primary: Primary): void {
+  writeRange(root, JSON.stringify({ primaryLocale: primary }))
 }
 
 interface Rule { from: string; to: string; status: number }
 
-/** The four numbered source forms, in the order the generator writes them (G5). */
+/** The four numbered source forms, in the order the generator writes them (D57). */
 const FORMS = ['/c/', '/en/c/', '/zh/c/', '/zh-TW/c/']
 
 /** The rules in file order — the order is the whole point, so it is preserved. */
@@ -39,6 +77,63 @@ function rules(content: string): Rule[] {
     })
 }
 
+/** PAT5 (S30): the numbered-rule source. */
+const PAT5 = /^\/(?:en\/|zh\/|zh-TW\/)?c\/[0-9]{3,}$/
+
+/** The numbered rules of a generated file, in file order. */
+function numbered(content: string): Rule[] {
+  return rules(content).filter((r) => PAT5.test(r.from))
+}
+
+/** One challenge's four numbered rules, `targets` in form order. */
+function four(padded: string, targets: [string, string, string, string]): Rule[] {
+  return FORMS.map((form, i) => ({ from: `${form}${padded}`, to: targets[i], status: 302 }))
+}
+
+/** Comment lines with their `# ` removed, blank ones dropped, joined by one space. */
+function commentText(lines: string[]): string {
+  return lines
+    .filter((l) => l.startsWith('#'))
+    .map((l) => l.replace(/^#\s?/, '').trim())
+    .filter((l) => l !== '')
+    .join(' ')
+}
+
+/** Write a page (or any file) at `platform/<folder>/<rel>`; an empty `rel` ending in `/` makes a directory. */
+function writeFile(root: string, folder: string, rel: string, text = '# x\n'): void {
+  const target = join(root, 'platform', folder, rel)
+  if (rel.endsWith('/')) {
+    mkdirSync(target, { recursive: true })
+    return
+  }
+  mkdirSync(join(target, '..'), { recursive: true })
+  writeFileSync(target, text, 'utf-8')
+}
+
+/** D154: a `/zh-TW/` rule that is neither a numbered short link nor `/zh-TW/c/:slug`. */
+function oldAddress(content: string): Rule[] {
+  return rules(content).filter(
+    (r) => r.from.startsWith('/zh-TW/') && !PAT5.test(r.from) && r.from !== '/zh-TW/c/:slug',
+  )
+}
+
+const pairs = (rs: Rule[]): string[] => rs.map((r) => `${r.from} ${r.to}`)
+
+/** The page tree of `platform/zh-TW/` that the old-address cases build (a challenge brief carries its declaration). */
+const BASE_FILES = ['index.md', 'challenges.md', 'guide/notes.md']
+/** A name that must get no old-address rule, each with a file that would otherwise give one. */
+const EXCLUDED_FILES = [
+  'c.md', 'c/x.md', 'smoke-fixtures/x.md', 'a b.md', 'has space/x.md', '-x.md', '名.md', '.hidden.md',
+  '.hidden/x.md', 'node_modules/x.md', 'dist/x.md', 'x:y.md', 'x*.md',
+]
+/** Trees the old-address cases and the SR-1 property share. */
+const OLD_ADDRESS_TREES: string[][] = [
+  BASE_FILES,
+  [...BASE_FILES, 'docs/a/b.md', 'about.md'],
+  ['index.md', 'a.md', 'a/x.md', 'a-b.md', 'B.md'],
+  [...BASE_FILES, ...EXCLUDED_FILES],
+]
+
 describe('generateRedirects', () => {
   let root: string
 
@@ -50,39 +145,216 @@ describe('generateRedirects', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('writes the schema: four rules per challenge, the untranslated one’s Traditional Chinese rules at its English page, then four parameterised rules (G1–G5, G8)', () => {
-    // Spec 0008 traceability, "Schema: redirect rules (S6)": #1 translated, #5 English-only.
-    writeChallenge(root, 'root', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'door-is-open', 1)
-    writeChallenge(root, 'root', 'v05-php-check', 5)
+  const DOOR = '/challenge/door-is-open/'
+  const DOOR_ZH = '/zh-TW/challenge/door-is-open/'
+  const DOOR_EN = '/en/challenge/door-is-open/'
 
-    expect(rules(generateRedirects(root))).toEqual([
-      { from: '/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/en/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/zh/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
-      { from: '/zh-TW/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
-      { from: '/c/005', to: '/challenge/v05-php-check/', status: 302 },
-      { from: '/en/c/005', to: '/challenge/v05-php-check/', status: 302 },
-      { from: '/zh/c/005', to: '/challenge/v05-php-check/', status: 302 },
-      { from: '/zh-TW/c/005', to: '/challenge/v05-php-check/', status: 302 },
-      { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
-      { from: '/en/c/:slug', to: '/challenge/:slug/', status: 302 },
-      { from: '/zh/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
-      { from: '/zh-TW/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
+  interface TargetCase {
+    row: string
+    primary?: Primary
+    setup: (root: string) => void
+    include?: (slug: string, tree: string) => boolean
+    expected: Rule[]
+  }
+
+  const targetCases: TargetCase[] = [
+    {
+      row: 'S1 en, primary and zh-TW briefs',
+      primary: 'en',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      expected: four('001', [DOOR, DOOR, DOOR_ZH, DOOR_ZH]),
+    },
+    {
+      row: 'S2 en, zh-TW brief missing',
+      primary: 'en',
+      setup: (r) => challenge(r, 'v05-php-check', 5, ['en']),
+      expected: four('005', Array(4).fill('/challenge/v05-php-check/') as [string, string, string, string]),
+    },
+    {
+      row: 'S3 en, zh-TW brief on disk but not included',
+      primary: 'en',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      include: (_slug, tree) => tree !== 'zh-TW',
+      expected: four('001', [DOOR, DOOR, DOOR, DOOR]),
+    },
+    {
+      row: 'S4 zh-TW, primary and en briefs',
+      primary: 'zh-TW',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      expected: four('001', [DOOR, DOOR_EN, DOOR, DOOR]),
+    },
+    {
+      row: 'S4 zh-TW by default, no range.json, primary and en briefs',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      expected: four('001', [DOOR, DOOR_EN, DOOR, DOOR]),
+    },
+    {
+      row: 'S5 zh-TW, en brief missing',
+      primary: 'zh-TW',
+      setup: (r) => challenge(r, 'v05-php-check', 5, ['zh-TW']),
+      expected: four('005', Array(4).fill('/challenge/v05-php-check/') as [string, string, string, string]),
+    },
+    {
+      row: 'S6 zh-TW, en brief on disk but not included',
+      primary: 'zh-TW',
+      setup: (r) => challenge(r, 'door-is-open', 1, ['en', 'zh-TW']),
+      include: (_slug, tree) => tree !== 'en',
+      expected: four('001', [DOOR, DOOR, DOOR, DOOR]),
+    },
+    {
+      row: 'S7 en, orphan: only a zh-TW brief (D58 third fallback)',
+      primary: 'en',
+      setup: (r) => {
+        challenge(r, 'door-is-open', 1, ['en', 'zh-TW'])
+        challenge(r, 'chinese-only', 7, ['zh-TW'])
+      },
+      expected: [
+        ...four('001', [DOOR, DOOR, DOOR_ZH, DOOR_ZH]),
+        ...four('007', Array(4).fill('/zh-TW/challenge/chinese-only/') as [string, string, string, string]),
+      ],
+    },
+    {
+      row: 'S8 zh-TW, orphan: only an en brief',
+      primary: 'zh-TW',
+      setup: (r) => challenge(r, 'english-only', 7, ['en']),
+      expected: four('007', Array(4).fill('/en/challenge/english-only/') as [string, string, string, string]),
+    },
+  ]
+
+  it.each(targetCases)('numbered rules, $row (S1–S8, D58)', ({ primary, setup, include, expected }) => {
+    if (primary !== undefined) setPrimary(root, primary)
+    setup(root)
+    expect(numbered(generateRedirects(root, include ? { includeSlug: include } : {}))).toEqual(expected)
+  })
+
+  it('S3 and S6 keep the rule count of S1 and S4: re-pointed, not removed', () => {
+    for (const primary of BOTH) {
+      setPrimary(root, primary)
+      challenge(root, 'door-is-open', 1, ['en', 'zh-TW'])
+      const all = numbered(generateRedirects(root))
+      const excluded = numbered(generateRedirects(root, { includeSlug: (_s, tree) => tree === 'declaration' || tree === primary }))
+      expect(excluded).toHaveLength(all.length)
+      expect(excluded).toHaveLength(4)
+    }
+  })
+
+  describe.each(BOTH)('S9 a challenge with no included brief, P = %s', (primary) => {
+    it('gets no numbered rule when no brief is on disk, and generation succeeds', () => {
+      setPrimary(root, primary)
+      writeDeclaration(root, 'door-is-open', '1')
+      expect(numbered(generateRedirects(root))).toEqual([])
+    })
+
+    it('gets none when its briefs are on disk but excluded; with one included it gets four', () => {
+      setPrimary(root, primary)
+      challenge(root, 'door-is-open', 1, ['en', 'zh-TW'])
+      expect(numbered(generateRedirects(root, { includeSlug: (_s, tree) => tree === 'declaration' }))).toEqual([])
+      expect(numbered(generateRedirects(root, { includeSlug: (_s, tree) => tree !== 'zh-TW' && tree !== 'en' }))).toEqual([])
+      expect(numbered(generateRedirects(root, { includeSlug: (_s, tree) => tree === 'declaration' || tree === primary }))).toHaveLength(4)
+    })
+  })
+
+  describe('S10 no primaryLocale in range.json: zh-TW', () => {
+    it.each([
+      ['no range.json', undefined],
+      ['range.json without the key', '{"upstream":{"repo":"x"}}'],
+    ])('%s gives the output of {"primaryLocale":"zh-TW"}, not the output of "en"', (_name, text) => {
+      challenge(root, 'door-is-open', 1, ['en', 'zh-TW'])
+      if (text !== undefined) writeRange(root, text)
+      const got = generateRedirects(root)
+
+      writeRange(root, '{"primaryLocale":"zh-TW"}')
+      const zh = generateRedirects(root)
+      writeRange(root, '{"primaryLocale":"en"}')
+      const en = generateRedirects(root)
+
+      expect(got).toBe(zh)
+      expect(got).not.toBe(en)
+    })
+  })
+
+  describe('S11 an unusable range.json: refused before any challenge is read (D123)', () => {
+    const cases: Array<[string, string, (root: string) => void]> = [
+      ['PL-E01 a directory', 'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.',
+        (r) => mkdirSync(join(r, 'range.json'))],
+      ['PL-E01 a symlink', 'PL-E01: range.json is not a regular file; the build reads "primaryLocale" from range.json at the repository root and does not follow a symbolic link.',
+        (r) => {
+          writeFileSync(join(r, 'real.json'), '{"primaryLocale":"en"}')
+          symlinkSync(join(r, 'real.json'), join(r, 'range.json'))
+        }],
+      ['PL-E03 `{`', 'PL-E03: range.json is not valid JSON.', (r) => writeRange(r, '{')],
+      ['PL-E04 `[]`', 'PL-E04: range.json does not hold a JSON object.', (r) => writeRange(r, '[]')],
+      ['PL-E05 a number', 'PL-E05: "primaryLocale" in range.json is not a string: 1.', (r) => writeRange(r, '{"primaryLocale":1}')],
+      ['PL-E06 fr', 'PL-E06: "primaryLocale" in range.json is "fr", which is not on the locale list: en, zh-TW.', (r) => writeRange(r, '{"primaryLocale":"fr"}')],
+    ]
+
+    it.each(cases)('%s', (_name, firstLine, setup) => {
+      // A declaration without a number: were the challenges read first, this would be the fault.
+      writeDeclaration(root, 'unnumbered')
+      setup(root)
+
+      let message = ''
+      try {
+        generateRedirects(root)
+      } catch (err) {
+        message = (err as Error).message
+      }
+      expect(message.split('\n')[0]).toBe(firstLine)
+    })
+
+    it.each(cases)('%s: writeRedirects writes no file and leaves an existing one alone', (_name, firstLine, setup) => {
+      writeDeclaration(root, 'unnumbered')
+      setup(root)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+      const target = join(root, 'platform', 'public', '_redirects')
+
+      expect(() => writeRedirects(root)).toThrow(firstLine.split('\n')[0])
+      expect(existsSync(target)).toBe(false)
+
+      writeFileSync(target, 'kept\n')
+      expect(() => writeRedirects(root)).toThrow(firstLine)
+      expect(readFileSync(target, 'utf8')).toBe('kept\n')
+    })
+
+    it('the command reads range.json before it looks for platform/public: the PL line is the first stderr line', () => {
+      writeRange(root, '{')
+      const script = resolve(__dirname, '../../../scripts/generate-redirects.ts')
+      const run = spawnSync(process.execPath, ['--experimental-strip-types', script, '--root', root], {
+        encoding: 'utf8',
+        env: { ...process.env, NODE_NO_WARNINGS: '1' },
+      })
+      expect(run.status).toBe(1)
+      expect(run.stderr.split('\n')[0]).toBe('PL-E03: range.json is not valid JSON.')
+    })
+  })
+
+  it.each(BOTH)('S12 orders by number, not by slug, all four forms of each, P = %s', (primary) => {
+    // `aaa` sorts first by name and last by number.
+    setPrimary(root, primary)
+    challenge(root, 'aaa', 10, ['en', 'zh-TW'])
+    challenge(root, 'zzz', 2, [primary])
+
+    const zzz = '/challenge/zzz/'
+    const aaa = primary === 'en'
+      ? four('010', ['/challenge/aaa/', '/challenge/aaa/', '/zh-TW/challenge/aaa/', '/zh-TW/challenge/aaa/'])
+      : four('010', ['/challenge/aaa/', '/en/challenge/aaa/', '/challenge/aaa/', '/challenge/aaa/'])
+    expect(numbered(generateRedirects(root))).toEqual([
+      ...four('002', [zzz, zzz, zzz, zzz]),
+      ...aaa,
     ])
   })
 
-  it('gives the same bytes for the same tree, whatever order its directories were made in (G5)', () => {
+  it.each(BOTH)('S13 gives the same bytes for the same tree, whatever order its directories were made in, P = %s', (primary) => {
     // A regression guard, green before this change too: nothing in the output may follow
     // creation order, a Map's insertion order or the clock.
-    writeChallenge(root, 'root', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'door-is-open', 1)
-    writeChallenge(root, 'root', 'v05-php-check', 5)
+    setPrimary(root, primary)
+    challenge(root, 'door-is-open', 1, ['en', 'zh-TW'])
+    challenge(root, 'v05-php-check', 5, [primary])
     const other = mkdtempSync(join(tmpdir(), 'generate-redirects-'))
     try {
-      writeChallenge(other, 'root', 'v05-php-check', 5)
-      writeChallenge(other, 'zh-TW', 'door-is-open', 1)
-      writeChallenge(other, 'root', 'door-is-open', 1)
+      setPrimary(other, primary)
+      challenge(other, 'v05-php-check', 5, [primary])
+      challenge(other, 'door-is-open', 1, ['zh-TW', 'en'])
 
       expect(generateRedirects(other)).toBe(generateRedirects(root))
     } finally {
@@ -90,125 +362,130 @@ describe('generateRedirects', () => {
     }
   })
 
-  it('orders by number, not by slug, all four forms of each (G5)', () => {
-    // `aaa` sorts first by name and last by number.
-    writeChallenge(root, 'root', 'aaa', 10)
-    writeChallenge(root, 'zh-TW', 'aaa', 10)
-    writeChallenge(root, 'root', 'zzz', 2)
-
-    expect(rules(generateRedirects(root)).filter((r) => !r.from.includes(':'))).toEqual([
-      { from: '/c/002', to: '/challenge/zzz/', status: 302 },
-      { from: '/en/c/002', to: '/challenge/zzz/', status: 302 },
-      { from: '/zh/c/002', to: '/challenge/zzz/', status: 302 },
-      { from: '/zh-TW/c/002', to: '/challenge/zzz/', status: 302 },
-      { from: '/c/010', to: '/challenge/aaa/', status: 302 },
-      { from: '/en/c/010', to: '/challenge/aaa/', status: 302 },
-      { from: '/zh/c/010', to: '/zh-TW/challenge/aaa/', status: 302 },
-      { from: '/zh-TW/c/010', to: '/zh-TW/challenge/aaa/', status: 302 },
-    ])
-  })
-
-  it('pads to three digits in all four forms and keeps a wider number at its own width (G10)', () => {
-    writeChallenge(root, 'root', 'small', 7)
-    writeChallenge(root, 'root', 'large', 1234)
+  it.each(BOTH)('S14 pads to three digits in all four forms, keeps a wider number at its own width, and never emits the unpadded spelling, P = %s', (primary) => {
+    setPrimary(root, primary)
+    challenge(root, 'small', 7, [primary])
+    challenge(root, 'large', 1234, [primary])
+    challenge(root, 'first', 1, [primary])
 
     const froms = rules(generateRedirects(root)).map((r) => r.from)
     for (const form of FORMS) {
       expect(froms).toContain(`${form}007`)
       expect(froms).toContain(`${form}1234`)
+      expect(froms).toContain(`${form}001`)
+      expect(froms).not.toContain(`${form}7`)
+      expect(froms).not.toContain(`${form}1`)
     }
   })
 
-  it('does not emit the unpadded spelling in any form (G10)', () => {
-    // One canonical spelling per challenge: what is printed, what is displayed
-    // and what is copied are the same string.
-    writeChallenge(root, 'root', 'first', 1)
-    writeChallenge(root, 'zh-TW', 'first', 1)
+  describe.each(BOTH)('S15 a declaration whose number is unusable, P = %s', (primary) => {
+    const bad: Array<[string, string | undefined]> = [
+      ['no number', undefined],
+      ['malformed YAML', 'number: [unclosed'],
+      ['a string "007"', '"007"'],
+      ['zero', '0'],
+      ['1.5', '1.5'],
+    ]
+
+    it.each(bad)('%s: refused, naming the slug and the declaration; writeRedirects writes no file', (_name, numberYaml) => {
+      setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+      writeDeclaration(root, 'unnumbered', numberYaml)
+      writeBrief(root, primary, 'unnumbered')
+
+      let message = ''
+      try {
+        generateRedirects(root)
+      } catch (err) {
+        message = (err as Error).message
+      }
+      expect(message).toContain('unnumbered (platform/challenge/unnumbered/challenge.yaml)')
+
+      expect(() => writeRedirects(root)).toThrow(message)
+      expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
+    })
+
+    it('writes no file at all when the tree is inconsistent', () => {
+      // A partial file is worse than no file: it would 302 some numbers and 404
+      // others, and the deploy would look like it worked.
+      setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+      writeDeclaration(root, 'unnumbered')
+      const target = join(root, 'platform', 'public', '_redirects')
+
+      expect(() => writeRedirects(root)).toThrow()
+      expect(existsSync(target)).toBe(false)
+    })
+  })
+
+  it.each(BOTH)('S75 the largest safe integer is a rule; 1e21 is a number fault, P = %s', (primary) => {
+    setPrimary(root, primary)
+    challenge(root, 'big', 9007199254740991, [primary])
+    const got = numbered(generateRedirects(root))
+    expect(got.map((r) => r.from)).toContain('/c/9007199254740991')
+    for (const r of got) expect(r.from).toMatch(PAT5)
+
+    writeDeclaration(root, 'big', '1e21')
+    expect(() => generateRedirects(root)).toThrow('platform/challenge/big/challenge.yaml')
+  })
+
+  it.each(BOTH)('S16 refuses two challenges sharing a number and names both, P = %s', (primary) => {
+    setPrimary(root, primary)
+    challenge(root, 'earlier', 3, [primary])
+    challenge(root, 'later', 3, [primary])
+
+    expect(() => generateRedirects(root)).toThrow(/earlier[\s\S]*later|later[\s\S]*earlier/)
+  })
+
+  it.each(BOTH)('S17 a brief that carries its own number does not change the rules, P = %s', (primary) => {
+    setPrimary(root, primary)
+    writeDeclaration(root, 'door-is-open', '4')
+    writeBrief(root, primary, 'door-is-open', ['number: 9'])
 
     const froms = rules(generateRedirects(root)).map((r) => r.from)
-    for (const form of FORMS) {
-      expect(froms).not.toContain(`${form}1`)
-      expect(froms).toContain(`${form}001`)
+    expect(froms).toContain('/c/004')
+    expect(froms.filter((f) => f.endsWith('009'))).toEqual([])
+  })
+
+  describe.each(BOTH)('S18 a brief with no declaration, P = %s (D64 b)', (primary) => {
+    const kinds: Array<[string, undefined | ((slug: string, tree: string) => boolean)]> = [
+      ['declaration absent from disk', undefined],
+      ['declaration on disk but not included', (_slug, tree) => tree !== 'declaration'],
+    ]
+    for (const locale of BOTH) {
+      for (const [kind, include] of kinds) {
+        it(`${locale} brief, ${kind}`, () => {
+          setPrimary(root, primary)
+          writeBrief(root, locale, 'x')
+          if (include !== undefined) writeDeclaration(root, 'x', '1')
+
+          const call = () => generateRedirects(root, include ? { includeSlug: include } : {})
+          expect(call).toThrow()
+          expect(call).toThrow(`platform/${locale}/challenge/x/index.md`)
+          expect(call).toThrow('platform/challenge/x/challenge.yaml')
+        })
+      }
     }
   })
 
-  it('re-points, not removes, the Traditional Chinese rules of a challenge whose Traditional Chinese page is left out (G3)', () => {
-    // An untracked or ignored Traditional Chinese directory reaches the generator as an
-    // excluded `zh-TW` entry (the hook's index slugs).
-    writeChallenge(root, 'root', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'door-is-open', 1)
+  it.each(BOTH)('S21 a folder that is not on the locale list is ignored, P = %s', (primary) => {
+    setPrimary(root, primary)
+    challenge(root, 'door-is-open', 1, ['en', 'zh-TW'])
+    const before = generateRedirects(root)
 
-    const numbered = rules(generateRedirects(root, { includeSlug: (_slug, locale) => locale !== 'zh-TW' }))
-      .filter((r) => !r.from.includes(':'))
-    expect(numbered).toEqual([
-      { from: '/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/en/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/zh/c/001', to: '/challenge/door-is-open/', status: 302 },
-      { from: '/zh-TW/c/001', to: '/challenge/door-is-open/', status: 302 },
-    ])
+    mkdirSync(join(root, 'platform', 'fr', 'challenge', 'x'), { recursive: true })
+    writeFileSync(join(root, 'platform', 'fr', 'challenge', 'x', 'index.md'), '# x\n')
+
+    expect(generateRedirects(root)).toBe(before)
   })
 
-  it('groups whatever set of pages is included: a challenge without its English page gets its Traditional Chinese rules, one without either gets none', () => {
-    // Robustness, not G9: neither the hook nor CI hands the generator such a set.
-    writeChallenge(root, 'root', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'door-is-open', 1)
-    writeChallenge(root, 'root', 'staff-only', 2)
-    writeChallenge(root, 'zh-TW', 'staff-only', 2)
+  it('S22 ends with the four parameterised rules, P = en (G4)', () => {
+    setPrimary(root, 'en')
+    challenge(root, 'first', 1, ['en'])
 
-    const numbered = rules(generateRedirects(root, {
-      includeSlug: (slug, locale) => !(slug === 'door-is-open' && locale === 'root') && slug !== 'staff-only',
-    })).filter((r) => !r.from.includes(':'))
-    expect(numbered).toEqual([
-      { from: '/zh/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
-      { from: '/zh-TW/c/001', to: '/zh-TW/challenge/door-is-open/', status: 302 },
-    ])
-  })
-
-  it('gives a challenge with only a Traditional Chinese brief its two Traditional Chinese rules, after the challenges numbered below it (G9, G5, G8)', () => {
-    // Refused by the pre-commit hook and CI's tree check (G6), reachable through --no-verify.
-    writeChallenge(root, 'root', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'door-is-open', 1)
-    writeChallenge(root, 'zh-TW', 'chinese-only', 7)
-
-    const all = rules(generateRedirects(root))
-    expect(all).toHaveLength(4 + 2 + 4)
-    expect(all.slice(4, 6)).toEqual([
-      { from: '/zh/c/007', to: '/zh-TW/challenge/chinese-only/', status: 302 },
-      { from: '/zh-TW/c/007', to: '/zh-TW/challenge/chinese-only/', status: 302 },
-    ])
-  })
-
-  it('states the 500-challenge limit in its header (G8)', () => {
-    writeChallenge(root, 'root', 'first', 1)
-
-    const header = generateRedirects(root).split('\n').filter((l) => l.startsWith('#')).join(' ')
-    expect(header).toMatch(/500 numbered challenges/)
-    expect(header).toMatch(/2,000 static/)
-    expect(header).not.toMatch(/2100/)
-  })
-
-  it('places every numeric rule before the parameterised rules', () => {
-    // Cloudflare takes the first match and `/c/:slug` matches any single
-    // segment, a number included. A numeric rule below it never runs, and
-    // nothing about that failure is visible at deploy time.
-    writeChallenge(root, 'root', 'first', 1)
-    writeChallenge(root, 'zh-TW', 'first', 1)
-    writeChallenge(root, 'root', 'second', 2)
-    writeChallenge(root, 'zh-TW', 'second', 2)
-
-    const all = rules(generateRedirects(root))
-    const lastNumeric = all.map((r) => r.from).reduce((acc, f, i) => (/^\/(?:en\/|zh\/|zh-TW\/)?c\/\d+$/.test(f) ? i : acc), -1)
-    const firstParameterised = all.findIndex((r) => r.from.includes(':'))
-
-    expect(lastNumeric).toBeGreaterThan(-1)
-    expect(firstParameterised).toBeGreaterThan(lastNumeric)
-  })
-
-  it('ends with the four parameterised rules (G4)', () => {
-    writeChallenge(root, 'root', 'first', 1)
-
-    const all = rules(generateRedirects(root))
-    expect(all.slice(-4)).toEqual([
+    expect(rules(generateRedirects(root)).slice(-4)).toEqual([
       { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
       { from: '/en/c/:slug', to: '/challenge/:slug/', status: 302 },
       { from: '/zh/c/:slug', to: '/zh-TW/challenge/:slug/', status: 302 },
@@ -216,58 +493,350 @@ describe('generateRedirects', () => {
     ])
   })
 
-  it('orders numeric rules by number', () => {
-    writeChallenge(root, 'root', 'later', 10)
-    writeChallenge(root, 'root', 'earlier', 2)
+  it('S23 the slug rules of P = zh-TW point at the primary page and /en/ (D59)', () => {
+    challenge(root, 'first', 1, ['zh-TW'])
 
-    const numeric = rules(generateRedirects(root))
-      .map((r) => r.from)
-      .filter((f) => /^\/c\/\d+$/.test(f))
-    expect(numeric).toEqual(['/c/002', '/c/010'])
+    // The old-address section (D154) follows the slug rules, so they are picked by their source.
+    const all = rules(generateRedirects(root)).filter((r) => r.from.endsWith(':slug'))
+    expect(all).toEqual([
+      { from: '/c/:slug', to: '/challenge/:slug/', status: 302 },
+      { from: '/en/c/:slug', to: '/en/challenge/:slug/', status: 302 },
+      { from: '/zh/c/:slug', to: '/challenge/:slug/', status: 302 },
+      { from: '/zh-TW/c/:slug', to: '/challenge/:slug/', status: 302 },
+    ])
   })
 
-  it('refuses a challenge with no number and names it', () => {
-    writeChallenge(root, 'root', 'unnumbered')
+  it('S24 the old-address section is last and only when P = zh-TW; P = en has no rule containing * and no /zh-TW/ old-address rule (D60, D154)', () => {
+    // An old-address rule: a /zh-TW/ source that is not one of the /zh-TW/c/ short links.
+    const isOld = (r: Rule) => r.from.startsWith('/zh-TW/') && !r.from.startsWith('/zh-TW/c/')
 
-    expect(() => generateRedirects(root)).toThrow(/unnumbered/)
+    writeHome(root, 'zh-TW')
+    challenge(root, 'first', 1, ['zh-TW'])
+    const zh = rules(generateRedirects(root))
+    expect(zh.filter((r) => r.from === '/zh-TW/*')).toEqual([])
+    const lastC = zh.reduce((acc, r, i) => (r.from.startsWith('/zh-TW/c/') ? i : acc), -1)
+    const firstOld = zh.findIndex(isOld)
+    expect(lastC).toBeGreaterThan(-1)
+    expect(firstOld).toBeGreaterThan(lastC)
+    expect(zh.slice(firstOld).every(isOld)).toBe(true)
+    expect(zh[firstOld]).toEqual({ from: '/zh-TW/', to: '/', status: 302 })
+
+    setPrimary(root, 'en')
+    writeBrief(root, 'en', 'first')
+    const en = rules(generateRedirects(root))
+    expect(en.filter((r) => r.from.includes('*') || r.to.includes('*'))).toEqual([])
+    expect(en.filter(isOld)).toEqual([])
   })
 
-  it('refuses two challenges sharing a number and names both', () => {
-    writeChallenge(root, 'root', 'earlier', 3)
-    writeChallenge(root, 'root', 'later', 3)
+  describe('the old-address section (D154)', () => {
+    /** A zh-TW-primary tree: `files` under `platform/zh-TW/`, and the challenge `first` with its brief. */
+    function zhTree(files: string[]): void {
+      setPrimary(root, 'zh-TW')
+      challenge(root, 'first', 1, ['zh-TW'])
+      for (const f of files) writeFile(root, 'zh-TW', f)
+    }
 
-    expect(() => generateRedirects(root)).toThrow(/earlier[\s\S]*later|later[\s\S]*earlier/)
+    it('(a) is /zh-TW/, one dynamic rule per folder of pages and one static rule per top-level page, all 302', () => {
+      zhTree(BASE_FILES)
+      const got = oldAddress(generateRedirects(root))
+      expect(pairs(got)).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+      expect(got.every((r) => r.status === 302)).toBe(true)
+    })
+
+    it('(b) an extra top-level folder (a deep page) and an extra top-level page each add one rule', () => {
+      zhTree([...BASE_FILES, 'docs/a/b.md', 'about.md'])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/about /about',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/docs/* /docs/:splat',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+    })
+
+    it('(b) sorts by the rule source in UTF-16 code units', () => {
+      setPrimary(root, 'zh-TW')
+      for (const f of ['index.md', 'a.md', 'a/x.md', 'a-b.md', 'B.md']) writeFile(root, 'zh-TW', f)
+      expect(rules(generateRedirects(root)).map((r) => r.from)).toEqual([
+        '/c/:slug', '/en/c/:slug', '/zh/c/:slug', '/zh-TW/c/:slug',
+        '/zh-TW/', '/zh-TW/B', '/zh-TW/a', '/zh-TW/a-b', '/zh-TW/a/*',
+      ])
+    })
+
+    it.each([
+      ['a folder with no page (only a picture)', ['assets/diagram.png']],
+      ['a folder with only a dot-prefixed folder', ['.hidden/x.md']],
+      ['a folder with only node_modules', ['node_modules/x.md']],
+      ['a folder with only dist', ['dist/x.md']],
+      ['an empty folder', ['empty/']],
+    ])('(c) %s gets no rule', (_name, files) => {
+      zhTree([...BASE_FILES, ...files])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+        '/zh-TW/challenges /challenges',
+        '/zh-TW/guide/* /guide/:splat',
+      ])
+    })
+
+    it.each(EXCLUDED_FILES)('(d) %s gets no rule', (file) => {
+      zhTree([file])
+      expect(pairs(oldAddress(generateRedirects(root)))).toEqual([
+        '/zh-TW/ /',
+        '/zh-TW/challenge/* /challenge/:splat',
+      ])
+    })
+
+    it('(e) P = en: the section is absent, with the same files in both folders', () => {
+      setPrimary(root, 'en')
+      challenge(root, 'first', 1, ['en', 'zh-TW'])
+      for (const folder of ['en', 'zh-TW']) for (const f of [...BASE_FILES, 'docs/a/b.md', 'about.md']) writeFile(root, folder, f)
+      const out = generateRedirects(root)
+      expect(oldAddress(out)).toEqual([])
+      expect(out).not.toContain('Addresses under /zh-TW/ from when Traditional Chinese was a translation.')
+    })
+
+    it('(f) a top-level .md other than index.md is a page, named by its file name minus .md', () => {
+      zhTree(['README.md'])
+      expect(pairs(oldAddress(generateRedirects(root)))).toContain('/zh-TW/README /README')
+    })
   })
 
-  it('writes no file at all when the tree is inconsistent', () => {
-    // A partial file is worse than no file: it would 302 some numbers and 404
-    // others, and the deploy would look like it worked.
-    writeChallenge(root, 'root', 'unnumbered')
-    const target = join(root, 'platform', 'public', '_redirects')
+  it('SR-1 (D154): every old-address rule’s target begins with a literal equal to the source’s segment after /zh-TW/', () => {
+    let dirRules = 0
+    let pageRules = 0
+    for (const files of OLD_ADDRESS_TREES) {
+      const tree = mkdtempSync(join(tmpdir(), 'generate-redirects-'))
+      try {
+        setPrimary(tree, 'zh-TW')
+        challenge(tree, 'first', 1, ['zh-TW'])
+        for (const f of files) writeFile(tree, 'zh-TW', f)
+        const got = oldAddress(generateRedirects(tree))
+        for (const r of got) {
+          expect(r.from).not.toBe('/zh-TW/*')
+          if (r.from === '/zh-TW/') {
+            expect(r.to).toBe('/')
+            continue
+          }
+          const seg = r.from.slice('/zh-TW/'.length).split('/')[0]
+          expect(seg).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
+          expect(seg).not.toBe('c')
+          if (r.from === `/zh-TW/${seg}/*`) {
+            expect(r.to).toBe(`/${seg}/:splat`)
+            dirRules++
+          } else {
+            expect(r.from).toBe(`/zh-TW/${seg}`)
+            expect(r.to).toBe(`/${seg}`)
+            pageRules++
+          }
+          expect(r.to.startsWith('//')).toBe(false)
+          expect(r.to.split('/')[1]).not.toMatch(/[:*]/)
+        }
+      } finally {
+        rmSync(tree, { recursive: true, force: true })
+      }
+    }
+    // An empty set would pass the loop above for the wrong reason.
+    expect(dirRules).toBeGreaterThan(0)
+    expect(pageRules).toBeGreaterThan(0)
+  })
 
-    expect(() => writeRedirects(root)).toThrow()
-    expect(existsSync(target)).toBe(false)
+  it.each(BOTH)('S25 places every numeric rule before every slug and old-address rule, P = %s', (primary) => {
+    setPrimary(root, primary)
+    challenge(root, 'first', 1, ['en', 'zh-TW'])
+    challenge(root, 'second', 2, ['en', 'zh-TW'])
+
+    const all = rules(generateRedirects(root))
+    const lastNumeric = all.map((r) => r.from).reduce((acc, f, i) => (PAT5.test(f) ? i : acc), -1)
+    const firstOther = all.findIndex((r) => r.from.includes(':') || r.from.includes('*'))
+
+    expect(lastNumeric).toBeGreaterThan(-1)
+    expect(firstOther).toBeGreaterThan(lastNumeric)
+  })
+
+  describe('the header (S26)', () => {
+    const K1 = 'Cloudflare Pages allows 2,000 static and 100 dynamic rules. Every numbered challenge takes one static rule per short-link form, 4 in all, so a range holds at most 500 numbered challenges.'
+    const K2 = 'The slug links take 4 dynamic rules.'
+    const K3 = 'The slug links take 4 dynamic rules, and old /zh-TW/ addresses take one more dynamic rule for each top-level folder of pages and one static rule for each top-level page and for /zh-TW/ itself.'
+
+    it.each([['en', K2], ['zh-TW', K3]] as Array<[Primary, string]>)('P = %s states K1 and its own sentence, and the 500-challenge limit (G8)', (primary, specific) => {
+      setPrimary(root, primary)
+      challenge(root, 'first', 1, [primary])
+
+      const header = commentText(generateRedirects(root).split('\n\n')[0].split('\n'))
+      expect(header).toContain(K1)
+      expect(header).toContain(specific)
+      expect(header).toMatch(/500 numbered challenges/)
+      expect(header).toMatch(/2,000 static/)
+      expect(header).not.toMatch(/2100/)
+      if (primary === 'en') expect(header).not.toContain('old /zh-TW/ addresses')
+    })
+
+    it('S26b a form list of length 5 (injected) states 5, 400 and 5 dynamic rules', () => {
+      const five = ['/c/', '/en/c/', '/zh/c/', '/zh-TW/c/', '/x/c/'].map((prefix) => ({ prefix, locale: null }))
+      const header = commentText(redirectsHeader('en', five).split('\n'))
+      expect(header).toContain('5 in all')
+      expect(header).toContain('at most 400 numbered challenges')
+      expect(header).toContain('take 5 dynamic rules')
+    })
+  })
+
+  describe('the section comments (S27)', () => {
+    const THESE = 'These come first on purpose: Cloudflare takes the first match and `/c/:slug` matches any single segment, a number included. A numeric rule placed after it would never run, and nothing about that would be visible at deploy time.'
+    const k4 = (name: string) => `Numbered short links, 4 per challenge. A number is assigned once and never reused, so a link printed on a handout keeps pointing at the same challenge even after the challenge is renamed. The copy control gives each locale's own form, /en/c/NNN and /zh-TW/c/NNN; /c/NNN, which opens the primary locale's page, and /zh/c/NNN are kept so links already handed out keep opening. A locale's rules open the ${name} page, the primary locale's, while the challenge has no page in that locale, or, for a challenge without a primary-locale page, the first locale's page that exists.`
+
+    it.each([['en', 'English'], ['zh-TW', 'Traditional Chinese']] as Array<[Primary, string]>)('K4 with the primary locale named, P = %s', (primary, name) => {
+      setPrimary(root, primary)
+      challenge(root, 'first', 1, [primary])
+
+      const block = generateRedirects(root).split('\n\n')[1]
+      expect(commentText(block.split('\n'))).toBe(`${k4(name)} ${THESE}`)
+    })
+
+    const K5 = 'Addresses under /zh-TW/ from when Traditional Chinese was a translation. This range\'s primary locale is Traditional Chinese, so its pages are at the root: /zh-TW/ goes to /, each top-level page /zh-TW/<name> goes to /<name>, and each top-level folder of pages /zh-TW/<folder>/<path> goes to /<folder>/<path>. Every target begins with a fixed name, never with text from the request. The folder c is left out: /zh-TW/c/ belongs to the short links above. An address no rule covers is handled by the not-found page.'
+
+    it('K5 sits directly above the first old-address rule (/zh-TW/) when P = zh-TW, and is absent when P = en', () => {
+      challenge(root, 'first', 1, ['zh-TW'])
+      const lines = generateRedirects(root).split('\n')
+      const at = lines.findIndex((l) => /^\/zh-TW\/\s/.test(l))
+      expect(at).toBeGreaterThan(0)
+      const above: string[] = []
+      for (let i = at - 1; i >= 0 && lines[i].startsWith('#'); i--) above.unshift(lines[i])
+      expect(commentText(above)).toBe(K5)
+
+      setPrimary(root, 'en')
+      writeBrief(root, 'en', 'first')
+      expect(generateRedirects(root)).not.toContain('Addresses under /zh-TW/ from when Traditional Chinese was a translation.')
+    })
+  })
+
+  describe.each(BOTH)('S51 the slug grammar and number shadowing in full mode (D150), P = %s', (primary) => {
+    const GRAMMAR = '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'
+    const names: Array<[string, string]> = [
+      ['A B', '"A B"'],
+      ['a_b', '"a_b"'],
+      ['-a', '"-a"'],
+      ['a-', '"a-"'],
+      ['a\nb', '"a\\nb"'],
+    ]
+    const places: Array<[string, (root: string, name: string) => void]> = [
+      ['the declaration tree only', (r, name) => challenge(r, name, 1, [])],
+      ['the en brief tree only', (r, name) => writeBrief(r, 'en', name)],
+      ['the zh-TW brief tree only', (r, name) => writeBrief(r, 'zh-TW', name)],
+    ]
+
+    for (const [place, put] of places) {
+      it.each(names)(`a name ${place}: %j is refused with one line, nothing written`, (name, json) => {
+        setPrimary(root, primary)
+        writeHome(root, primary)
+        mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+        put(root, name)
+        const line = `redirects: challenge slug ${json} is outside ${GRAMMAR}`
+
+        let message = ''
+        try {
+          generateRedirects(root)
+        } catch (err) {
+          message = (err as Error).message
+        }
+        expect(message.split('\n')).toEqual([line])
+
+        expect(() => writeRedirects(root)).toThrow(line)
+        expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
+      })
+    }
+
+    it('an all-digit slug equal to another challenge’s padded number is refused', () => {
+      setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+      challenge(root, '005', 9, [primary])
+      challenge(root, 'other', 5, [primary])
+      const line = new Error("redirects: challenge slug \"005\" equals challenge 005's padded number")
+      expect(() => generateRedirects(root)).toThrow(line)
+      expect(() => writeRedirects(root)).toThrow(line)
+      expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
+    })
+
+    it('a four-digit slug equal to another challenge’s number is refused', () => {
+      setPrimary(root, primary)
+      writeHome(root, primary)
+      mkdirSync(join(root, 'platform', 'public'), { recursive: true })
+      challenge(root, '1234', 9, [primary])
+      challenge(root, 'other', 1234, [primary])
+      const line = new Error("redirects: challenge slug \"1234\" equals challenge 1234's padded number")
+      expect(() => generateRedirects(root)).toThrow(line)
+      expect(() => writeRedirects(root)).toThrow(line)
+      expect(existsSync(join(root, 'platform', 'public', '_redirects'))).toBe(false)
+    })
+
+    it('a slug equal to its own padded number is accepted', () => {
+      setPrimary(root, primary)
+      challenge(root, '005', 5, [primary])
+      expect(numbered(generateRedirects(root)).map((r) => r.from)).toEqual(['/c/005', '/en/c/005', '/zh/c/005', '/zh-TW/c/005'])
+    })
   })
 })
 
 describe('the committed _redirects', () => {
   const REPO_ROOT = resolve(__dirname, '../../..')
+  const materialised: string[] = []
+
+  afterEach(() => {
+    for (const dir of materialised.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
 
   /**
-   * The challenge slugs git knows about, per locale tree: a page counts only where its own tree's
-   * `<slug>/index.md` is in the index, as in the pre-commit hook (`indexSlugs`), so an untracked
+   * The challenge slugs git knows about, per tree (`declaration` and each locale): a file counts
+   * only where git's index lists it, as in the pre-commit hook (`indexSlugs`), so an untracked
    * Traditional Chinese brief beside a tracked English page re-points its rules here as it does
    * there.
    *
-   * Not the directory listing: `challenge-keygen.test.ts` scaffolds a throwaway
-   * challenge into the real `platform/challenge/` to drive the keygen CLI, and
-   * vitest runs test files in parallel — so a plain listing here sees a
-   * directory that exists for a few hundred milliseconds and is nobody's. Git's
-   * index includes staged files, so a challenge being added is covered from the
+   * Not the directory listing, as in the hook: an untracked or ignored directory in the working
+   * tree is not one of this tree's challenges. Git's index includes staged files, so a challenge being added is covered from the
    * moment it is staged, which is before it can be committed or built.
    */
   function trackedSlugs(): Map<string, Set<string>> {
     return indexSlugs(REPO_ROOT)
+  }
+
+  /**
+   * The index's `range.json`, declarations and briefs, written to a temporary directory: the
+   * generator reads files, and the working tree can differ from the index (the hook's oracle does
+   * the same). Only the index is read and only the temporary directory is written; a `range.json`
+   * that is a link in the index is written as one, so the generator refuses it (PL-E01).
+   */
+  function materialiseIndex(): string {
+    const listed = execFileSync('git', ['ls-files', '-z', '--', 'range.json', 'platform/'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    })
+    // Every page of a locale folder: the briefs, and the primary folder's top-level entries that give
+    // the old-address rules (D154).
+    const briefs = LOCALES.map((l) => new RegExp(`^platform/${l}/.+\\.md$`))
+    const keep = listed
+      .split('\0')
+      .filter(
+        (path) =>
+          path === 'range.json' ||
+          /^platform\/challenge\/[^/]+\/challenge\.yaml$/.test(path) ||
+          briefs.some((re) => re.test(path)),
+      )
+    const tmp = mkdtempSync(join(tmpdir(), 'redirects-index-'))
+    materialised.push(tmp)
+    if (keep.length > 0) {
+      execFileSync('git', ['checkout-index', '-z', '--stdin', `--prefix=${tmp}/`], {
+        cwd: REPO_ROOT,
+        input: keep.join('\0') + '\0',
+      })
+    }
+    return tmp
   }
 
   it('is byte-identical to what the challenge tree generates', () => {
@@ -277,11 +846,12 @@ describe('the committed _redirects', () => {
     // checks the rules' shape and each challenge's four rules; this one checks
     // every byte, the header and the order included.
     const tracked = trackedSlugs()
-    expect(tracked.get('root')?.size ?? 0, 'no challenges are tracked; the slug filter is wrong').toBeGreaterThan(0)
+    expect(tracked.get('declaration')?.size ?? 0, 'no challenges are tracked; the slug filter is wrong').toBeGreaterThan(0)
 
+    const tmp = materialiseIndex()
     const committed = readFileSync(resolve(REPO_ROOT, 'platform/public/_redirects'), 'utf8')
-    expect(committed).toBe(generateRedirects(REPO_ROOT, {
-      includeSlug: (slug, locale) => tracked.get(locale)?.has(slug) ?? false,
+    expect(committed).toBe(generateRedirects(tmp, {
+      includeSlug: (slug, tree) => tracked.get(tree)?.has(slug) ?? false,
     }))
   })
 })

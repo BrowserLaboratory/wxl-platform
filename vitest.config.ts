@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
+import { realpathSync } from 'node:fs'
 
 // Minimal .md stub for test environment: exports `frontmatter` parsed from YAML front matter.
 // Keeps glob imports working without needing the full VitePress markdown pipeline.
@@ -43,6 +45,16 @@ export default defineConfig({
       ),
     },
   },
+  // Vite's dev-server file guard (`server.fs.allow`, default: the project root and its
+  // workspace) also gates vite-node's SSR module loader, so a dynamic `import()` of a file
+  // outside the repository fails with "Cannot find module" even though it exists and plain
+  // Node resolves it fine. The config-base "fixture root" tests (B14, B16, B47) import a copy
+  // of `.vitepress/config.mts` from a fresh `os.tmpdir()` directory specifically so each case
+  // observes the real module instead of a spy — this allowlists the OS temp directory that holds
+  // those fixture roots, not the filesystem root.
+  // `os.tmpdir()` is a symlink on macOS (`/var/...` → `/private/var/...`); Vite resolves the
+  // requested file before matching it against `allow`, so both forms are listed.
+  server: { fs: { allow: ['.', tmpdir(), realpathSync(tmpdir())] } },
   test: {
     environment: 'happy-dom',
     globals: true,

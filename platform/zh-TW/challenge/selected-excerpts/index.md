@@ -1,19 +1,7 @@
 ---
 title: 精選節錄
-number: 10
 layout: challenge
-difficulty: medium
-category: web
-backend: flask
-app: app.py
-packages: [ flask ]
-tools: [ browser, network, repeater, code ]
-source_visible: true
-source_files: [ /templates/base.html, /templates/workbench.html, /templates/article.html, /templates/preview.html, /templates/course-pack.html, /templates/missing.html, /static/app.css ]
-date: 2026-09-13T13:28:46.765Z
-tags: [ idor, access-control, ssti, template-injection, jinja2, flask ]
 description: 針對 Kestrel Press 教材選文編輯台的白箱滲透測試委託；投稿者在此編寫教材，課程編輯再將已選用的節錄組成講義。
-wasmModule: /challenge/selected-excerpts/runtime.wasm
 ---
 
 # 精選節錄

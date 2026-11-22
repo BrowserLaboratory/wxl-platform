@@ -36,7 +36,7 @@ import {
   sha256Hex,
   type DocAnchor,
 } from '../../../scripts/fork-init'
-import { isUpstreamDecision, realUpstreamDecision } from '../../__helpers__/upstreamDecision'
+import { isUpstreamDecision, realUpstreamDecision, upstreamOnlySkipReason } from '../../__helpers__/upstreamDecision'
 
 const REPO_ROOT = resolve(__dirname, '../../..')
 
@@ -614,11 +614,33 @@ describe('upstream decision', () => {
   })
 })
 
+// B93/D124/U139: every D124 row declares itself through this one helper, which takes the
+// decision's own inputs and returns undefined on upstream or the skip reason otherwise.
+describe('D124 upstream-only skip reason (B93)', () => {
+  const upstreamManifest = { repository: { url: `git+https://github.com/${UPSTREAM_SLUG}.git` } }
+
+  it('is undefined on upstream', () => {
+    expect(upstreamOnlySkipReason(UPSTREAM_SLUG, upstreamManifest, true, false)).toBeUndefined()
+  })
+
+  it('is a skip reason for a range (a root range.json)', () => {
+    const reason = upstreamOnlySkipReason(undefined, upstreamManifest, true, true)
+    expect(typeof reason).toBe('string')
+    expect(reason).toBeTruthy()
+  })
+
+  it('is a skip reason for a fork (GITHUB_REPOSITORY set to another slug)', () => {
+    const reason = upstreamOnlySkipReason('someone/else', upstreamManifest, true, false)
+    expect(typeof reason).toBe('string')
+    expect(reason).toBeTruthy()
+  })
+})
+
 // ─── the upstream-pristine check (T67-T68) ──────────────────────────────────
 
 type FieldId =
   | 'A6'
-  | 'A7:platform/index.md'
+  | 'A7:platform/en/index.md'
   | 'A7:platform/zh-TW/index.md'
   | 'A8'
   | 'A9'
@@ -672,8 +694,8 @@ function pristineMismatches(files: Record<string, string>): FieldId[] {
   const a6Value = a6Lines.length === 1 ? decodeValueLine(a6Lines[0], A6_VALUE_RE) : undefined
   if (a6Value !== 'Web eXploitation Laboratory') mismatches.push('A6')
 
-  // A7 (platform/index.md, platform/zh-TW/index.md)
-  for (const file of ['platform/index.md', 'platform/zh-TW/index.md'] as const) {
+  // A7 (platform/en/index.md, platform/zh-TW/index.md)
+  for (const file of ['platform/en/index.md', 'platform/zh-TW/index.md'] as const) {
     const fid = `A7:${file}` as FieldId
     const raw = get(file)
     if (raw === undefined) {
@@ -780,7 +802,7 @@ function pristineFixtureFiles(): Record<string, string> {
       '}',
       '',
     ].join('\n'),
-    'platform/index.md': ['---', 'hero:', '  name: "WXL"', '---', ''].join('\n'),
+    'platform/en/index.md': ['---', 'hero:', '  name: "WXL"', '---', ''].join('\n'),
     'platform/zh-TW/index.md': ['---', 'hero:', '  name: "WXL"', '---', ''].join('\n'),
     '.vitepress/challenge/shortLink.ts': "export const SITE_ORIGIN = 'https://wxl.browserlab.online'\n",
     'README.md': readme,
@@ -807,13 +829,13 @@ describe('upstream pristine check', () => {
 
   it('does not report A7 when the value is an unquoted plain YAML scalar (value compared, not quote style)', () => {
     const files = pristineFixtureFiles()
-    files['platform/index.md'] = files['platform/index.md'].replace('  name: "WXL"', '  name: WXL')
+    files['platform/en/index.md'] = files['platform/en/index.md'].replace('  name: "WXL"', '  name: WXL')
     expect(pristineMismatches(files)).toEqual([])
   })
 
   it.each([
     ['A6', (f: Record<string, string>) => { f['.vitepress/config.mts'] = f['.vitepress/config.mts'].replace('Web eXploitation Laboratory', 'Changed') }],
-    ['A7:platform/index.md', (f: Record<string, string>) => { f['platform/index.md'] = f['platform/index.md'].replace('"WXL"', '"Changed"') }],
+    ['A7:platform/en/index.md', (f: Record<string, string>) => { f['platform/en/index.md'] = f['platform/en/index.md'].replace('"WXL"', '"Changed"') }],
     ['A7:platform/zh-TW/index.md', (f: Record<string, string>) => { f['platform/zh-TW/index.md'] = f['platform/zh-TW/index.md'].replace('"WXL"', '"Changed"') }],
     ['A8', (f: Record<string, string>) => { f['.vitepress/challenge/shortLink.ts'] = "export const SITE_ORIGIN = 'https://example.test'\n" }],
     ['A9', (f: Record<string, string>) => { f['.vitepress/config.mts'] = f['.vitepress/config.mts'].replace("const siteBase = process.env.SITE_BASE || '/'", "const siteBase = '/x/'") }],

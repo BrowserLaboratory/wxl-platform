@@ -146,7 +146,7 @@ The panel's Pyodide ships the CPython standard library. The autocomplete list na
 
 Two things this list does not mean:
 
-- Packages a challenge declares in its frontmatter are installed into the challenge's own runtime only. The Code panel's Pyodide installs `micropip` and `requests` and nothing else, so a package the challenge uses is not importable here.
+- Packages a challenge lists in its challenge declaration are installed into the challenge's own runtime only. The Code panel's Pyodide installs `micropip` and `requests` and nothing else, so a package the challenge uses is not importable here.
 - The panel's Pyodide is a second, independent instance with its own virtual filesystem, not shared with the challenge's. Reading a file from Python in this panel cannot reach the challenge's data.
 
 ### Installing a third-party package

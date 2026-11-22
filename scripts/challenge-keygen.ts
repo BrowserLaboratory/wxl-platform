@@ -2,14 +2,14 @@
  * challenge-keygen.ts
  *
  * Build-time pipeline for per-challenge WASM payload generation:
- *   1. Reads challenge markdown frontmatter (title, backend, app, fs, etc.)
+ *   1. Reads the challenge declaration, platform/challenge/<slug>/challenge.yaml (backend, app, etc.)
  *   2. Generates a random per-challenge AES-256 key (32 bytes)
  *   3. Encrypts all FS entries with AES-GCM-256 → raw bytes (iv || ct || tag)
  *   4. Derives flag_verifier (PBKDF2-HMAC-SHA256, 100k iterations)
  *   5. XOR-encodes the key with 3 compile-time masks (matching Rust key_derive.rs)
  *   6. Packs everything into a binary blob (matching Rust payload.rs format)
  *   7. Injects the blob into a copy of template.wasm as "chall-data" custom section
- *   8. Updates frontmatter with wasmModule path, removes legacy fields
+ *   8. Updates the declaration with the wasmModule path, removes legacy fields
  *
  * Usage:
  *   pnpm challenge:keygen [slug]          # process one challenge
@@ -18,7 +18,7 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, mkdtempSync, copyFileSync, statSync, renameSync, rmSync } from 'node:fs'
-import { resolve, dirname, join, basename } from 'node:path'
+import { resolve, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -29,6 +29,11 @@ import { parseFsIgnore } from './fsignore.ts'
 import { buildDisplayBundle, SOURCE_DISPLAY_KEY } from './challenge-source-display.ts'
 import { APP_KEY } from '../.vitepress/challenge/reserved-keys.ts'
 import { extractCustomSection } from '../.vitepress/theme/composables/useWasmLoader.ts'
+import { readPrimaryLocale } from '../.vitepress/primary-locale.ts'
+import { checkSourceLayout } from '../.vitepress/source-layout.ts'
+import { SiteLayoutError } from '../.vitepress/layout-error.ts'
+import { LEGACY_FIELDS } from '../.vitepress/challenge/config.ts'
+import { readChallengeDeclaration, declarationReadError } from '../.vitepress/challenge/declaration.ts'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -261,14 +266,6 @@ function concat(arrays: Uint8Array[]): Uint8Array {
   return result
 }
 
-// ─── Frontmatter helpers ────────────────────────────────────────────────────
-
-function parseMd(content: string): { fmRaw: string; body: string } | null {
-  const m = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
-  if (!m) return null
-  return { fmRaw: m[1], body: m[2] }
-}
-
 // ─── Source freshness detection ──────────────────────────────────────────────
 
 /**
@@ -290,20 +287,15 @@ export function isOutputStale(outputPath: string, inputPaths: string[]): boolean
 }
 
 /**
- * Collect all file paths that are tracked inputs for a per-folder challenge.
- * The list includes: challenge markdown, template WASM, all scanned src/ files,
- * .fsignore (if present), and the flag file.
- *
- * For legacy flat-file challenges this returns just [mdPath, templateWasmPath].
+ * Collect all file paths that are tracked inputs for a challenge.
+ * The list includes: the challenge declaration (challenge.yaml), template WASM, all scanned
+ * src/ files, .fsignore (if present), and the flag file. A brief under platform/<locale>/ is
+ * not an input: it never reaches the module (Y57).
  */
-export function getTrackedInputPaths(mdPath: string, templateWasmPath: string): string[] {
-  const paths: string[] = [mdPath, templateWasmPath]
+export function getTrackedInputPaths(declarationPath: string, templateWasmPath: string): string[] {
+  const paths: string[] = [declarationPath, templateWasmPath]
 
-  const filename = basename(mdPath)
-  const isPerFolder = filename === 'index.md'
-  if (!isPerFolder) return paths
-
-  const baseDir = dirname(mdPath)
+  const baseDir = dirname(declarationPath)
   const srcDir = resolve(baseDir, 'src')
   if (!existsSync(srcDir)) return paths
 
@@ -541,10 +533,6 @@ export function slugToSeed(slug: string): number {
   return (hash[0] | (hash[1] << 8) | (hash[2] << 16) | (hash[3] << 24)) >>> 0
 }
 
-// ─── Legacy field names (for detection / warning) ───────────────────────────
-
-const LEGACY_FIELDS = ['fs_key', 'fsKeyParts', 'encryptedFs', 'flag_verifier'] as const
-
 // ─── Main build pipeline ────────────────────────────────────────────────────
 
 /**
@@ -592,26 +580,43 @@ export function planDisplaySource(
   return { bytes: bundle.bytes, redactedCount: bundle.redactedCount }
 }
 
-async function processChallenge(mdPath: string, templateWasmPath: string, force: boolean): Promise<void> {
-  // New pattern: /path/challenge/<slug>/index.md → slug from parent dir
-  // Legacy pattern: /path/challenge/<slug>.md → slug from filename
-  const filename = basename(mdPath)
-  const slug = filename === 'index.md'
-    ? basename(dirname(mdPath))
-    : basename(mdPath, '.md')
-  const raw = readFileSync(mdPath, 'utf-8')
-  const parsed = parseMd(raw)
-  if (!parsed) { console.warn(`[skip] ${slug}: no frontmatter`); return }
+/**
+ * The slugs keygen processes (Y52): a folder under platform/challenge/ that holds a
+ * challenge.yaml. A folder with only src/ is not a challenge; the optional `target` keeps
+ * one slug.
+ */
+export function keygenSlugs(root: string, target?: string): string[] {
+  const challenges = resolve(root, 'platform', 'challenge')
+  return readdirSync(challenges, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .filter((d) => existsSync(join(challenges, d.name, 'challenge.yaml')))
+    .filter((d) => !target || d.name === target)
+    .map((d) => d.name)
+    .sort()
+}
 
-  const doc = parseDocument(parsed.fmRaw)
-  const fm = doc.toJSON() as Record<string, unknown>
+async function processChallenge(root: string, slug: string, templateWasmPath: string, force: boolean): Promise<void> {
+  const declaration = readChallengeDeclaration(root, slug)
+  if (!declaration.ok) {
+    if (declaration.reason === 'absent') {
+      console.warn(`[skip] ${slug}: declaration unreadable (${declaration.reason})`)
+      return
+    }
+    // D152: a declaration the reader rejects stops the run, with PL-E14's text for the reason; the
+    // challenges before it are done, none after it is touched.
+    console.error(`[${slug}] ${declarationReadError('', slug, declaration.reason).message}`)
+    process.exit(1)
+  }
+  const declarationPath = resolve(root, 'platform', 'challenge', slug, 'challenge.yaml')
+  const fm = declaration.value
+  const raw = readFileSync(declarationPath, 'utf-8')
+  const doc = parseDocument(raw)
 
   // Check if already processed: wasmModule field present AND output file exists AND inputs are fresh
   const hasWasmModule = typeof fm.wasmModule === 'string' && fm.wasmModule !== ''
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const outputWasmPath = resolve(root, 'platform', 'public', 'challenge', slug, 'runtime.wasm')
   if (hasWasmModule && existsSync(outputWasmPath) && !force) {
-    const trackedInputs = getTrackedInputPaths(mdPath, templateWasmPath)
+    const trackedInputs = getTrackedInputPaths(declarationPath, templateWasmPath)
     if (!isOutputStale(outputWasmPath, trackedInputs)) {
       console.log(`[skip] ${slug}: already processed (use --force to re-key)`)
       return
@@ -619,18 +624,13 @@ async function processChallenge(mdPath: string, templateWasmPath: string, force:
     console.log(`[stale] ${slug}: tracked inputs changed — rebuilding`)
   }
 
-  // Resolve source directory relative to the .md file
-  const baseDir = dirname(mdPath)
-  const isPerFolder = filename === 'index.md'
-  const srcDir = isPerFolder ? resolve(baseDir, 'src') : null
-
-  // ─── Resolve app source and FS entries ─────────────────────────────────────
+  // ─── Resolve app source and FS entries: auto-scan src/ ─────────────────────
+  const srcDir = resolve(dirname(declarationPath), 'src')
   let appContent: string
   let fsFiles: Array<{ virtualPath: string; data: Uint8Array }>
   let flagContent: string
 
-  if (isPerFolder && srcDir && existsSync(srcDir)) {
-    // ── New per-folder structure: auto-scan src/ ──
+  {
     const appRef = String(fm.app ?? 'app.py')
     const appPath = resolve(srcDir, appRef)
     if (!existsSync(appPath)) {
@@ -664,38 +664,6 @@ async function processChallenge(mdPath: string, templateWasmPath: string, force:
       return
     }
     flagContent = readFileSync(flagPath, 'utf-8')
-  } else {
-    // ── Legacy flat structure: explicit fs map ──
-    const appRef = String(fm.app ?? '')
-    const appPath = resolve(baseDir, appRef)
-    if (!existsSync(appPath)) {
-      console.warn(`[skip] ${slug}: app file not found: ${appPath}`)
-      return
-    }
-    appContent = readFileSync(appPath, 'utf-8')
-
-    const fsMap = (fm.fs ?? {}) as Record<string, string>
-    const fileBuffers: Record<string, Uint8Array> = {}
-    for (const [, ref] of Object.entries(fsMap)) {
-      const p = resolve(baseDir, ref)
-      if (!existsSync(p)) {
-        console.warn(`[skip] ${slug}: fs file not found: ${p}`)
-        return
-      }
-      fileBuffers[ref] = new Uint8Array(readFileSync(p))
-    }
-    fsFiles = Object.entries(fsMap).map(([vpath, ref]) => ({
-      virtualPath: vpath,
-      data: fileBuffers[ref] ?? new Uint8Array(0),
-    }))
-
-    // Flag from explicit fs map
-    const flagEntry = Object.entries(fsMap).find(([vpath]) => vpath === '/flag.txt')
-    if (!flagEntry) {
-      console.warn(`[skip] ${slug}: no /flag.txt entry in fs map`)
-      return
-    }
-    flagContent = new TextDecoder().decode(fileBuffers[flagEntry[1]])
   }
 
   const verifier = await deriveFlagVerifier(flagContent, slug)
@@ -791,6 +759,16 @@ async function processChallenge(mdPath: string, templateWasmPath: string, force:
     const staged = join(workDir, 'runtime.wasm')
     writeFileSync(staged, challWasm)
     assertPayloadIntact(new Uint8Array(readFileSync(staged)), payloadBlob, 'runtime.wasm')
+    // D80 (b): the declaration is written BEFORE the module is placed, so the module ends up
+    // newer than the declaration it is compared against and the next run reads [skip]. Both
+    // come after the integrity check: a module that fails it leaves neither file touched (Y59).
+    // D80 (a): bytes that did not change are not written, so the mtime does not move either.
+    doc.set('wasmModule', `/challenge/${slug}/runtime.wasm`)
+    for (const field of LEGACY_FIELDS) {
+      doc.delete(field)
+    }
+    const next = doc.toString({ lineWidth: 0 })
+    if (next !== raw) writeFileSync(declarationPath, next, 'utf-8')
     mkdirSync(outputDir, { recursive: true })
     copyFileSync(staged, outputPath)
   } catch (err) {
@@ -799,16 +777,6 @@ async function processChallenge(mdPath: string, templateWasmPath: string, force:
   } finally {
     rmSync(workDir, { recursive: true, force: true })
   }
-
-  // Update frontmatter: add wasmModule, remove legacy fields
-  doc.set('wasmModule', `/challenge/${slug}/runtime.wasm`)
-  for (const field of LEGACY_FIELDS) {
-    doc.delete(field)
-  }
-
-  const newFm = doc.toString({ lineWidth: 0 })
-  const newContent = `---\n${newFm}---\n${parsed.body}`
-  writeFileSync(mdPath, newContent, 'utf-8')
 
   console.log(`[done]  ${slug}`)
   console.log(`        wasmModule: /challenge/${slug}/runtime.wasm`)
@@ -823,8 +791,22 @@ async function main(): Promise<void> {
   const __filename = fileURLToPath(import.meta.url)
   const __dirname = dirname(__filename)
   const root = resolve(__dirname, '..')
-  const challenges = resolve(root, 'platform', 'challenge')
   const templateWasmPath = resolve(root, '.vitepress', 'wasm', 'virtual-fs', 'virtual_fs_bg.wasm')
+
+  // D123: range.json is read first, before the template check or any staging; a fault in it
+  // stops the command with the error's own text (no class name, no stack).
+  try {
+    const primary = readPrimaryLocale(join(root, 'range.json'))
+    // D19: then the layout check, so a page outside the locale folders is named before any
+    // challenge is touched.
+    checkSourceLayout(join(root, 'platform'), primary)
+  } catch (err) {
+    if (err instanceof SiteLayoutError) {
+      console.error(err.message)
+      process.exit(1)
+    }
+    throw err
+  }
 
   if (!existsSync(templateWasmPath)) {
     console.error(`Template WASM not found: ${templateWasmPath}`)
@@ -832,56 +814,35 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  // Prepare template WASM: strip symbols + optimize
+  // Prepare template WASM: strip symbols + optimize. The staged template is itself a tracked
+  // input of every challenge, so it is re-staged only when wasm-pack's output is newer, when
+  // it is missing, or under --force: re-staging on every run would make every challenge
+  // [stale] on the run after a rebuild (D80 (b), Y58).
   const preparedTemplatePath = resolve(root, preparedTemplateRelPath())
-  prepareTemplateWasm(templateWasmPath, preparedTemplatePath)
+  if (force || isOutputStale(preparedTemplatePath, [templateWasmPath])) {
+    prepareTemplateWasm(templateWasmPath, preparedTemplatePath)
+  }
 
-  // New pattern: platform/challenge/<slug>/index.md
-  const newPatternFiles = readdirSync(challenges, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .filter((d) => existsSync(join(challenges, d.name, 'index.md')))
-    .filter((d) => !target || d.name === target)
-    .map((d) => join(challenges, d.name, 'index.md'))
+  const slugs = keygenSlugs(root, target)
 
-  // Legacy pattern: platform/challenge/<slug>.md (fallback)
-  const legacyFiles = readdirSync(challenges)
-    .filter((f) => f.endsWith('.md') && f !== 'index.md')
-    .filter((f) => {
-      const slug = f.replace(/\.md$/, '')
-      // Skip if already handled by new pattern
-      return !newPatternFiles.some((nf) => nf.includes(`/${slug}/index.md`))
-    })
-    .filter((f) => !target || f === `${target}.md`)
-    .map((f) => join(challenges, f))
-
-  const files = [...newPatternFiles, ...legacyFiles]
-
-  if (files.length === 0) {
+  if (slugs.length === 0) {
     console.error(target ? `Challenge not found: ${target}` : 'No challenge files found')
     process.exit(1)
   }
 
   // Warn about legacy fields in any challenge
-  for (const f of files) {
-    const raw = readFileSync(f, 'utf-8')
-    const parsed = parseMd(raw)
-    if (!parsed) continue
-    const doc = parseDocument(parsed.fmRaw)
-    const fm = doc.toJSON() as Record<string, unknown>
-    const fnBase = basename(f)
-    const slug = fnBase === 'index.md' ? basename(dirname(f)) : basename(f, '.md')
+  for (const slug of slugs) {
+    const declaration = readChallengeDeclaration(root, slug)
+    if (!declaration.ok) continue
     for (const field of LEGACY_FIELDS) {
-      if (field in fm) {
+      if (field in declaration.value) {
         console.warn(`[warn] ${slug}: deprecated field '${field}' found — will be removed`)
       }
     }
-    if (!f.endsWith('/index.md')) {
-      console.warn(`[warn] ${slug}: using legacy flat file structure — consider migrating to ${slug}/index.md + src/`)
-    }
   }
 
-  for (const f of files) {
-    await processChallenge(f, preparedTemplatePath, force)
+  for (const slug of slugs) {
+    await processChallenge(root, slug, preparedTemplatePath, force)
   }
 }
 

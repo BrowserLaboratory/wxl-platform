@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref, reactive, h, defineComponent } from 'vue'
+import { existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
 
 /**
  * The REAL theme entry, not a copy of its wiring.
@@ -33,8 +36,19 @@ vi.mock('../../../.vitepress/theme/layouts/ChallengeLayout.vue', () => ({
 // The page list the build ships (spec 0008, seam S2). Only a published page is an explicit
 // request on a cold load, so the prefixed path below has to be one.
 vi.mock('../../../.vitepress/theme/i18n/publishedPages', () => ({
-  publishedPages: () => ['/', '/challenges', '/guide/', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/'],
+  // Both trees: the P = zh-TW cases below need the `/en/...` entries (S1-5/S1-6/S1-7's
+  // mirrored cases), beyond the `/zh-TW/...` entries the P = en cases already used.
+  publishedPages: () => [
+    '/', '/challenges', '/guide/', '/zh-TW/', '/zh-TW/challenges', '/zh-TW/guide/',
+    '/en/', '/en/challenges', '/en/guide/',
+  ],
 }))
+
+// `P` (D31): defaults to 'en', today's build, so every existing case below (which treats the
+// unprefixed tree as primary and `/zh-TW/` as the translation) keeps its meaning unchanged (T1).
+// The new P = zh-TW cases set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
 
 // ─── The shared-machine session gate ─────────────────────────────────────────
 //
@@ -90,8 +104,15 @@ const RENDERED: Record<string, { isNotFound: boolean; relativePath: string }> = 
   '/guide/': { isNotFound: false, relativePath: 'guide/index.md' },
   '/zh-TW/': { isNotFound: false, relativePath: 'zh-TW/index.md' },
   '/zh-TW/guide/': { isNotFound: false, relativePath: 'zh-TW/guide/index.md' },
+  '/en/guide/': { isNotFound: false, relativePath: 'en/guide/index.md' },
   '/zh-TW/no-such-page': { isNotFound: true, relativePath: 'zh-TW/no-such-page.md' },
   '/wxl/challenges/': { isNotFound: false, relativePath: 'challenges.md' },
+  // S1-5/S1-6 (A5/A6, under P = zh-TW, T = en): mirrored translation-tree fixtures the P = en
+  // half above does not need.
+  '/en/': { isNotFound: false, relativePath: 'en/index.md' },
+  '/en/challenges/': { isNotFound: false, relativePath: 'en/challenges.md' },
+  '/en/no-such-page': { isNotFound: true, relativePath: 'en/no-such-page.md' },
+  '/wxl/en/challenges/': { isNotFound: false, relativePath: 'en/challenges.md' },
 }
 function setPath(p: string) {
   const rendered = RENDERED[p]
@@ -113,6 +134,7 @@ beforeEach(() => {
   mockFrontmatter.value = {}
   setPath('/')
   i18n.global.locale.value = 'en'
+  mockPrimaryLocale.value = 'en'
 })
 afterEach(() => {
   for (const wrapper of mountedLayouts.splice(0)) wrapper.unmount()
@@ -168,6 +190,49 @@ describe('the real Layout: cold-load redirect', () => {
     setPath('/wxl/challenges/')
     const w = mountLayout()
     expect(mockGo).toHaveBeenCalledWith('/wxl/zh-TW/challenges', { replace: true })
+    w.unmount()
+  })
+
+  // S1-5 (A5, A3, A7): the same four properties mirrored under P = zh-TW (T = en) — the
+  // unprefixed tree is now the primary (zh-TW's own), and `/en/` is the translation tree.
+  it('under P = zh-TW, navigates to the stored locale from an unprefixed path (A3)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+    w.unmount()
+  })
+
+  it('under P = zh-TW, replaces the history entry rather than pushing', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    expect(mockGo).toHaveBeenCalledTimes(1)
+    expect(mockGo.mock.calls[0][1]).toEqual({ replace: true })
+    w.unmount()
+  })
+
+  it.each([
+    ['stored matches the path', 'zh-TW', '/challenges/'],
+    ['the path is explicitly prefixed', 'zh-TW', '/en/guide/'],
+  ] as const)('under P = zh-TW, does not navigate when %s', (_label, stored, path) => {
+    mockPrimaryLocale.value = 'zh-TW'
+    if (stored) window.localStorage.setItem(LOCALE_STORAGE_KEY, stored)
+    setPath(path)
+    const w = mountLayout()
+    expect(mockGo).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('under P = zh-TW, keeps the locale segment inside a non-empty site base', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    mockBase.value = '/wxl/'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/wxl/challenges/')
+    const w = mountLayout()
+    expect(mockGo).toHaveBeenCalledWith('/wxl/en/challenges', { replace: true })
     w.unmount()
   })
 })
@@ -260,6 +325,84 @@ describe('the real theme: cold-load persistence', () => {
     bootstrap()
     expect(i18n.global.locale.value).toBe('en')
   })
+
+  // S1-5 (A5, W2-W6, A7): the same persistence properties mirrored under P = zh-TW (T = en).
+  it('under P = zh-TW, writes nothing at bootstrap, even on a prefixed path, and still sets the interface locale', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/en/guide/')
+    bootstrap()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+    expect(i18n.global.locale.value).toBe('en')
+  })
+
+  it('under P = zh-TW, updates the stored preference once the Layout mounts on a published prefixed page', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/en/guide/')
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+  })
+
+  it('under P = zh-TW, leaves the stored preference alone on a failed load of a prefixed page', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/en/guide/')
+    mockPage.value = { isNotFound: true, relativePath: 'en/guide/index.md' }
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+  })
+
+  it('under P = zh-TW, leaves the stored preference alone on a prefixed path that is not a page', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/en/no-such-page')
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('zh-TW')
+  })
+
+  it('under P = zh-TW, leaves the stored preference alone on an unprefixed path', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en')
+  })
+
+  it('under P = zh-TW, writes nothing at all on an unprefixed path with no prior preference', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    setPath('/challenges/')
+    bootstrap()
+    mountLayout()
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull()
+  })
+
+  it('under P = zh-TW, mounts without throwing when storage cannot be written', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    setPath('/en/guide/')
+    const spy = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+    try {
+      bootstrap()
+      expect(() => mountLayout()).not.toThrow()
+      expect(i18n.global.locale.value).toBe('en')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('under P = zh-TW, sets the runtime locale from the URL alone', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    bootstrap()
+    expect(i18n.global.locale.value).toBe('zh-TW')
+  })
 })
 
 describe('the real Layout: route watcher', () => {
@@ -267,6 +410,25 @@ describe('the real Layout: route watcher', () => {
     ['/zh-TW/guide/', 'zh-TW'],
     ['/guide/', 'en'],
   ] as const)('navigating to %s drives the runtime locale to %s', async (path, expected) => {
+    const w = mountLayout()
+    setPath(path)
+    await w.vm.$nextTick()
+    expect(i18n.global.locale.value).toBe(expected)
+    w.unmount()
+  })
+
+  // A29, under P = zh-TW (T = en): `/guide/` is the primary tree (unprefixed), `/en/guide/` is
+  // the translation tree, and `/zh-TW/guide/` is neither — it does not carry `/en/`'s prefix, so
+  // the rule's silent fallback resolves it to `P` too, same as the unprefixed path. These two
+  // fixture paths reuse the pre-switch literal strings `RENDERED` already covers (the watcher
+  // never reads the page list), with the expectation flipped for the new primary; the third row
+  // below is the one that actually exercises the translation tree under this `P`.
+  it.each([
+    ['/zh-TW/guide/', 'zh-TW'],
+    ['/guide/', 'zh-TW'],
+    ['/en/guide/', 'en'],
+  ] as const)('under P = zh-TW, navigating to %s drives the runtime locale to %s (A29)', async (path, expected) => {
+    mockPrimaryLocale.value = 'zh-TW'
     const w = mountLayout()
     setPath(path)
     await w.vm.$nextTick()
@@ -392,6 +554,36 @@ describe('the real Layout: the shared-machine session gate', () => {
     expect(mockGo).not.toHaveBeenCalled()
   })
 
+  // A33 (A3, A1): the root path round-trips through the same redirect logic as any other
+  // primary page — no special-casing. Both P.
+  it('cold load of / with stored T and /<T>/ listed redirects there (A3)', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
+    setPath('/')
+    mountLayout()
+    expect(mockGo).toHaveBeenCalledWith('/zh-TW/', { replace: true })
+  })
+
+  it('cold load of / with no preference stays (A1)', () => {
+    setPath('/')
+    mountLayout()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, cold load of / with stored T and /<T>/ listed redirects there (A3)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/')
+    mountLayout()
+    expect(mockGo).toHaveBeenCalledWith('/en/', { replace: true })
+  })
+
+  it('under P = zh-TW, cold load of / with no preference stays (A1)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    setPath('/')
+    mountLayout()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
   it('releases the held redirect when a stopped clear\'s report is dismissed', async () => {
     // The half that was missing. A clear that stops after the database delete withdraws
     // continue and fails again on retry, so `dismissed` is the only value the decision
@@ -470,6 +662,129 @@ describe('the real Layout: the shared-machine session gate', () => {
     await new Promise(r => setTimeout(r, 0))
     expect(mockGo).toHaveBeenCalledWith('/zh-TW/challenges', { replace: true })
   })
+
+  // S1-6 (A6, A33): the cases above that hold a redirect on to a locale-specific target, or
+  // that the learner's answer withdraws, mirrored under P = zh-TW (T = en), stored T. The purely
+  // structural cases of this describe (whether the gate stub mounts, whether it asks) carry no
+  // locale-specific literal and are not mirrored.
+  it('under P = zh-TW, does not redirect while the choice is unanswered (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGateEvaluate).toHaveBeenCalled()
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, holds the redirect on any page while a clear is unconfirmed (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateClearStarted.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = {}
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, does not redirect when the learner chooses to clear (A33)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+
+    gateShouldAsk.value = false
+    gateDecision.value = 'cleared'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, redirects in the same tick when this session has already answered (A6)', () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = true
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+    expect(mockGateEvaluate).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, redirects once the learner chooses to continue (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+
+    gateShouldAsk.value = false
+    gateDecision.value = 'kept'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+  })
+
+  it('under P = zh-TW, releases the held redirect when a stopped clear\'s report is dismissed (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+
+    gateShouldAsk.value = false
+    gateDecision.value = 'dismissed'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+  })
+
+  it('under P = zh-TW, redirects on a page that does not present the choice, without waiting for an answer (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = {}
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(mockGateEvaluate).toHaveBeenCalled()
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+  })
+
+  it('under P = zh-TW, redirects after the gate finds nothing to ask about (A6)', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = false
+    gateDecision.value = 'not-needed'
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).toHaveBeenCalledWith('/en/challenges', { replace: true })
+  })
 })
 
 
@@ -528,5 +843,84 @@ describe('the real Layout: the deferred redirect does not outlive the layout', (
     gateDecision.value = 'kept'
     await new Promise(r => setTimeout(r, 0))
     expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  // Under P = zh-TW (T = en), stored T: the same three properties.
+  it('under P = zh-TW, stops following the gate decision once unmounted', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    mockFrontmatter.value = { layout: 'challenge' }
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    await new Promise(r => setTimeout(r, 0))
+    w.unmount()
+
+    gateDecision.value = 'kept'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, does not redirect when the gate answers after the unmount', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateDecision.value = 'not-needed'
+    let release!: () => void
+    mockGateEvaluate.mockImplementationOnce(() => new Promise<void>((r) => { release = () => r() }))
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    w.unmount()
+
+    release()
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+
+  it('under P = zh-TW, starts no decision watcher when the gate answers after the unmount', async () => {
+    mockPrimaryLocale.value = 'zh-TW'
+    markerPresent = false
+    gateShouldAsk.value = true
+    gateDecision.value = 'undecided'
+    let release!: () => void
+    mockGateEvaluate.mockImplementationOnce(() => new Promise<void>((r) => { release = () => r() }))
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    setPath('/challenges/')
+    const w = mountLayout()
+    w.unmount()
+
+    release()
+    await new Promise(r => setTimeout(r, 0))
+    gateDecision.value = 'kept'
+    await new Promise(r => setTimeout(r, 0))
+    expect(mockGo).not.toHaveBeenCalled()
+  })
+})
+
+describe('the real theme: Layout.vue is gone (B80)', () => {
+  it('the dead-code file does not exist, and nothing in code references it', () => {
+    const repoRoot = resolve(__dirname, '../../..')
+    expect(existsSync(resolve(repoRoot, '.vitepress/theme/Layout.vue'))).toBe(false)
+
+    // Built without the literal, so this line itself is not a hit.
+    const needle = 'theme/' + 'Layout'
+    let output = ''
+    try {
+      output = execFileSync(
+        'git',
+        [
+          'grep', '-n', needle, '--',
+          '.vitepress', 'tests', 'scripts', 'create-wxl', '.github',
+          ':!tests/unit/i18n/theme-locale-wiring.test.ts',
+        ],
+        { cwd: repoRoot, encoding: 'utf8' },
+      )
+    } catch (err: unknown) {
+      // `git grep` exits 1 when it finds nothing — the passing case.
+      if ((err as { status?: number }).status !== 1) throw err
+    }
+    expect(output.split('\n').filter(Boolean)).toEqual([])
   })
 })

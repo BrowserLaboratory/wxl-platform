@@ -1,11 +1,21 @@
 # Spec 0010: Primary-locale layout — every locale in its own folder, the range chooses the root
 
-Status: revision 2.2 (2026-11-15). Revision 2.1 (traceability "Revision 2.1", T-0076 stage 5) adds
+Status: revision 2.5 (2026-11-17). Revision 2.1 (traceability "Revision 2.1", T-0076 stage 5) adds
 D143 (`platform/challenge/index.md` is an ordinary page, not a single-file brief) and D144 (the
 upgrade's move never lets `yaml` write to the terminal; a warning fails the parse). Revision 2.2
 (traceability "Revision 2.2", T-0076 stage 7) adds D145 (a mapping key that is not a scalar fails
 the parse, in the move and in the declaration reader) and D146 (both parsers pass
-`resolveKnownTags: false`, so an explicit YAML 1.1 tag fails the parse), and extends rows U25 and U47. Revision 1, with the same day's self-check applied (traceability
+`resolveKnownTags: false`, so an explicit YAML 1.1 tag fails the parse), and extends rows U25 and U47 (and D147, the site half of D145/D146). Revision 2.3
+(traceability "Revision 2.3", T-0077 stage 5) adds D148 (B90 keeps the two pinned setup-record
+sentences), D149 (Overridden contracts completed for T-0077) and D150 (S51's refusal text); no
+behaviour row changes. Revision 2.4 (traceability "Revision 2.4", T-0077 stage 6) adds D151 (the
+article before a locale's display name in the hook's W6a and W6c lines: `an English brief`, `a
+Traditional Chinese brief`), D152 (keygen stops on a declaration the reader rejects; row Y114) and
+D153 (three more upstream-only entries in D124's list), and rewrites or annotates in place the rows
+and decisions that revision names. Revision 2.5 (traceability "Revision 2.5", T-0077 stage 7, finding SR-1) adds D154
+(the old-address section is safe by construction: `/zh-TW/  /`, one rule per top-level page and per
+top-level folder of pages of the primary folder, no catch-all; chosen by the user in person on
+2026-11-17 under D118) and rewrites in place the rows it names. Revision 1, with the same day's self-check applied (traceability
 "Checks on revision 1"), was reviewed in stage 3 round 1 (`review/round-1-C.md`, `-V.md`, `-K.md`,
 `-R.md`). Revision 2 applies round 1's disposition (`review/disposition.md`): every P1 and P2 finding
 is fixed or declined with its reason; it adds decisions D122–D141, rows B93–B95, S76–S80, Y107–Y113,
@@ -16,8 +26,10 @@ and adds D142 and PAT6. Round 1 found no P0, so the stage 3 gate is met; by the
 self-checked instead (traceability "Checks on revision 2"). Derived from `traceability.md`, which
 holds:
 
-- the decisions D1–D146 (stage 1 decisions realised, and the new decisions of stage 2 and of
-  revisions 2, 2.1 and 2.2, each approved under the user's standing authorization of 2026-11-15; as
+- the decisions D1–D154 (stage 1 decisions realised, and the new decisions of stage 2 and of
+  revisions 2, 2.1, 2.2, 2.3, 2.4 and 2.5, each approved under the user's standing authorization of
+  2026-11-15, revision 2.4's under that of 2026-11-17, and D154 chosen by the user in person on
+  2026-11-17; as
   `docs/agents/workflow.md` requires, each new or changed D-number is still confirmed by the user
   from a short decision summary before it is implemented);
 - the seams 0010-S1 to 0010-S52 and the ticket constraints T1–T9;
@@ -269,13 +281,14 @@ only through `pageLocaleOf(localeIndex, P)` (D32).
   (`/<P>/…`, R22's old URLs) goes to the path without that segment, on every host, or, when that path
   is not a page but its translation is, to the translation (D28's fall-through, so both hosts land
   alike); a primary path goes to the translation's page (0008 C2 kept). The requested locale is always the path's own (D27,
-  D28). On Cloudflare the old-address rule answers first, so a stored translation locale may then
+  D28). On Cloudflare the old-address rule that covers the address (D154) answers first, so a stored translation locale may then
   redirect; on GitHub Pages the strip is a not-found redirect and no cold-load redirect follows it —
-  accepted (D29); when `P = zh-TW` a doubled prefix (`/zh-TW/en/x`, `/zh-TW/zh-TW/x`) also lands
-  differently on the two hosts, accepted, while under `P = en`, which has no old-address rule, both
-  hosts land alike on the not-found page (D138). A short link coded with the primary locale lands on a primary-locale page, so it
+  accepted (D29); a doubled prefix (`/zh-TW/en/x`, `/zh-TW/zh-TW/x`) matches no old-address rule
+  under either `P`, so both hosts land alike on the not-found page (D138, revision 2.5). A short link coded with the primary locale lands on a primary-locale page, so it
   follows the preference (D30): on a Traditional-Chinese-primary range `/zh-TW/c/NNN` opens English
-  for a learner who chose English, while a translation-coded link always opens that translation.
+  for a learner who chose English, while a translation-coded link opens that translation whatever
+  the locale preference when the challenge has it, and opens the primary locale's page when it does
+  not (D58).
 - The line and the mark keep their two-locale sentences, correct under either primary locale; a
   unit test fails at any other list length and names the Japanese epic (D33). The switcher menu is
   the list minus the page locale, plus the page locale while the line shows (D34). The session
@@ -299,12 +312,17 @@ use the page locale's language tag in UTC (D45). Every numbered row has a copy c
 Traditional-Chinese-only, live in a reserved `smoke-fixtures` folder of each locale folder and are
 published only when the build runs with `WXL_SMOKE_PAGES` exactly `1`; CI's smoke job sets it and
 the production build job fails if any trace of them ships, so the predicate and every
-`smoke-fixtures` literal live in node-only modules, never in the client bundle. The flag never
+`smoke-fixtures` literal live in node-only modules, never in the client bundle (the redirect generator writes the name once more, as a constant, D154). One node-only
+module exports both the predicate `isSmokeFixturePage`, which the page list uses, and the globs
+`SMOKE_FIXTURE_GLOBS`, derived from the locale list, which `srcExclude` uses; the two describe the
+same set of paths. The flag never
 changes the primary locale, and the layout check treats fixture pages as ordinary locale pages in
 every mode. The Traditional Chinese reference page is added (D51), and an upstream-only test requires
 every page in every locale (D52). Every test that asserts on upstream's own content is
 upstream-only too, and every other test derives what it expects from the primary locale and the
-tree it runs on, so a range's CI, which runs the same jobs, passes (D54, D124). Exploit specs keep their URL, which now opens the primary brief
+tree it runs on, so a range's CI, which runs the same jobs, passes (D54, D124; D153 adds U136's
+root half, B95's comparison with create-wxl's copy and B60's literal equality of the site title and
+description). Exploit specs keep their URL, which now opens the primary brief
 (D53).
 
 **Short links, numbers and the hook (D57–D72, D118, D121).** The rule forms come from the locale
@@ -312,9 +330,10 @@ list in a fixed order, `/c/`, `/en/c/`, `/zh/c/`, `/zh-TW/c/` (D57). A numbered 
 `L` targets the challenge's page in `L`, else in the primary locale, else in the first listed locale
 with a brief, and always the page itself, never an address that would hop (D58). Slug rules follow
 the same mapping (D59). On a Traditional-Chinese-primary range the file ends with R22's old-address
-rule `/zh-TW/*  /:splat  302` (D60); because its target starts with request text, an open-redirect
-check is a stage 8 gate, and only if it fails does the user choose a rule set that is safe by
-construction (D118). The header states the capacity computed from the form count (D61). Numbers are safe integers from 1 to 2^53 − 1 and come
+section (D60, D154): `/zh-TW/  /`, one static rule for each top-level page and one `/zh-TW/<dir>/*`
+rule for each top-level folder of pages of `platform/zh-TW/`, none for `c` and `smoke-fixtures`, all
+302. Every target begins with a fixed name, never with request text, so the section is safe by
+construction; the user chose it in person after stage 7's finding SR-1 (D118). The header states the capacity computed from the form count (D61). Numbers are safe integers from 1 to 2^53 − 1 and come
 from `challenge.yaml` only; `number-locales` goes; retired numbers are read from retired
 declarations and from legacy retired briefs (D62, D63). One pure function reports brief faults
 over git's index: `missing-primary` once per slug, `missing-declaration` once per brief without a
@@ -327,8 +346,10 @@ from the index (D65–D67, D122, D126). One function gives a challenge
 page's path for the generator and the copy control (D68). Whether T-0058 and T-0059 are taken is
 stage 4's call; the spec recommends both (D72).
 
-**Tools on the declaration (D80–D90, D123, D129, D145, D146).** Every tool that reads `range.json` reads it
-first and stops on an unusable one with its PL line before touching any challenge (D123). A
+**Tools on the declaration (D80–D90, D123, D129, D145, D146, D152).** Every tool that reads `range.json` reads it
+first and stops on an unusable one with its PL line before touching any challenge (D123); where a
+criterion says that line is the first on stderr, lines Node itself prints as runtime warnings are
+not counted. A
 declaration with a duplicate key, an unresolved tag, too many aliases, an alias without its
 anchor or a mapping key that is not a scalar (a collection or an alias) is invalid YAML (D129,
 D145); so is an explicit YAML 1.1 tag such as `!!timestamp`, `!!binary`, `!!merge` or `!!set`,
@@ -336,14 +357,17 @@ because the reader passes `resolveKnownTags: false` and such a tag is unresolved
 declaration reader checks keys before converting, so `yaml` writes nothing to the terminal, and
 every value it returns is a string, number, boolean, null, sequence or mapping.
 keygen writes `wasmModule` into `challenge.yaml` only when
-its bytes change and tracks the declaration and `src/`, never a brief (D80). Flat single-file
+its bytes change and tracks the declaration and `src/`, never a brief (D80); on a declaration the
+reader rejects it stops with exit 1, printing `[<slug>] ` and PL-E14's text, and writes no file for
+any later challenge (D152). Flat single-file
 challenges are gone from every tool (D81). `create:challenge` runs the layout check first and
 refuses a legacy-layout tree, then writes the primary brief, the declaration and `src/`, with
 scaffold text keyed by locale, and refuses a slug that any challenge directory or locale brief
 folder already holds (D82–D84). The slug grammar is enforced only there (and by the generator if
 T-0059 is taken); other tools accept any directory name. The L4 player package reads the primary
 brief (D85). Validation checks the declaration once, every brief that exists, the primary brief's
-presence and the challenge directory's structure (D86, D117). A running dev server shows a
+presence and the challenge directory's structure (D86, D117); when the declaration check fails, no
+other check runs for that challenge. A running dev server shows a
 declaration edit in the lists after a reload and on the challenge page after a restart (D87, N18).
 retype changes only `challenge.yaml`; analyze takes the title from the primary brief (D89, D90).
 
@@ -382,7 +406,7 @@ the working tree until the first new-layout release is tagged, that tag afterwar
 | TB2 | Repository content → build: page names, links, frontmatter (B-T2, Y) | Names reach only error messages, quoted in PL-E07–PL-E12 (D140); home-page links are only prefixed with a listed code and checked against the page list, and a protocol-relative one fails (D141); internal markdown links are bounded to published pages by PL-E11 and VitePress's check. The assembled frontmatter ships the declaration once per locale page, as frontmatter shipped before; a translation can no longer widen `tools` or `source_visible` | PL-E13–PL-E18 print paths and frontmatter keys bare, so a control character in a folder name or a key reaches the terminal raw there (D140); `challenge.yaml` ships whole to every learner's browser in page data, so it must hold no secret; every key in it, VitePress page keys such as `head` included, now acts on every locale page instead of one (the population that writes it is the one that wrote briefs; no denylist, D74); no automated check that the flag's value is absent from it is added (deferred, Out of Scope); stage 7 checks it once for this change (Y106) | Raw HTML links and component-built links are not checked (documented) |
 | TB3 | Build → client constants (B-T3, A TA3) | The page list and the primary locale are fixed at build time; nothing at run time changes them | A teacher's chosen root language, which is the purpose | — |
 | TB4 | URL → where the learner is sent (A TA1, 0008 B2) | Every redirect target is the base followed by a page-list entry, through the router. The primary-code strip runs after decoding and after the `//`, `\`, `..` rejection, removes one whole segment and must land on a primary-locale entry, or, for an unlisted primary path, on its translation counterpart's entry | A path naming a real page sends the learner there, which is the purpose | — |
-| TB5 | `_redirects` → Cloudflare's edge → the learner (S TB-S1) | Every rule's target is same-origin by construction (a fixed first segment with one slug segment, or a literal page), except the old-address rule `/:splat`, whose target begins with request text; S61 gates it at stage 8 (D118) | Until S61 passes, whether Cloudflare normalises `//` and `\` before matching is unverified; a fallback rule set exists if it does not. The rule is written on every Traditional-Chinese-primary range, also one created after this release that never served `/zh-TW/…` addresses (R22 as written); S61 is observed once, and an open question asks for a re-check when Cloudflare changes its redirect handling (B88) | Cloudflare's own behaviour beyond what S60 and S61 observe |
+| TB5 | `_redirects` → Cloudflare's edge → the learner (S TB-S1) | Every rule's target is same-origin by construction (a fixed first segment, or the name of a top-level entry of the primary folder, with at most one slug or splat segment after it, or a literal page); no target begins with request text (D154) | The first text of this row named the old-address rule `/:splat` as the exception and made S61 its gate; stage 7's SR-1 showed that rule can answer a literal `//` or `\` with an off-site `Location`, and the user chose the safe form. S61 is still observed at stage 8, now of a property that holds by construction. The rules are written on every Traditional-Chinese-primary range, also one created after this release that never served `/zh-TW/…` addresses | Cloudflare's own behaviour beyond what S60 and S61 observe |
 | TB6 | Directory names → rule text and terminal (S TB-S2, TB-S4) | Slugs come from directory names; as today the targets stay on the site | Without T-0059, a name with whitespace splits a rule and an all-digit slug can shadow a number; without T-0058, names with control characters reach the hook's terminal raw | — |
 | TB7 | Learner's acts → stored preference → routing (A TA2, 0008 B4) | Only listed codes are honoured, exactly; only a switcher choice and a cold load of a published translation page write | Any page can link to a `/<T>/` address and set `T`; on a Traditional-Chinese-primary range a link can now set English. Ranges under one GitHub Pages owner still share the preference (R8, OQ-018); `fork:init --rebrand` renames the `wxl-locale` key, so only ranges with the same key share it | — |
 | TB8 | Session gate → navigation (A TA4, ADR-0006) | Unchanged: redirects and their lines wait for the gate's decision; a switcher's line does not | As ADR-0006: the gate is a notice, not access control | — |
@@ -528,7 +552,7 @@ judged at the seam its rows name; the rows hold the literal values.
   entry state the rules above and are true under both primaries; none
   says English is the root, `'root'` means English, that a default visiting locale exists, or that a
   learner with no preference sees the primary locale (they see the locale of the address they
-  opened).
+  opened, except on the landing of a not-found redirect, AC-12).
   (A34–A37)
 
 ### Lists, home page, smoke fixtures (area L)
@@ -557,11 +581,12 @@ judged at the seam its rows name; the rows hold the literal values.
   list pages' `<meta name="description">` stays the site's; on the built upstream test build, `/challenges`, `/en/challenges`, `/` and
   `/en/` show the same strings with JavaScript disabled and after hydration. (L23–L28, L30–L33,
   L45, L46)
-- **AC-23** Only `WXL_SMOKE_PAGES=1` publishes the two fixture pages, and the page list and
-  `srcExclude` agree through `isSmokeFixturePage`, which, like every `smoke-fixtures` literal,
-  is outside the client entry's import graph; CI's production build fails if any trace of
-  `smoke-fixtures` ships; the smoke suite fails fast with a message naming the flag when a fixture
-  is missing; `missing-translation.spec.ts`'s cases run on the fixtures (no case names the export
+- **AC-23** Only `WXL_SMOKE_PAGES=1` publishes the two fixture pages, and the page list (through
+  the predicate `isSmokeFixturePage`) and `srcExclude` (through the globs `SMOKE_FIXTURE_GLOBS`)
+  describe the same set of paths; one node-only module exports both and, like every
+  `smoke-fixtures` literal, is outside the client entry's import graph; CI's production build fails
+  if any trace of `smoke-fixtures` ships; when a fixture is missing, the smoke run fails before any
+  case of the file passes, with a message naming `WXL_SMOKE_PAGES=1`; `missing-translation.spec.ts`'s cases run on the fixtures (no case names the export
   format reference) and pass; the page-list spelling test passes on the test build. (L34–L39, L47)
 - **AC-24** The Traditional Chinese export-format reference has the English page's headings, table
   rows, fenced blocks and inline code; the notes page links to it in its own folder; the
@@ -588,13 +613,13 @@ judged at the seam its rows name; the rows hold the literal values.
   `nextChallengeNumber` reserves live, retired-declaration and legacy retired numbers; an unlisted
   locale folder changes nothing; `isChallengeNumber` accepts exactly the safe integers from 1 and
   the generator never spells a number with an exponent. (S12–S21, S75)
-- **AC-29** The slug rules follow S-§4.1 or S-§4.2 by `P`; the old-address rule is the last rule
-  exactly when `P = zh-TW`; every numbered rule precedes every dynamic rule; the header and section
+- **AC-29** The slug rules follow S-§4.1 or S-§4.2 by `P`; the old-address section is the last in the file
+  exactly when `P = zh-TW`, and none of its rules has the source `/zh-TW/*`; every numbered rule precedes every dynamic rule; the header and section
   comments equal K1–K5 with the computed counts (400 with an injected fifth form). (S22–S27)
 - **AC-30** The committed `_redirects` is byte-identical to generation over git's index with the
   index's `range.json`; every committed rule matches one of S30's three shapes (the numbered regex, the
-  `P`-specific slug list, the old-address rule); the shadow check treats the splat as shadowing every
-  later `/zh-TW/` rule and finds nothing (S31); every target resolves through the page-path mapping,
+  `P`-specific slug list, an old-address rule of D154's three shapes); the shadow check treats a source
+  ending `/*` as shadowing every later rule under its prefix and finds nothing (S31); every target resolves through the page-path mapping,
   with the primary's challenge folder required and a slug folder without `index.md` ignored (D127); `briefFaults` returns `[]` on
   the repository and, for each fixture case under both primaries, exactly the faults S35 counts
   (one `missing-primary` per slug, one `missing-declaration` per brief, one `old-layout` per path),
@@ -659,13 +684,17 @@ judged at the seam its rows name; the rows hold the literal values.
   without `wasm_fs_list` shows the runtime error naming `pnpm challenge:keygen`; stage 8 shows the
   same tool surface on both locale pages. (Y49–Y51)
 - **AC-39** keygen processes only challenge directories with a `challenge.yaml`, writes `wasmModule`
-  there (deleting legacy fields, other lines unchanged, no brief touched), leaves each upstream file
+  there (deleting legacy fields; the other keys' values, order and comments unchanged, formatting as
+  `yaml`'s `toString({ lineWidth: 0 })` writes it; no brief touched), leaves each upstream file
   byte-identical after `--force`, writes nothing when the bytes would not change, is stale only for
   the declaration, `src/`, `.fsignore` and the template, converges on a second run (or the ticket
   stops for the user, D133), aborts on a
-  payload failure with both files unchanged, ignores flat files, keeps every `source_files`
-  failure, and on an unusable `range.json` exits 1 with its PL line first and writes nothing
-  (Y107). (Y52–Y61, Y107)
+  payload failure with both files unchanged, ends with PL-E08, no flat-file warning and nothing
+  written on a tree holding a flat file (Y60), keeps every `source_files`
+  failure, on an unusable `range.json` exits 1 with its PL line first and writes nothing
+  (Y107), and on a declaration `readChallengeDeclaration` rejects exits 1 with one stderr line,
+  `[<slug>] ` followed by PL-E14's text, and writes no file for any later challenge (Y114).
+  (Y52–Y61, Y107, Y114)
 - **AC-40** retype changes only the named keys of `challenge.yaml` (comments, order and briefs
   byte-identical), refuses a slug without one, keeps the backend-swap flow, and never reads a brief;
   analyze titles from the primary brief (slug fallback), reads the rest from the declaration,
@@ -787,7 +816,7 @@ judged at the seam its rows name; the rows hold the literal values.
   `Location`; S59's precedence is observed and recorded (true or false; false means one extra hop and
   is not a failure, D60); old addresses reach the root, and doubled prefixes and a `platform/public/zh-TW/` file are
   observed and recorded (S60, D138); no crafted path, single- or double-encoded slashes and
-  backslashes, tab, CR and LF included, gives an off-origin `Location` (S61, the only gate: a failure stops the ticket for the user's choice, D118); the copy
+  backslashes, tab, CR and LF included, gives an off-origin `Location` (S61, the only gate: a failure stops the ticket for the user's choice, D118; by construction after D154); the copy
   controls show `wxl.browserlab.online/<list locale>/c/NNN` and their targets are checked by
   requesting the same path on the preview; on a scratch clone of F-2 the hook re-targets
   rules after a translation and after a `primaryLocale` change. (S57–S63, V-S1–V-S7)
@@ -807,7 +836,7 @@ judged at the seam its rows name; the rows hold the literal values.
   outside `platform/` plus `platform/shared/` and `platform/public/` in place of step 1, also give a
   building site; the upgraded range's unit suite passes; a fork with no page of its own pulls the release, builds and serves Traditional Chinese at
   the root until `range.json` records `en`. (V-U1–V-U5)
-- **AC-61** Each test D124 lists is upstream-only: declared through one helper that skips it with
+- **AC-61** Each test D124 lists (D153's three entries included) is upstream-only: declared through one helper that skips it with
   the upstream decision's reason in a range and in a fork and runs it on upstream (stage 6 checks
   each uses the helper); upstream's CI cannot skip them silently, because the `test` job's existing
   expectation check fails under `WXL_EXPECT_UPSTREAM=true` when the decision is false and the smoke
@@ -899,8 +928,8 @@ judged at the seam its rows name; the rows hold the literal values.
   move ticket (T4), and the rest of the working-tree GLOSSARY edit lands with the switch ticket (T1)
   (U135, B90, which also aligns 主語系, 翻譯, 語系偏好, 短連結, 舊版面 and 語系清單 with this
   spec and removes the `_新造詞_` line of every term this epic's corpus starts to use); until then
-  this spec's vocabulary states that D105 supersedes it; and the old-address rule's open-redirect gate (D118) may bring a rule-set
-  choice to the user at stage 8.
+  this spec's vocabulary states that D105 supersedes it; and the old-address section's open-redirect gate (D118) was settled by the user's choice of the
+  safe-by-construction form (D154).
 - Ticket order (T1–T9): one switch ticket carries the content move, the declaration split and every
   reader of either, with the build, routing, loader, smoke fixtures, generator, hook and anchors;
   pure modules and the transform may land before it; the reference page and the upgrade's move land

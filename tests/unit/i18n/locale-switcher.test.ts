@@ -8,14 +8,22 @@ import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
 // The component now DISPLAYS from the page-resolved locale and only WRITES to
 // the vue-i18n runtime locale, so tests must be able to set the two apart —
 // that divergence is exactly the SSR condition the fix addresses.
-const mockLocaleIndex = { value: 'root' as 'root' | 'zh-TW' }
+const mockLocaleIndex = { value: 'root' as 'root' | 'en' | 'zh-TW' }
 // The switcher reads only the page's locale from VitePress (spec 0008): where a choice goes, the
 // site base and the location are the Layout's, through the provided choice.
 vi.mock('vitepress', () => ({
   useData: () => ({ localeIndex: mockLocaleIndex }),
 }))
 
+// `P` (D31, A22): defaults to 'en', today's build, so `mountAt`'s existing mapping of a page
+// locale to `mockLocaleIndex` ('root' for English) keeps every existing case's meaning unchanged
+// (T1). The new P = zh-TW cases set this explicitly.
+const mockPrimaryLocale = vi.hoisted(() => ({ value: 'en' as 'en' | 'zh-TW' }))
+vi.mock('../../../.vitepress/theme/i18n/primaryLocale', () => ({ primaryLocale: () => mockPrimaryLocale.value }))
+
 import LocaleSwitcher from '../../../.vitepress/theme/components/LocaleSwitcher.vue'
+import { LOCALE_SWITCHER_LABEL_KEYS, localeSwitcherLabelKey } from '../../../.vitepress/theme/components/localeSwitcherLabels'
+import { LOCALES } from '../../../.vitepress/locales'
 import {
   detectInitialLocale,
   persistLocale,
@@ -34,10 +42,14 @@ const choose = vi.fn((_locale: 'en' | 'zh-TW') => chooseResult.value)
 
 /**
  * Mounts with the page locale and the runtime locale set independently, under the Layout's
- * provider. Pass the i18n instance to read the runtime locale afterwards.
+ * provider. Pass the i18n instance to read the runtime locale afterwards. `P` defaults to
+ * `mockPrimaryLocale`'s current value (today's build, 'en', unless a case sets it to 'zh-TW');
+ * `mockLocaleIndex` is derived from the page locale relative to it: `'root'` when the page is
+ * the primary locale, otherwise the non-primary locale's own code (A22, cross-area note 7/8).
  */
-function mountAt(pageLocale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW' | ReturnType<typeof makeI18n> = pageLocale) {
-  mockLocaleIndex.value = pageLocale === 'zh-TW' ? 'zh-TW' : 'root'
+function mountAt(pageLocale: 'en' | 'zh-TW', runtime: 'en' | 'zh-TW' | ReturnType<typeof makeI18n> = pageLocale, P: 'en' | 'zh-TW' = mockPrimaryLocale.value) {
+  mockPrimaryLocale.value = P
+  mockLocaleIndex.value = pageLocale === P ? 'root' : pageLocale
   return mount(LocaleSwitcher, {
     global: {
       plugins: [typeof runtime === 'string' ? makeI18n(runtime) : runtime],
@@ -69,6 +81,7 @@ beforeEach(() => {
   chooseResult.value = 'stay'
   choose.mockClear()
   setPathname('/')
+  mockPrimaryLocale.value = 'en'
 })
 
 afterEach(() => {
@@ -125,6 +138,43 @@ describe('LocaleSwitcher UI', () => {
     expect(title.text()).toBe(currentLabel)
     expect(title.attributes('role')).toBeUndefined()
     expect(title.attributes('data-locale-option')).toBeUndefined()
+  })
+
+  // A22, under P = zh-TW: the same title/aria-label/options behaviour, reached through
+  // `localeIndex = 'root'` for the Chinese page (the primary-locale key under this P) instead of
+  // the literal 'zh-TW' key — `pageLocaleOf` must still resolve the page locale correctly either
+  // way (cross-area note 7/8).
+  it.each([
+    ['en', 'zh-TW', 'English', 'Switch language — English'],
+    ['zh-TW', 'en', '繁體中文', '切換語系 — 繁體中文'],
+  ] as const)('under P = zh-TW, opened in %s, offers exactly %s and titles/names the current locale (A22)', async (current, other, currentLabel, aria) => {
+    const wrapper = mountAt(current, current, 'zh-TW')
+    expect(wrapper.find('[data-locale-switcher-toggle]').attributes('aria-label')).toBe(aria)
+    await wrapper.find('[data-locale-switcher-toggle]').trigger('click')
+    const options = wrapper.findAll('[role="option"]')
+    expect(options.length).toBe(1)
+    expect(options[0].attributes('data-locale-option')).toBe(other)
+    expect(wrapper.find('[data-locale-current]').text()).toBe(currentLabel)
+  })
+
+  // A28 (AC-16), the server-rendered half: the trigger names the page's locale, derived through
+  // `pageLocaleOf` from `localeIndex` and `P`, while the runtime locale is still `en`.
+  it.each([
+    ['zh-TW', 'root', '切換語系 — 繁體中文'],
+    ['zh-TW', 'en', 'Switch language — English'],
+    ['en', 'root', 'Switch language — English'],
+    ['en', 'zh-TW', '切換語系 — 繁體中文'],
+  ] as const)('under P = %s, with localeIndex %s, the server-rendered trigger names the page locale (A28)', async (P, localeIndex, aria) => {
+    mockPrimaryLocale.value = P
+    mockLocaleIndex.value = localeIndex
+    const { createSSRApp, h } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const app = createSSRApp({ render: () => h(LocaleSwitcher) })
+    app.use(makeI18n('en'))
+    app.provide(LOCALE_CHOICE as symbol, choose)
+    app.provide(MISSING_TRANSLATION_LOCALE as symbol, computed(() => line.value))
+    const html = await renderToString(app)
+    expect(html).toContain(`aria-label="${aria}"`)
   })
 
   it('the current-locale title is not interactive at all', async () => {
@@ -328,7 +378,7 @@ describe('detectInitialLocale: the URL alone decides (spec.md table)', () => {
       setPathname(tc.path)
       window.localStorage.clear()
       if (tc.ls !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, tc.ls)
-      expect(detectInitialLocale()).toBe(tc.expected)
+      expect(detectInitialLocale('en')).toBe(tc.expected)
     })
   }
 
@@ -337,7 +387,7 @@ describe('detectInitialLocale: the URL alone decides (spec.md table)', () => {
   it('never lets the stored value override an unprefixed path', () => {
     setPathname('/challenges/door-is-open/')
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh-TW')
-    expect(detectInitialLocale()).toBe('en')
+    expect(detectInitialLocale('en')).toBe('en')
   })
 })
 
@@ -347,8 +397,8 @@ describe('localStorage SecurityError fallback', () => {
     vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError')
     })
-    expect(() => detectInitialLocale()).not.toThrow()
-    expect(detectInitialLocale()).toBe('zh-TW')
+    expect(() => detectInitialLocale('en')).not.toThrow()
+    expect(detectInitialLocale('en')).toBe('zh-TW')
   })
 
   it('persistLocale swallows setItem SecurityError without throwing', () => {
@@ -412,5 +462,59 @@ describe('LocaleSwitcher without the Layout\'s provider', () => {
     expect(wrapper.findAll('[role="option"]')).toHaveLength(1)
     await wrapper.find('[data-locale-option="zh-TW"]').trigger('click')
     expect(readStoredLocale()).toBe('zh-TW')
+  })
+})
+
+// S2-n: `assertEveryLocaleHasALabel` has no production caller — only `localeSwitcherLabelKey`
+// does (`LocaleSwitcher.vue`) — so it lives here, test-only, rather than in
+// `localeSwitcherLabels.ts`.
+//
+// S2-e/A22/D34: the guard also checks the two string tables, not only the code-keyed
+// `LOCALE_SWITCHER_LABEL_KEYS` table — a key present there but missing from `en.json` or
+// `zh-TW.json` is the same silent gap the component would hit at render time.
+function hasPath(obj: unknown, path: string): boolean {
+  let cur = obj
+  for (const part of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null || !(part in cur)) return false
+    cur = (cur as Record<string, unknown>)[part]
+  }
+  return true
+}
+
+function assertLabelsPresent(locales: readonly string[], labelKeys: Record<string, string>, tables: Record<string, unknown>): void {
+  for (const code of locales) {
+    const key = labelKeys[code]
+    if (!key) throw new Error(`LocaleSwitcher: LOCALES carries "${code}" with no label key in LOCALE_SWITCHER_LABEL_KEYS`)
+    for (const [tableName, table] of Object.entries(tables)) {
+      if (!hasPath(table, key)) {
+        throw new Error(`LocaleSwitcher: "${code}"'s label key "${key}" is missing from ${tableName}`)
+      }
+    }
+  }
+}
+
+function assertEveryLocaleHasALabel(): void {
+  assertLabelsPresent(LOCALES, LOCALE_SWITCHER_LABEL_KEYS, { 'messages/en.json': en, 'messages/zh-TW.json': zhTW })
+}
+
+// A22, D34: labels and options are derived from LOCALES, so a locale added to the list without
+// a label key is a loud failure, not a silent two-branch fallback.
+describe('LocaleSwitcher labels (A22, D34)', () => {
+  it('has a label key for every member of LOCALES, present in both string tables', () => {
+    expect(() => assertEveryLocaleHasALabel()).not.toThrow()
+  })
+
+  it('throws naming the locale when a LOCALES member has no label key', () => {
+    expect(() => localeSwitcherLabelKey('ja' as unknown as Parameters<typeof localeSwitcherLabelKey>[0]))
+      .toThrowError('LocaleSwitcher: LOCALES carries "ja" with no label key in LOCALE_SWITCHER_LABEL_KEYS')
+  })
+
+  // S2-e: a synthetic third entry (temporary, not committed — the real LOCALES stays at two),
+  // the same way A31 demonstrates GD1: a label key that exists in the code-keyed table but is
+  // absent from both string tables.
+  it('throws naming the table when a label key is missing from a string table', () => {
+    const labelKeys = { ...LOCALE_SWITCHER_LABEL_KEYS, ja: 'locale_switcher.ja_label' }
+    expect(() => assertLabelsPresent([...LOCALES, 'ja'], labelKeys, { 'messages/en.json': en, 'messages/zh-TW.json': zhTW }))
+      .toThrowError('LocaleSwitcher: "ja"\'s label key "locale_switcher.ja_label" is missing from messages/en.json')
   })
 })

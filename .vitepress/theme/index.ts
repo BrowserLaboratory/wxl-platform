@@ -26,6 +26,7 @@ import SessionGate from './components/SessionGate.vue'
 import MissingTranslationLine from './components/MissingTranslationLine.vue'
 import { useSessionGate, hasGateDecision, shouldPresentGateHere } from './composables/useSessionGate'
 import { i18n, detectInitialLocale, detectLocaleFromPath } from './i18n'
+import { primaryLocale } from './i18n/primaryLocale'
 import { useArrivals } from './composables/useArrivals'
 import { LOCALE_CHOICE, MISSING_TRANSLATION_LOCALE } from './i18n/missingTranslation'
 
@@ -49,7 +50,7 @@ export default {
       const stopRouteWatch = watch(
         () => route.path,
         (newPath) => {
-          const target = detectLocaleFromPath(newPath)
+          const target = detectLocaleFromPath(newPath, primaryLocale())
           if (i18n.global.locale.value === target) return
           i18n.global.locale.value = target
         },
@@ -110,7 +111,7 @@ export default {
         // otherwise the learner stays and the missing-translation line says why
         // (spec 0008, A1–A3). `useArrivals.release` runs it, and before it the
         // not-found redirect: both wait for the gate as below. `recordColdLoad`
-        // does not wait: it stores `zh-TW` for a published `/zh-TW/` page (W2).
+        // does not wait: it stores `T` for a published translation page (W2, D26).
         const runLocaleRedirect = arrivals.release
         arrivals.recordColdLoad()
 
@@ -119,8 +120,9 @@ export default {
         // hold is not about the preference itself: `wxl-locale` is exempt from the clear
         // (`localStorageKeys.ts`), so a clear leaves the value this redirect reads as it
         // was. It holds because the answer decides which load the learner continues on:
-        // `cleared` reloads the site root, which makes its own redirect, so this one is
-        // skipped; any other answer runs it once the choice leaves the screen. Released
+        // `cleared` reloads the site root, whose own cold load is decided by the stored value
+        // that survived the clear (a redirect only for a valid stored `T` whose home page is
+        // published, otherwise `P`; spec 0010 D35, A33), so this one is skipped; any other answer runs it once the choice leaves the screen. Released
         // early, it would swap the page under the open question (spec 0008 B5, A6, C11).
         // The line has its own hold; a switcher choice does not wait (D17). OQ-012.
         //
@@ -235,18 +237,18 @@ export default {
     // short link's server redirect are cold loads too (D13) — is decided once the
     // router has rendered the page (`useArrivals`).
     if (typeof window !== 'undefined') {
-      i18n.global.locale.value = detectInitialLocale()
+      i18n.global.locale.value = detectInitialLocale(primaryLocale())
     }
 
     // SourceViewer is used in challenge pages via markdown
     app.component('SourceViewer', SourceViewer)
 
-    // ChallengeList requires a `challenges: ChallengeData[]` prop; each locale's
-    // challenges page (platform/challenges.md, platform/zh-TW/challenges.md) passes it
-    // via <ChallengeList :challenges="data" /> after loading its own data file.
+    // ChallengeList requires a `lists: ChallengeLists` prop (D40); each locale's challenges
+    // page (platform/<locale>/challenges.md) passes it via <ChallengeList :lists="data" />
+    // after loading the one data file.
     app.component('ChallengeList', ChallengeList)
 
-    // HomeContent is used in platform/index.md via <HomeContent />
+    // HomeContent is used in each locale's home page (platform/<locale>/index.md) via <HomeContent :lists="data" />
     app.component('HomeContent', HomeContent)
 
     // Register Service Worker (challenge router)

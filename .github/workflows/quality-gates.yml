@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -111,11 +113,16 @@ jobs:
       - name: Generate challenge keys
         run: pnpm challenge:keygen
 
-      - name: Validate challenge frontmatter
+      - name: Validate challenge declarations and briefs
         run: pnpm challenge:validate
 
       - name: Build VitePress site
         run: pnpm docs:build
+
+      # A production build publishes no smoke fixture page and carries no trace of one (D49, L47).
+      - name: Check no smoke fixture shipped
+        run: |
+          ! find .vitepress/dist -path '*smoke-fixtures*' | grep -q . && ! grep -rq smoke-fixtures .vitepress/dist
 
   prose-audit:
     # PR-time deterministic prose audit on changed outward-facing markdown.
@@ -226,7 +233,10 @@ jobs:
       - name: Generate challenge keys
         run: pnpm challenge:keygen
 
+      # The smoke suite needs the two fixture pages, which only a test build publishes (D49).
       - name: Build VitePress site
+        env:
+          WXL_SMOKE_PAGES: '1'
         run: pnpm docs:build
 
       - name: Install Playwright Chromium
@@ -320,6 +330,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8

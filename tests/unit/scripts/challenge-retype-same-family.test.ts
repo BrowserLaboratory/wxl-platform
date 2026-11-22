@@ -18,10 +18,7 @@ VULN_SQL = "SELECT filename, content FROM files WHERE id = ?"
 VULN_TEMPLATE = "<a href=\\"/download?id={{ f.id }}\\">Download</a>"
 `
 
-const INDEX = [
-  '---',
-  'title: Door Is Open',
-  'layout: challenge',
+const DECLARATION = [
   'difficulty: easy',
   'category: web',
   'backend: fastapi',
@@ -31,27 +28,23 @@ const INDEX = [
   'source_visible: false',
   'date: 2026-04-02T08:54:17.674Z',
   'tags: [ idor, access-control, fastapi, sqlite ]',
-  'description: A file-sharing app with an IDOR vulnerability.',
   'wasmModule: /challenge/door-is-open/runtime.wasm',
-  '---',
-  '',
-  '# Door Is Open',
   '',
 ].join('\n')
 
 describe('retypeChallenge — same Python family backend swap', () => {
   let projectRoot: string
   let slugDir: string
-  let indexPath: string
+  let declarationPath: string
   let appPath: string
 
   beforeEach(() => {
     projectRoot = mkdtempSync(join(tmpdir(), 'challenge-retype-same-'))
     slugDir = join(projectRoot, 'platform', 'challenge', 'door-is-open')
     mkdirSync(join(slugDir, 'src'), { recursive: true })
-    indexPath = join(slugDir, 'index.md')
+    declarationPath = join(slugDir, 'challenge.yaml')
     appPath = join(slugDir, 'src', 'app.py')
-    writeFileSync(indexPath, INDEX)
+    writeFileSync(declarationPath, DECLARATION)
     writeFileSync(appPath, FASTAPI_APP)
     writeFileSync(join(slugDir, 'src', 'flag.txt'), 'FLAG{test}')
   })
@@ -73,14 +66,14 @@ describe('retypeChallenge — same Python family backend swap', () => {
   it('rewrites fastapi → flask import header and preserves vuln body hash', () => {
     const beforeHash = vulnBodyHash(FASTAPI_APP)
 
-    let keygenSlug: string | undefined
+    const keygenSlugs: string[] = []
     const result = retypeChallenge(
       { slug: 'door-is-open', backend: 'flask' },
-      { projectRoot, runKeygen: (s) => { keygenSlug = s } },
+      { projectRoot, runKeygen: (s) => { keygenSlugs.push(s) } },
     )
 
     expect(result.exitCode).toBe(0)
-    expect(keygenSlug).toBe('door-is-open')
+    expect(keygenSlugs).toEqual(['door-is-open'])
 
     const after = readFileSync(appPath, 'utf8')
     expect(after).not.toMatch(/from\s+fastapi/)
@@ -88,8 +81,8 @@ describe('retypeChallenge — same Python family backend swap', () => {
     expect(after).toContain('app = Flask(__name__)')
     expect(vulnBodyHash(after)).toBe(beforeHash)
 
-    const indexAfter = readFileSync(indexPath, 'utf8')
-    expect(indexAfter).toContain('backend: flask')
-    expect(indexAfter).toContain('app: app.py')
+    const declarationAfter = readFileSync(declarationPath, 'utf8')
+    expect(declarationAfter).toContain('backend: flask')
+    expect(declarationAfter).toContain('app: app.py')
   })
 })

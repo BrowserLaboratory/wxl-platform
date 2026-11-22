@@ -46,7 +46,7 @@ features:
 ---
 
 <script setup>
-import { data } from './shared/challenges.data.ts'
+import { data } from '../shared/challenges.data.ts'
 </script>
 
-<HomeContent :challenges="data" />
+<HomeContent :lists="data" />

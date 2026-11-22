@@ -1,9 +1,22 @@
 import { describe, it, expect } from 'vitest'
 import { createI18n } from 'vue-i18n'
-import en from '../../../.vitepress/theme/i18n/messages/en.json'
-import zhTW from '../../../.vitepress/theme/i18n/messages/zh-TW.json'
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { LOCALES, type Locale } from '../../../.vitepress/locales'
 
 type MessageNode = string | { [k: string]: MessageNode }
+
+const MESSAGES_DIR = resolve(__dirname, '../../../.vitepress/theme/i18n/messages')
+
+// B19 (BC7): no literal pair of imports — every listed code's own message table is read through
+// LOCALES, so a code added to the locale list is read here without editing this file.
+const MESSAGES = Object.fromEntries(
+  await Promise.all(
+    LOCALES.map(async (code) => [code, (await import(`../../../.vitepress/theme/i18n/messages/${code}.json`)).default]),
+  ),
+) as Record<Locale, MessageNode>
+const en = MESSAGES.en
+const zhTW = MESSAGES['zh-TW']
 
 function flatten(obj: MessageNode, prefix = ''): Record<string, string> {
   if (typeof obj === 'string') return { [prefix]: obj }
@@ -78,6 +91,22 @@ describe('editor settings namespace', () => {
   })
 })
 
+// T-0077 L18 (D42): the list's default title and category moved out of mergeChallenges.ts into the
+// string tables, so a list reads them for its own locale and a locale added later supplies its own.
+describe('challenge list defaults (L18)', () => {
+  const DEFAULTS: Record<'en' | 'zh-TW', Record<string, string>> = {
+    en: { default_title: 'Web exploitation challenge', default_category: 'General' },
+    'zh-TW': { default_title: '網站攻防挑戰', default_category: '綜合' },
+  }
+
+  it.each(['default_title', 'default_category'])('defines challenge_list.%s in both locales', (key) => {
+    const enFlat = flatten(en as MessageNode)
+    const zhFlat = flatten(zhTW as MessageNode)
+    expect(enFlat[`challenge_list.${key}`]).toBe(DEFAULTS.en[key])
+    expect(zhFlat[`challenge_list.${key}`]).toBe(DEFAULTS['zh-TW'][key])
+  })
+})
+
 describe('every message compiles', () => {
   // The shape tests above read the JSON as data and never ask vue-i18n to compile it.
   // A leaf containing a literal `{` is valid JSON, is a valid string, and renders as
@@ -85,10 +114,7 @@ describe('every message compiles', () => {
   // on every single render. Nothing throws, so `t()` returning the right string proves
   // nothing. Measured in a real browser: "Message compilation error: Unterminated
   // closing brace", 37 occurrences on one page, and no test anywhere went red.
-  it.each([
-    ['en', en],
-    ['zh-TW', zhTW],
-  ])('%s: no leaf makes the message compiler complain', (locale, messages) => {
+  it.each(LOCALES.map((code) => [code, MESSAGES[code]]))('%s: no leaf makes the message compiler complain', (locale, messages) => {
     const logged: string[] = []
     const original = console.error
     console.error = (...args: unknown[]) => { logged.push(String(args[0])) }
@@ -110,10 +136,7 @@ describe('every message compiles', () => {
     expect(logged.filter(m => m.includes('Message compilation error'))).toEqual([])
   })
 
-  it.each([
-    ['en', en],
-    ['zh-TW', zhTW],
-  ])('%s: the bracket hint still renders the three characters it names', (locale, messages) => {
+  it.each(LOCALES.map((code) => [code, MESSAGES[code]]))('%s: the bracket hint still renders the three characters it names', (locale, messages) => {
     // Escaping the brace must not turn the escape syntax into the visible text — the
     // learner has to see `( [ {`, which is the whole point of that sentence.
     const i18n = createI18n({
@@ -129,5 +152,46 @@ describe('every message compiles', () => {
     expect(rendered).toContain('[')
     expect(rendered).toContain('{')
     expect(rendered).not.toContain("'{'")
+  })
+})
+
+describe('message files on disk (B19)', () => {
+  it('has exactly one messages/<code>.json per listed locale, and nothing else', () => {
+    const basenames = readdirSync(MESSAGES_DIR)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .sort()
+    expect(basenames).toEqual([...LOCALES].sort())
+  })
+})
+
+// A31: the line and the mark (D33) are two-locale strings — written for exactly two locales,
+// each naming "the other" by construction, rather than parameterised over the list. This guard
+// names the message that would have to be revisited (GD1's exact text) if the list ever grows,
+// so growing it is a decision, not a silent mismatch.
+//
+// S2-m: this is a build-health/shape check, test-only — no production module enforces a
+// "two-locale" runtime guard the way this function does. Production's own two-locale assumption
+// is `otherLocale`'s hard-coded two-branch ternary (`.vitepress/theme/i18n/index.ts`), which has
+// no throw of its own: it would just compute the wrong "other" locale once a third is ever
+// added, silently. This test proves the message that a human would then have to write, not that
+// production already guards against the case.
+function assertTwoLocaleGuard(locales: readonly string[]): void {
+  if (locales.length !== 2) {
+    throw new Error(
+      `The line and the mark are two-locale strings (D33), but the locale list has ${locales.length} members, not 2; parameterise them in the Japanese (ja) epic.`,
+    )
+  }
+}
+
+describe('two-locale guard (A31, D33, GD1)', () => {
+  it('passes while the locale list has exactly two members', () => {
+    expect(() => assertTwoLocaleGuard(LOCALES)).not.toThrow()
+  })
+
+  it('fails with GD1\'s exact message once the list grows past two', () => {
+    expect(() => assertTwoLocaleGuard([...LOCALES, 'ja'])).toThrowError(
+      'The line and the mark are two-locale strings (D33), but the locale list has 3 members, not 2; parameterise them in the Japanese (ja) epic.',
+    )
   })
 })
