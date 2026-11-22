@@ -135,7 +135,7 @@ tags: [ idor, access-control, fastapi, sqlite ]
 wasmModule: /challenge/door-is-open/runtime.wasm  # 由 keygen 產生
 ```
 
-說明頁依語系放在 `platform/<語系代碼>/challenge/<slug>/index.md`：主語系那一份必備，其他語系的是翻譯，可以沒有。frontmatter 只留三個 key：
+說明頁依語系放在 `platform/<語系代號>/challenge/<slug>/index.md`：主語系那一份必備，其他語系的是翻譯，可以沒有。frontmatter 只留三個 key：
 
 ```yaml
 ---
@@ -159,7 +159,7 @@ description: ...         # 題目的摘要
 - **hook 沒辦法把變更放回去**：hook 會把你在 `platform/` 底下還沒 stage 的變更和未追蹤的檔案留在一個 stash entry，並印出它的 commit id。照訊息執行 `git stash apply <id>`。apply 拒絕時，訊息印出的 `git restore` 指令會用 entry 裡的版本覆寫 `platform/` 底下的檔案，所以要在改動那裡的任何東西之前執行。apply 回報衝突時（兩處變更改到同一行或相鄰的行就會這樣），用 `git checkout <id> -- <path>` 從 entry 取回那個檔案。這時 git 會把那個檔案，以及 entry 裡其他已經套用的變更，都留在 stage 的狀態；執行 `git restore --staged --source=<id>^2 -- ':(top)platform/' ':(top,exclude)platform/public/_redirects'` 可以放回 commit 之前 stage 的內容，所以 commit 之前先看一下 `git status`。
 - **hook 沒辦法把 stage 的變更放回去**：git 的 stash 做到一半停下、又改動了 index 時，訊息會說明，並印出 `git restore --staged --source=<id>^2 -- …`。這個指令會用 commit 之前 stage 的內容覆寫 `platform/` 底下已 stage 的內容，所以要等檔案都放回來、而且還沒 stage 那裡的任何東西時執行。訊息只印這個指令時，你沒 stage 的檔案已經放回來了；否則先照上一項的指令做。
 - **修復過期的 `_redirects`**：`pnpm redirects:generate` 會讀整個工作目錄，所以未追蹤的題目草稿在 `challenge.yaml` 裡還沒有 `number` 時會拒絕，訊息會指出是哪一份草稿。先修好或移走草稿；或是 stage 一個題目變更再 commit，hook 會依 stage 的內容重新產生這個檔。
-- **缺主語系說明頁、或缺題目宣告的題目**：說明頁沒有主語系的那一份、說明頁沒有對應的 `challenge.yaml`，以及 `challenge.yaml` 沒有主語系說明頁，這幾種 commit 都會被擋。如果之前已經用 `--no-verify` commit 進去，之後每個題目 commit 都會被擋，直到補上缺的那一份：寫好 `platform/<語系代碼>/challenge/<slug>/` 底下的說明頁，或把整道題目移到 `.archive/challenge/<slug>/` 下架。
+- **缺主語系說明頁、或缺題目宣告的題目**：說明頁沒有主語系的那一份、說明頁沒有對應的 `challenge.yaml`，以及 `challenge.yaml` 沒有主語系說明頁，這幾種 commit 都會被擋。如果之前已經用 `--no-verify` commit 進去，之後每個題目 commit 都會被擋，直到補上缺的那一份：寫好 `platform/<語系代號>/challenge/<slug>/` 底下的說明頁，或把整道題目移到 `.archive/challenge/<slug>/` 下架。
 
 前面兩項「沒辦法放回去」的情況裡，hook 的 stash entry 會一直留在 `git stash list` 裡。檔案和 index 都放回來之後，用 `git stash list --format='%gd %H'` 找出 id 和訊息印出的一樣的那一行，再用那一行的 `git stash drop stash@{<n>}` 刪掉它；`git stash drop` 不接受 id 本身。
 
@@ -228,9 +228,9 @@ npx --yes create-wxl@latest upgrade
 
 - `primaryLocale` 可用的值就是語系清單：`en`、`zh-TW`；大小寫要完全相同，前後也不能有空白。
 - 檔案不存在、或檔案裡沒有 `primaryLocale` 這個 key 時，主語系是 `zh-TW`。
-- 讀不了或值不對時，建置會中止，訊息以下列代碼開頭：PL-E01 `range.json` 不是一般檔案（目錄、符號連結等，符號連結不會被跟隨）；PL-E02 讀不到檔案（訊息附 errno 代碼）；PL-E03 內容不是合法的 JSON；PL-E04 內容不是 JSON 物件；PL-E05 `primaryLocale` 不是字串；PL-E06 `primaryLocale` 的值不在語系清單上。
+- 讀不了或值不對時，建置會中止，訊息以下列錯誤碼開頭：PL-E01 `range.json` 不是一般檔案（目錄、符號連結等，符號連結不會被跟隨）；PL-E02 讀不到檔案（訊息附 errno 名稱）；PL-E03 內容不是合法的 JSON；PL-E04 內容不是 JSON 物件；PL-E05 `primaryLocale` 不是字串；PL-E06 `primaryLocale` 的值不在語系清單上。
 - 在 epic 0011 之前沒有工具代勞：老師要改主語系，就自己編輯這個檔案。
-- 翻譯語系的首頁只能連到該翻譯自己有的頁面，連結從該語系的首頁寫起、不帶語系代碼；違反時建置以 PL-E12 中止。
+- 翻譯語系的首頁只能連到該翻譯自己有的頁面，連結從該語系的首頁寫起、不帶語系代號；違反時建置以 PL-E12 中止。
 - 重跑 `pnpm fork:init --site-name` 的靶場，兩個語系的首頁都要留著，因為 `fork:init` 仍然要求兩份首頁都在。
 - `range.json` 沒有 `upstream` 欄位時，`pnpm range:upgrade` 要帶 `--from <版本>`。
 
@@ -241,14 +241,14 @@ npx --yes create-wxl@latest upgrade
 - 編輯 `range.json` 的 `primaryLocale` 並 commit；pre-commit hook 會重新產生 `platform/public/_redirects`，也可以自己執行 `pnpm redirects:generate`。
 - 重新啟動 `pnpm dev`，改動才會生效。
 - 網站根網址換成新主語系的語言，`/c/NNN` 開的也是新主語系的頁面。
-- 已經發出去、不帶語系代碼的連結，開的是新主語系的頁面；`/<舊主語系>/…` 開頭的連結，只靠舊網址規則（舊主語系是 `zh-TW` 時，每個頂層頁面與資料夾各一條）或找不到頁面那一頁把前綴去掉，才會回到根。
+- 已經發出去、不帶語系代號的連結，開的是新主語系的頁面；`/<舊主語系>/…` 開頭的連結，只靠舊網址規則（舊主語系是 `zh-TW` 時，每個頂層頁面與資料夾各一條）或找不到頁面那一頁把前綴去掉，才會回到根。
 - 每道題目必備的說明頁改成新主語系的那一份。某道題目缺這一份時，pre-commit hook 會擋下 commit，並印出一行指出是哪一題、缺的是哪一份說明頁，要先把它寫好。
 - 首頁的 hero 與 nav 連結自己會跟著走，不用改。
 - `challenge.yaml` 的修改在題目清單重新整理後就看得到，在題目頁要重新啟動 `pnpm dev` 才會更新。
 
 ### 搬到語系資料夾
 
-每個語系有一個語系資料夾 `platform/<語系代碼>/`，裡面放該語系的全部頁面。不是用 `npm create wxl` 建立、也沒有用 `pnpm range:upgrade` 升級的靶場（例如直接 fork 的靶場），頁面可能還在舊版面：至少有一個頁面不在任何語系資料夾裡。舊版面的靶場建置不起來，要自己搬家，照下面的步驟依序做：
+每個語系有一個語系資料夾 `platform/<語系代號>/`，裡面放該語系的全部頁面。不是用 `npm create wxl` 建立、也沒有用 `pnpm range:upgrade` 升級的靶場（例如直接 fork 的靶場），頁面可能還在舊版面：至少有一個頁面不在任何語系資料夾裡。舊版面的靶場建置不起來，要自己搬家，照下面的步驟依序做：
 
 1. **先合併新版**：合併上游的新版，包含新的 `.vitepress/`、`scripts/`、`platform/shared/`、`platform/public/`、`package.json`、`pnpm-lock.yaml`，以及上游搬過的頁面。在舊的程式碼上搬沒有意義。合併停在一個上游改了名、你的 fork 又改過的頁面時，保留上游的新路徑，再把你的修改帶到那裡。
 2. **把語系資料夾以外的每一個頁面搬到 `platform/en/`**，路徑維持不變。
@@ -265,26 +265,26 @@ npx --yes create-wxl@latest upgrade
 
 自己寫頁面時請注意：頁面裡用 raw HTML 寫的連結，以及由元件組出來的連結，建置不會檢查。
 
-建置擋下版面問題時，訊息的第一行以代碼開頭：
+建置擋下版面問題時，訊息的第一行以錯誤碼開頭：
 
 - **PL-E01**：`range.json` 不是一般檔案。把它換成真正的檔案；符號連結不會被跟隨。
-- **PL-E02**：`range.json` 讀不到。依訊息裡的 errno 代碼（例如 `EACCES`）修好權限或檔案。
+- **PL-E02**：`range.json` 讀不到。依訊息裡的 errno 名稱（例如 `EACCES`）修好權限或檔案。
 - **PL-E03**：`range.json` 不是合法的 JSON（空檔、開頭的 BOM、註解、尾巴多出來的文字都算）。改成合法的 JSON。
 - **PL-E04**：`range.json` 的內容不是 JSON 物件。改成 `{ … }`。
-- **PL-E05**：`primaryLocale` 不是字串。改成語系清單上的語系代碼字串。
+- **PL-E05**：`primaryLocale` 不是字串。改成語系清單上的語系代號字串。
 - **PL-E06**：`primaryLocale` 不在語系清單上。改成清單上的值，大小寫要完全相同。
 - **PL-E07**：頁面搜尋範圍裡有符號連結（包含語系資料夾本身）。把每一個換成檔案或資料夾本身。
-- **PL-E08**：有頁面在語系資料夾之外：直接放在 `platform/` 底下、放在 `platform/challenge/` 裡但不在 `<slug>/src/` 底下，或放在名字不是語系代碼的資料夾。照本節的步驟搬進語系資料夾。
-- **PL-E09**：語系資料夾裡有項目的名稱（或去掉 `.md` 之後的名稱）和某個語系代碼相同，網址會和該語系的前綴衝突。改名。
+- **PL-E08**：有頁面在語系資料夾之外：直接放在 `platform/` 底下、放在 `platform/challenge/` 裡但不在 `<slug>/src/` 底下，或放在名字不是語系代號的資料夾。照本節的步驟搬進語系資料夾。
+- **PL-E09**：語系資料夾裡有項目的名稱（或去掉 `.md` 之後的名稱）和某個語系代號相同，網址會和該語系的前綴衝突。改名。
 - **PL-E10**：主語系沒有首頁，也就是缺 `platform/<主語系>/index.md`。補上這個檔案。
-- **PL-E11**：頁面裡有連結指名主語系的資料夾（例如 `/zh-TW/guide/`），但主語系的頁面網址沒有那段。拿掉語系代碼前綴。
+- **PL-E11**：頁面裡有連結指名主語系的資料夾（例如 `/zh-TW/guide/`），但主語系的頁面網址沒有那段。拿掉語系代號前綴。
 - **PL-E12**：首頁的 `hero.actions[*].link` 或 `features[*].link` 不合規則：不是字串、以 `//` 開頭、是相對連結、已經帶語系前綴，或指向沒有發布的頁面。從該語系的首頁寫起，例如 `/guide/`，前綴由建置加上。
 - **PL-E13**：說明頁設了 `layout: challenge`，卻沒有 `platform/challenge/<slug>/challenge.yaml`。補上題目宣告。
 - **PL-E14**：`challenge.yaml` 不是單一個 YAML mapping（原因是 `invalid-yaml`、`multi-document` 或 `not-a-mapping`）。改成一份 YAML mapping。
 - **PL-E15**：說明頁的 frontmatter 有 `title`、`description`、`layout` 以外的 key。把那些 key 移到 `challenge.yaml`。
 - **PL-E16**：`challenge.yaml` 裡有說明頁的 key（`title`、`description` 或 `layout`）。把它們移到說明頁。
 - **PL-E17**：題目的說明頁沒有設 `layout: challenge`。加上這一行。
-- **PL-E18**：`layout: challenge` 設在別的頁面上，只有 `platform/<語系代碼>/challenge/<slug>/index.md` 可以用它。拿掉。
+- **PL-E18**：`layout: challenge` 設在別的頁面上，只有 `platform/<語系代號>/challenge/<slug>/index.md` 可以用它。拿掉。
 
 ### fork 之後：改寫專案身分
 
@@ -324,9 +324,9 @@ const siteBase = process.env.SITE_BASE || '/'
 >
 > `platform/public/_redirects` 由題目自動產生，不要手改；`pnpm create:challenge` 與 pre-commit hook 會在題目變動時重新產生它。它要跟題目一起 commit：GitHub Pages 不讀這個檔，但 CI 會檢查它和題目是否一致。如果 CI 回報它過期，執行 `pnpm redirects:generate` 再 commit 結果。
 >
-> 複製出來的短連結，兩種主語系下都帶它所在的頁面或清單的語系代碼：在英文頁面或清單上是 `/en/c/NNN`，在繁體中文的是 `/zh-TW/c/NNN`。每道有永久編號的題目，每個語系的連結都有；該語系沒有這道題目的版本時，開的是主語系的頁面。`/c/NNN` 是主語系的頁面。舊版發出的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開，只是不再發出。
+> 複製出來的短連結，兩種主語系下都帶它所在的頁面或清單的語系代號：在英文頁面或清單上是 `/en/c/NNN`，在繁體中文的是 `/zh-TW/c/NNN`。每道有永久編號的題目，每個語系的連結都有；該語系沒有這道題目的版本時，開的是主語系的頁面。`/c/NNN` 是主語系的頁面。舊版發出的 `/c/NNN` 與 `/zh/c/NNN` 照樣打得開，只是不再發出。
 >
-> 主語系代碼的短連結與 `/c/NNN`，會跟著學習者的語系偏好走：選過翻譯語系的學習者，在這道題目有那個翻譯時會被帶到翻譯；沒有語系偏好的學習者，留在他打開的網址的語系，網站不替他換語系。翻譯代碼的短連結不跟著語系偏好走：這道題目有那個翻譯時，不論語系偏好為何都開那個翻譯；沒有時，開主語系那一頁。直接打開帶語系代碼的頁面（輸入、貼上、重新整理），會把學習者的語系偏好設成那個語系；帶主語系代碼的短連結開的是根目錄底下的頁面，不設定任何東西。
+> 主語系代號的短連結與 `/c/NNN`，會跟著學習者的語系偏好走：選過翻譯語系的學習者，在這道題目有那個翻譯時會被帶到翻譯；沒有語系偏好的學習者，留在他打開的網址的語系，網站不替他換語系。翻譯語系代號的短連結不跟著語系偏好走：這道題目有那個翻譯時，不論語系偏好為何都開那個翻譯；沒有時，開主語系那一頁。直接打開帶語系代號的頁面（輸入、貼上、重新整理），會把學習者的語系偏好設成那個語系；帶主語系代號的短連結開的是根目錄底下的頁面，不設定任何東西。
 >
 > 英文是主語系時，`/en/c/NNN` 開的是根目錄底下的英文頁，語系偏好是繁體中文的學習者可能被帶到繁體中文翻譯；繁體中文是主語系時，`/en/c/NNN` 開的是 `/en/challenge/<slug>/`，任何學習者都會看到英文。繁體中文是主語系的靶場，舊的 `/zh-TW/…` 網址會回到根：Cloudflare Pages 靠 `_redirects` 的規則，`/zh-TW/` 本身一條、`platform/zh-TW/` 的每個頂層頁面各一條、每個放有頁面的頂層資料夾各一條；其他任何舊網址，以及其他主機上的每個舊網址，靠找不到頁面的那一頁。`platform/public/zh-TW/` 底下的檔案照它自己的網址提供，不再被轉走；例外有兩種：路徑以這類資料夾的名稱開頭的檔案（例如 `platform/public/zh-TW/guide/…`），那個資料夾的規則仍會轉走它；路徑正好是某個頂層頁面名稱的檔案（例如 `platform/public/zh-TW/challenges`），那個頁面的規則會轉走它。新增或移除頂層頁面或資料夾會改變這些規則；pre-commit hook 會重新產生 `_redirects`。改了 `primaryLocale` 之後，要 commit `range.json`（pre-commit hook 會重新產生 `_redirects`）或執行 `pnpm redirects:generate`。還沒 commit 的 `range.json` 只改本機建置。從舊版升級到這一版的靶場，要重新產生 `_redirects` 才會有新的規則：CI 回報它過期時，執行 `pnpm redirects:generate` 再 commit 結果。
 

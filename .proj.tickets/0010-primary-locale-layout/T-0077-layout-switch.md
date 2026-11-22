@@ -3625,6 +3625,28 @@ exit 0; F-3 supplement the same. V-B6 and V-Y7 were re-run with full logging aft
 ambiguous; V-B1's two evidence gaps (B74's built href under `en`, PL-E08 on stderr under dev and preview) were filled
 by a targeted re-run.
 
+## Stage 9 land
+
+### 2026-11-22 (parent, rebase, PR and the prose-audit gate)
+
+- Rebased onto `origin/main` (`7f601a1`) without conflicts; the tree differs from `a18da87` only by `main`'s T-0076
+  ticket file (`git diff --stat a18da87 e316e2b`). Pushed with `--force-with-lease` (expected `d880e51`), as the
+  handoff announced. PR #95 opened with the project `tw-emoji-pr-note`.
+- The user, in chat on 2026-11-22: 「刪除兩條分支」. The parent deleted `stage8/T-0077` and `stage8/T-0077-en` on
+  `origin` and locally (`git ls-remote origin 'refs/heads/stage8/*'` prints nothing afterwards). F-3
+  (`CXPhoenix/wxl-e2e-0010-t0077`) stays for the user to delete.
+- CI on `e316e2b`: 9 checks passed, `prose-audit` failed with 16 blocking `mainland_vocab` findings, 15 in
+  `README.md` and 1 in `platform/zh-TW/guide/troubleshooting.md`; the same files on `main` have none. Every finding
+  is `代碼`, which `scripts/prose-audit/config.yaml` maps to `程式碼` with no exception, as the user's language rule
+  does; here it meant an identifier, so `程式碼` would be wrong. Disposed under the standing authorization: `語系代碼`
+  becomes `語系代號` in `README.md`, `platform/zh-TW/guide/troubleshooting.md` and `GLOSSARY.md` (the glossary keeps
+  the docs' term; `代號` is already used this way in `platform/zh-TW/guide/browser.md`); 「以代碼開頭」 becomes
+  「以錯誤碼開頭」; 「errno 代碼」 becomes 「errno 名稱」. `CHANGELOG.md` keeps its released text. Checks:
+  `python3 scripts/prose-audit/run.py README.md platform/zh-TW/guide/troubleshooting.md` (PASS, 0 blocking),
+  `git grep -n '代碼' -- README.md GLOSSARY.md platform/` (nothing), `pnpm vitest run tests/unit/site/glossary.test.ts
+  tests/unit/site/sentence-map.test.ts` and five more files reading those documents (pass). Executor's change checked
+  by an independent agent word by word.
+
 ## Test plan (stage 5)
 
 Approved under the user's standing authorization of 2026-11-15.
