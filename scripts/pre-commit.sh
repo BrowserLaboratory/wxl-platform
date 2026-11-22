@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # pre-commit hook: validate staged challenges and regenerate platform/public/_redirects
 #
-# It triggers when the staged snapshot differs from HEAD at a watched path (added, copied,
-# modified, renamed, deleted or changed in type): the declaration tree platform/challenge/, the
-# challenge tree of every locale on the locale list (platform/<L>/challenge/), platform/public/
-# _redirects itself, and range.json (D65, D66, D126), and a page (.md) added, deleted or changed in
-# type under a listed locale's folder platform/<L>/ (D154: the old-address rules follow the primary
-# folder's top-level entries, so the committed file must follow them). Editing an existing page's
-# content does not trigger. A page added in a folder that already holds pages, or on a range whose
-# primary locale is not zh-TW, regenerates a file equal to the committed one: exit 0, no diff. The
-# bash here knows no locale name. A glob pre-filter starts no Node, so a commit that has nothing
-# to do with challenges (README.md, platform/public/other.txt) stays a plain git command. A commit that passes it gets the exact
-# list from the generator (`--challenge-trees`, the locale list's own folders), and the trigger is
-# judged again over that list: platform/public/challenge/ or a folder off the list does not
-# trigger. Any other commit passes through untouched.
+# It triggers when the staged snapshot differs from HEAD at a watched path (added, copied, modified,
+# renamed, deleted or changed in type): the declaration tree platform/challenge/, the challenge tree
+# of every locale on the locale list (platform/<L>/challenge/), platform/public/_redirects itself,
+# and range.json (D65, D66, D126), and a page (.md) added, deleted or changed in type under a listed
+# locale's folder platform/<L>/ (D154: the old-address rules follow the primary folder's top-level
+# entries, so the committed file must follow them). Editing an existing page's content does not
+# trigger. A page added in a folder that already holds pages, or on a range whose primary locale is
+# not zh-TW, regenerates a file equal to the committed one: exit 0, no diff. The bash here knows no
+# locale name. A glob pre-filter starts no Node, so a commit that has nothing to do with challenges
+# (README.md, platform/public/other.txt) stays a plain git command. A commit that passes it gets the
+# exact list from the generator (`--challenge-trees`, the locale list's own folders), and the
+# trigger is judged again over that list: platform/public/challenge/ or a folder off the list does
+# not trigger. Any other commit passes through untouched.
 #
 # A first commit (no HEAD) that triggers is refused before any change when
 # something under platform/ other than _redirects is unstaged or untracked

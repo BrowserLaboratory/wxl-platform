@@ -3120,7 +3120,10 @@ describe('pre-commit.sh: the primary folder’s top-level entries (D154)', () =>
   const added = (expected: string): string[] => rulesOf(expected).filter((r) => !head().includes(r))
   const removed = (expected: string): string[] => head().filter((r) => !rulesOf(expected).includes(r))
 
-  /** Stage `path` with `text`, run the hook, and check an O2 whose `_redirects` is the oracle's. Returns it. */
+  /**
+   * Run `change` (which edits and stages), compute the oracle's `_redirects`, run the hook, and
+   * check an O2 whose `_redirects` is the oracle's. Returns the oracle text and the run.
+   */
   function runStaged(change: () => void): { expected: string; run: Run } {
     change()
     const expected = expectedRedirects(repo)

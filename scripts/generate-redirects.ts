@@ -27,8 +27,10 @@
  * pages and folders of pages of `platform/zh-TW/`: `/zh-TW/` to `/`, one static rule per page
  * `<name>.md` other than `index.md`, and one `/zh-TW/<dir>/*` rule per folder that holds a page,
  * sorted by the rule's source in UTF-16 code units. Every target begins with a literal name, never
- * with text from the request, so the section is safe by construction (SR-1). A name outside
- * `^[A-Za-z0-9][A-Za-z0-9._-]*$`, `c` and `smoke-fixtures` get no rule. When `P = en` it is absent.
+ * with text from the request, so the section is safe by construction (SR-1). No rule is written
+ * for a name outside `^[A-Za-z0-9][A-Za-z0-9._-]*$`, for `c` and `smoke-fixtures`, or for a folder
+ * that the page predicate of `.vitepress/source-layout.ts` excludes (a dot-prefixed name,
+ * `node_modules`, `dist`). When `P = en` the section is absent.
  *
  * `--staged` is how `scripts/pre-commit.sh` regenerates the file, on every commit that carries a
  * change at a watched path. It decides what exists from the index alone: `git ls-files` for the
